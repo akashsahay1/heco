@@ -1,0 +1,327 @@
+/**
+ * HECO - Global Styles
+ * Design System Variables + Base Styles + Common Components
+ */
+
+/* ============================================
+   CSS VARIABLES
+   ============================================ */
+:root {
+    /* Primary Brand Colors - Forest Green */
+    --heco-primary-50: #f0fdf4;
+    --heco-primary-100: #dcfce7;
+    --heco-primary-200: #bbf7d0;
+    --heco-primary-300: #86efac;
+    --heco-primary-400: #4ade80;
+    --heco-primary-500: #22c55e;
+    --heco-primary-600: #16a34a;
+    --heco-primary-700: #15803d;
+    --heco-primary-800: #166534;
+    --heco-primary-900: #14532d;
+
+    /* Neutral Colors */
+    --heco-neutral-50: #f8fafc;
+    --heco-neutral-100: #f1f5f9;
+    --heco-neutral-200: #e2e8f0;
+    --heco-neutral-300: #cbd5e1;
+    --heco-neutral-400: #94a3b8;
+    --heco-neutral-500: #64748b;
+    --heco-neutral-600: #475569;
+    --heco-neutral-700: #334155;
+    --heco-neutral-800: #1e293b;
+    --heco-neutral-900: #0f172a;
+
+    /* Semantic Colors */
+    --heco-success: #16a34a;
+    --heco-warning: #f59e0b;
+    --heco-error: #dc2626;
+    --heco-info: #0284c7;
+
+    /* Functional Aliases */
+    --color-primary: var(--heco-primary-700);
+    --color-primary-hover: var(--heco-primary-800);
+    --color-text: var(--heco-neutral-800);
+    --color-text-muted: var(--heco-neutral-500);
+    --color-text-light: var(--heco-neutral-400);
+    --color-bg: var(--heco-neutral-50);
+    --color-bg-white: #ffffff;
+    --color-border: var(--heco-neutral-200);
+    --color-border-dark: var(--heco-neutral-300);
+
+    /* Typography */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.25rem;
+    --text-2xl: 1.5rem;
+    --text-3xl: 1.875rem;
+    --text-4xl: 2.25rem;
+    --text-5xl: 3rem;
+    --leading-tight: 1.25;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.625;
+    --font-medium: 500;
+    --font-semibold: 600;
+    --font-bold: 700;
+    --tracking-tight: -0.025em;
+    --tracking-wide: 0.025em;
+    --tracking-wider: 0.05em;
+    --tracking-widest: 0.1em;
+
+    /* Spacing */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    --space-20: 5rem;
+
+    /* Borders & Radius */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+    --radius-2xl: 1.5rem;
+    --radius-full: 9999px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-base: 200ms ease;
+    --transition-slow: 300ms ease;
+
+    /* Z-Index */
+    --z-dropdown: 1000;
+    --z-sticky: 1020;
+    --z-fixed: 1030;
+    --z-modal-backdrop: 1040;
+    --z-modal: 1050;
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+}
+
+body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    margin: 0;
+}
+
+/* ============================================
+   BOOTSTRAP OVERRIDES
+   ============================================ */
+.btn {
+    font-weight: var(--font-medium);
+    border-radius: var(--radius-lg);
+    transition: all var(--transition-fast);
+}
+
+.btn-success {
+    background: var(--heco-primary-700);
+    border-color: var(--heco-primary-700);
+}
+
+.btn-success:hover {
+    background: var(--heco-primary-800);
+    border-color: var(--heco-primary-800);
+}
+
+.btn-outline-success {
+    color: var(--heco-primary-700);
+    border-color: var(--heco-primary-700);
+}
+
+.btn-outline-success:hover {
+    background: var(--heco-primary-700);
+    border-color: var(--heco-primary-700);
+}
+
+.text-success {
+    color: var(--heco-primary-700) !important;
+}
+
+.bg-success {
+    background-color: var(--heco-primary-700) !important;
+}
+
+.card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--heco-primary-400);
+    box-shadow: 0 0 0 3px var(--heco-primary-100);
+}
+
+/* ============================================
+   COMMON COMPONENTS
+   ============================================ */
+
+/* Form Input with Icon */
+.input-with-icon {
+    position: relative;
+}
+
+.input-with-icon .form-input,
+.input-with-icon .form-control {
+    padding-left: var(--space-12);
+}
+
+.input-with-icon .input-icon {
+    position: absolute;
+    left: var(--space-4);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-light);
+    pointer-events: none;
+}
+
+.input-with-icon.has-toggle .form-input,
+.input-with-icon.has-toggle .form-control {
+    padding-right: var(--space-12);
+}
+
+.password-toggle {
+    position: absolute;
+    right: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--color-text-light);
+    cursor: pointer;
+}
+
+.password-toggle:hover {
+    color: var(--color-text);
+    background: var(--heco-neutral-100);
+}
+
+/* Social Auth Icon Buttons */
+.social-auth-icons {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-4);
+}
+
+.social-icon-btn {
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: white;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    transition: all var(--transition-fast);
+    cursor: pointer;
+}
+
+.social-icon-btn:hover {
+    border-color: var(--color-border-dark);
+    background: var(--heco-neutral-50);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.social-icon-btn svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* Badges */
+.badge {
+    font-weight: var(--font-medium);
+    border-radius: var(--radius-md);
+}
+
+/* Divider */
+.divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    color: var(--color-text-light);
+    font-size: var(--text-sm);
+    margin: var(--space-6) 0;
+}
+
+.divider::before,
+.divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: var(--space-1);
+    background: var(--heco-neutral-100);
+    padding: var(--space-1);
+    border-radius: var(--radius-lg);
+}
+
+.tab {
+    flex: 1;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.tab:hover {
+    color: var(--color-text);
+}
+
+.tab.active {
+    background: var(--color-bg-white);
+    color: var(--color-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Utilities */
+.text-center { text-align: center; }
+.text-muted { color: var(--color-text-muted); }
+.font-medium { font-weight: var(--font-medium); }
+.font-semibold { font-weight: var(--font-semibold); }
+.font-bold { font-weight: var(--font-bold); }

@@ -1,0 +1,734 @@
+/**
+ * HECO Admin - Professional Dashboard Styles
+ * ============================================
+ * Custom admin panel design using the design system
+ */
+
+/* ============================================
+   CSS Variables (Admin-specific)
+   ============================================ */
+:root {
+    /* Sidebar */
+    --hct-sidebar-width: 260px;
+    --hct-sidebar-bg: #0f172a;
+    --hct-sidebar-hover: #1e293b;
+    --hct-sidebar-active: rgba(34, 197, 94, 0.1);
+    --hct-sidebar-text: #94a3b8;
+    --hct-sidebar-heading: #475569;
+    --hct-topbar-height: 64px;
+
+    /* Admin colors (inheriting from design system) */
+    --admin-primary: var(--heco-primary-600, #16a34a);
+    --admin-primary-light: var(--heco-primary-400, #4ade80);
+    --admin-primary-dark: var(--heco-primary-700, #15803d);
+    --admin-bg: #f1f5f9;
+    --admin-card-bg: #ffffff;
+    --admin-border: #e2e8f0;
+    --admin-text: #1e293b;
+    --admin-text-muted: #64748b;
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+.hct-body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--admin-bg);
+    margin: 0;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   Sidebar
+   ============================================ */
+.hct-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--hct-sidebar-width);
+    height: 100vh;
+    background: var(--hct-sidebar-bg);
+    z-index: 1040;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+}
+
+.hct-sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.hct-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.hct-sidebar::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+}
+
+.hct-sidebar::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+.hct-sidebar.collapsed {
+    transform: translateX(-100%);
+}
+
+/* Sidebar Brand */
+.hct-sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 24px;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.025em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%);
+}
+
+.hct-sidebar-brand i {
+    font-size: 1.25rem;
+    color: var(--admin-primary-light);
+}
+
+/* Sidebar Navigation */
+.hct-sidebar-nav {
+    padding: 16px 0;
+}
+
+.hct-nav-section {
+    padding: 20px 24px 8px;
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: var(--hct-sidebar-heading);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.hct-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 24px;
+    margin: 2px 12px;
+    color: var(--hct-sidebar-text);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 400;
+    border-radius: 8px;
+    transition: all 0.15s ease;
+    position: relative;
+}
+
+.hct-nav-link i {
+    width: 20px;
+    font-size: 1rem;
+    text-align: center;
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
+}
+
+.hct-nav-link:hover {
+    background: var(--hct-sidebar-hover);
+    color: #e2e8f0;
+}
+
+.hct-nav-link:hover i {
+    opacity: 1;
+}
+
+.hct-nav-link.active {
+    background: var(--hct-sidebar-active);
+    color: var(--admin-primary-light);
+    font-weight: 500;
+}
+
+.hct-nav-link.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 24px;
+    background: var(--admin-primary-light);
+    border-radius: 0 4px 4px 0;
+}
+
+.hct-nav-link.active i {
+    opacity: 1;
+    color: var(--admin-primary-light);
+}
+
+/* ============================================
+   Main Wrapper
+   ============================================ */
+.hct-main-wrapper {
+    margin-left: var(--hct-sidebar-width);
+    min-height: 100vh;
+    transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+.hct-main-wrapper.sidebar-collapsed {
+    margin-left: 0;
+}
+
+/* ============================================
+   Top Bar
+   ============================================ */
+.hct-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    height: var(--hct-topbar-height);
+    background: var(--admin-card-bg);
+    border-bottom: 1px solid var(--admin-border);
+    backdrop-filter: blur(8px);
+}
+
+.hct-topbar h5 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--admin-text);
+    margin: 0;
+}
+
+/* Topbar toggle button */
+#sidebarToggle {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--admin-text-muted);
+    transition: all 0.15s ease;
+}
+
+#sidebarToggle:hover {
+    background: var(--admin-bg);
+    color: var(--admin-text);
+}
+
+/* User dropdown in topbar */
+.hct-topbar .dropdown-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    color: var(--admin-text);
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.hct-topbar .dropdown-toggle:hover {
+    background: var(--admin-bg);
+    border-color: #cbd5e1;
+}
+
+.hct-topbar .dropdown-toggle::after {
+    margin-left: 4px;
+    opacity: 0.5;
+}
+
+.hct-topbar .dropdown-menu {
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+    padding: 8px;
+    margin-top: 8px;
+}
+
+.hct-topbar .dropdown-item {
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    border-radius: 6px;
+    color: var(--admin-text);
+}
+
+.hct-topbar .dropdown-item:hover {
+    background: var(--admin-bg);
+}
+
+.hct-topbar .dropdown-item-text {
+    padding: 10px 14px;
+}
+
+.hct-topbar .dropdown-divider {
+    margin: 6px 0;
+    border-color: var(--admin-border);
+}
+
+/* ============================================
+   Content Area
+   ============================================ */
+.hct-content {
+    flex: 1;
+    padding: 28px;
+}
+
+/* ============================================
+   Card Styles (Override Bootstrap)
+   ============================================ */
+.hct-content .card {
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    background: var(--admin-card-bg);
+    overflow: hidden;
+}
+
+.hct-content .card-header {
+    background: linear-gradient(180deg, #fafbfc 0%, #f8fafc 100%);
+    border-bottom: 1px solid var(--admin-border);
+    padding: 16px 20px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--admin-text);
+}
+
+.hct-content .card-header h6 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hct-content .card-header h6 i {
+    color: var(--admin-text-muted);
+}
+
+.hct-content .card-body {
+    padding: 20px;
+}
+
+/* ============================================
+   Stat Cards
+   ============================================ */
+.stat-card {
+    background: var(--admin-card-bg);
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: linear-gradient(180deg, var(--admin-primary) 0%, var(--admin-primary-light) 100%);
+}
+
+.stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--admin-text);
+    line-height: 1.2;
+}
+
+.stat-card .stat-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--admin-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 4px;
+}
+
+.stat-card .stat-icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.05) 100%);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--admin-primary);
+    font-size: 1.25rem;
+}
+
+/* ============================================
+   Table Styles
+   ============================================ */
+.hct-content .table {
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+.hct-content .table thead th {
+    font-weight: 600;
+    color: var(--admin-text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 14px 16px;
+    border-bottom: 2px solid var(--admin-border);
+    background: transparent;
+}
+
+.hct-content .table tbody td {
+    padding: 14px 16px;
+    vertical-align: middle;
+    border-bottom: 1px solid #f1f5f9;
+    color: var(--admin-text);
+}
+
+.hct-content .table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.hct-content .table-hover tbody tr:hover {
+    background-color: rgba(34, 197, 94, 0.04);
+}
+
+/* ============================================
+   Badge Styles
+   ============================================ */
+.hct-content .badge {
+    font-weight: 500;
+    font-size: 0.75rem;
+    letter-spacing: 0.025em;
+    padding: 5px 10px;
+    border-radius: 6px;
+}
+
+.badge.bg-success {
+    background: rgba(34, 197, 94, 0.12) !important;
+    color: #15803d !important;
+}
+
+.badge.bg-warning {
+    background: rgba(245, 158, 11, 0.12) !important;
+    color: #b45309 !important;
+}
+
+.badge.bg-danger {
+    background: rgba(239, 68, 68, 0.12) !important;
+    color: #b91c1c !important;
+}
+
+.badge.bg-info {
+    background: rgba(59, 130, 246, 0.12) !important;
+    color: #1d4ed8 !important;
+}
+
+.badge.bg-secondary {
+    background: rgba(100, 116, 139, 0.12) !important;
+    color: #475569 !important;
+}
+
+/* ============================================
+   Form Styles
+   ============================================ */
+.hct-content .form-control,
+.hct-content .form-select {
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    color: var(--admin-text);
+    transition: all 0.15s ease;
+}
+
+.hct-content .form-control:focus,
+.hct-content .form-select:focus {
+    border-color: var(--admin-primary);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+    outline: none;
+}
+
+.hct-content .form-control::placeholder {
+    color: #94a3b8;
+}
+
+.hct-content .form-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--admin-text);
+    margin-bottom: 6px;
+}
+
+.hct-content .form-text {
+    font-size: 0.8125rem;
+    color: var(--admin-text-muted);
+}
+
+/* Form Switch */
+.form-check-input:checked {
+    background-color: var(--admin-primary);
+    border-color: var(--admin-primary);
+}
+
+.form-check-input:focus {
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+/* ============================================
+   Button Styles
+   ============================================ */
+.btn {
+    font-weight: 500;
+    font-size: 0.875rem;
+    padding: 10px 18px;
+    border-radius: 8px;
+    transition: all 0.15s ease;
+}
+
+.btn-sm {
+    padding: 7px 14px;
+    font-size: 0.8125rem;
+}
+
+.btn-success {
+    background: linear-gradient(180deg, var(--admin-primary) 0%, var(--admin-primary-dark) 100%);
+    border: none;
+    box-shadow: 0 1px 2px rgba(21, 128, 61, 0.2);
+}
+
+.btn-success:hover {
+    background: linear-gradient(180deg, var(--admin-primary-dark) 0%, #14532d 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(21, 128, 61, 0.25);
+}
+
+.btn-outline-success {
+    color: var(--admin-primary);
+    border-color: var(--admin-primary);
+    background: transparent;
+}
+
+.btn-outline-success:hover {
+    background: var(--admin-primary);
+    border-color: var(--admin-primary);
+    color: white;
+}
+
+.btn-outline-secondary {
+    color: var(--admin-text-muted);
+    border-color: var(--admin-border);
+}
+
+.btn-outline-secondary:hover {
+    background: var(--admin-bg);
+    border-color: #cbd5e1;
+    color: var(--admin-text);
+}
+
+/* ============================================
+   Accordion Styles
+   ============================================ */
+.hct-content .accordion-item {
+    border: 1px solid var(--admin-border);
+    border-radius: 10px !important;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.hct-content .accordion-button {
+    padding: 16px 20px;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--admin-text);
+    background: transparent;
+}
+
+.hct-content .accordion-button:not(.collapsed) {
+    background: rgba(34, 197, 94, 0.04);
+    color: var(--admin-primary-dark);
+    box-shadow: none;
+}
+
+.hct-content .accordion-button:focus {
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+.hct-content .accordion-body {
+    padding: 20px;
+}
+
+/* ============================================
+   Alert Styles
+   ============================================ */
+.hct-content .alert {
+    border-radius: 10px;
+    border: none;
+    padding: 14px 18px;
+    font-size: 0.875rem;
+}
+
+.alert-success {
+    background: rgba(34, 197, 94, 0.1);
+    color: #15803d;
+}
+
+.alert-danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: #b91c1c;
+}
+
+.alert-warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: #b45309;
+}
+
+.alert-info {
+    background: rgba(59, 130, 246, 0.1);
+    color: #1d4ed8;
+}
+
+/* ============================================
+   Trip Manager Specific
+   ============================================ */
+.trip-manager-col {
+    height: calc(100vh - 120px);
+    overflow-y: auto;
+}
+
+.day-block {
+    background: var(--admin-card-bg);
+    border: 1px solid var(--admin-border);
+    border-radius: 10px;
+    border-left: 4px solid var(--admin-primary);
+    padding: 16px;
+    margin-bottom: 12px;
+}
+
+.day-block.border-warning {
+    border-left-color: #f59e0b;
+}
+
+.timeline-connector {
+    width: 2px;
+    background: linear-gradient(180deg, var(--admin-primary-light) 0%, transparent 100%);
+    min-height: 20px;
+    margin-left: 20px;
+}
+
+/* ============================================
+   Chat Styles
+   ============================================ */
+.chat-container {
+    height: 400px;
+    overflow-y: auto;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 10px;
+}
+
+.chat-message {
+    max-width: 80%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.chat-message.user {
+    margin-left: auto;
+    background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-primary-dark) 100%);
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-message.assistant {
+    background: white;
+    border: 1px solid var(--admin-border);
+    border-bottom-left-radius: 4px;
+    color: var(--admin-text);
+}
+
+/* ============================================
+   Map Container
+   ============================================ */
+.map-container {
+    height: 400px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--admin-border);
+}
+
+/* ============================================
+   Text Utilities
+   ============================================ */
+.text-success {
+    color: var(--admin-primary) !important;
+}
+
+.bg-success {
+    background-color: var(--admin-primary) !important;
+}
+
+/* ============================================
+   Responsive Styles
+   ============================================ */
+@media (max-width: 991.98px) {
+    .hct-sidebar {
+        transform: translateX(-100%);
+    }
+
+    .hct-sidebar:not(.collapsed) {
+        transform: translateX(0);
+        box-shadow: 4px 0 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .hct-main-wrapper {
+        margin-left: 0 !important;
+    }
+
+    .hct-content {
+        padding: 20px;
+    }
+
+    .trip-manager-col {
+        height: auto;
+    }
+
+    .map-container {
+        height: 280px;
+    }
+
+    .chat-container {
+        height: 320px;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .hct-topbar {
+        padding: 0 16px;
+    }
+
+    .hct-content {
+        padding: 16px;
+    }
+
+    .stat-card .stat-value {
+        font-size: 1.5rem;
+    }
+}
