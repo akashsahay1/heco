@@ -52,6 +52,49 @@
             order: -1;
         }
     }
+    .exp-card-price-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        border-top: 1px solid var(--color-border, #f0f0f0);
+        margin-top: auto;
+    }
+    .exp-card-price-left {
+        display: flex;
+        align-items: baseline;
+        gap: 0.25rem;
+    }
+    .exp-card-price-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .exp-action-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 1px solid #e0e0e0;
+        background: #fff;
+        color: #555;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+    }
+    .exp-action-icon:hover {
+        background: var(--heco-green, #2d6a4f);
+        color: #fff;
+        border-color: var(--heco-green, #2d6a4f);
+    }
+    .exp-action-icon.added {
+        background: var(--heco-green, #2d6a4f);
+        color: #fff;
+        border-color: var(--heco-green, #2d6a4f);
+    }
 </style>
 @endsection
 
@@ -60,12 +103,15 @@
 if ($trip) {
     $tripId = $trip->id;
     $selectedExpIds = $trip->selectedExperiences->pluck('experience_id')->toArray();
+    $preferredExpIds = $trip->selectedExperiences->where('is_preferred', true)->pluck('experience_id')->toArray();
 } elseif (!empty($guestTripData['experience_ids'] ?? [])) {
     $tripId = 'guest';
     $selectedExpIds = $guestTripData['experience_ids'];
+    $preferredExpIds = [];
 } else {
     $tripId = null;
     $selectedExpIds = [];
+    $preferredExpIds = [];
 }
 $hasTrip = $trip || ($tripId === 'guest');
 // Preference values (from DB trip or guest session)
@@ -459,6 +505,7 @@ jQuery(function() {
     var isLoggedIn = {{ auth()->check() ? 'true' : 'false' }};
     var tripId = {!! json_encode($tripId) !!};
     var selectedExpIds = {!! json_encode($selectedExpIds) !!};
+    var preferredExpIds = {!! json_encode($preferredExpIds) !!};
     var discoverPage = 1;
     var discoverLoading = false;
     var discoverHasMore = true;
@@ -675,7 +722,7 @@ jQuery(function() {
     var allDiscoverExps = [];
 
     function buildExpCardHtml(exp) {
-        var isPreferred = selectedExpIds.indexOf(exp.id) !== -1;
+        var isPreferred = preferredExpIds.indexOf(exp.id) !== -1;
         var imgHtml = exp.card_image
             ? '<img src="/storage/' + exp.card_image + '" alt="' + exp.name + '">'
             : '<div class="exp-placeholder"><i class="bi bi-image"></i></div>';
@@ -707,16 +754,19 @@ jQuery(function() {
         h += '<span class="exp-meta-item"><i class="bi bi-clock"></i> ' + durationText + '</span>';
         if (difficulty) h += '<span class="exp-difficulty-badge">' + difficulty + '</span>';
         h += '</div>';
+        var isAdded = selectedExpIds.indexOf(exp.id) !== -1;
+        h += '<div class="exp-card-price-row">';
+        h += '<div class="exp-card-price-left">';
         if (exp.base_cost_per_person > 0) {
-            h += '<div class="exp-card-price">';
             h += '<span class="exp-price-amount">' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + '</span>';
             h += '<span class="exp-price-label">/ person</span>';
-            h += '</div>';
         }
         h += '</div>';
-        h += '<div class="exp-card-footer">';
-        h += '<a href="/experience/' + exp.slug + '" target="_blank" class="exp-btn exp-btn-outline"><i class="bi bi-eye"></i> Details</a>';
-        h += '<button class="exp-btn exp-btn-primary btn-add-exp" data-exp-id="' + exp.id + '" data-exp-name="' + exp.name + '"><i class="bi bi-plus-lg"></i> Add</button>';
+        h += '<div class="exp-card-price-actions">';
+        h += '<a href="/experience/' + exp.slug + '" target="_blank" class="exp-action-icon" title="View Details"><i class="bi bi-eye"></i></a>';
+        h += '<button class="exp-action-icon btn-add-exp" data-exp-id="' + exp.id + '" data-exp-name="' + exp.name + '" title="Add to Journey"><i class="bi bi-plus-lg"></i></button>';
+        h += '</div>';
+        h += '</div>';
         h += '</div>';
         h += '</div>';
         return h;
@@ -786,11 +836,20 @@ jQuery(function() {
     // Heart/Prefer button
     jQuery(document).on('click', '.exp-card-heart', function(e) {
         e.stopPropagation();
+        if (!isLoggedIn) {
+            if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
+            return;
+        }
         var btn = jQuery(this);
         var expId = btn.data('exp-id');
         ensureTrip(function(tId) {
             ajaxPost({ prefer_experience: 1, trip_id: tId, experience_id: expId }, function(resp) {
                 btn.toggleClass('preferred');
+                if (resp.is_preferred) {
+                    if (preferredExpIds.indexOf(expId) === -1) preferredExpIds.push(expId);
+                } else {
+                    preferredExpIds = preferredExpIds.filter(function(id) { return id !== expId; });
+                }
                 if (resp.message) showAlert(resp.message, 'success');
             });
         });

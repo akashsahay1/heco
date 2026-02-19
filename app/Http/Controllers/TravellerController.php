@@ -24,6 +24,11 @@ class TravellerController extends Controller
         return redirect("/home?trip_id=" . $trip->id);
     }
 
+    public function wishlist()
+    {
+        return view("portal.wishlist");
+    }
+
     public function profile()
     {
         $user = auth()->user();

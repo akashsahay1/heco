@@ -59,6 +59,9 @@
                         <a href="/my-itineraries" class="btn btn-outline-dark btn-sm">
                             <i class="bi bi-journal-bookmark"></i> My Trips
                         </a>
+                        <a href="/wishlist" class="btn btn-outline-dark btn-sm">
+                            <i class="bi bi-heart"></i> Wishlist
+                        </a>
                     @endif
                     <div class="user-dropdown">
                         <button type="button" class="user-dropdown-trigger" id="userDropdownTrigger">
@@ -74,6 +77,9 @@
                             </a>
                             <a href="/my-itineraries" class="dropdown-item">
                                 <i class="bi bi-journal-bookmark"></i> My Itineraries
+                            </a>
+                            <a href="/wishlist" class="dropdown-item">
+                                <i class="bi bi-heart"></i> My Wishlist
                             </a>
                             <div class="dropdown-divider"></div>
                             <form method="POST" action="/logout" id="logoutForm">
@@ -99,6 +105,11 @@
             <a href="/home#experiences" class="mobile-nav-link">Experiences</a>
             <a href="/home#regions" class="mobile-nav-link">Regions</a>
             <a href="/join" class="mobile-nav-link">Become a Partner</a>
+            @auth
+                <div class="mobile-nav-divider"></div>
+                <a href="/my-itineraries" class="mobile-nav-link">My Trips</a>
+                <a href="/wishlist" class="mobile-nav-link"><i class="bi bi-heart"></i> My Wishlist</a>
+            @endauth
             @guest
                 <div class="mobile-nav-divider"></div>
                 <button type="button" class="mobile-nav-link" data-open-auth="login">Login</button>

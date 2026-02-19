@@ -56,7 +56,7 @@ class AjaxController extends Controller
             return Trip::where('id', $request->trip_id)->where('user_id', $user->id)->first();
         }
         return Trip::where('user_id', $user->id)
-            ->whereIn('status', ['draft', 'not_confirmed'])
+            ->whereIn('status', ['not_confirmed'])
             ->orderBy('updated_at', 'desc')
             ->first();
     }
@@ -73,8 +73,8 @@ class AjaxController extends Controller
             'trip_id' => Trip::generateTripId(),
             'user_id' => Auth::id(),
             'trip_name' => 'My Trip',
-            'status' => 'draft',
-            'stage' => 'traveller_exploring',
+            'status' => 'not_confirmed',
+            'stage' => 'open',
             'adults' => 2,
             'children' => 0,
             'infants' => 0,
@@ -372,6 +372,9 @@ class AjaxController extends Controller
             }
             if ($request->has('prefer_experience')) {
                 return $this->preferExperience($request);
+            }
+            if ($request->has('get_wishlist')) {
+                return $this->getWishlist($request);
             }
             if ($request->has('reorder_experiences')) {
                 return $this->reorderExperiences($request);
@@ -1131,7 +1134,24 @@ class AjaxController extends Controller
     protected function preferExperience(Request $request): JsonResponse
     {
         if (!Auth::check()) {
-            return response()->json(["success" => true, "is_preferred" => true]);
+            return response()->json(["error" => "Login required"], 401);
+        }
+
+        // If no trip_id provided (e.g. from wishlist page), toggle across all user's trips
+        if (!$request->filled('trip_id') || $request->trip_id === 'guest') {
+            $userTripIds = Trip::where('user_id', Auth::id())->pluck('id');
+            $records = TripSelectedExperience::whereIn('trip_id', $userTripIds)
+                ->where('experience_id', $request->experience_id)
+                ->where('is_preferred', true)
+                ->get();
+
+            if ($records->isNotEmpty()) {
+                // Remove from wishlist across all trips
+                foreach ($records as $rec) {
+                    $rec->update(['is_preferred' => false]);
+                }
+                return response()->json(["success" => true, "is_preferred" => false]);
+            }
         }
 
         $trip = $this->resolveTrip($request);
@@ -1144,6 +1164,26 @@ class AjaxController extends Controller
         $sel->update(["is_preferred" => !$sel->is_preferred]);
 
         return response()->json(["success" => true, "is_preferred" => $sel->is_preferred]);
+    }
+
+    protected function getWishlist(Request $request): JsonResponse
+    {
+        if (!Auth::check()) {
+            return response()->json(["error" => "Login required"], 401);
+        }
+
+        $experiences = TripSelectedExperience::where('is_preferred', true)
+            ->whereHas('trip', function ($q) {
+                $q->where('user_id', Auth::id());
+            })
+            ->with(['experience.region'])
+            ->get()
+            ->pluck('experience')
+            ->filter()
+            ->unique('id')
+            ->values();
+
+        return response()->json(["success" => true, "data" => $experiences]);
     }
 
     protected function reorderExperiences(Request $request): JsonResponse

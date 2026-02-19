@@ -7,7 +7,17 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git config:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(php artisan view:clear:*)",
+      "Bash(php artisan cache:clear:*)",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" artisan view:clear)",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" artisan cache:clear)",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" artisan optimize:clear)",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" -r \":*)",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" artisan tinker --execute=\"echo json_encode\\(\\\\App\\\\Models\\\\User::where\\(''email'', ''traveller@hecoapp.com''\\)->first\\(\\)\\);\")",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" artisan db:show)",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" -r \"require ''vendor/autoload.php''; $app = require_once ''bootstrap/app.php''; $kernel = $app->make\\(Illuminate\\\\Contracts\\\\Console\\\\Kernel::class\\); $kernel->bootstrap\\(\\); $u = App\\\\Models\\\\User::where\\(''email'',''traveller@hecoapp.com''\\)->first\\(\\); echo $u ? json_encode\\([''id''=>$u->id,''role''=>$u->user_role,''is_traveller''=>$u->isTraveller\\(\\)]\\) : ''NOT FOUND'';\")",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" check_user.php)"
     ]
   }
 }
