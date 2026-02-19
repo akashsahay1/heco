@@ -2450,6 +2450,12 @@
         border: 1px solid var(--color-border);
         border-bottom-left-radius: var(--radius-sm);
         box-shadow: var(--shadow-sm);
+        line-height: 1.6;
+    }
+
+    .chat-msg.assistant strong {
+        font-weight: 700;
+        color: var(--heco-primary-700, #2d6a4f);
     }
 
 

@@ -35,6 +35,7 @@ use App\Models\ActivityLog;
 use App\Models\PdfTemplate;
 use App\Services\OllamaService;
 use App\Services\GeminiService;
+use App\Services\GroqService;
 use App\Services\PromptBuilderService;
 use App\Services\ItineraryService;
 use App\Services\CostCalculatorService;
@@ -297,6 +298,12 @@ class AjaxController extends Controller
         $gemini = app(GeminiService::class);
         if ($gemini->isAvailable()) {
             $response = $gemini->chat($messages, $options);
+            if ($response) return $response;
+        }
+
+        $groq = app(GroqService::class);
+        if ($groq->isAvailable()) {
+            $response = $groq->chat($messages, $options);
             if ($response) return $response;
         }
 
@@ -855,6 +862,8 @@ class AjaxController extends Controller
 
     protected function chatWithAi(Request $request): JsonResponse
     {
+        set_time_limit(120);
+
         $validator = Validator::make($request->all(), [
             "message" => "required|string|max:2000",
             "trip_id" => "nullable",
@@ -1416,6 +1425,8 @@ class AjaxController extends Controller
 
     protected function generateItinerary(Request $request): JsonResponse
     {
+        set_time_limit(120);
+
         $isGuest = !Auth::check();
 
         // Build experience list from session or DB
@@ -1687,6 +1698,8 @@ class AjaxController extends Controller
 
     protected function chatWithAiHct(Request $request): JsonResponse
     {
+        set_time_limit(120);
+
         $user = Auth::user();
         $trip = Trip::findOrFail($request->trip_id);
 

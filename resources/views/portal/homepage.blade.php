@@ -1179,6 +1179,9 @@ jQuery(function() {
 
     function appendChatMsg(role, content) {
         var escaped = jQuery('<div/>').text(content).html().replace(/\n/g, '<br>');
+        if (role === 'assistant') {
+            escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        }
         var el = jQuery('<div class="chat-msg ' + role + '">' + escaped + '</div>');
         jQuery('#inlineChatMessages').append(el);
     }
