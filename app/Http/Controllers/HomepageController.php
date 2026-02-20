@@ -56,7 +56,11 @@ class HomepageController extends Controller
         $experience = Experience::where("slug", $slug)
             ->where("is_active", true)
             ->with(["region", "hlh", "regenerativeProject"])
+            ->withCount('reviews')
             ->firstOrFail();
-        return view("portal.experience-detail", compact("experience"));
+
+        $avgRating = $experience->reviews()->avg('rating');
+
+        return view("portal.experience-detail", compact("experience", "avgRating"));
     }
 }

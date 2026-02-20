@@ -411,7 +411,9 @@
         });
 
         // Global AJAX error handler
-        jQuery(document).ajaxError(function(event, jqXHR) {
+        jQuery(document).ajaxError(function(event, jqXHR, settings) {
+            // Skip global error handling for requests that handle errors themselves
+            if (settings.skipGlobalError) return;
             if (jqXHR.status === 401) {
                 if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
             } else if (jqXHR.status === 422) {

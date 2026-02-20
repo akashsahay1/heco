@@ -1002,6 +1002,43 @@
 }
 
 /* ============================================
+   REVIEWS & RATINGS ON CARDS
+   ============================================ */
+.exp-card-rating {
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+}
+
+.exp-card-rating .bi-star-fill {
+    color: #f5a623;
+}
+
+.exp-card-rating .bi-star {
+    color: #ccc;
+}
+
+.exp-rating-text {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-left: 2px;
+}
+
+.btn-remove-journey-exp:hover {
+    background: #dc3545 !important;
+    color: #fff !important;
+    border-color: #dc3545 !important;
+}
+
+.spin-icon {
+    display: inline-block;
+    animation: spinIcon 1s linear infinite;
+}
+
+@keyframes spinIcon {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================
    RESPONSIVE STYLES
    ============================================ */
 @media (max-width: 1200px) {
@@ -1705,6 +1742,31 @@
         line-height: var(--leading-relaxed);
         margin-bottom: var(--space-4);
         flex: 1;
+    }
+
+    .btn-remove-journey-exp:hover {
+        background: #dc3545 !important;
+        color: #fff !important;
+        border-color: #dc3545 !important;
+    }
+
+    .exp-card-rating {
+        font-size: var(--text-sm);
+        margin-bottom: var(--space-2);
+    }
+
+    .exp-card-rating .bi-star-fill {
+        color: #f5a623;
+    }
+
+    .exp-card-rating .bi-star {
+        color: #ccc;
+    }
+
+    .exp-rating-text {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        margin-left: 2px;
     }
 
     .exp-card-meta {
@@ -2482,6 +2544,7 @@
     @keyframes spin {
         to { transform: rotate(360deg); }
     }
+
 
     .loading-text {
         margin-top: var(--space-4);

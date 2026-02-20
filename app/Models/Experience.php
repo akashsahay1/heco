@@ -77,4 +77,14 @@ class Experience extends Model
     {
         return $this->hasMany(TripSelectedExperience::class);
     }
+
+    public function reviews()
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    public function averageRating(): ?float
+    {
+        return $this->reviews()->avg('rating');
+    }
 }

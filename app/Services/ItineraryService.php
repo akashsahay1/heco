@@ -17,6 +17,13 @@ class ItineraryService
         try {
             DB::beginTransaction();
 
+            // Clear existing days before creating new ones
+            $trip->tripDays()->each(function ($day) {
+                $day->experiences()->delete();
+                $day->services()->delete();
+                $day->delete();
+            });
+
             if (isset($aiResponse['days']) && is_array($aiResponse['days'])) {
                 foreach ($aiResponse['days'] as $index => $dayData) {
                     $day = TripDay::create([
@@ -56,11 +63,16 @@ class ItineraryService
                     }
 
                     if (isset($dayData['services']) && is_array($dayData['services'])) {
+                        $validServiceTypes = ['accommodation', 'transport', 'guide', 'activity', 'meal', 'other'];
                         foreach ($dayData['services'] as $svcIndex => $svcData) {
+                            $serviceType = $svcData['service_type'] ?? 'other';
+                            if (!in_array($serviceType, $validServiceTypes)) {
+                                $serviceType = 'other';
+                            }
                             TripDayService::create([
                                 'trip_day_id' => $day->id,
                                 'service_provider_id' => $svcData['service_provider_id'] ?? null,
-                                'service_type' => $svcData['service_type'] ?? 'other',
+                                'service_type' => $serviceType,
                                 'description' => $svcData['description'] ?? null,
                                 'from_location' => $svcData['from_location'] ?? null,
                                 'to_location' => $svcData['to_location'] ?? null,

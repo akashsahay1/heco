@@ -33,6 +33,7 @@ use App\Models\Setting;
 use App\Models\Currency;
 use App\Models\ActivityLog;
 use App\Models\PdfTemplate;
+use App\Models\Review;
 use App\Services\OllamaService;
 use App\Services\GeminiService;
 use App\Services\GroqService;
@@ -339,6 +340,12 @@ class AjaxController extends Controller
             }
             if ($request->has('get_experience_detail')) {
                 return $this->getExperienceDetail($request);
+            }
+            if ($request->has('get_reviews')) {
+                return $this->getReviews($request);
+            }
+            if ($request->has('submit_review')) {
+                return $this->submitReview($request);
             }
             if ($request->has('set_landing_preferences')) {
                 return $this->setLandingPreferences($request);
@@ -839,7 +846,10 @@ class AjaxController extends Controller
             });
         }
 
-        $experiences = $query->orderBy("sort_order")->paginate(12);
+        $experiences = $query->withCount('reviews')
+            ->withAvg('reviews', 'rating')
+            ->orderBy("sort_order")
+            ->paginate(12);
         return response()->json($experiences);
     }
 
@@ -854,6 +864,72 @@ class AjaxController extends Controller
             return response()->json(["error" => "Experience not found"], 404);
         }
         return response()->json(["experience" => $experience]);
+    }
+
+    protected function getReviews(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'experience_id' => 'required|integer|exists:experiences,id',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        $reviews = Review::where('experience_id', $request->experience_id)
+            ->with('user:id,full_name,avatar')
+            ->orderByDesc('created_at')
+            ->paginate(10);
+
+        return response()->json([
+            'success' => true,
+            'reviews' => $reviews->items(),
+            'has_more' => $reviews->hasMorePages(),
+            'next_page' => $reviews->hasMorePages() ? $reviews->currentPage() + 1 : null,
+        ]);
+    }
+
+    protected function submitReview(Request $request): JsonResponse
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Login required to submit a review.'], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'experience_id' => 'required|integer|exists:experiences,id',
+            'rating' => 'required|integer|min:1|max:5',
+            'title' => 'nullable|string|max:100',
+            'body' => 'required|string|max:1000',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        $existing = Review::where('user_id', Auth::id())
+            ->where('experience_id', $request->experience_id)
+            ->first();
+        if ($existing) {
+            return response()->json(['error' => 'You have already reviewed this experience.'], 422);
+        }
+
+        $review = Review::create([
+            'user_id' => Auth::id(),
+            'experience_id' => $request->experience_id,
+            'rating' => $request->rating,
+            'title' => $request->title,
+            'body' => $request->body,
+        ]);
+
+        $review->load('user:id,full_name,avatar');
+
+        $avgRating = Review::where('experience_id', $request->experience_id)->avg('rating');
+        $reviewCount = Review::where('experience_id', $request->experience_id)->count();
+
+        return response()->json([
+            'success' => true,
+            'review' => $review,
+            'avg_rating' => round($avgRating, 1),
+            'review_count' => $reviewCount,
+        ]);
     }
 
     protected function setLandingPreferences(Request $request): JsonResponse
@@ -1019,7 +1095,7 @@ class AjaxController extends Controller
             $ids = $gt['experience_ids'] ?? [];
             if (empty($ids)) return response()->json(["experiences" => []]);
 
-            $exps = Experience::whereIn('id', $ids)->get();
+            $exps = Experience::whereIn('id', $ids)->with('region')->get();
             $items = $exps->map(function ($exp) {
                 return [
                     'experience_id' => $exp->id,
@@ -1033,7 +1109,7 @@ class AjaxController extends Controller
         if (!$trip) return response()->json(["experiences" => []]);
 
         $experiences = TripSelectedExperience::where("trip_id", $trip->id)
-            ->with("experience")
+            ->with("experience.region")
             ->orderBy("id")
             ->get();
 
@@ -1128,6 +1204,16 @@ class AjaxController extends Controller
             ->where("experience_id", $request->experience_id)
             ->delete();
 
+        // Also remove from timeline days
+        TripDayExperience::where("experience_id", $request->experience_id)
+            ->whereHas("tripDay", function ($q) use ($trip) {
+                $q->where("trip_id", $trip->id);
+            })
+            ->delete();
+
+        // Remove empty days (no experiences left)
+        $trip->tripDays()->whereDoesntHave('experiences')->delete();
+
         return response()->json(["success" => true, "trip_id" => $trip->id]);
     }
 
@@ -1172,16 +1258,19 @@ class AjaxController extends Controller
             return response()->json(["error" => "Login required"], 401);
         }
 
-        $experiences = TripSelectedExperience::where('is_preferred', true)
+        $experienceIds = TripSelectedExperience::where('is_preferred', true)
             ->whereHas('trip', function ($q) {
                 $q->where('user_id', Auth::id());
             })
-            ->with(['experience.region'])
-            ->get()
-            ->pluck('experience')
-            ->filter()
-            ->unique('id')
+            ->pluck('experience_id')
+            ->unique()
             ->values();
+
+        $experiences = Experience::whereIn('id', $experienceIds)
+            ->with('region')
+            ->withCount('reviews')
+            ->withAvg('reviews', 'rating')
+            ->get();
 
         return response()->json(["success" => true, "data" => $experiences]);
     }
@@ -1605,14 +1694,15 @@ class AjaxController extends Controller
         // Persist to DB for logged-in users
         $trip->update(["ai_raw_response" => $responseText]);
 
-        $trip->tripDays()->each(function ($day) {
-            $day->experiences()->delete();
-            $day->services()->delete();
-            $day->delete();
-        });
-
         $itineraryService = app(ItineraryService::class);
-        $itineraryService->parseAndCreateFromAi($trip, $parsed);
+        $result = $itineraryService->parseAndCreateFromAi($trip, $parsed);
+
+        if (!$result) {
+            return response()->json([
+                "success" => false,
+                "error" => "Failed to save itinerary. Please try again.",
+            ], 422);
+        }
 
         $costCalculator = app(CostCalculatorService::class);
         $pricing = $costCalculator->calculate($trip);

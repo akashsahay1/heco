@@ -129,6 +129,16 @@ jQuery(function() {
             html += '<div class="exp-card-body">';
             html += '<h3 class="exp-card-title"><a href="/experience/' + exp.slug + '" target="_blank">' + exp.name + '</a></h3>';
             html += '<p class="exp-card-desc">' + (exp.short_description ? exp.short_description.substring(0, 120) + (exp.short_description.length > 120 ? '...' : '') : '') + '</p>';
+            if (exp.reviews_count > 0) {
+                var avg = parseFloat(exp.reviews_avg_rating) || 0;
+                var rounded = Math.round(avg);
+                html += '<div class="exp-card-rating">';
+                for (var s = 1; s <= 5; s++) {
+                    html += '<i class="bi ' + (s <= rounded ? 'bi-star-fill' : 'bi-star') + '"></i>';
+                }
+                html += ' <span class="exp-rating-text">' + avg.toFixed(1) + ' (' + exp.reviews_count + ')</span>';
+                html += '</div>';
+            }
             html += '<div class="exp-card-meta">';
             if (regionName) html += '<span class="exp-meta-item"><i class="bi bi-geo-alt"></i> ' + regionName + '</span>';
             html += '<span class="exp-meta-item"><i class="bi bi-clock"></i> ' + durationText + '</span>';

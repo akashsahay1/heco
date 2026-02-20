@@ -7,9 +7,51 @@ use App\Models\Setting;
 
 class CostCalculatorService
 {
+    /**
+     * Multipliers based on travel preferences.
+     */
+    protected function getAccommodationMultiplier(?string $comfort): float
+    {
+        return match ($comfort) {
+            'Cat E - Camping/Tents' => 0.5,
+            'Cat D - Basic/Homestay' => 0.7,
+            'Cat C - Standard' => 1.0,
+            'Cat B - Comfort' => 1.5,
+            'Cat A - Premium/Luxury' => 2.5,
+            default => 1.0,
+        };
+    }
+
+    protected function getVehicleMultiplier(?string $vehicle): float
+    {
+        return match ($vehicle) {
+            'Local Transport' => 0.5,
+            'SUV (Bolero/Scorpio)' => 0.8,
+            'SUV (Innova/Crysta)' => 1.0,
+            'Premium (Fortuner/Similar)' => 1.5,
+            'Tempo Traveller' => 1.3,
+            default => 1.0,
+        };
+    }
+
+    protected function getGuideMultiplier(?string $guide): float
+    {
+        return match ($guide) {
+            'No Guide' => 0.0,
+            'Local Guide' => 0.7,
+            'English-speaking' => 1.0,
+            'Certified/Expert' => 1.5,
+            default => 1.0,
+        };
+    }
+
     public function calculate(Trip $trip): array
     {
         $trip->load(['tripDays.services', 'tripDays.experiences.experience']);
+
+        $accomMultiplier = $this->getAccommodationMultiplier($trip->accommodation_comfort);
+        $vehicleMultiplier = $this->getVehicleMultiplier($trip->vehicle_comfort);
+        $guideMultiplier = $this->getGuideMultiplier($trip->guide_preference);
 
         $transportCost = 0;
         $accommodationCost = 0;
@@ -19,12 +61,13 @@ class CostCalculatorService
 
         foreach ($trip->tripDays as $day) {
             foreach ($day->services as $service) {
+                $cost = $service->cost;
                 match ($service->service_type) {
-                    'transport' => $transportCost += $service->cost,
-                    'accommodation' => $accommodationCost += $service->cost,
-                    'guide' => $guideCost += $service->cost,
-                    'activity' => $activityCost += $service->cost,
-                    default => $otherCost += $service->cost,
+                    'transport' => $transportCost += round($cost * $vehicleMultiplier),
+                    'accommodation' => $accommodationCost += round($cost * $accomMultiplier),
+                    'guide' => $guideCost += round($cost * $guideMultiplier),
+                    'activity' => $activityCost += $cost,
+                    default => $otherCost += $cost,
                 };
             }
             foreach ($day->experiences as $dayExp) {

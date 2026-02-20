@@ -115,11 +115,11 @@ if ($trip) {
 }
 $hasTrip = $trip || ($tripId === 'guest');
 // Preference values (from DB trip or guest session)
-$pAccom = $trip->accommodation_comfort ?? ($guestTripData['accommodation_comfort'] ?? '');
-$pVehicle = $trip->vehicle_comfort ?? ($guestTripData['vehicle_comfort'] ?? '');
-$pGuide = $trip->guide_preference ?? ($guestTripData['guide_preference'] ?? '');
-$pPace = $trip->travel_pace ?? ($guestTripData['travel_pace'] ?? '');
-$pBudget = $trip->budget_sensitivity ?? ($guestTripData['budget_sensitivity'] ?? '');
+$pAccom = ($trip ? $trip->accommodation_comfort : null) ?: ($guestTripData['accommodation_comfort'] ?? null) ?: 'Cat C - Standard';
+$pVehicle = ($trip ? $trip->vehicle_comfort : null) ?: ($guestTripData['vehicle_comfort'] ?? null) ?: 'SUV (Innova/Crysta)';
+$pGuide = ($trip ? $trip->guide_preference : null) ?: ($guestTripData['guide_preference'] ?? null) ?: 'English-speaking';
+$pPace = ($trip ? $trip->travel_pace : null) ?: ($guestTripData['travel_pace'] ?? null) ?: 'Moderate';
+$pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget_sensitivity'] ?? null) ?: 'Mid-range';
 @endphp
 
 <div class="heco-page">
@@ -336,6 +336,16 @@ $pBudget = $trip->budget_sensitivity ?? ($guestTripData['budget_sensitivity'] ??
                                 </div>
                             </div>
 
+                            {{-- Trip Summary (auto-calculated) --}}
+                            <div class="detail-card">
+                                <div class="detail-card-header"><i class="bi bi-info-circle"></i> Trip Summary</div>
+                                <div class="detail-card-body">
+                                    <div class="pricing-row"><span><i class="bi bi-clock"></i> Duration</span><span id="tripDuration">--</span></div>
+                                    <div class="pricing-row"><span><i class="bi bi-geo-alt"></i> Regions</span><span id="tripRegions">--</span></div>
+                                    <div class="pricing-row"><span><i class="bi bi-card-list"></i> Experiences</span><span id="tripExpCount">0</span></div>
+                                </div>
+                            </div>
+
                             {{-- Group Details --}}
                             <div class="detail-card">
                                 <div class="detail-card-header"><i class="bi bi-people"></i> Group Details</div>
@@ -364,51 +374,48 @@ $pBudget = $trip->budget_sensitivity ?? ($guestTripData['budget_sensitivity'] ??
                                     <div class="mb-3">
                                         <label class="form-label">Accommodation Comfort</label>
                                         <select class="form-select pref-input" id="prefAccommodation">
-                                            <option value="">-- Select --</option>
-                                            <option value="basic" {{ $pAccom == 'basic' ? 'selected' : '' }}>Basic</option>
-                                            <option value="standard" {{ $pAccom == 'standard' ? 'selected' : '' }}>Standard</option>
-                                            <option value="comfort" {{ $pAccom == 'comfort' ? 'selected' : '' }}>Comfort</option>
-                                            <option value="premium" {{ $pAccom == 'premium' ? 'selected' : '' }}>Premium</option>
+                                            <option value="Cat E - Camping/Tents" {{ $pAccom == 'Cat E - Camping/Tents' ? 'selected' : '' }}>Cat E - Camping/Tents</option>
+                                            <option value="Cat D - Basic/Homestay" {{ $pAccom == 'Cat D - Basic/Homestay' ? 'selected' : '' }}>Cat D - Basic/Homestay</option>
+                                            <option value="Cat C - Standard" {{ $pAccom == 'Cat C - Standard' ? 'selected' : '' }}>Cat C - Standard</option>
+                                            <option value="Cat B - Comfort" {{ $pAccom == 'Cat B - Comfort' ? 'selected' : '' }}>Cat B - Comfort</option>
+                                            <option value="Cat A - Premium/Luxury" {{ $pAccom == 'Cat A - Premium/Luxury' ? 'selected' : '' }}>Cat A - Premium/Luxury</option>
                                         </select>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Vehicle Comfort</label>
                                         <select class="form-select pref-input" id="prefVehicle">
-                                            <option value="">-- Select --</option>
-                                            <option value="shared" {{ $pVehicle == 'shared' ? 'selected' : '' }}>Shared</option>
-                                            <option value="private_basic" {{ $pVehicle == 'private_basic' ? 'selected' : '' }}>Private Basic</option>
-                                            <option value="private_suv" {{ $pVehicle == 'private_suv' ? 'selected' : '' }}>Private SUV</option>
-                                            <option value="private_premium" {{ $pVehicle == 'private_premium' ? 'selected' : '' }}>Private Premium</option>
+                                            <option value="Local Transport" {{ $pVehicle == 'Local Transport' ? 'selected' : '' }}>Local Transport</option>
+                                            <option value="SUV (Bolero/Scorpio)" {{ $pVehicle == 'SUV (Bolero/Scorpio)' ? 'selected' : '' }}>SUV (Bolero/Scorpio)</option>
+                                            <option value="SUV (Innova/Crysta)" {{ $pVehicle == 'SUV (Innova/Crysta)' ? 'selected' : '' }}>SUV (Innova/Crysta)</option>
+                                            <option value="Premium (Fortuner/Similar)" {{ $pVehicle == 'Premium (Fortuner/Similar)' ? 'selected' : '' }}>Premium (Fortuner/Similar)</option>
+                                            <option value="Tempo Traveller" {{ $pVehicle == 'Tempo Traveller' ? 'selected' : '' }}>Tempo Traveller</option>
                                         </select>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Guide Preference</label>
                                         <select class="form-select pref-input" id="prefGuide">
-                                            <option value="">-- Select --</option>
-                                            <option value="no_guide" {{ $pGuide == 'no_guide' ? 'selected' : '' }}>No Guide</option>
-                                            <option value="local_guide" {{ $pGuide == 'local_guide' ? 'selected' : '' }}>Local Guide</option>
-                                            <option value="certified_guide" {{ $pGuide == 'certified_guide' ? 'selected' : '' }}>Certified Guide</option>
-                                            <option value="expert_guide" {{ $pGuide == 'expert_guide' ? 'selected' : '' }}>Expert Guide</option>
+                                            <option value="No Guide" {{ $pGuide == 'No Guide' ? 'selected' : '' }}>No Guide</option>
+                                            <option value="Local Guide" {{ $pGuide == 'Local Guide' ? 'selected' : '' }}>Local Guide</option>
+                                            <option value="English-speaking" {{ $pGuide == 'English-speaking' ? 'selected' : '' }}>English-speaking</option>
+                                            <option value="Certified/Expert" {{ $pGuide == 'Certified/Expert' ? 'selected' : '' }}>Certified/Expert</option>
                                         </select>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Travel Pace</label>
                                         <select class="form-select pref-input" id="prefPace">
-                                            <option value="">-- Select --</option>
-                                            <option value="relaxed" {{ $pPace == 'relaxed' ? 'selected' : '' }}>Relaxed</option>
-                                            <option value="moderate" {{ $pPace == 'moderate' ? 'selected' : '' }}>Moderate</option>
-                                            <option value="active" {{ $pPace == 'active' ? 'selected' : '' }}>Active</option>
-                                            <option value="intensive" {{ $pPace == 'intensive' ? 'selected' : '' }}>Intensive</option>
+                                            <option value="Relaxed" {{ $pPace == 'Relaxed' ? 'selected' : '' }}>Relaxed</option>
+                                            <option value="Moderate" {{ $pPace == 'Moderate' ? 'selected' : '' }}>Moderate</option>
+                                            <option value="Active" {{ $pPace == 'Active' ? 'selected' : '' }}>Active</option>
+                                            <option value="Intensive" {{ $pPace == 'Intensive' ? 'selected' : '' }}>Intensive</option>
                                         </select>
                                     </div>
                                     <div class="mb-0">
                                         <label class="form-label">Budget Sensitivity</label>
                                         <select class="form-select pref-input" id="prefBudget">
-                                            <option value="">-- Select --</option>
-                                            <option value="budget" {{ $pBudget == 'budget' ? 'selected' : '' }}>Budget-Friendly</option>
-                                            <option value="value" {{ $pBudget == 'value' ? 'selected' : '' }}>Best Value</option>
-                                            <option value="comfort" {{ $pBudget == 'comfort' ? 'selected' : '' }}>Comfort Priority</option>
-                                            <option value="no_limit" {{ $pBudget == 'no_limit' ? 'selected' : '' }}>No Limit</option>
+                                            <option value="Budget-friendly" {{ $pBudget == 'Budget-friendly' ? 'selected' : '' }}>Budget-friendly</option>
+                                            <option value="Mid-range" {{ $pBudget == 'Mid-range' ? 'selected' : '' }}>Mid-range</option>
+                                            <option value="Premium" {{ $pBudget == 'Premium' ? 'selected' : '' }}>Premium</option>
+                                            <option value="No Limit" {{ $pBudget == 'No Limit' ? 'selected' : '' }}>No Limit</option>
                                         </select>
                                     </div>
                                 </div>
@@ -625,8 +632,8 @@ jQuery(function() {
 
         jQuery('#timelineContainer').html(
             '<div class="text-center py-4">' +
-            '<span class="spinner-border spinner-border-sm me-2"></span>' +
-            '<span style="font-size: var(--text-sm); color: var(--color-text-muted);">Generating your itinerary...</span>' +
+            '<div style="width:24px; height:24px; border:3px solid #e9ecef; border-top-color:#6c757d; border-radius:50%; animation:spinIcon 0.8s linear infinite; display:inline-block; vertical-align:middle; margin-right:10px;"></div>' +
+            '<span style="font-size:0.875rem; color:#6c757d; vertical-align:middle;">Generating your itinerary...</span>' +
             '</div>'
         );
 
@@ -635,23 +642,23 @@ jQuery(function() {
             method: 'POST',
             data: { generate_itinerary: 1, trip_id: tripId },
             timeout: 120000,
+            skipGlobalError: true,
             success: function(resp) {
                 aiGenerating = false;
                 if (resp.success) {
                     loadTimeline();
                     loadPricing();
                 } else {
-                    jQuery('#timelineContainer').html(
-                        '<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);">' + (resp.error || 'Generation failed. Try again later.') + '</p>'
-                    );
+                    // AI returned error, fall back to existing timeline
+                    loadTimeline();
+                    loadPricing();
                 }
             },
             error: function(xhr) {
                 aiGenerating = false;
-                var msg = xhr.statusText === 'timeout' ? 'AI generation timed out. Try again later.' : 'AI generation failed.';
-                jQuery('#timelineContainer').html(
-                    '<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);">' + msg + '</p>'
-                );
+                // AI failed (quota, timeout, etc.), fall back to existing timeline
+                loadTimeline();
+                loadPricing();
             }
         });
     }
@@ -749,6 +756,16 @@ jQuery(function() {
         h += '<div class="exp-card-body">';
         h += '<h3 class="exp-card-title"><a href="/experience/' + exp.slug + '" target="_blank">' + exp.name + '</a></h3>';
         h += '<p class="exp-card-desc">' + (exp.short_description ? exp.short_description.substring(0, 120) + (exp.short_description.length > 120 ? '...' : '') : '') + '</p>';
+        if (exp.reviews_count > 0) {
+            var avg = parseFloat(exp.reviews_avg_rating) || 0;
+            var rounded = Math.round(avg);
+            h += '<div class="exp-card-rating">';
+            for (var s = 1; s <= 5; s++) {
+                h += '<i class="bi ' + (s <= rounded ? 'bi-star-fill' : 'bi-star') + '"></i>';
+            }
+            h += ' <span class="exp-rating-text">' + avg.toFixed(1) + ' (' + exp.reviews_count + ')</span>';
+            h += '</div>';
+        }
         h += '<div class="exp-card-meta">';
         if (regionName) h += '<span class="exp-meta-item"><i class="bi bi-geo-alt"></i> ' + regionName + '</span>';
         h += '<span class="exp-meta-item"><i class="bi bi-clock"></i> ' + durationText + '</span>';
@@ -764,7 +781,11 @@ jQuery(function() {
         h += '</div>';
         h += '<div class="exp-card-price-actions">';
         h += '<a href="/experience/' + exp.slug + '" target="_blank" class="exp-action-icon" title="View Details"><i class="bi bi-eye"></i></a>';
-        h += '<button class="exp-action-icon btn-add-exp" data-exp-id="' + exp.id + '" data-exp-name="' + exp.name + '" title="Add to Journey"><i class="bi bi-plus-lg"></i></button>';
+        if (isAdded) {
+            h += '<button class="exp-action-icon btn-remove-journey-exp" data-exp-id="' + exp.id + '" data-exp-name="' + exp.name + '" title="Remove from Journey"><i class="bi bi-dash-lg"></i></button>';
+        } else {
+            h += '<button class="exp-action-icon btn-add-exp" data-exp-id="' + exp.id + '" data-exp-name="' + exp.name + '" title="Add to Journey"><i class="bi bi-plus-lg"></i></button>';
+        }
         h += '</div>';
         h += '</div>';
         h += '</div>';
@@ -862,11 +883,18 @@ jQuery(function() {
         var expId = btn.data('exp-id');
         var expName = btn.data('exp-name');
 
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
         ensureTrip(function(tId) {
             ajaxPost({ add_experience_to_trip: 1, trip_id: tId, experience_id: expId }, function(resp) {
                 if (selectedExpIds.indexOf(expId) === -1) {
                     selectedExpIds.push(expId);
                 }
+                // Swap to remove button
+                btn.prop('disabled', false)
+                    .removeClass('btn-add-exp').addClass('btn-remove-journey-exp')
+                    .attr('title', 'Remove from Journey')
+                    .html('<i class="bi bi-dash-lg"></i>');
                 updateJourneyBadge();
                 showAlert('"' + expName + '" added to your journey!', 'success');
                 if (resp.trip_id && !tripId) {
@@ -876,7 +904,40 @@ jQuery(function() {
                 jQuery('#journeyPanels').removeClass('d-none');
                 loadSelectedExperiences();
                 autoGenerateItinerary();
+            }, function() {
+                btn.prop('disabled', false).html('<i class="bi bi-plus-lg"></i>');
             });
+        });
+    });
+
+    // Remove from Journey button (on discover/region cards)
+    jQuery(document).on('click', '.btn-remove-journey-exp', function(e) {
+        e.stopPropagation();
+        var btn = jQuery(this);
+        var expId = parseInt(btn.data('exp-id'));
+        var expName = btn.data('exp-name');
+
+        if (!tripId) return;
+
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
+        ajaxPost({ remove_experience_from_trip: 1, trip_id: tripId, experience_id: expId }, function() {
+            selectedExpIds = selectedExpIds.filter(function(id) { return parseInt(id) !== expId; });
+            // Swap back to add button
+            btn.prop('disabled', false)
+                .removeClass('btn-remove-journey-exp').addClass('btn-add-exp')
+                .attr('title', 'Add to Journey')
+                .html('<i class="bi bi-plus-lg"></i>');
+            updateJourneyBadge();
+            loadSelectedExperiences();
+            showAlert('"' + expName + '" removed from journey.', 'success');
+            if (selectedExpIds.length > 0) {
+                loadTimeline();
+                loadPricing();
+            } else {
+                jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);">Days will appear here when experiences are added</p>');
+                loadPricing();
+            }
         });
     });
 
@@ -904,8 +965,30 @@ jQuery(function() {
             selectedExpIds = items.map(function(e) { return e.experience_id; });
             updateJourneyBadge();
 
+            // Update trip summary
+            var totalDays = 0;
+            var regions = [];
+            items.forEach(function(item) {
+                var exp = item.experience;
+                if (exp) {
+                    if (exp.duration_type === 'multi_day') {
+                        totalDays += (exp.duration_days || 1);
+                    } else {
+                        totalDays += 1;
+                    }
+                    var rName = exp.region ? (exp.region.name || '') : '';
+                    if (rName && regions.indexOf(rName) === -1) regions.push(rName);
+                }
+            });
+            jQuery('#tripDuration').text(totalDays + (totalDays === 1 ? ' Day' : ' Days'));
+            jQuery('#tripRegions').text(regions.length > 0 ? regions.join(', ') : '--');
+            jQuery('#tripExpCount').text(items.length);
+
             if (items.length === 0) {
                 jQuery('#selectedExpList').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-4);">No experiences added yet</p>');
+                jQuery('#tripDuration').text('--');
+                jQuery('#tripRegions').text('--');
+                jQuery('#tripExpCount').text('0');
                 return;
             }
             var html = '';
@@ -942,91 +1025,108 @@ jQuery(function() {
     }
 
     function loadTimeline() {
+        jQuery('#timelineContainer').html(
+            '<div class="text-center py-4">' +
+            '<div style="width:24px; height:24px; border:3px solid #e9ecef; border-top-color:#6c757d; border-radius:50%; animation:spinIcon 0.8s linear infinite; display:inline-block; vertical-align:middle; margin-right:10px;"></div>' +
+            '<span style="font-size:0.875rem; color:#6c757d; vertical-align:middle;">Processing...</span>' +
+            '</div>'
+        );
         ajaxPost({ get_trip_timeline: 1, trip_id: tripId }, function(resp) {
-            var days = resp.days || [];
-            if (days.length === 0) {
-                jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);" id="emptyTimeline">Days will appear here when experiences are added</p>');
-                return;
-            }
-
-            var html = '';
-
-            // Trip ID header (only for logged-in users with real trip)
-            if (tripId && tripId !== 'guest') {
-                html += '<div class="trip-id-display">Trip ID : ' + tripId + '</div>';
-            }
-
-            days.forEach(function(day) {
-                html += '<div class="timeline-day" data-day-id="' + day.id + '">';
-                html += '<div class="timeline-day-header">';
-                html += '<div class="timeline-day-info">';
-                html += '<span class="timeline-day-number">Day ' + day.day_number + '</span>';
-                if (day.date) html += '<span class="timeline-day-date">' + day.date + '</span>';
-                if (day.title) html += '<span class="timeline-day-title">' + day.title + '</span>';
-                html += '</div>';
-                html += '<div style="display: flex; align-items: center; gap: var(--space-2);">';
-                if (day.is_locked) html += '<i class="bi bi-lock" style="color: var(--heco-warning);" title="Locked"></i>';
-                html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
-                html += '</div></div>';
-
-                // Day description as bullet points
-                if (day.description) {
-                    html += '<div class="timeline-day-desc">' + toBulletHtml(day.description) + '</div>';
-                }
-
-                // Day experiences with full detail
-                if (day.experiences && day.experiences.length) {
-                    day.experiences.forEach(function(de) {
-                        var exp = de.experience;
-                        var eName = exp ? exp.name : 'Experience';
-                        var typeIconMap = {
-                            trek: 'bi-signpost-split', cultural: 'bi-bank', adventure: 'bi-lightning',
-                            wildlife: 'bi-binoculars', wellness: 'bi-heart-pulse', culinary: 'bi-cup-hot',
-                            village: 'bi-houses', other: 'bi-star-fill'
-                        };
-                        var expIcon = (exp && exp.type) ? (typeIconMap[exp.type] || 'bi-star-fill') : 'bi-star-fill';
-
-                        html += '<div class="timeline-exp-item">';
-                        html += '<i class="bi ' + expIcon + '"></i>';
-                        html += '<div class="timeline-exp-details">';
-                        html += '<span class="timeline-exp-name">' + eName + '</span>';
-                        if (de.experience_id) html += '<span class="timeline-exp-id">Experience ID : ' + de.experience_id + '</span>';
-                        if (de.notes) html += '<div class="timeline-exp-notes">' + toBulletHtml(de.notes) + '</div>';
-                        html += '</div>';
-                        html += '<div class="timeline-exp-meta">';
-                        if (de.start_time) html += '<span class="timeline-exp-time">' + de.start_time + (de.end_time ? ' - ' + de.end_time : '') + '</span>';
-                        if (de.cost_per_person && parseFloat(de.cost_per_person) > 0) {
-                            html += '<span class="timeline-exp-cost">' + fmtCurrency(de.cost_per_person) + '/person</span>';
-                        }
-                        html += '</div>';
-                        html += '</div>';
-                    });
-                }
-
-                // Day services
-                if (day.services && day.services.length) {
-                    html += '<div class="service-icons">';
-                    day.services.forEach(function(svc) {
-                        var iconMap = { accommodation: 'bi-house-door', transport: 'bi-car-front', guide: 'bi-person-badge', activity: 'bi-lightning', meal: 'bi-cup-hot', other: 'bi-three-dots' };
-                        var icon = iconMap[svc.service_type] || iconMap.other;
-                        var colorClass = svc.is_included ? 'included' : 'not-included';
-                        html += '<span class="service-icon-item" title="' + (svc.service_type ? svc.service_type.charAt(0).toUpperCase() + svc.service_type.slice(1) : '') + (svc.is_included ? ' (included)' : ' (not included)') + '">';
-                        html += '<i class="bi ' + icon + ' ' + colorClass + '"></i>';
-                        if (svc.description) html += ' ' + svc.description;
-                        if (svc.cost > 0) html += ' <span style="color: var(--heco-success); font-weight: var(--font-medium);">' + fmtCurrency(svc.cost) + '</span>';
-                        html += '</span>';
-                    });
-                    html += '</div>';
-                }
-
-                if ((!day.experiences || !day.experiences.length) && (!day.services || !day.services.length)) {
-                    html += '<p style="font-size: var(--text-sm); color: var(--color-text-muted); text-align: center; margin: 0; padding: var(--space-2);">No activities planned yet</p>';
-                }
-
-                html += '</div>';
-            });
-            jQuery('#timelineContainer').html(html);
+            renderTimelineData(resp);
+        }, function() {
+            jQuery('#timelineContainer').html(
+                '<div class="text-center" style="padding:var(--space-6);">' +
+                '<i class="bi bi-exclamation-circle" style="font-size:1.5rem; color:#dc3545;"></i>' +
+                '<p class="mt-2" style="font-size:0.875rem; color:#6c757d;">Failed to load timeline. Please try again.</p>' +
+                '</div>'
+            );
         });
+    }
+
+    function renderTimelineData(resp) {
+        var days = resp.days || [];
+        if (days.length === 0) {
+            jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);" id="emptyTimeline">Days will appear here when experiences are added</p>');
+            return;
+        }
+
+        var html = '';
+
+        // Trip ID header (only for logged-in users with real trip)
+        if (tripId && tripId !== 'guest') {
+            html += '<div class="trip-id-display">Trip ID : ' + tripId + '</div>';
+        }
+
+        days.forEach(function(day) {
+            html += '<div class="timeline-day" data-day-id="' + day.id + '">';
+            html += '<div class="timeline-day-header">';
+            html += '<div class="timeline-day-info">';
+            html += '<span class="timeline-day-number">Day ' + day.day_number + '</span>';
+            if (day.date) html += '<span class="timeline-day-date">' + day.date + '</span>';
+            if (day.title) html += '<span class="timeline-day-title">' + day.title + '</span>';
+            html += '</div>';
+            html += '<div style="display: flex; align-items: center; gap: var(--space-2);">';
+            if (day.is_locked) html += '<i class="bi bi-lock" style="color: var(--heco-warning);" title="Locked"></i>';
+            html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
+            html += '</div></div>';
+
+            // Day description as bullet points
+            if (day.description) {
+                html += '<div class="timeline-day-desc">' + toBulletHtml(day.description) + '</div>';
+            }
+
+            // Day experiences with full detail
+            if (day.experiences && day.experiences.length) {
+                day.experiences.forEach(function(de) {
+                    var exp = de.experience;
+                    var eName = exp ? exp.name : 'Experience';
+                    var typeIconMap = {
+                        trek: 'bi-signpost-split', cultural: 'bi-bank', adventure: 'bi-lightning',
+                        wildlife: 'bi-binoculars', wellness: 'bi-heart-pulse', culinary: 'bi-cup-hot',
+                        village: 'bi-houses', other: 'bi-star-fill'
+                    };
+                    var expIcon = (exp && exp.type) ? (typeIconMap[exp.type] || 'bi-star-fill') : 'bi-star-fill';
+
+                    html += '<div class="timeline-exp-item">';
+                    html += '<i class="bi ' + expIcon + '"></i>';
+                    html += '<div class="timeline-exp-details">';
+                    html += '<span class="timeline-exp-name">' + eName + '</span>';
+                    if (de.experience_id) html += '<span class="timeline-exp-id">Experience ID : ' + de.experience_id + '</span>';
+                    if (de.notes) html += '<div class="timeline-exp-notes">' + toBulletHtml(de.notes) + '</div>';
+                    html += '</div>';
+                    html += '<div class="timeline-exp-meta">';
+                    if (de.start_time) html += '<span class="timeline-exp-time">' + de.start_time + (de.end_time ? ' - ' + de.end_time : '') + '</span>';
+                    if (de.cost_per_person && parseFloat(de.cost_per_person) > 0) {
+                        html += '<span class="timeline-exp-cost">' + fmtCurrency(de.cost_per_person) + '/person</span>';
+                    }
+                    html += '</div>';
+                    html += '</div>';
+                });
+            }
+
+            // Day services
+            if (day.services && day.services.length) {
+                html += '<div class="service-icons">';
+                day.services.forEach(function(svc) {
+                    var iconMap = { accommodation: 'bi-house-door', transport: 'bi-car-front', guide: 'bi-person-badge', activity: 'bi-lightning', meal: 'bi-cup-hot', other: 'bi-three-dots' };
+                    var icon = iconMap[svc.service_type] || iconMap.other;
+                    var colorClass = svc.is_included ? 'included' : 'not-included';
+                    html += '<span class="service-icon-item" title="' + (svc.service_type ? svc.service_type.charAt(0).toUpperCase() + svc.service_type.slice(1) : '') + (svc.is_included ? ' (included)' : ' (not included)') + '">';
+                    html += '<i class="bi ' + icon + ' ' + colorClass + '"></i>';
+                    if (svc.description) html += ' ' + svc.description;
+                    if (svc.cost > 0) html += ' <span style="color: var(--heco-success); font-weight: var(--font-medium);">' + fmtCurrency(svc.cost) + '</span>';
+                    html += '</span>';
+                });
+                html += '</div>';
+            }
+
+            if ((!day.experiences || !day.experiences.length) && (!day.services || !day.services.length)) {
+                html += '<p style="font-size: var(--text-sm); color: var(--color-text-muted); text-align: center; margin: 0; padding: var(--space-2);">No activities planned yet</p>';
+            }
+
+            html += '</div>';
+        });
+        jQuery('#timelineContainer').html(html);
     }
 
     function loadPricing() {
@@ -1046,14 +1146,20 @@ jQuery(function() {
 
     // Remove experience
     jQuery(document).on('click', '.btn-remove-exp', function() {
-        var expId = jQuery(this).data('exp-id');
+        var expId = parseInt(jQuery(this).data('exp-id'));
         ajaxPost({ remove_experience_from_trip: 1, trip_id: tripId, experience_id: expId }, function() {
-            selectedExpIds = selectedExpIds.filter(function(id) { return id !== expId; });
+            selectedExpIds = selectedExpIds.filter(function(id) { return parseInt(id) !== expId; });
+            // Swap discover card button back to + if visible
+            jQuery('.btn-remove-journey-exp[data-exp-id="' + expId + '"]')
+                .removeClass('btn-remove-journey-exp').addClass('btn-add-exp')
+                .attr('title', 'Add to Journey')
+                .html('<i class="bi bi-plus-lg"></i>');
             updateJourneyBadge();
             loadSelectedExperiences();
             showAlert('Experience removed.', 'success');
             if (selectedExpIds.length > 0) {
-                autoGenerateItinerary();
+                loadTimeline();
+                loadPricing();
             } else {
                 jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);">Days will appear here when experiences are added</p>');
                 loadPricing();
@@ -1094,10 +1200,12 @@ jQuery(function() {
                 order.push(jQuery(this).data('exp-id'));
             });
             ajaxPost({ reorder_experiences: 1, trip_id: tripId, order: order }, function() {
-                loadTimeline();
+                aiGenerating = false;
+                autoGenerateItinerary();
             });
         });
     }
+
 
     // Add Day
     jQuery('#btnAddDay').on('click', function() {

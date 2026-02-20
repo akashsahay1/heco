@@ -51,6 +51,15 @@
     .difficulty-expert { background-color: #721c24; color: #fff; }
 
     .sticky-action { position: sticky; top: 80px; }
+
+    /* Reviews */
+    .review-stars { color: #f5a623; }
+    .review-stars .bi-star-fill { color: #f5a623; }
+    .review-stars .bi-star { color: #ccc; }
+    .star-picker .star-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #ccc; transition: color 0.15s; padding: 2px; }
+    .star-picker .star-btn.active, .star-picker .star-btn:hover { color: #f5a623; }
+    .review-card { border-left: 3px solid var(--heco-green); }
+    .review-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #e9ecef; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--heco-green); }
 </style>
 @endsection
 
@@ -383,6 +392,78 @@
             </div>
             @endif
 
+            {{-- Reviews & Ratings --}}
+            <div class="detail-section" id="reviewsSection">
+                <h5><i class="bi bi-chat-square-text"></i> Reviews & Ratings</h5>
+
+                {{-- Summary bar --}}
+                <div class="d-flex align-items-center mb-3 p-3 bg-light rounded">
+                    <div class="me-3 text-center">
+                        <div class="fs-2 fw-bold text-success" id="avgRatingDisplay">{{ $avgRating ? number_format($avgRating, 1) : '--' }}</div>
+                        <div class="review-stars" id="avgStarsDisplay">
+                            @for($i = 1; $i <= 5; $i++)
+                                <i class="bi {{ $avgRating && $i <= round($avgRating) ? 'bi-star-fill' : 'bi-star' }}"></i>
+                            @endfor
+                        </div>
+                    </div>
+                    <div>
+                        <span id="reviewCountDisplay">{{ $experience->reviews_count }}</span> {{ Str::plural('review', $experience->reviews_count) }}
+                    </div>
+                </div>
+
+                {{-- Review list (loaded via AJAX) --}}
+                <div id="reviewsList"></div>
+                <div id="reviewsLoading" class="text-center py-3 d-none">
+                    <span class="spinner-border spinner-border-sm text-success"></span> Loading reviews...
+                </div>
+                <div id="reviewsEmpty" class="text-center text-muted py-3 d-none">
+                    No reviews yet. Be the first to share your experience!
+                </div>
+                <button class="btn btn-outline-secondary btn-sm w-100 mt-2 d-none" id="btnLoadMoreReviews">
+                    Load More Reviews
+                </button>
+
+                <hr class="my-4">
+
+                {{-- Submit review form --}}
+                @auth
+                    <h6>Write a Review</h6>
+                    <div id="reviewFormWrapper">
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Your Rating</label>
+                            <div class="star-picker" id="starPicker">
+                                @for($i = 1; $i <= 5; $i++)
+                                    <button type="button" class="star-btn" data-value="{{ $i }}"><i class="bi bi-star"></i></button>
+                                @endfor
+                            </div>
+                            <input type="hidden" id="reviewRating" value="0">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Title (optional)</label>
+                            <input type="text" class="form-control" id="reviewTitle" maxlength="100" placeholder="Summarise your experience">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Your Review</label>
+                            <textarea class="form-control" id="reviewBody" rows="3" maxlength="1000" placeholder="Share your thoughts about this experience..."></textarea>
+                            <div class="form-text text-end"><span id="reviewCharCount">0</span>/1000</div>
+                        </div>
+                        <button class="btn btn-success" id="btnSubmitReview">
+                            <i class="bi bi-send"></i> Submit Review
+                        </button>
+                    </div>
+                    <div id="reviewAlreadySubmitted" class="alert alert-info d-none">
+                        <i class="bi bi-check-circle"></i> You have already reviewed this experience.
+                    </div>
+                @else
+                    <div class="text-center py-3">
+                        <p class="text-muted mb-2">Log in to write a review</p>
+                        <button class="btn btn-outline-success btn-sm" onclick="if(window.openAuthModal) window.openAuthModal('login'); else window.location.href='/home?auth=login';">
+                            <i class="bi bi-box-arrow-in-right"></i> Log In
+                        </button>
+                    </div>
+                @endauth
+            </div>
+
         </div>
 
         {{-- Sidebar --}}
@@ -569,6 +650,121 @@ jQuery(function() {
         } else {
             window.location.href = '/home?auth=login';
         }
+    });
+});
+
+    // ===== Reviews =====
+    var reviewPage = 1;
+
+    function renderStars(rating) {
+        var html = '';
+        for (var i = 1; i <= 5; i++) {
+            html += '<i class="bi ' + (i <= rating ? 'bi-star-fill' : 'bi-star') + '"></i>';
+        }
+        return html;
+    }
+
+    function renderReview(r) {
+        var userName = r.user ? r.user.full_name : 'Anonymous';
+        var initial = userName.charAt(0).toUpperCase();
+        var avatar = r.user && r.user.avatar
+            ? '<img src="/storage/' + r.user.avatar + '" class="review-avatar" alt="">'
+            : '<div class="review-avatar">' + initial + '</div>';
+        var date = new Date(r.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        var title = r.title ? '<strong>' + jQuery('<span>').text(r.title).html() + '</strong><br>' : '';
+        return '<div class="card review-card mb-3"><div class="card-body p-3">' +
+            '<div class="d-flex align-items-center mb-2">' + avatar +
+            '<div class="ms-2"><strong class="small">' + jQuery('<span>').text(userName).html() + '</strong>' +
+            '<div class="review-stars small">' + renderStars(r.rating) + '</div></div>' +
+            '<small class="text-muted ms-auto">' + date + '</small></div>' +
+            title + '<p class="mb-0 small">' + jQuery('<span>').text(r.body).html() + '</p></div></div>';
+    }
+
+    function loadReviews(page) {
+        jQuery('#reviewsLoading').removeClass('d-none');
+        ajaxPost({ get_reviews: 1, experience_id: experienceId, page: page }, function(resp) {
+            jQuery('#reviewsLoading').addClass('d-none');
+            if (resp.reviews && resp.reviews.length > 0) {
+                jQuery('#reviewsEmpty').addClass('d-none');
+                resp.reviews.forEach(function(r) {
+                    jQuery('#reviewsList').append(renderReview(r));
+                });
+                if (resp.has_more) {
+                    reviewPage = resp.next_page;
+                    jQuery('#btnLoadMoreReviews').removeClass('d-none');
+                } else {
+                    jQuery('#btnLoadMoreReviews').addClass('d-none');
+                }
+            } else if (page === 1) {
+                jQuery('#reviewsEmpty').removeClass('d-none');
+            }
+        }, function() {
+            jQuery('#reviewsLoading').addClass('d-none');
+        });
+    }
+
+    loadReviews(1);
+
+    jQuery('#btnLoadMoreReviews').on('click', function() {
+        loadReviews(reviewPage);
+    });
+
+    // Star picker
+    jQuery('#starPicker .star-btn').on('click', function() {
+        var val = jQuery(this).data('value');
+        jQuery('#reviewRating').val(val);
+        jQuery('#starPicker .star-btn').each(function() {
+            var sv = jQuery(this).data('value');
+            jQuery(this).toggleClass('active', sv <= val)
+                .find('i').attr('class', sv <= val ? 'bi bi-star-fill' : 'bi bi-star');
+        });
+    });
+
+    // Char count
+    jQuery('#reviewBody').on('input', function() {
+        jQuery('#reviewCharCount').text(jQuery(this).val().length);
+    });
+
+    // Submit review
+    jQuery('#btnSubmitReview').on('click', function() {
+        var rating = parseInt(jQuery('#reviewRating').val());
+        var body = jQuery('#reviewBody').val().trim();
+        var title = jQuery('#reviewTitle').val().trim();
+
+        if (!rating || rating < 1) { showAlert('Please select a star rating.', 'warning'); return; }
+        if (!body) { showAlert('Please write your review.', 'warning'); return; }
+
+        var btn = jQuery(this);
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Submitting...');
+
+        ajaxPost({
+            submit_review: 1,
+            experience_id: experienceId,
+            rating: rating,
+            title: title || null,
+            body: body,
+        }, function(resp) {
+            btn.prop('disabled', false).html('<i class="bi bi-send"></i> Submit Review');
+            if (resp.review) {
+                jQuery('#reviewsList').prepend(renderReview(resp.review));
+                jQuery('#reviewsEmpty').addClass('d-none');
+                jQuery('#reviewFormWrapper').addClass('d-none');
+                jQuery('#reviewAlreadySubmitted').removeClass('d-none');
+                // Update summary
+                jQuery('#avgRatingDisplay').text(resp.avg_rating);
+                jQuery('#avgStarsDisplay').html(renderStars(Math.round(resp.avg_rating)));
+                jQuery('#reviewCountDisplay').text(resp.review_count);
+                showAlert('Review submitted successfully!', 'success');
+            }
+        }, function(xhr) {
+            btn.prop('disabled', false).html('<i class="bi bi-send"></i> Submit Review');
+            var msg = xhr.responseJSON ? xhr.responseJSON.error : 'Failed to submit review.';
+            if (msg.indexOf('already') !== -1) {
+                jQuery('#reviewFormWrapper').addClass('d-none');
+                jQuery('#reviewAlreadySubmitted').removeClass('d-none');
+            }
+            showAlert(msg, 'danger');
+        });
     });
 });
 

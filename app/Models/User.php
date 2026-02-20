@@ -72,4 +72,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(Lead::class, 'assigned_hct_id');
     }
+
+    public function reviews()
+    {
+        return $this->hasMany(Review::class);
+    }
 }
