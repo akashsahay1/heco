@@ -845,6 +845,13 @@ class AjaxController extends Controller
                 }
             });
         }
+        if ($request->filled("month")) {
+            $month = (int) $request->month;
+            $query->where(function ($q) use ($month) {
+                $q->whereJsonContains("available_months", $month)
+                  ->orWhereNull("available_months");
+            });
+        }
 
         $experiences = $query->withCount('reviews')
             ->withAvg('reviews', 'rating')

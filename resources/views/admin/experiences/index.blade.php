@@ -249,7 +249,7 @@ $(document).on('click', '#paginationList a.page-link', function(e) {
 
 $(document).on('change', '.toggle-status', function() {
     var id = $(this).data('id');
-    ajaxPost({ disable_experience: 1, experience_id: id }, function(resp) {
+    ajaxPost({ disable_experience: 1, id: id }, function(resp) {
         loadExperiences(currentPage);
     });
 });
@@ -259,7 +259,7 @@ $(document).on('click', '.btn-disable', function() {
     var isActive = $(this).data('active');
     var action = isActive == 1 ? 'disable' : 'enable';
     confirmAction('Are you sure you want to ' + action + ' this experience?', function() {
-        ajaxPost({ disable_experience: 1, experience_id: id }, function(resp) {
+        ajaxPost({ disable_experience: 1, id: id }, function(resp) {
             loadExperiences(currentPage);
         });
     });

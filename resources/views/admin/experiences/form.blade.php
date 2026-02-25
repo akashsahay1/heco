@@ -27,7 +27,7 @@
 
 <form id="experienceForm" enctype="multipart/form-data" novalidate>
     @if($e)
-        <input type="hidden" name="experience_id" value="{{ $e->id }}">
+        <input type="hidden" name="id" value="{{ $e->id }}">
     @endif
 
     <div class="accordion" id="experienceAccordion">
