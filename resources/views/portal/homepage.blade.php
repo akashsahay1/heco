@@ -314,9 +314,6 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="journey-panel-header">
                                 <h6 class="journey-panel-title"><i class="bi bi-calendar3"></i> Trip Timeline</h6>
                                 <div class="d-flex gap-2">
-                                    <button class="exp-btn exp-btn-primary" style="padding: var(--space-2) var(--space-3);" id="btnAddDay">
-                                        <i class="bi bi-plus-lg"></i> Add Day
-                                    </button>
                                 </div>
                             </div>
                             <div class="timeline-container" id="timelineContainer">
@@ -1057,7 +1054,15 @@ jQuery(function() {
             html += '<div class="trip-id-display">Trip ID : ' + tripId + '</div>';
         }
 
-        days.forEach(function(day) {
+        days.forEach(function(day, index) {
+            // Add "insert day" button between days (not before the first day)
+            if (index > 0) {
+                html += '<div class="timeline-add-day-row" style="display:flex; justify-content:center; padding: var(--space-1) 0;">';
+                html += '<button class="btn-insert-day" data-after-day="' + days[index - 1].day_number + '" title="Add a day here" style="background:none; border:1px dashed var(--heco-primary); color:var(--heco-primary); border-radius:var(--radius-md); padding:var(--space-1) var(--space-3); font-size:var(--text-sm); cursor:pointer; transition:all 0.2s;">';
+                html += '<i class="bi bi-plus-lg"></i>';
+                html += '</button>';
+                html += '</div>';
+            }
             html += '<div class="timeline-day" data-day-id="' + day.id + '">';
             html += '<div class="timeline-day-header">';
             html += '<div class="timeline-day-info">';
@@ -1207,10 +1212,11 @@ jQuery(function() {
     }
 
 
-    // Add Day
-    jQuery('#btnAddDay').on('click', function() {
+    // Insert Day between existing days
+    jQuery(document).on('click', '.btn-insert-day', function() {
         if (!tripId) return;
-        ajaxPost({ add_day_to_trip: 1, trip_id: tripId }, function(resp) {
+        var afterDay = jQuery(this).data('after-day');
+        ajaxPost({ add_day_to_trip: 1, trip_id: tripId, after_day_number: afterDay }, function(resp) {
             showAlert('Day added.', 'success');
             loadTimeline();
         });

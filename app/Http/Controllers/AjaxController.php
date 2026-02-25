@@ -1337,29 +1337,66 @@ class AjaxController extends Controller
 
     protected function addDayToTrip(Request $request): JsonResponse
     {
+        $afterDayNumber = $request->input('after_day_number');
+
         if (!Auth::check()) {
             $gt = $this->guestTrip();
             $itinerary = $gt['ai_itinerary'] ?? ['days' => []];
             $dayCount = count($itinerary['days']);
-            $itinerary['days'][] = [
-                'title' => 'Day ' . ($dayCount + 1),
-                'description' => null,
-                'experiences' => [],
-            ];
+
+            if ($afterDayNumber) {
+                // Insert after the specified day and renumber
+                $insertAt = (int) $afterDayNumber; // 0-indexed insert position
+                array_splice($itinerary['days'], $insertAt, 0, [[
+                    'title' => 'Day ' . ($insertAt + 1),
+                    'description' => null,
+                    'experiences' => [],
+                ]]);
+                // Renumber all days
+                foreach ($itinerary['days'] as $i => &$d) {
+                    $d['title'] = 'Day ' . ($i + 1);
+                }
+                unset($d);
+            } else {
+                $itinerary['days'][] = [
+                    'title' => 'Day ' . ($dayCount + 1),
+                    'description' => null,
+                    'experiences' => [],
+                ];
+            }
+
             $gt['ai_itinerary'] = $itinerary;
             $this->saveGuestTrip($gt);
-            return response()->json(["success" => true, "day" => ['id' => $dayCount + 1, 'day_number' => $dayCount + 1]]);
+            $newDayNum = $afterDayNumber ? (int) $afterDayNumber + 1 : $dayCount + 1;
+            return response()->json(["success" => true, "day" => ['id' => $newDayNum, 'day_number' => $newDayNum]]);
         }
 
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["error" => "Trip not found"], 404);
 
-        $maxDay = $trip->tripDays()->max("day_number") ?? 0;
-        $day = TripDay::create([
-            "trip_id" => $trip->id,
-            "day_number" => $maxDay + 1,
-            "sort_order" => $maxDay,
-        ]);
+        if ($afterDayNumber) {
+            $afterDayNumber = (int) $afterDayNumber;
+            // Shift all days after the insertion point up by 1
+            $trip->tripDays()
+                ->where('day_number', '>', $afterDayNumber)
+                ->orderByDesc('day_number')
+                ->each(function ($d) {
+                    $d->update(['day_number' => $d->day_number + 1, 'sort_order' => $d->day_number]);
+                });
+
+            $day = TripDay::create([
+                "trip_id" => $trip->id,
+                "day_number" => $afterDayNumber + 1,
+                "sort_order" => $afterDayNumber,
+            ]);
+        } else {
+            $maxDay = $trip->tripDays()->max("day_number") ?? 0;
+            $day = TripDay::create([
+                "trip_id" => $trip->id,
+                "day_number" => $maxDay + 1,
+                "sort_order" => $maxDay,
+            ]);
+        }
 
         return response()->json(["success" => true, "day" => $day]);
     }
