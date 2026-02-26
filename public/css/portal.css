@@ -1243,14 +1243,13 @@
     /* AI Search Box — ChatGPT style */
     /* Inline AI Chat Widget */
     .inline-chat-section {
-        max-width: 680px;
-        margin: 0 auto;
-        margin-top: var(--space-6);
         background: var(--color-bg-white);
         border: 1px solid var(--color-border);
         border-radius: var(--radius-2xl);
         overflow: hidden;
         box-shadow: var(--shadow-md);
+        position: sticky;
+        top: 100px;
     }
 
     .inline-chat-heading {
@@ -1270,7 +1269,8 @@
     }
 
     #inlineChatMessages {
-        max-height: 250px;
+        min-height: calc(100vh - 350px);
+        max-height: calc(100vh - 300px);
         overflow-y: auto;
         padding: var(--space-4);
         display: flex;
@@ -2594,9 +2594,12 @@
         .inline-chat-section {
             max-width: 100%;
             border-radius: var(--radius-xl);
+            position: relative;
+            top: 0;
         }
 
         #inlineChatMessages {
+            min-height: unset;
             max-height: 200px;
         }
 
