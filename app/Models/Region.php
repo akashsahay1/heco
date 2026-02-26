@@ -8,7 +8,7 @@ class Region extends Model
 {
     protected $fillable = [
         'name', 'slug', 'description', 'continent', 'country', 'external_url',
-        'latitude', 'longitude', 'is_active', 'sort_order', 'image',
+        'latitude', 'longitude', 'anchor_points', 'is_active', 'sort_order', 'image',
     ];
 
     protected function casts(): array
@@ -16,6 +16,7 @@ class Region extends Model
         return [
             'latitude' => 'decimal:8',
             'longitude' => 'decimal:8',
+            'anchor_points' => 'array',
             'is_active' => 'boolean',
         ];
     }

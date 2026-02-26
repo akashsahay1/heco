@@ -87,6 +87,17 @@ class ItineraryService
             }
 
             DB::commit();
+
+            // Auto-assign available SPs (non-fatal)
+            try {
+                $matched = (new SpMatchingService())->assignProvidersToTrip($trip);
+                if ($matched > 0) {
+                    Log::info("SpMatchingService: assigned {$matched} SPs for trip #{$trip->id}");
+                }
+            } catch (\Exception $e) {
+                Log::warning("SP auto-assignment failed for trip #{$trip->id}: " . $e->getMessage());
+            }
+
             return true;
         } catch (\Exception $e) {
             DB::rollBack();

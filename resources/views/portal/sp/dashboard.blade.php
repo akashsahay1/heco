@@ -133,6 +133,48 @@
         {{-- Right Column --}}
         <div class="col-md-6">
 
+            {{-- Availability Calendar --}}
+            <div class="card mb-3">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-calendar3"></i> Availability Calendar</h6>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary" id="calPrev"><i class="bi bi-chevron-left"></i></button>
+                        <span class="small fw-bold mx-2" id="calMonthLabel"></span>
+                        <button class="btn btn-sm btn-outline-secondary" id="calNext"><i class="bi bi-chevron-right"></i></button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-3 mb-2 small">
+                        <span><span class="badge bg-success">&nbsp;&nbsp;</span> Available</span>
+                        <span><span class="badge bg-danger">&nbsp;&nbsp;</span> Booked (Trip)</span>
+                        <span><span class="badge bg-secondary">&nbsp;&nbsp;</span> Blocked</span>
+                    </div>
+                    <div id="spCalendarGrid" class="mb-3"></div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-danger" id="btnBlockSelected" disabled>Block Selected</button>
+                        <button class="btn btn-sm btn-outline-success" id="btnUnblockSelected" disabled>Unblock Selected</button>
+                    </div>
+                    <hr>
+                    <h6 class="small fw-bold mb-2"><i class="bi bi-link-45deg"></i> iCal Sync (Booking.com / Airbnb)</h6>
+                    <div class="input-group input-group-sm mb-2">
+                        <input type="text" class="form-control" id="icalUrlInput" placeholder="Paste iCal URL here..." value="{{ $provider->ical_url ?? '' }}">
+                        <button class="btn btn-outline-primary" id="btnSaveIcal">Save</button>
+                    </div>
+                    @if($provider->ical_url)
+                        <div class="d-flex align-items-center gap-2">
+                            <button class="btn btn-sm btn-outline-info" id="btnSyncIcal">Sync Now</button>
+                            <small class="text-muted" id="icalSyncStatus">
+                                @if($provider->ical_last_synced_at)
+                                    Last synced: {{ $provider->ical_last_synced_at->format('d M Y H:i') }}
+                                @else
+                                    Not synced yet
+                                @endif
+                            </small>
+                        </div>
+                    @endif
+                </div>
+            </div>
+
             {{-- Services & Pricing --}}
             <div class="card mb-3">
                 <div class="card-header py-2">
@@ -386,4 +428,143 @@
         </div>
     </div>
 </div>
+@endsection
+
+@section('js')
+<script>
+jQuery(function() {
+    var calYear = {{ now()->year }};
+    var calMonth = {{ now()->month }};
+    var calendarData = {};
+    var selectedDates = [];
+    var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+    function loadCalendar() {
+        jQuery('#calMonthLabel').text(monthNames[calMonth - 1] + ' ' + calYear);
+        ajaxPost({ get_sp_calendar: 1, year: calYear, month: calMonth }, function(resp) {
+            calendarData = resp.calendar || {};
+            renderCalendar();
+            if (resp.ical_url) jQuery('#icalUrlInput').val(resp.ical_url);
+        });
+    }
+
+    function renderCalendar() {
+        var firstDay = new Date(calYear, calMonth - 1, 1).getDay();
+        var daysInMonth = new Date(calYear, calMonth, 0).getDate();
+        var html = '<div class="row g-0 text-center mb-1">';
+        ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(function(d) {
+            html += '<div class="col small fw-bold text-muted">' + d + '</div>';
+        });
+        html += '</div><div class="row g-0 text-center">';
+
+        for (var i = 0; i < firstDay; i++) {
+            html += '<div class="col p-1"></div>';
+        }
+
+        for (var d = 1; d <= daysInMonth; d++) {
+            var dateStr = calYear + '-' + String(calMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+            var info = calendarData[dateStr] || { status: 'available' };
+            var bgClass = 'bg-success bg-opacity-25 text-success';
+            var cursor = 'cursor: pointer;';
+            var title = 'Available - click to select';
+            if (info.status === 'booked') {
+                bgClass = 'bg-danger bg-opacity-25 text-danger';
+                cursor = 'cursor: not-allowed;';
+                title = 'Booked (Trip #' + (info.trip_id || '') + ')';
+            } else if (info.status === 'blocked') {
+                bgClass = 'bg-secondary bg-opacity-25 text-secondary';
+                cursor = 'cursor: pointer;';
+                title = 'Blocked (' + (info.source || 'manual') + ')';
+            }
+
+            var isSelected = selectedDates.indexOf(dateStr) !== -1;
+            var border = isSelected ? 'border: 2px solid #0d6efd;' : 'border: 1px solid transparent;';
+
+            html += '<div class="col p-1">';
+            html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '" style="' + cursor + border + '" title="' + title + '">';
+            html += '<small>' + d + '</small>';
+            html += '</div></div>';
+
+            if ((firstDay + d) % 7 === 0) {
+                html += '</div><div class="row g-0 text-center">';
+            }
+        }
+        html += '</div>';
+        jQuery('#spCalendarGrid').html(html);
+        updateButtons();
+    }
+
+    function updateButtons() {
+        var hasSelected = selectedDates.length > 0;
+        jQuery('#btnBlockSelected').prop('disabled', !hasSelected);
+        jQuery('#btnUnblockSelected').prop('disabled', !hasSelected);
+    }
+
+    jQuery('#spCalendarGrid').on('click', '.sp-cal-day', function() {
+        var status = jQuery(this).data('status');
+        if (status === 'booked') return; // Can't toggle trip bookings
+
+        var date = jQuery(this).data('date');
+        var idx = selectedDates.indexOf(date);
+        if (idx === -1) {
+            selectedDates.push(date);
+        } else {
+            selectedDates.splice(idx, 1);
+        }
+        renderCalendar();
+    });
+
+    jQuery('#calPrev').on('click', function() {
+        calMonth--;
+        if (calMonth < 1) { calMonth = 12; calYear--; }
+        selectedDates = [];
+        loadCalendar();
+    });
+
+    jQuery('#calNext').on('click', function() {
+        calMonth++;
+        if (calMonth > 12) { calMonth = 1; calYear++; }
+        selectedDates = [];
+        loadCalendar();
+    });
+
+    jQuery('#btnBlockSelected').on('click', function() {
+        if (!selectedDates.length) return;
+        ajaxPost({ sp_block_dates: 1, dates: selectedDates }, function(resp) {
+            selectedDates = [];
+            loadCalendar();
+        });
+    });
+
+    jQuery('#btnUnblockSelected').on('click', function() {
+        if (!selectedDates.length) return;
+        ajaxPost({ sp_unblock_dates: 1, dates: selectedDates }, function(resp) {
+            selectedDates = [];
+            loadCalendar();
+        });
+    });
+
+    jQuery('#btnSaveIcal').on('click', function() {
+        var url = jQuery('#icalUrlInput').val().trim();
+        ajaxPost({ sp_save_ical_url: 1, ical_url: url }, function(resp) {
+            alert('iCal URL saved successfully.');
+            location.reload();
+        });
+    });
+
+    jQuery('#btnSyncIcal').on('click', function() {
+        var btn = jQuery(this);
+        btn.prop('disabled', true).text('Syncing...');
+        ajaxPost({ sp_sync_ical_now: 1 }, function(resp) {
+            btn.prop('disabled', false).text('Sync Now');
+            jQuery('#icalSyncStatus').text('Last synced: just now');
+            loadCalendar();
+        }, function() {
+            btn.prop('disabled', false).text('Sync Now');
+        });
+    });
+
+    loadCalendar();
+});
+</script>
 @endsection

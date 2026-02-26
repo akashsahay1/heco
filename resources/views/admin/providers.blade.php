@@ -204,7 +204,26 @@ function loadProviderDetail(providerId, userId) {
         html += '<h6 class="border-bottom pb-2 mt-3"><i class="bi bi-cash-stack"></i> Payment History</h6>';
         html += '<div id="providerPayments"><p class="text-muted small">Loading payments...</p></div>';
 
+        // Availability Calendar
+        html += '<h6 class="border-bottom pb-2 mt-3"><i class="bi bi-calendar3"></i> Availability Calendar</h6>';
+        html += '<div class="d-flex align-items-center gap-2 mb-2">';
+        html += '<button class="btn btn-sm btn-outline-secondary" id="adminCalPrev"><i class="bi bi-chevron-left"></i></button>';
+        html += '<span class="small fw-bold" id="adminCalMonthLabel"></span>';
+        html += '<button class="btn btn-sm btn-outline-secondary" id="adminCalNext"><i class="bi bi-chevron-right"></i></button>';
+        html += '<span class="ms-3 small"><span class="badge bg-success">&nbsp;&nbsp;</span> Available</span>';
+        html += '<span class="small"><span class="badge bg-danger">&nbsp;&nbsp;</span> Booked</span>';
+        html += '<span class="small"><span class="badge bg-secondary">&nbsp;&nbsp;</span> Blocked</span>';
+        html += '</div>';
+        html += '<div id="adminCalendarGrid" class="mb-2"></div>';
+        html += '<div class="d-flex gap-2 mb-2">';
+        html += '<button class="btn btn-sm btn-outline-danger" id="adminBtnBlock" disabled>Block Selected</button>';
+        html += '<button class="btn btn-sm btn-outline-success" id="adminBtnUnblock" disabled>Unblock Selected</button>';
+        html += '</div>';
+
         $('#providerModalBody').html(html);
+
+        // Init admin calendar for this provider
+        initAdminCalendar(providerId);
 
         // Load trip history
         ajaxPost({ get_provider_trips: 1, provider_id: providerId }, function(tripResp) {
@@ -283,6 +302,85 @@ $(document).on('click', '.view-provider', function() {
     $('#providerModalBody').html('<div class="text-center text-muted py-4">Loading...</div>');
     providerModal.show();
     loadProviderDetail(providerId, userId);
+});
+
+// Admin SP Availability Calendar
+var adminCalYear, adminCalMonth, adminCalData = {}, adminSelectedDates = [], adminCalSpId;
+var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function initAdminCalendar(spId) {
+    adminCalSpId = spId;
+    adminCalYear = new Date().getFullYear();
+    adminCalMonth = new Date().getMonth() + 1;
+    adminSelectedDates = [];
+    loadAdminCalendar();
+}
+
+function loadAdminCalendar() {
+    $('#adminCalMonthLabel').text(monthNames[adminCalMonth - 1] + ' ' + adminCalYear);
+    ajaxPost({ admin_get_sp_calendar: 1, service_provider_id: adminCalSpId, year: adminCalYear, month: adminCalMonth }, function(resp) {
+        adminCalData = resp.calendar || {};
+        renderAdminCalendar();
+    });
+}
+
+function renderAdminCalendar() {
+    var firstDay = new Date(adminCalYear, adminCalMonth - 1, 1).getDay();
+    var daysInMonth = new Date(adminCalYear, adminCalMonth, 0).getDate();
+    var html = '<div class="row g-0 text-center mb-1">';
+    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(function(d) {
+        html += '<div class="col small fw-bold text-muted">' + d + '</div>';
+    });
+    html += '</div><div class="row g-0 text-center">';
+    for (var i = 0; i < firstDay; i++) html += '<div class="col p-1"></div>';
+    for (var d = 1; d <= daysInMonth; d++) {
+        var dateStr = adminCalYear + '-' + String(adminCalMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+        var info = adminCalData[dateStr] || { status: 'available' };
+        var bgClass = 'bg-success bg-opacity-25 text-success';
+        var cursor = 'cursor: pointer;';
+        if (info.status === 'booked') { bgClass = 'bg-danger bg-opacity-25 text-danger'; cursor = 'cursor: not-allowed;'; }
+        else if (info.status === 'blocked') { bgClass = 'bg-secondary bg-opacity-25 text-secondary'; cursor = 'cursor: pointer;'; }
+        var isSelected = adminSelectedDates.indexOf(dateStr) !== -1;
+        var border = isSelected ? 'border: 2px solid #0d6efd;' : 'border: 1px solid transparent;';
+        html += '<div class="col p-1"><div class="rounded-2 p-1 ' + bgClass + ' admin-cal-day" data-date="' + dateStr + '" data-status="' + info.status + '" style="' + cursor + border + '"><small>' + d + '</small></div></div>';
+        if ((firstDay + d) % 7 === 0) html += '</div><div class="row g-0 text-center">';
+    }
+    html += '</div>';
+    $('#adminCalendarGrid').html(html);
+    $('#adminBtnBlock').prop('disabled', !adminSelectedDates.length);
+    $('#adminBtnUnblock').prop('disabled', !adminSelectedDates.length);
+}
+
+$(document).on('click', '.admin-cal-day', function() {
+    if ($(this).data('status') === 'booked') return;
+    var date = $(this).data('date');
+    var idx = adminSelectedDates.indexOf(date);
+    if (idx === -1) adminSelectedDates.push(date); else adminSelectedDates.splice(idx, 1);
+    renderAdminCalendar();
+});
+
+$(document).on('click', '#adminCalPrev', function() {
+    adminCalMonth--; if (adminCalMonth < 1) { adminCalMonth = 12; adminCalYear--; }
+    adminSelectedDates = []; loadAdminCalendar();
+});
+
+$(document).on('click', '#adminCalNext', function() {
+    adminCalMonth++; if (adminCalMonth > 12) { adminCalMonth = 1; adminCalYear++; }
+    adminSelectedDates = []; loadAdminCalendar();
+});
+
+$(document).on('click', '#adminBtnBlock', function() {
+    if (!adminSelectedDates.length) return;
+    ajaxPost({ admin_sp_block_dates: 1, service_provider_id: adminCalSpId, dates: adminSelectedDates }, function() {
+        adminSelectedDates = []; loadAdminCalendar();
+    });
+});
+
+$(document).on('click', '#adminBtnUnblock', function() {
+    if (!adminSelectedDates.length) return;
+    ajaxPost({ admin_sp_unblock_dates: 1, service_provider_id: adminCalSpId, dates: adminSelectedDates }, function() {
+        adminSelectedDates = []; loadAdminCalendar();
+    });
 });
 
 $(document).on('click', '#saveProviderBtn', function() {

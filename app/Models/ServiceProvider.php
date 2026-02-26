@@ -11,7 +11,8 @@ class ServiceProvider extends Model
         'phone_1', 'phone_2', 'region_id', 'address', 'bank_name',
         'bank_ifsc', 'bank_account_name', 'bank_account_number', 'upi',
         'services_offered', 'accommodation_categories', 'vehicle_types',
-        'activity_types', 'notes', 'status', 'approved_at', 'approved_by',
+        'activity_types', 'notes', 'ical_url', 'ical_last_synced_at',
+        'status', 'approved_at', 'approved_by',
     ];
 
     protected function casts(): array
@@ -22,6 +23,7 @@ class ServiceProvider extends Model
             'vehicle_types' => 'array',
             'activity_types' => 'array',
             'approved_at' => 'datetime',
+            'ical_last_synced_at' => 'datetime',
         ];
     }
 
@@ -58,5 +60,15 @@ class ServiceProvider extends Model
     public function spPayments()
     {
         return $this->hasMany(SpPayment::class);
+    }
+
+    public function availability()
+    {
+        return $this->hasMany(SpAvailability::class);
+    }
+
+    public function blockedDates()
+    {
+        return $this->hasMany(SpAvailability::class)->whereIn('status', ['booked', 'blocked']);
     }
 }

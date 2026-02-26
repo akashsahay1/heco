@@ -5,9 +5,10 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 <style>
     .experience-grid-split {
-        max-height: calc(100vh - 280px);
+        max-height: calc(100vh - 320px);
         overflow-y: auto;
         grid-template-columns: repeat(2, 1fr) !important;
+        padding: 4px;
     }
     .experience-grid-split .exp-card {
         margin-bottom: 0;
@@ -37,19 +38,50 @@
         font-weight: 600;
         margin-top: 4px;
     }
+    /* View toggle tabs */
+    .discover-view-tabs {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .discover-view-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.45rem 1rem;
+        border-radius: 2rem;
+        border: 1px solid var(--color-border, #dee2e6);
+        background: var(--color-bg-white, #fff);
+        color: var(--heco-neutral-600, #6c757d);
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .discover-view-tab:hover {
+        border-color: var(--heco-success, #2d6a4f);
+        color: var(--heco-success, #2d6a4f);
+    }
+    .discover-view-tab.active {
+        background: var(--heco-success, #2d6a4f);
+        border-color: var(--heco-success, #2d6a4f);
+        color: #fff;
+    }
+    #mapViewPanel {
+        display: none;
+    }
+    #mapViewPanel #discoverMap {
+        height: calc(100vh - 320px);
+        min-height: 400px;
+        border-radius: 12px;
+    }
     @media (max-width: 991px) {
         .experience-grid-split {
             max-height: none;
             overflow-y: visible;
         }
-        #discoverMap {
+        #mapViewPanel #discoverMap {
             height: 350px !important;
-            position: relative !important;
-            top: 0 !important;
-            margin-bottom: 16px;
-        }
-        .col-lg-6:has(#discoverMap) {
-            order: -1;
+            min-height: unset;
         }
     }
     .exp-card-price-row {
@@ -174,105 +206,120 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
         <div class="tab-pane fade show active" id="pane-discover" role="tabpanel">
             <div class="content-container">
 
-                {{-- Inline AI Chat Widget --}}
-                <div class="inline-chat-section mb-4">
-                    <h2 class="inline-chat-heading">
-                        <i class="bi bi-robot"></i>
-                        HECO AI Assistant
-                    </h2>
-                    <div id="inlineChatMessages">
-                        <div class="chat-msg assistant">
-                            Hi! I'm HECO AI. Tell me about your trip &mdash; dates, group size, interests &mdash; and I'll find the perfect experiences for you.
+                {{-- Two-column layout: Chat left + Content right --}}
+                <div class="row g-4">
+                    {{-- Left: AI Chat --}}
+                    <div class="col-lg-5">
+                        <div class="inline-chat-section">
+                            <h2 class="inline-chat-heading">
+                                <i class="bi bi-robot"></i>
+                                HECO AI Assistant
+                            </h2>
+                            <div id="inlineChatMessages">
+                                <div class="chat-msg assistant">
+                                    Hey there! I'm the HECO AI Assistant &mdash; I'd love to help you plan an amazing Himalayan adventure. What's your name?
+                                </div>
+                            </div>
+                            <div class="inline-chat-input-area">
+                                <input type="text" class="inline-chat-input" id="inlineChatInput"
+                                    placeholder="Ask anything about experiences, destinations, travel plans..."
+                                    autocomplete="off">
+                                <button class="inline-chat-send" id="inlineChatSend">
+                                    <i class="bi bi-send-fill"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div class="inline-chat-input-area">
-                        <input type="text" class="inline-chat-input" id="inlineChatInput"
-                            placeholder="Ask anything about experiences, destinations, travel plans..."
-                            autocomplete="off">
-                        <button class="inline-chat-send" id="inlineChatSend">
-                            <i class="bi bi-send-fill"></i>
-                        </button>
-                    </div>
-                </div>
 
-                {{-- Filter bar --}}
-                <div class="filter-bar">
-                    <div class="row g-3 align-items-end">
-                        <div class="col-lg-3 col-md-6 col-6">
-                            <label class="form-label">Experience Type</label>
-                            <select class="form-select" id="filterType">
-                                <option value="">All Types</option>
-                                <option value="trek">Trek</option>
-                                <option value="cultural">Cultural</option>
-                                <option value="spiritual">Spiritual</option>
-                                <option value="nature">Nature & Wildlife</option>
-                                <option value="adventure">Adventure</option>
-                                <option value="wellness">Wellness</option>
-                                <option value="culinary">Culinary</option>
-                                <option value="volunteering">Volunteering</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-3 col-md-6 col-6">
-                            <label class="form-label">Difficulty</label>
-                            <select class="form-select" id="filterDifficulty">
-                                <option value="">All Levels</option>
-                                <option value="easy">Easy</option>
-                                <option value="moderate">Moderate</option>
-                                <option value="challenging">Challenging</option>
-                                <option value="difficult">Difficult</option>
-                                <option value="expert">Expert</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-3 col-md-6 col-6">
-                            <label class="form-label">Month</label>
-                            <select class="form-select" id="filterMonth">
-                                <option value="">Any Month</option>
-                                <option value="1">January</option>
-                                <option value="2">February</option>
-                                <option value="3">March</option>
-                                <option value="4">April</option>
-                                <option value="5">May</option>
-                                <option value="6">June</option>
-                                <option value="7">July</option>
-                                <option value="8">August</option>
-                                <option value="9">September</option>
-                                <option value="10">October</option>
-                                <option value="11">November</option>
-                                <option value="12">December</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-3 col-md-6 col-6">
-                            <button class="btn-clear-filters w-100" id="clearFilters">
-                                <i class="bi bi-x-circle"></i>
-                                <span>Clear Filters</span>
+                    {{-- Right: Tabs + Filters + Cards/Map --}}
+                    <div class="col-lg-7">
+                        {{-- View toggle tabs --}}
+                        <div class="discover-view-tabs mb-3">
+                            <button class="discover-view-tab active" data-view="grid">
+                                <i class="bi bi-grid-3x3-gap-fill"></i> Grid View
+                            </button>
+                            <button class="discover-view-tab" data-view="map">
+                                <i class="bi bi-map"></i> Map View
                             </button>
                         </div>
-                    </div>
-                </div>
 
-                {{-- Split: Experience list + Map --}}
-                <div class="row g-3">
-                    {{-- Left: Experience cards --}}
-                    <div class="col-lg-6">
-                        <div id="experienceGrid" class="experience-grid experience-grid-split">
-                            <div class="loading-state" style="grid-column: 1 / -1;">
-                                <div class="loading-spinner"></div>
-                                <p class="loading-text">Loading experiences...</p>
+                        {{-- Filter bar --}}
+                        <div class="filter-bar">
+                            <div class="row g-3 align-items-end">
+                                <div class="col-lg-3 col-md-6 col-6">
+                                    <label class="form-label">Experience Type</label>
+                                    <select class="form-select" id="filterType">
+                                        <option value="">All Types</option>
+                                        <option value="trek">Trek</option>
+                                        <option value="cultural">Cultural</option>
+                                        <option value="spiritual">Spiritual</option>
+                                        <option value="nature">Nature & Wildlife</option>
+                                        <option value="adventure">Adventure</option>
+                                        <option value="wellness">Wellness</option>
+                                        <option value="culinary">Culinary</option>
+                                        <option value="volunteering">Volunteering</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6 col-6">
+                                    <label class="form-label">Difficulty</label>
+                                    <select class="form-select" id="filterDifficulty">
+                                        <option value="">All Levels</option>
+                                        <option value="easy">Easy</option>
+                                        <option value="moderate">Moderate</option>
+                                        <option value="challenging">Challenging</option>
+                                        <option value="difficult">Difficult</option>
+                                        <option value="expert">Expert</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6 col-6">
+                                    <label class="form-label">Month</label>
+                                    <select class="form-select" id="filterMonth">
+                                        <option value="">Any Month</option>
+                                        <option value="1">January</option>
+                                        <option value="2">February</option>
+                                        <option value="3">March</option>
+                                        <option value="4">April</option>
+                                        <option value="5">May</option>
+                                        <option value="6">June</option>
+                                        <option value="7">July</option>
+                                        <option value="8">August</option>
+                                        <option value="9">September</option>
+                                        <option value="10">October</option>
+                                        <option value="11">November</option>
+                                        <option value="12">December</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6 col-6">
+                                    <button class="btn-clear-filters w-100" id="clearFilters">
+                                        <i class="bi bi-x-circle"></i>
+                                        <span>Clear Filters</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
-                        {{-- Load more --}}
-                        <div class="load-more-wrapper d-none" id="loadMoreWrap">
-                            <button class="btn-load-more" id="loadMore">
-                                <i class="bi bi-arrow-down-circle"></i>
-                                <span>Load More Experiences</span>
-                            </button>
-                        </div>
-                    </div>
+                        {{-- Grid View (default) --}}
+                        <div id="gridViewPanel">
+                            <div id="experienceGrid" class="experience-grid experience-grid-split">
+                                <div class="loading-state" style="grid-column: 1 / -1;">
+                                    <div class="loading-spinner"></div>
+                                    <p class="loading-text">Loading experiences...</p>
+                                </div>
+                            </div>
 
-                    {{-- Right: Map --}}
-                    <div class="col-lg-6">
-                        <div id="discoverMap" style="height: calc(100vh - 280px); min-height: 400px; border-radius: 12px; position: sticky; top: 100px; z-index: 1;"></div>
+                            {{-- Load more --}}
+                            <div class="load-more-wrapper d-none" id="loadMoreWrap">
+                                <button class="btn-load-more" id="loadMore">
+                                    <i class="bi bi-arrow-down-circle"></i>
+                                    <span>Load More Experiences</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {{-- Map View (hidden by default) --}}
+                        <div id="mapViewPanel">
+                            <div id="discoverMap"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -500,6 +547,19 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
     </div>
 </div>
 
+{{-- Insert Day Modal --}}
+<div id="insertDayModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.4); align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:var(--radius-lg); padding:var(--space-5); width:90%; max-width:420px; box-shadow:0 8px 32px rgba(0,0,0,0.15);">
+        <h6 style="margin:0 0 var(--space-3); font-weight:var(--font-semibold);"><i class="bi bi-plus-circle"></i> Add a New Day</h6>
+        <p style="font-size:var(--text-sm); color:var(--color-text-muted); margin-bottom:var(--space-3);">What would you like to do on this day? <span style="font-size:var(--text-xs);">(e.g. "Rest day", "Explore local market", "Travel to next destination")</span></p>
+        <textarea id="insertDayNote" class="form-control" rows="3" placeholder="Describe your plan for this day..." style="margin-bottom:var(--space-3);"></textarea>
+        <div style="display:flex; justify-content:flex-end; gap:var(--space-2);">
+            <button class="exp-btn" id="insertDayCancel" style="padding:var(--space-2) var(--space-4);">Cancel</button>
+            <button class="exp-btn exp-btn-primary" id="insertDayConfirm" style="padding:var(--space-2) var(--space-4);"><i class="bi bi-plus-lg"></i> Add Day</button>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @section('js')
@@ -517,16 +577,13 @@ jQuery(function() {
     var debounceTimer = null;
 
     // ===================================
-    // LEAFLET MAP INIT
+    // LEAFLET MAP (lazy init)
     // ===================================
-    var map = L.map('discoverMap').setView([20, 60], 3);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 18
-    }).addTo(map);
-
+    var map = null;
+    var mapInitialized = false;
     var markers = [];
     var markerMap = {};
+    var pendingMapExperiences = [];
 
     var redIcon = L.icon({
         iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -544,13 +601,32 @@ jQuery(function() {
     markerStyle.textContent = '.hue-rotate-marker { filter: hue-rotate(140deg) saturate(1.5); }';
     document.head.appendChild(markerStyle);
 
+    function initMap() {
+        if (mapInitialized) return;
+        map = L.map('discoverMap').setView([20, 60], 3);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(map);
+        mapInitialized = true;
+        // Apply any pending marker data
+        if (pendingMapExperiences.length) {
+            updateMapMarkers(pendingMapExperiences);
+        }
+    }
+
     function clearMarkers() {
+        if (!map) return;
         markers.forEach(function(m) { map.removeLayer(m); });
         markers = [];
         markerMap = {};
     }
 
     function updateMapMarkers(experiences) {
+        // Store for lazy init
+        pendingMapExperiences = experiences;
+        if (!mapInitialized) return;
+
         clearMarkers();
         var bounds = [];
 
@@ -583,6 +659,8 @@ jQuery(function() {
                 if (card.length) {
                     jQuery('#experienceGrid .exp-card').removeClass('map-highlight');
                     card.addClass('map-highlight');
+                    // Switch to grid view to show the highlighted card
+                    jQuery('.discover-view-tab[data-view="grid"]').trigger('click');
                     var grid = jQuery('#experienceGrid');
                     grid.animate({ scrollTop: grid.scrollTop() + card.position().top - 10 }, 300);
                 }
@@ -598,17 +676,36 @@ jQuery(function() {
         }
     }
 
+    // ===================================
+    // VIEW TOGGLE (Grid / Map)
+    // ===================================
+    jQuery('.discover-view-tab').on('click', function() {
+        var view = jQuery(this).data('view');
+        jQuery('.discover-view-tab').removeClass('active');
+        jQuery(this).addClass('active');
+
+        if (view === 'map') {
+            jQuery('#gridViewPanel').hide();
+            jQuery('#mapViewPanel').show();
+            initMap();
+            setTimeout(function() { map.invalidateSize(); }, 100);
+        } else {
+            jQuery('#mapViewPanel').hide();
+            jQuery('#gridViewPanel').show();
+        }
+    });
+
     // Highlight marker on card hover
     jQuery(document).on('mouseenter', '.exp-card', function() {
         var expId = jQuery(this).data('exp-id');
-        if (markerMap[expId]) {
+        if (mapInitialized && markerMap[expId]) {
             markerMap[expId].openPopup();
         }
     });
 
     jQuery(document).on('mouseleave', '.exp-card', function() {
         var expId = jQuery(this).data('exp-id');
-        if (markerMap[expId]) {
+        if (mapInitialized && markerMap[expId]) {
             markerMap[expId].closePopup();
         }
     });
@@ -952,7 +1049,10 @@ jQuery(function() {
     function loadJourneyData() {
         if (!tripId) return;
         loadSelectedExperiences();
-        loadTimeline();
+        // Don't overwrite the generating loader if AI is still working
+        if (!aiGenerating) {
+            loadTimeline();
+        }
         loadPricing();
     }
 
@@ -1212,13 +1312,54 @@ jQuery(function() {
     }
 
 
-    // Insert Day between existing days
+    // Insert Day between existing days — show modal first
+    var pendingInsertAfterDay = null;
+
     jQuery(document).on('click', '.btn-insert-day', function() {
         if (!tripId) return;
-        var afterDay = jQuery(this).data('after-day');
-        ajaxPost({ add_day_to_trip: 1, trip_id: tripId, after_day_number: afterDay }, function(resp) {
-            showAlert('Day added.', 'success');
-            loadTimeline();
+        pendingInsertAfterDay = jQuery(this).data('after-day');
+        jQuery('#insertDayNote').val('');
+        jQuery('#insertDayModal').css('display', 'flex');
+        jQuery('#insertDayNote').focus();
+    });
+
+    jQuery('#insertDayCancel').on('click', function() {
+        jQuery('#insertDayModal').hide();
+        pendingInsertAfterDay = null;
+    });
+
+    jQuery('#insertDayModal').on('click', function(e) {
+        if (e.target === this) {
+            jQuery('#insertDayModal').hide();
+            pendingInsertAfterDay = null;
+        }
+    });
+
+    jQuery('#insertDayNote').on('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            jQuery('#insertDayConfirm').click();
+        }
+    });
+
+    jQuery('#insertDayConfirm').on('click', function() {
+        var note = jQuery('#insertDayNote').val().trim();
+        if (!note) {
+            jQuery('#insertDayNote').addClass('is-invalid');
+            return;
+        }
+        jQuery('#insertDayNote').removeClass('is-invalid');
+        jQuery('#insertDayModal').hide();
+
+        ajaxPost({
+            add_day_to_trip: 1,
+            trip_id: tripId,
+            after_day_number: pendingInsertAfterDay,
+            day_note: note
+        }, function(resp) {
+            showAlert('Day added — regenerating itinerary...', 'success');
+            pendingInsertAfterDay = null;
+            autoGenerateItinerary();
         });
     });
 
@@ -1411,6 +1552,22 @@ jQuery(function() {
                 updateJourneyBadge();
             }
 
+            // Handle AI auto-added experiences
+            if (resp.added_experience_ids && resp.added_experience_ids.length > 0) {
+                resp.added_experience_ids.forEach(function(id) {
+                    if (selectedExpIds.indexOf(id) === -1) selectedExpIds.push(id);
+                    // Swap + button to - button on card
+                    var btn = jQuery('.btn-add-exp[data-exp-id="' + id + '"]');
+                    if (btn.length) {
+                        btn.removeClass('btn-add-exp').addClass('btn-remove-journey-exp')
+                            .attr('title', 'Remove from Journey').html('<i class="bi bi-dash-lg"></i>');
+                    }
+                });
+                updateJourneyBadge();
+                loadSelectedExperiences();
+                autoGenerateItinerary();
+            }
+
             // Highlight AI-recommended experiences
             if (resp.recommended_experience_ids && resp.recommended_experience_ids.length > 0) {
                 highlightRecommendedExperiences(resp.recommended_experience_ids);
@@ -1435,8 +1592,18 @@ jQuery(function() {
             }
         });
         if (foundAny) {
+            // Sort cards so ai-recommended ones appear first
+            var grid = jQuery('#experienceGrid');
+            var cards = grid.children('.exp-card').detach();
+            cards.sort(function(a, b) {
+                var aRec = jQuery(a).hasClass('ai-recommended') ? 0 : 1;
+                var bRec = jQuery(b).hasClass('ai-recommended') ? 0 : 1;
+                return aRec - bRec;
+            });
+            grid.prepend(cards);
+
             jQuery('html, body').animate({
-                scrollTop: jQuery('#experienceGrid .exp-card.ai-recommended').first().offset().top - 120
+                scrollTop: grid.offset().top - 120
             }, 500);
         }
     }

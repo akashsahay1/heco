@@ -9,7 +9,8 @@ class Trip extends Model
     protected $fillable = [
         'trip_id', 'user_id', 'trip_name', 'status', 'stage', 'traveller_origin',
         'adults', 'children', 'infants', 'start_date', 'end_date',
-        'start_location', 'end_location', 'pickup_location', 'pickup_time',
+        'start_location', 'end_location', 'anchor_point', 'pickup_preference',
+        'pickup_location', 'pickup_time',
         'drop_location', 'drop_time', 'operations_notes',
         'accommodation_comfort', 'vehicle_comfort', 'guide_preference',
         'travel_pace', 'budget_sensitivity', 'other_preferences',

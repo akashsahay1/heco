@@ -34,6 +34,7 @@ use App\Models\Currency;
 use App\Models\ActivityLog;
 use App\Models\PdfTemplate;
 use App\Models\Review;
+use App\Models\SpAvailability;
 use App\Services\OllamaService;
 use App\Services\GeminiService;
 use App\Services\GroqService;
@@ -42,6 +43,7 @@ use App\Services\ItineraryService;
 use App\Services\CostCalculatorService;
 use App\Services\LeadService;
 use App\Services\ImpactCalculatorService;
+use App\Services\SpAvailabilityService;
 
 class AjaxController extends Controller
 {
@@ -98,6 +100,13 @@ class AjaxController extends Controller
             'guide_preference' => '',
             'travel_pace' => '',
             'budget_sensitivity' => '',
+            'start_location' => '',
+            'end_location' => '',
+            'start_date' => '',
+            'end_date' => '',
+            'budget_notes' => '',
+            'anchor_point' => '',
+            'pickup_preference' => '',
             'ai_itinerary' => null,
             'ai_raw_response' => null,
         ]);
@@ -633,6 +642,34 @@ class AjaxController extends Controller
                 return $this->submitSpApplication($request);
             }
 
+            // ===== SP AVAILABILITY (Portal) =====
+            if ($request->has('get_sp_calendar')) {
+                return $this->getSpCalendar($request);
+            }
+            if ($request->has('sp_block_dates')) {
+                return $this->spBlockDates($request);
+            }
+            if ($request->has('sp_unblock_dates')) {
+                return $this->spUnblockDates($request);
+            }
+            if ($request->has('sp_save_ical_url')) {
+                return $this->spSaveIcalUrl($request);
+            }
+            if ($request->has('sp_sync_ical_now')) {
+                return $this->spSyncIcalNow($request);
+            }
+
+            // ===== SP AVAILABILITY (Admin) =====
+            if ($request->has('admin_get_sp_calendar')) {
+                return $this->adminGetSpCalendar($request);
+            }
+            if ($request->has('admin_sp_block_dates')) {
+                return $this->adminSpBlockDates($request);
+            }
+            if ($request->has('admin_sp_unblock_dates')) {
+                return $this->adminSpUnblockDates($request);
+            }
+
             // ===== SETTINGS & PDF =====
             if ($request->has('get_settings')) {
                 return $this->getSettings($request);
@@ -969,13 +1006,30 @@ class AjaxController extends Controller
                 $guestChat = array_slice($guestChat, -20);
             }
             $history = $guestChat;
+            $gt = $this->guestTrip();
+            // Build region anchor points from selected experiences
+            $regionAnchors = [];
+            if (!empty($gt['experience_ids'])) {
+                $regionAnchors = Region::whereHas('experiences', fn($q) => $q->whereIn('id', $gt['experience_ids']))
+                    ->whereNotNull('anchor_points')
+                    ->get()
+                    ->mapWithKeys(fn($r) => [$r->name => $r->anchor_points])
+                    ->toArray();
+            }
             $tripContext = json_encode([
                 "trip_id" => "guest",
-                "adults" => $this->guestTrip()["adults"] ?? 2,
-                "children" => $this->guestTrip()["children"] ?? 0,
+                "adults" => $gt["adults"] ?? 2,
+                "children" => $gt["children"] ?? 0,
+                "start_location" => $gt["start_location"] ?? null,
+                "end_location" => $gt["end_location"] ?? null,
+                "start_date" => $gt["start_date"] ?? null,
+                "end_date" => $gt["end_date"] ?? null,
+                "anchor_point" => $gt["anchor_point"] ?? null,
+                "pickup_preference" => $gt["pickup_preference"] ?? null,
+                "region_anchor_points" => $regionAnchors,
                 "preferences" => session("landing_preferences", []),
             ]);
-            $userName = "Traveller";
+            $userName = $gt["traveller_name"] ?? "Traveller";
             $trip = null;
         } else {
             $trip = null;
@@ -1004,11 +1058,27 @@ class AjaxController extends Controller
                 ->get()
                 ->map(fn($m) => ["role" => $m->role, "content" => $m->content])
                 ->toArray();
+            // Build region anchor points from selected experiences
+            $regionAnchors = [];
+            $selectedExpIds = $trip->selectedExperiences()->pluck('experience_id')->toArray();
+            if (!empty($selectedExpIds)) {
+                $regionAnchors = Region::whereHas('experiences', fn($q) => $q->whereIn('id', $selectedExpIds))
+                    ->whereNotNull('anchor_points')
+                    ->get()
+                    ->mapWithKeys(fn($r) => [$r->name => $r->anchor_points])
+                    ->toArray();
+            }
             $tripContext = json_encode([
                 "trip_id" => $trip->id,
                 "adults" => $trip->adults,
                 "children" => $trip->children,
+                "start_location" => $trip->start_location,
+                "end_location" => $trip->end_location,
                 "start_date" => $trip->start_date,
+                "end_date" => $trip->end_date,
+                "anchor_point" => $trip->anchor_point,
+                "pickup_preference" => $trip->pickup_preference,
+                "region_anchor_points" => $regionAnchors,
                 "preferences" => session("landing_preferences", []),
             ]);
             $userName = $user->full_name ?? "Traveller";
@@ -1030,11 +1100,15 @@ class AjaxController extends Controller
 
         $recommendIdInstruction = "\n\nIMPORTANT: When recommending specific experiences from the catalog, include their IDs at the very end of your response in this exact format: [RECOMMEND_IDS:1,5,12] (comma-separated experience IDs). This tag is parsed by the frontend to highlight cards — do NOT include it in your visible text to the user.";
 
+        $tripDetailsInstruction = "\n\nTRIP DETAILS EXTRACTION: When the traveller tells you their name, starting city/location, travel dates, budget, anchor point choice, or pickup preference, include this tag at the END of your response (after RECOMMEND_IDS if present): [TRIP_DETAILS:{\"traveller_name\":\"Akash\",\"start_location\":\"Delhi\",\"start_date\":\"2026-03-15\",\"end_date\":\"2026-03-22\"}] — only include keys that were mentioned or changed in this message. Valid keys: traveller_name, start_location, end_location, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD), budget_notes, anchor_point, pickup_preference (private_taxi or local_transport). This tag is parsed by the system — do NOT show it in your visible text.";
+
+        $addToTripInstruction = "\n\nADD TO TRIP: When the traveller confirms they want to add experiences to their itinerary (e.g. \"add it\", \"let's go with that\", \"add those to my trip\", \"yes add them\"), include this tag: [ADD_TO_TRIP:1,5,12] with the experience IDs to add. Only do this when the user CLEARLY confirms, not when you are still suggesting. Use the experience IDs from the catalog.";
+
         $messages = [];
         if ($promptData) {
-            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $recommendIdInstruction];
+            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction];
         } else {
-            $messages[] = ["role" => "system", "content" => "You are a helpful travel assistant for HECO (Himalayan Ecotourism Collective). Help travellers plan regenerative trips. Suggest experiences, help with itinerary planning, and answer questions about destinations. Be warm, knowledgeable, and encourage sustainable travel.\n\nYou have access to the following experience catalog:\n" . $experiences->toJson() . $recommendIdInstruction];
+            $messages[] = ["role" => "system", "content" => "You are a helpful travel assistant for HECO (Himalayan Ecotourism Collective). Help travellers plan regenerative trips. Suggest experiences, help with itinerary planning, and answer questions about destinations. Be warm, knowledgeable, and encourage sustainable travel.\n\nYou have access to the following experience catalog:\n" . $experiences->toJson() . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction];
         }
 
         $messages = array_merge($messages, $history);
@@ -1053,6 +1127,73 @@ class AjaxController extends Controller
             $responseText = trim(preg_replace('/\s*\[RECOMMEND_IDS:[\d,]+\]/', '', $responseText));
         }
 
+        // Parse trip details from AI response
+        if (preg_match('/\[TRIP_DETAILS:(\{[^]]+\})\]/', $responseText, $tdMatch)) {
+            $extractedDetails = json_decode($tdMatch[1], true) ?: [];
+            $responseText = trim(preg_replace('/\s*\[TRIP_DETAILS:\{[^]]+\}\]/', '', $responseText));
+
+            // Handle traveller name separately
+            $travellerName = $extractedDetails['traveller_name'] ?? null;
+            unset($extractedDetails['traveller_name']);
+
+            $allowedKeys = ['start_location', 'end_location', 'start_date', 'end_date', 'budget_notes', 'anchor_point', 'pickup_preference'];
+            $extractedDetails = array_intersect_key($extractedDetails, array_flip($allowedKeys));
+
+            if ($isGuest) {
+                $guestData = $this->guestTrip();
+                foreach ($extractedDetails as $k => $v) {
+                    $guestData[$k] = $v;
+                }
+                if ($travellerName) {
+                    $guestData['traveller_name'] = $travellerName;
+                }
+                $this->saveGuestTrip($guestData);
+            } elseif ($trip) {
+                if (!empty($extractedDetails)) {
+                    $trip->update($extractedDetails);
+                }
+            }
+        }
+
+        // Parse ADD_TO_TRIP tag
+        $addedExperienceIds = [];
+        if (preg_match('/\[ADD_TO_TRIP:([\d,]+)\]/', $responseText, $addMatch)) {
+            $requestedIds = array_map('intval', explode(',', $addMatch[1]));
+            $responseText = trim(preg_replace('/\s*\[ADD_TO_TRIP:[\d,]+\]/', '', $responseText));
+
+            // Validate experience IDs exist
+            $validIds = Experience::where('is_active', true)->whereIn('id', $requestedIds)->pluck('id')->toArray();
+
+            if ($isGuest) {
+                $guestData = $this->guestTrip();
+                $existing = $guestData['experience_ids'] ?? [];
+                foreach ($validIds as $expId) {
+                    if (!in_array($expId, $existing)) {
+                        $existing[] = $expId;
+                        $addedExperienceIds[] = $expId;
+                    }
+                }
+                $guestData['experience_ids'] = $existing;
+                $this->saveGuestTrip($guestData);
+            } elseif ($trip) {
+                foreach ($validIds as $expId) {
+                    $alreadyAdded = TripSelectedExperience::where('trip_id', $trip->id)
+                        ->where('experience_id', $expId)->exists();
+                    if (!$alreadyAdded) {
+                        $maxSort = TripSelectedExperience::where('trip_id', $trip->id)->max('sort_order') ?? 0;
+                        TripSelectedExperience::create([
+                            'trip_id' => $trip->id,
+                            'experience_id' => $expId,
+                            'sort_order' => $maxSort + 1,
+                        ]);
+                        $addedExperienceIds[] = $expId;
+                    }
+                }
+            }
+        }
+
+        $tripUpdated = !empty($addedExperienceIds);
+
         // Save assistant response
         if ($isGuest) {
             $guestChat[] = ["role" => "assistant", "content" => $responseText];
@@ -1066,6 +1207,8 @@ class AjaxController extends Controller
                 "response" => $responseText,
                 "trip_id" => "guest",
                 "recommended_experience_ids" => $recommendedIds,
+                "added_experience_ids" => $addedExperienceIds,
+                "trip_updated" => $tripUpdated,
             ]);
         }
 
@@ -1082,6 +1225,8 @@ class AjaxController extends Controller
             "response" => $responseText,
             "trip_id" => $trip->id,
             "recommended_experience_ids" => $recommendedIds,
+            "added_experience_ids" => $addedExperienceIds,
+            "trip_updated" => $tripUpdated,
         ]);
     }
 
@@ -1345,6 +1490,7 @@ class AjaxController extends Controller
     protected function addDayToTrip(Request $request): JsonResponse
     {
         $afterDayNumber = $request->input('after_day_number');
+        $dayNote = $request->input('day_note');
 
         if (!Auth::check()) {
             $gt = $this->guestTrip();
@@ -1356,7 +1502,7 @@ class AjaxController extends Controller
                 $insertAt = (int) $afterDayNumber; // 0-indexed insert position
                 array_splice($itinerary['days'], $insertAt, 0, [[
                     'title' => 'Day ' . ($insertAt + 1),
-                    'description' => null,
+                    'description' => $dayNote,
                     'experiences' => [],
                 ]]);
                 // Renumber all days
@@ -1367,7 +1513,7 @@ class AjaxController extends Controller
             } else {
                 $itinerary['days'][] = [
                     'title' => 'Day ' . ($dayCount + 1),
-                    'description' => null,
+                    'description' => $dayNote,
                     'experiences' => [],
                 ];
             }
@@ -1395,6 +1541,7 @@ class AjaxController extends Controller
                 "trip_id" => $trip->id,
                 "day_number" => $afterDayNumber + 1,
                 "sort_order" => $afterDayNumber,
+                "description" => $dayNote,
             ]);
         } else {
             $maxDay = $trip->tripDays()->max("day_number") ?? 0;
@@ -1661,6 +1808,23 @@ class AjaxController extends Controller
         $regions = collect($experiences)->pluck("region")->unique()->implode(", ");
         $children = $isGuest ? ($gt['children'] ?? 0) : ($trip->children ?? 0);
 
+        // Gather trip details (start/end location, dates, anchor point)
+        if ($isGuest) {
+            $startLocation = $gt['start_location'] ?? '';
+            $endLocation = $gt['end_location'] ?? '';
+            $startDate = $gt['start_date'] ?? '';
+            $endDate = $gt['end_date'] ?? '';
+            $anchorPoint = $gt['anchor_point'] ?? '';
+            $pickupPref = $gt['pickup_preference'] ?? '';
+        } else {
+            $startLocation = $trip->start_location ?? '';
+            $endLocation = $trip->end_location ?? '';
+            $startDate = $trip->start_date ?? '';
+            $endDate = $trip->end_date ?? '';
+            $anchorPoint = $trip->anchor_point ?? '';
+            $pickupPref = $trip->pickup_preference ?? '';
+        }
+
         // Build prompt
         $promptBuilder = app(PromptBuilderService::class);
         $promptData = $promptBuilder->build("itinerary_generation", [
@@ -1670,6 +1834,12 @@ class AjaxController extends Controller
             "children" => $children,
             "preferences" => $preferences,
             "regions" => $regions,
+            "start_location" => $startLocation ?: 'Not specified',
+            "end_location" => $endLocation ?: ($startLocation ?: 'Not specified'),
+            "start_date" => $startDate ?: 'Not specified',
+            "end_date" => $endDate ?: 'Not specified',
+            "anchor_point" => $anchorPoint ?: 'Not specified',
+            "pickup_preference" => $pickupPref ?: 'Not specified',
         ]);
 
         $messages = [];
@@ -1677,8 +1847,11 @@ class AjaxController extends Controller
             $messages[] = ["role" => "system", "content" => $promptData["system_prompt"]];
             $messages[] = ["role" => "user", "content" => $promptData["user_prompt"]];
         } else {
+            $fallbackContext = "Create a " . $duration . "-day itinerary for " . $adults . " adults using: " . json_encode($experiences);
+            if ($startLocation) $fallbackContext .= "\nStarting from: " . $startLocation;
+            if ($startDate) $fallbackContext .= "\nDates: " . $startDate . " to " . ($endDate ?: 'flexible');
             $messages[] = ["role" => "system", "content" => "You are an itinerary planner. Output JSON only: {\"days\": [{\"title\": \"...\", \"experiences\": [{\"experience_id\": N, \"name\": \"...\", \"start_time\": \"09:00\", \"end_time\": \"17:00\", \"notes\": \"...\"}], \"notes\": \"...\"}]}"];
-            $messages[] = ["role" => "user", "content" => "Create a " . $duration . "-day itinerary for " . $adults . " adults using: " . json_encode($experiences)];
+            $messages[] = ["role" => "user", "content" => $fallbackContext];
         }
 
         $aiResponse = $this->callAi($messages, [
@@ -2735,8 +2908,39 @@ class AjaxController extends Controller
 
     protected function changeDayServiceProvider(Request $request): JsonResponse
     {
-        $service = TripDayService::findOrFail($request->service_id);
-        $service->update(["service_provider_id" => $request->service_provider_id]);
+        $service = TripDayService::with('tripDay.trip')->findOrFail($request->service_id);
+        $newSpId = $request->service_provider_id;
+        $date = $service->tripDay->date;
+        $trip = $service->tripDay->trip;
+
+        $availabilityService = new SpAvailabilityService();
+
+        // Release old booking if the service had an SP
+        if ($service->service_provider_id) {
+            $availabilityService->releaseBooking($service->id);
+        }
+
+        // Check availability and book new SP
+        if ($newSpId && $date) {
+            if (!$availabilityService->isAvailableOnDate($newSpId, $date)) {
+                return response()->json(['error' => 'This service provider is not available on ' . $date->format('d M Y')], 422);
+            }
+            $availabilityService->bookForTrip($newSpId, $trip->id, $service->id, $date);
+        }
+
+        // Update pricing from SpPricing if available
+        $updateData = ['service_provider_id' => $newSpId];
+        if ($newSpId) {
+            $pricing = SpPricing::where('service_provider_id', $newSpId)
+                ->where('service_type', $service->service_type)
+                ->where('is_active', true)
+                ->first();
+            if ($pricing) {
+                $updateData['cost'] = $pricing->price;
+            }
+        }
+
+        $service->update($updateData);
         return response()->json(["success" => true]);
     }
 
@@ -2847,5 +3051,160 @@ class AjaxController extends Controller
             $template = PdfTemplate::create($data);
         }
         return response()->json(["success" => true, "template" => $template]);
+    }
+
+    // ===========================
+    // SP AVAILABILITY (Portal - logged-in SP)
+    // ===========================
+
+    protected function getSpCalendar(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isServiceProvider()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $sp = ServiceProvider::where('user_id', $user->id)->first();
+        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+
+        $year = (int) ($request->year ?: now()->year);
+        $month = (int) ($request->month ?: now()->month);
+
+        $service = new SpAvailabilityService();
+        $calendar = $service->getMonthCalendar($sp->id, $year, $month);
+
+        return response()->json([
+            'calendar' => $calendar,
+            'ical_url' => $sp->ical_url,
+            'ical_last_synced_at' => $sp->ical_last_synced_at?->format('d M Y H:i'),
+        ]);
+    }
+
+    protected function spBlockDates(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isServiceProvider()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $sp = ServiceProvider::where('user_id', $user->id)->first();
+        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+
+        $dates = $request->input('dates', []);
+        if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
+
+        $service = new SpAvailabilityService();
+        $count = $service->blockDates($sp->id, $dates, $request->notes);
+
+        return response()->json(['success' => true, 'blocked' => $count]);
+    }
+
+    protected function spUnblockDates(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isServiceProvider()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $sp = ServiceProvider::where('user_id', $user->id)->first();
+        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+
+        $dates = $request->input('dates', []);
+        if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
+
+        $service = new SpAvailabilityService();
+        $count = $service->unblockDates($sp->id, $dates);
+
+        return response()->json(['success' => true, 'unblocked' => $count]);
+    }
+
+    protected function spSaveIcalUrl(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isServiceProvider()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $sp = ServiceProvider::where('user_id', $user->id)->first();
+        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+
+        $sp->update(['ical_url' => $request->ical_url ?: null]);
+
+        return response()->json(['success' => true]);
+    }
+
+    protected function spSyncIcalNow(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isServiceProvider()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $sp = ServiceProvider::where('user_id', $user->id)->first();
+        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+        if (!$sp->ical_url) return response()->json(['error' => 'No iCal URL configured'], 422);
+
+        try {
+            $syncService = new \App\Services\IcalSyncService();
+            $result = $syncService->syncProvider($sp);
+            return response()->json(['success' => true, 'synced' => $result]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Sync failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    // ===========================
+    // SP AVAILABILITY (Admin)
+    // ===========================
+
+    protected function adminGetSpCalendar(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isHct()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $sp = ServiceProvider::findOrFail($request->service_provider_id);
+        $year = (int) ($request->year ?: now()->year);
+        $month = (int) ($request->month ?: now()->month);
+
+        $service = new SpAvailabilityService();
+        $calendar = $service->getMonthCalendar($sp->id, $year, $month);
+
+        return response()->json([
+            'calendar' => $calendar,
+            'provider_name' => $sp->name,
+            'ical_url' => $sp->ical_url,
+            'ical_last_synced_at' => $sp->ical_last_synced_at?->format('d M Y H:i'),
+        ]);
+    }
+
+    protected function adminSpBlockDates(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isHct()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $sp = ServiceProvider::findOrFail($request->service_provider_id);
+        $dates = $request->input('dates', []);
+        if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
+
+        $service = new SpAvailabilityService();
+        $count = $service->blockDates($sp->id, $dates, $request->notes);
+
+        return response()->json(['success' => true, 'blocked' => $count]);
+    }
+
+    protected function adminSpUnblockDates(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isHct()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $sp = ServiceProvider::findOrFail($request->service_provider_id);
+        $dates = $request->input('dates', []);
+        if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
+
+        $service = new SpAvailabilityService();
+        $count = $service->unblockDates($sp->id, $dates);
+
+        return response()->json(['success' => true, 'unblocked' => $count]);
     }
 }
