@@ -54,8 +54,8 @@
                             <label class="form-label">Type <span class="text-danger">*</span></label>
                             <select class="form-select" name="type" required>
                                 <option value="">Select Type</option>
-                                @foreach(['trek','cultural','wildlife','adventure','wellness','culinary','homestay','volunteering'] as $t)
-                                    <option value="{{ $t }}" {{ $e && $e->type === $t ? 'selected' : '' }}>{{ ucfirst($t) }}</option>
+                                @foreach(['Trek','Cultural Immersion','Wildlife','Adventure','Nature','Wellness','Culinary','Homestay','Volunteering'] as $t)
+                                    <option value="{{ $t }}" {{ $e && strcasecmp($e->type, $t) === 0 ? 'selected' : '' }}>{{ $t }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -574,7 +574,7 @@
                             <label class="form-label">Card Image</label>
                             @if($e && $e->card_image)
                                 <div class="mb-2">
-                                    <img src="{{ $e->card_image }}" class="rounded" style="max-height: 120px;" alt="Card image" id="currentCardImage">
+                                    <img src="{{ asset('storage/' . $e->card_image) }}" class="rounded" style="max-height: 120px;" alt="Card image" id="currentCardImage">
                                 </div>
                             @endif
                             <input type="file" class="form-control" name="card_image" accept="image/*" id="cardImageInput">
@@ -704,12 +704,7 @@ jQuery('#cardImageInput').on('change', function() {
 jQuery('#experienceForm').on('submit', function(ev) {
     ev.preventDefault();
 
-    // Expand all collapsed accordion sections before validation
-    jQuery('#experienceAccordion .accordion-collapse:not(.show)').each(function() {
-        new bootstrap.Collapse(this, { toggle: true });
-    });
-
-    // Check required fields
+    // Check required fields (no need to expand accordions first)
     var firstInvalid = null;
     jQuery(this).find('[required]').each(function() {
         if (!jQuery(this).val()) {
@@ -720,6 +715,11 @@ jQuery('#experienceForm').on('submit', function(ev) {
         }
     });
     if (firstInvalid) {
+        // Expand the accordion section containing the invalid field
+        var accordionBody = firstInvalid.closest('.accordion-collapse');
+        if (accordionBody.length && !accordionBody.hasClass('show')) {
+            new bootstrap.Collapse(accordionBody[0], { toggle: true });
+        }
         setTimeout(function() {
             firstInvalid.focus();
             firstInvalid[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -748,7 +748,7 @@ jQuery('#experienceForm').on('submit', function(ev) {
     btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
 
     jQuery.ajax({
-        url: '/ajax',
+        url: '{{ route("admin.ajax") }}',
         method: 'POST',
         data: formData,
         processData: false,
@@ -761,15 +761,17 @@ jQuery('#experienceForm').on('submit', function(ev) {
         },
         error: function(xhr) {
             btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Save Experience');
-            var msg = 'Failed to save experience';
+            var msg = 'Failed to save experience (HTTP ' + xhr.status + ')';
             if (xhr.responseJSON) {
                 if (xhr.responseJSON.error) {
                     msg = xhr.responseJSON.error;
+                } else if (xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
                 } else if (xhr.responseJSON.errors) {
                     var errors = xhr.responseJSON.errors;
                     var errorList = [];
                     for (var field in errors) {
-                        errorList.push(errors[field].join(', '));
+                        errorList.push(field + ': ' + errors[field].join(', '));
                     }
                     msg = errorList.join('<br>');
                 }

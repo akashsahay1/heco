@@ -298,7 +298,7 @@
                     <div class="mb-3">
                         <strong class="small text-muted">Best Seasons</strong><br>
                         @foreach($experience->best_seasons as $season)
-                            <span class="badge season-badge bg-success bg-opacity-25 text-success">{{ ucfirst($season) }}</span>
+                            <span class="badge season-badge bg-success text-white">{{ ucfirst($season) }}</span>
                         @endforeach
                     </div>
                 @endif
@@ -426,9 +426,12 @@
                 <hr class="my-4">
 
                 {{-- Submit review form --}}
+                <div id="reviewNotEligible" class="alert d-none" style="background-color: var(--heco-primary-600); color: #fff;">
+                    <i class="bi bi-info-circle"></i> You can write a review after completing a trip that includes this experience.
+                </div>
                 @auth
-                    <h6>Write a Review</h6>
-                    <div id="reviewFormWrapper">
+                    <div id="reviewFormWrapper" class="d-none">
+                        <h6>Write a Review</h6>
                         <div class="mb-3">
                             <label class="form-label small text-muted">Your Rating</label>
                             <div class="star-picker" id="starPicker">
@@ -451,8 +454,8 @@
                             <i class="bi bi-send"></i> Submit Review
                         </button>
                     </div>
-                    <div id="reviewAlreadySubmitted" class="alert alert-info d-none">
-                        <i class="bi bi-check-circle"></i> You have already reviewed this experience.
+                    <div id="reviewEligibilityLoading" class="text-center py-2">
+                        <span class="spinner-border spinner-border-sm text-muted"></span>
                     </div>
                 @else
                     <div class="text-center py-3">
@@ -651,7 +654,6 @@ jQuery(function() {
             window.location.href = '/home?auth=login';
         }
     });
-});
 
     // ===== Reviews =====
     var reviewPage = 1;
@@ -709,6 +711,24 @@ jQuery(function() {
         loadReviews(reviewPage);
     });
 
+    // Check review eligibility
+    var isLoggedIn = {!! json_encode(Auth::check()) !!};
+    if (isLoggedIn) {
+        ajaxPost({ check_review_eligibility: 1, experience_id: experienceId }, function(resp) {
+            jQuery('#reviewEligibilityLoading').remove();
+            if (resp.eligible) {
+                jQuery('#reviewFormWrapper').removeClass('d-none');
+            } else {
+                jQuery('#reviewNotEligible').removeClass('d-none');
+            }
+        }, function() {
+            jQuery('#reviewEligibilityLoading').remove();
+            jQuery('#reviewNotEligible').removeClass('d-none');
+        });
+    } else {
+        jQuery('#reviewNotEligible').removeClass('d-none');
+    }
+
     // Star picker
     jQuery('#starPicker .star-btn').on('click', function() {
         var val = jQuery(this).data('value');
@@ -748,8 +768,12 @@ jQuery(function() {
             if (resp.review) {
                 jQuery('#reviewsList').prepend(renderReview(resp.review));
                 jQuery('#reviewsEmpty').addClass('d-none');
-                jQuery('#reviewFormWrapper').addClass('d-none');
-                jQuery('#reviewAlreadySubmitted').removeClass('d-none');
+                // Reset form for another review
+                jQuery('#reviewRating').val(0);
+                jQuery('#reviewTitle').val('');
+                jQuery('#reviewBody').val('');
+                jQuery('#reviewCharCount').text('0');
+                jQuery('#starPicker .star-btn').removeClass('active').find('i').attr('class', 'bi bi-star');
                 // Update summary
                 jQuery('#avgRatingDisplay').text(resp.avg_rating);
                 jQuery('#avgStarsDisplay').html(renderStars(Math.round(resp.avg_rating)));
@@ -759,10 +783,6 @@ jQuery(function() {
         }, function(xhr) {
             btn.prop('disabled', false).html('<i class="bi bi-send"></i> Submit Review');
             var msg = xhr.responseJSON ? xhr.responseJSON.error : 'Failed to submit review.';
-            if (msg.indexOf('already') !== -1) {
-                jQuery('#reviewFormWrapper').addClass('d-none');
-                jQuery('#reviewAlreadySubmitted').removeClass('d-none');
-            }
             showAlert(msg, 'danger');
         });
     });

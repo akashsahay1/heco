@@ -1411,6 +1411,7 @@ jQuery(function() {
             travel_pace: jQuery('#prefPace').val(),
             budget_sensitivity: jQuery('#prefBudget').val()
         }, function() {
+            loadTimeline();
             loadPricing();
         });
     });

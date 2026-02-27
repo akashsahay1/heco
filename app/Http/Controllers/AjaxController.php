@@ -127,9 +127,11 @@ class AjaxController extends Controller
     {
         $adults = $guestData['adults'] ?? 2;
         $activityCost = 0;
+        $numDays = 0;
 
         $itinerary = $guestData['ai_itinerary'] ?? null;
         if ($itinerary && isset($itinerary['days'])) {
+            $numDays = count($itinerary['days']);
             $expIds = [];
             foreach ($itinerary['days'] as $day) {
                 foreach ($day['experiences'] ?? [] as $exp) {
@@ -150,7 +152,41 @@ class AjaxController extends Controller
             }
         }
 
-        $totalCost = $activityCost;
+        // Estimate transport, accommodation, guide using base rates and preference multipliers
+        $baseTransport = (float) Setting::getValue('base_transport_per_day', 3500);
+        $baseAccommodation = (float) Setting::getValue('base_accommodation_per_night', 2500);
+        $baseGuide = (float) Setting::getValue('base_guide_per_day', 2000);
+
+        $accomMultiplier = match ($guestData['accommodation_comfort'] ?? '') {
+            'Cat E - Camping/Tents' => 0.5,
+            'Cat D - Basic/Homestay' => 0.7,
+            'Cat C - Standard' => 1.0,
+            'Cat B - Comfort' => 1.5,
+            'Cat A - Premium/Luxury' => 2.5,
+            default => 1.0,
+        };
+        $vehicleMultiplier = match ($guestData['vehicle_comfort'] ?? '') {
+            'Local Transport' => 0.5,
+            'SUV (Bolero/Scorpio)' => 0.8,
+            'SUV (Innova/Crysta)' => 1.0,
+            'Premium (Fortuner/Similar)' => 1.5,
+            'Tempo Traveller' => 1.3,
+            default => 1.0,
+        };
+        $guideMultiplier = match ($guestData['guide_preference'] ?? '') {
+            'No Guide' => 0.0,
+            'Local Guide' => 0.7,
+            'English-speaking' => 1.0,
+            'Certified/Expert' => 1.5,
+            default => 1.0,
+        };
+
+        $numNights = max($numDays - 1, 0);
+        $transportCost = round($baseTransport * $numDays * $vehicleMultiplier);
+        $accommodationCost = round($baseAccommodation * $numNights * $adults * $accomMultiplier);
+        $guideCost = round($baseGuide * $numDays * $guideMultiplier);
+
+        $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost;
         $rpPercent = (float) Setting::getValue('default_rp_margin_percent', 5);
         $hrpPercent = (float) Setting::getValue('default_hrp_margin_percent', 10);
         $hctPercent = (float) Setting::getValue('default_hct_commission_percent', 15);
@@ -165,9 +201,9 @@ class AjaxController extends Controller
         $finalPrice = $subtotal + $gstAmount;
 
         return [
-            'transport_cost' => 0,
-            'accommodation_cost' => 0,
-            'guide_cost' => 0,
+            'transport_cost' => $transportCost,
+            'accommodation_cost' => $accommodationCost,
+            'guide_cost' => $guideCost,
             'activity_cost' => $activityCost,
             'other_cost' => 0,
             'total_cost' => $totalCost,
@@ -352,6 +388,9 @@ class AjaxController extends Controller
             }
             if ($request->has('get_reviews')) {
                 return $this->getReviews($request);
+            }
+            if ($request->has('check_review_eligibility')) {
+                return $this->checkReviewEligibility($request);
             }
             if ($request->has('submit_review')) {
                 return $this->submitReview($request);
@@ -910,6 +949,25 @@ class AjaxController extends Controller
         return response()->json(["experience" => $experience]);
     }
 
+    protected function checkReviewEligibility(Request $request): JsonResponse
+    {
+        if (!Auth::check()) {
+            return response()->json(['eligible' => false]);
+        }
+
+        $expId = $request->experience_id;
+        $hasCompleted = Trip::where('user_id', Auth::id())
+            ->where('status', 'completed')
+            ->whereHas('tripDays.experiences', function ($q) use ($expId) {
+                $q->where('experience_id', $expId);
+            })
+            ->exists();
+
+        return response()->json([
+            'eligible' => $hasCompleted,
+        ]);
+    }
+
     protected function getReviews(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -948,11 +1006,15 @@ class AjaxController extends Controller
             return response()->json(['error' => $validator->errors()->first()], 422);
         }
 
-        $existing = Review::where('user_id', Auth::id())
-            ->where('experience_id', $request->experience_id)
-            ->first();
-        if ($existing) {
-            return response()->json(['error' => 'You have already reviewed this experience.'], 422);
+        // Only travellers who completed a trip with this experience can review
+        $hasCompleted = Trip::where('user_id', Auth::id())
+            ->where('status', 'completed')
+            ->whereHas('tripDays.experiences', function ($q) use ($request) {
+                $q->where('experience_id', $request->experience_id);
+            })
+            ->exists();
+        if (!$hasCompleted) {
+            return response()->json(['error' => 'You can only review experiences from your completed trips.'], 422);
         }
 
         $review = Review::create([
@@ -1098,6 +1160,8 @@ class AjaxController extends Controller
             "trip_context" => $tripContext,
         ]);
 
+        $formattingInstruction = "\n\nFORMATTING: Use **bold** (double asterisks) to highlight important words and key information in your responses — such as experience names, destinations, dates, prices, durations, and key action items. This helps travellers quickly scan your message. Keep it natural, don't over-bold.";
+
         $recommendIdInstruction = "\n\nIMPORTANT: When recommending specific experiences from the catalog, include their IDs at the very end of your response in this exact format: [RECOMMEND_IDS:1,5,12] (comma-separated experience IDs). This tag is parsed by the frontend to highlight cards — do NOT include it in your visible text to the user.";
 
         $tripDetailsInstruction = "\n\nTRIP DETAILS EXTRACTION: When the traveller tells you their name, starting city/location, travel dates, budget, anchor point choice, or pickup preference, include this tag at the END of your response (after RECOMMEND_IDS if present): [TRIP_DETAILS:{\"traveller_name\":\"Akash\",\"start_location\":\"Delhi\",\"start_date\":\"2026-03-15\",\"end_date\":\"2026-03-22\"}] — only include keys that were mentioned or changed in this message. Valid keys: traveller_name, start_location, end_location, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD), budget_notes, anchor_point, pickup_preference (private_taxi or local_transport). This tag is parsed by the system — do NOT show it in your visible text.";
@@ -1106,9 +1170,9 @@ class AjaxController extends Controller
 
         $messages = [];
         if ($promptData) {
-            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction];
+            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction];
         } else {
-            $messages[] = ["role" => "system", "content" => "You are a helpful travel assistant for HECO (Himalayan Ecotourism Collective). Help travellers plan regenerative trips. Suggest experiences, help with itinerary planning, and answer questions about destinations. Be warm, knowledgeable, and encourage sustainable travel.\n\nYou have access to the following experience catalog:\n" . $experiences->toJson() . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction];
+            $messages[] = ["role" => "system", "content" => "You are a helpful travel assistant for HECO (Himalayan Ecotourism Collective). Help travellers plan regenerative trips. Suggest experiences, help with itinerary planning, and answer questions about destinations. Be warm, knowledgeable, and encourage sustainable travel.\n\nYou have access to the following experience catalog:\n" . $experiences->toJson() . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction];
         }
 
         $messages = array_merge($messages, $history);
@@ -2613,6 +2677,8 @@ class AjaxController extends Controller
 
         if ($request->hasFile("card_image")) {
             $data["card_image"] = $request->file("card_image")->store("experiences", "public");
+        } else {
+            unset($data["card_image"]);
         }
 
         // Handle JSON fields
@@ -2657,6 +2723,8 @@ class AjaxController extends Controller
 
         if ($request->hasFile("main_image")) {
             $data["main_image"] = $request->file("main_image")->store("rp", "public");
+        } else {
+            unset($data["main_image"]);
         }
 
         foreach (["gallery", "active_periods", "paused_periods", "fallback_for_regions"] as $jsonField) {
