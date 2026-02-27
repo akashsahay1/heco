@@ -59,7 +59,11 @@
       "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\herd.bat\" --help)",
       "Bash(herd list:*)",
       "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\herd.bat\" list)",
-      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\herd.bat\" restart)"
+      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\herd.bat\" restart)",
+      "Bash(cd D:/heco && \"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" artisan db:seed --class=TestDataSeeder --force 2>&1)",
+      "Bash(cd:*)",
+      "Bash(cd /d/heco && \"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" artisan db:seed --class=RegionSeeder --force 2>&1)",
+      "Bash(cd /d/heco && \"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" artisan db:seed --class=AiPromptSeeder --force 2>&1)"
     ]
   }
 }

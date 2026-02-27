@@ -38,7 +38,7 @@
 
             <!-- Header Actions -->
             <div class="header-actions">
-                <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-2 py-1 d-flex align-items-center gap-1" id="btnCurrencySelector" title="Change currency" style="font-size: 0.8rem;">
+                <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1 d-flex align-items-center gap-1" id="btnCurrencySelector" title="Change currency" style="font-size: 0.8rem;">
                     <img src="/images/flags/in.png" alt="" id="currentCurrencyFlag" style="width: 20px; height: 14px; object-fit: cover; border-radius: 2px;">
                     <span id="currentCurrencyLabel">INR</span>
                 </button>
@@ -603,7 +603,7 @@
                 var isActive = (code === currentCurrency) ? ' currency-pick-active' : '';
                 var check = (code === currentCurrency) ? '<i class="bi bi-check-circle-fill text-success" style="font-size: 14px;"></i>' : '';
                 var flagImg = c.flag ? '<img src="/images/flags/' + c.flag + '.png" alt="" class="currency-flag">' : '';
-                return '<div class="col-6 col-md-4">'
+                return '<div class="col-6 col-md-3">'
                     + '<button class="currency-pick-item' + isActive + '" data-currency="' + code + '">'
                     + '<div class="d-flex align-items-center gap-2">'
                     + flagImg
@@ -630,6 +630,8 @@
 
                 var allHtml = '';
                 var codes = Object.keys(currencies).sort(function(a, b) {
+                    if (a === 'INR') return -1;
+                    if (b === 'INR') return 1;
                     return currencies[a].name.localeCompare(currencies[b].name);
                 });
                 for (var j = 0; j < codes.length; j++) {
