@@ -82,6 +82,7 @@
                         <th>Region</th>
                         <th>HLH Provider</th>
                         <th>Duration</th>
+                        <th>Inclusions</th>
                         <th>Difficulty</th>
                         <th>Cost/Person</th>
                         <th>Status</th>
@@ -89,7 +90,7 @@
                     </tr>
                 </thead>
                 <tbody id="experiencesTable">
-                    <tr><td colspan="10" class="text-center text-muted">Loading...</td></tr>
+                    <tr><td colspan="11" class="text-center text-muted">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -150,7 +151,7 @@ function loadExperiences(page) {
         var html = '';
         var items = resp.data || [];
         if (!items.length) {
-            html = '<tr><td colspan="10" class="text-center text-muted">No experiences found</td></tr>';
+            html = '<tr><td colspan="11" class="text-center text-muted">No experiences found</td></tr>';
         }
         items.forEach(function(e) {
             var imgSrc = e.card_image ? e.card_image : '/images/placeholder.png';
@@ -161,6 +162,27 @@ function loadExperiences(page) {
             html += '<td>' + (e.region ? e.region.name : '-') + '</td>';
             html += '<td>' + (e.hlh ? e.hlh.name : '-') + '</td>';
             html += '<td><small>' + formatDuration(e) + '</small></td>';
+
+            // Inclusions column - from day-wise details
+            var incHtml = '';
+            var incIconMap = { breakfast: 'bi-cup-hot', lunch: 'bi-egg-fried', dinner: 'bi-moon-stars', snacks: 'bi-basket', accommodation: 'bi-house', guide: 'bi-person-badge', transport: 'bi-truck' };
+            var allInc = [];
+            if (e.days && e.days.length) {
+                e.days.forEach(function(d) {
+                    if (d.inclusions && d.inclusions.length) {
+                        d.inclusions.forEach(function(inc) {
+                            if (allInc.indexOf(inc) === -1) allInc.push(inc);
+                        });
+                    }
+                });
+            }
+            if (allInc.length) {
+                allInc.forEach(function(inc) {
+                    var icon = incIconMap[inc] || 'bi-check';
+                    incHtml += '<span title="' + inc.charAt(0).toUpperCase() + inc.slice(1) + '" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin:1px;border-radius:5px;font-size:0.85rem;color:#16a34a;"><i class="bi ' + icon + '"></i></span>';
+                });
+            }
+            html += '<td><div style="display:flex;flex-wrap:wrap;gap:2px;">' + (incHtml || '<small class="text-muted">-</small>') + '</div></td>';
             html += '<td>' + difficultyBadge(e.difficulty_level) + '</td>';
             html += '<td>' + (e.base_cost_per_person ? '<i class="bi bi-currency-rupee"></i>' + Number(e.base_cost_per_person).toLocaleString() : '-') + '</td>';
             html += '<td>';

@@ -157,6 +157,15 @@
                             <label class="form-label">End Time</label>
                             <input type="time" class="form-control" name="end_time" value="{{ $e->end_time ?? '' }}">
                         </div>
+                        {{-- Day-wise details --}}
+                        <div class="col-12" id="dayWiseBlock">
+                            <hr class="my-2">
+                            <label class="form-label"><i class="bi bi-calendar3"></i> Day-wise Details</label>
+                            <div id="experienceDaysContainer"></div>
+                            <button type="button" class="btn btn-outline-success btn-sm mt-1" id="btnAddDay" style="display:none;">
+                                <i class="bi bi-plus-lg"></i> Add Day
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -626,6 +635,11 @@
 
 @section('js')
 <script>
+// Pre-loaded experience days data for edit mode
+var existingDays = @json($e && $e->days ? $e->days : []);
+var inclusionOptions = ['breakfast', 'lunch', 'dinner', 'snacks', 'accommodation', 'guide', 'transport'];
+var dayCounter = 0;
+
 jQuery(function() {
     toggleDurationFields();
     toggleAccommodationCategory();
@@ -635,6 +649,17 @@ jQuery(function() {
         var selected = jQuery(this).find(':selected');
         var symbol = selected.data('symbol') || '₹';
         jQuery('#sectionCosting .cost-symbol').text(symbol);
+    });
+
+    // Add day button (multi-day only)
+    jQuery('#btnAddDay').on('click', function() {
+        addDayCard(null, true);
+    });
+
+    // Remove day (delegated)
+    jQuery('#experienceDaysContainer').on('click', '.btn-remove-day', function() {
+        jQuery(this).closest('.day-card-item').remove();
+        reindexDayCards();
     });
 });
 
@@ -671,6 +696,89 @@ function toggleDurationFields() {
         jQuery('#durationHoursGroup').hide();
         jQuery('.multi-day-field').hide();
     }
+
+    // Day-wise: show for all types; repeater add/remove only for multi_day
+    var isMulti = durationType === 'multi_day';
+    jQuery('#btnAddDay').toggle(isMulti);
+
+    // Rebuild day cards when type changes
+    var container = jQuery('#experienceDaysContainer');
+    container.empty();
+    dayCounter = 0;
+
+    if (isMulti) {
+        // Multi-day: load existing or show 1 default card
+        if (existingDays.length > 0) {
+            existingDays.forEach(function(d) { addDayCard(d, true); });
+        } else {
+            addDayCard(null, true);
+        }
+    } else {
+        // Single/less-than-day: exactly 1 card, no remove
+        var existing = existingDays.length > 0 ? existingDays[0] : null;
+        addDayCard(existing, false);
+    }
+}
+
+function addDayCard(data, removable) {
+    var i = dayCounter++;
+    var container = jQuery('#experienceDaysContainer');
+    var dayNum = container.children().length + 1;
+    var title = data ? (data.title || '') : '';
+    var desc = data ? (data.short_description || '') : '';
+    var inclusions = data && data.inclusions ? data.inclusions : [];
+
+    var card = '<div class="card mb-2 day-card-item" style="border-left: 3px solid var(--admin-primary); background: #f0fdf4;">';
+    card += '<div class="card-header py-2 d-flex align-items-center gap-2" style="background: rgba(255,255,255,0.6); border-bottom: 1px solid var(--admin-border);">';
+    card += '<span class="badge day-number-badge" style="background: var(--admin-primary);">Day ' + dayNum + '</span>';
+    card += '<input type="hidden" class="day-number-input" name="experience_days[' + i + '][day_number]" value="' + dayNum + '">';
+    card += '<input type="text" class="form-control form-control-sm flex-grow-1" name="experience_days[' + i + '][title]" value="' + escAttr(title) + '" placeholder="Title (e.g. Acclimatization Day)">';
+    if (removable) {
+        card += '<button type="button" class="btn btn-outline-danger btn-sm btn-remove-day" title="Remove"><i class="bi bi-x-lg"></i></button>';
+    }
+    card += '</div>';
+    card += '<div class="card-body py-2">';
+    card += '<div class="row g-2">';
+
+    // Short description
+    card += '<div class="col-12">';
+    card += '<textarea class="form-control form-control-sm" name="experience_days[' + i + '][short_description]" rows="2" placeholder="What happens on this day..." style="background:rgba(255,255,255,0.7);">' + escHtml(desc) + '</textarea>';
+    card += '</div>';
+
+    // Inclusion checkboxes
+    card += '<div class="col-12">';
+    card += '<label class="form-label small mb-1 fw-semibold">Inclusions</label>';
+    card += '<div class="d-flex flex-wrap gap-2">';
+    inclusionOptions.forEach(function(opt) {
+        var checked = inclusions.indexOf(opt) !== -1 ? ' checked' : '';
+        var iconMap = { breakfast: 'bi-cup-hot', lunch: 'bi-egg-fried', dinner: 'bi-moon-stars', snacks: 'bi-basket', accommodation: 'bi-house', guide: 'bi-person-badge', transport: 'bi-truck' };
+        var icon = iconMap[opt] || 'bi-check';
+        card += '<div class="form-check form-check-inline mb-0">';
+        card += '<input class="form-check-input" type="checkbox" name="experience_days[' + i + '][inclusions][]" value="' + opt + '" id="dayInc_' + i + '_' + opt + '"' + checked + '>';
+        card += '<label class="form-check-label small" for="dayInc_' + i + '_' + opt + '"><i class="bi ' + icon + '"></i> ' + opt.charAt(0).toUpperCase() + opt.slice(1) + '</label>';
+        card += '</div>';
+    });
+    card += '</div>';
+    card += '</div>';
+
+    card += '</div></div></div>';
+    container.append(card);
+}
+
+function reindexDayCards() {
+    jQuery('#experienceDaysContainer .day-card-item').each(function(idx) {
+        var dayNum = idx + 1;
+        jQuery(this).find('.day-number-badge').text('Day ' + dayNum);
+        jQuery(this).find('.day-number-input').val(dayNum);
+    });
+}
+
+function escAttr(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // Accommodation category toggle

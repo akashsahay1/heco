@@ -1163,25 +1163,32 @@ jQuery(function() {
                 html += '</button>';
                 html += '</div>';
             }
+            // Get day-wise title from first experience's matching day
+            var dayTitle = '';
+            if (day.experiences && day.experiences.length) {
+                var firstExp = day.experiences[0].experience;
+                if (firstExp && firstExp.days && firstExp.days.length) {
+                    var matchedDay = firstExp.days.length === 1 ? firstExp.days[0] : firstExp.days.find(function(d) { return d.day_number === day.day_number; }) || firstExp.days[0];
+                    if (matchedDay && matchedDay.title) dayTitle = matchedDay.title;
+                }
+            }
+
             html += '<div class="timeline-day" data-day-id="' + day.id + '">';
             html += '<div class="timeline-day-header">';
             html += '<div class="timeline-day-info">';
             html += '<span class="timeline-day-number">Day ' + day.day_number + '</span>';
             if (day.date) html += '<span class="timeline-day-date">' + day.date + '</span>';
-            if (day.title) html += '<span class="timeline-day-title">' + day.title + '</span>';
+            if (dayTitle) html += '<span class="timeline-day-title">— ' + dayTitle + '</span>';
             html += '</div>';
             html += '<div style="display: flex; align-items: center; gap: var(--space-2);">';
             if (day.is_locked) html += '<i class="bi bi-lock" style="color: var(--heco-warning);" title="Locked"></i>';
             html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
             html += '</div></div>';
 
-            // Day description as bullet points
-            if (day.description) {
-                html += '<div class="timeline-day-desc">' + toBulletHtml(day.description) + '</div>';
-            }
-
             // Day experiences with full detail
             if (day.experiences && day.experiences.length) {
+                // Track shown experience names to avoid repeating
+                var shownExpNames = [];
                 day.experiences.forEach(function(de) {
                     var exp = de.experience;
                     var eName = exp ? exp.name : 'Experience';
@@ -1191,13 +1198,24 @@ jQuery(function() {
                         village: 'bi-houses', other: 'bi-star-fill'
                     };
                     var expIcon = (exp && exp.type) ? (typeIconMap[exp.type] || 'bi-star-fill') : 'bi-star-fill';
+                    var alreadyShown = shownExpNames.indexOf(eName) !== -1;
+                    shownExpNames.push(eName);
 
                     html += '<div class="timeline-exp-item">';
                     html += '<i class="bi ' + expIcon + '"></i>';
                     html += '<div class="timeline-exp-details">';
-                    html += '<span class="timeline-exp-name">' + eName + '</span>';
-                    if (de.experience_id) html += '<span class="timeline-exp-id">Experience ID : ' + de.experience_id + '</span>';
-                    if (de.notes) html += '<div class="timeline-exp-notes">' + toBulletHtml(de.notes) + '</div>';
+                    if (!alreadyShown) html += '<span class="timeline-exp-name">' + eName + '</span>';
+
+                    // Show matching day-wise description for this trip day
+                    if (exp && exp.days && exp.days.length) {
+                        var ed = exp.days.length === 1 ? exp.days[0] : exp.days.find(function(d) { return d.day_number === day.day_number; }) || exp.days[0];
+                        if (ed && ed.short_description) {
+                            html += '<div style="font-size:0.7rem; color:var(--heco-neutral-600, #475569);">' + ed.short_description + '</div>';
+                        }
+                    } else if (de.notes) {
+                        html += '<div class="timeline-exp-notes">' + toBulletHtml(de.notes) + '</div>';
+                    }
+
                     html += '</div>';
                     html += '<div class="timeline-exp-meta">';
                     if (de.start_time) html += '<span class="timeline-exp-time">' + de.start_time + (de.end_time ? ' - ' + de.end_time : '') + '</span>';

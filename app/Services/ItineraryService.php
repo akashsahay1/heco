@@ -108,6 +108,7 @@ class ItineraryService
 
     public function addExperienceToDay(TripDay $day, Experience $experience, array $data = []): TripDayExperience
     {
+        $experience->loadMissing('days');
         $maxSort = $day->experiences()->max('sort_order') ?? -1;
         $costPerPerson = $data['cost_per_person'] ?? $experience->base_cost_per_person;
         $adults = $day->trip->adults ?? 2;

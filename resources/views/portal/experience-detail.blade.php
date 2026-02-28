@@ -231,6 +231,51 @@
                 </div>
             </div>
 
+            {{-- Day-wise Itinerary --}}
+            @if($experience->days && $experience->days->count() > 0)
+            <div class="detail-section">
+                <h5><i class="bi bi-calendar3"></i> Day-wise Itinerary</h5>
+                @php
+                    $incIcons = ['breakfast' => 'bi-cup-hot', 'lunch' => 'bi-egg-fried', 'dinner' => 'bi-moon-stars', 'snacks' => 'bi-basket', 'accommodation' => 'bi-house', 'guide' => 'bi-person-badge', 'transport' => 'bi-truck'];
+                @endphp
+                <div class="row g-3">
+                    @foreach($experience->days as $day)
+                    <div class="col-md-{{ $experience->days->count() === 1 ? '12' : '6' }}">
+                        <div style="border:1px solid var(--heco-primary-100); border-left:3px solid var(--heco-primary-600); border-radius:8px; padding:16px; background:#fff;">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--heco-primary-600);color:#fff;font-size:0.8rem;font-weight:600;">{{ $day->day_number }}</span>
+                                <strong>Day {{ $day->day_number }}</strong>
+                                @if($day->title)
+                                <span class="text-muted">&mdash; {{ $day->title }}</span>
+                                @endif
+                            </div>
+                            @if($day->start_time || $day->end_time)
+                            <div class="small text-muted mb-2">
+                                <i class="bi bi-clock"></i>
+                                {{ $day->start_time ? \Carbon\Carbon::parse($day->start_time)->format('g:i A') : '' }}
+                                @if($day->start_time && $day->end_time) &ndash; @endif
+                                {{ $day->end_time ? \Carbon\Carbon::parse($day->end_time)->format('g:i A') : '' }}
+                            </div>
+                            @endif
+                            @if($day->short_description)
+                            <p class="small mb-2" style="color:var(--heco-neutral-600);">{{ $day->short_description }}</p>
+                            @endif
+                            @if(is_array($day->inclusions) && count($day->inclusions) > 0)
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach($day->inclusions as $inc)
+                                <span style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:4px;font-size:0.72rem;background:var(--heco-primary-50);color:var(--heco-primary-700);border:1px solid var(--heco-primary-100);">
+                                    <i class="bi {{ $incIcons[$inc] ?? 'bi-check' }}"></i> {{ ucfirst($inc) }}
+                                </span>
+                                @endforeach
+                            </div>
+                            @endif
+                        </div>
+                    </div>
+                    @endforeach
+                </div>
+            </div>
+            @endif
+
             {{-- Requirements --}}
             @if($experience->fitness_requirements || $experience->age_min || $experience->traveller_bring_list || $experience->clothing_recommendations || $experience->health_notes)
             <div class="detail-section">

@@ -93,7 +93,7 @@ class HctController extends Controller
 
     public function editExperience(int $id)
     {
-        $experience = Experience::findOrFail($id);
+        $experience = Experience::with('days')->findOrFail($id);
         $regions = Region::where("is_active", true)->orderBy("name")->get();
         $hlhs = ServiceProvider::where("provider_type", "hlh")->where("status", "approved")->get();
         $rps = RegenerativeProject::where("is_active", true)->get();

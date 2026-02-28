@@ -68,6 +68,11 @@ class Experience extends Model
         return $this->belongsTo(RegenerativeProject::class);
     }
 
+    public function days()
+    {
+        return $this->hasMany(ExperienceDay::class)->orderBy('day_number');
+    }
+
     public function tripDayExperiences()
     {
         return $this->hasMany(TripDayExperience::class);

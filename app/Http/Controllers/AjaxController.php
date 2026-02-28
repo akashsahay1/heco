@@ -238,7 +238,7 @@ class AjaxController extends Controller
                 }
             }
         }
-        $experiences = Experience::whereIn('id', $expIds)->get()->keyBy('id');
+        $experiences = Experience::with('days')->whereIn('id', $expIds)->get()->keyBy('id');
 
         $days = [];
         foreach ($itinerary['days'] as $i => $day) {
@@ -885,7 +885,7 @@ class AjaxController extends Controller
 
     protected function getExperiencesForDiscover(Request $request): JsonResponse
     {
-        $query = Experience::where("is_active", true)->with(["region", "hlh"]);
+        $query = Experience::where("is_active", true)->with(["region", "hlh", "days"]);
 
         if ($request->filled("region_id")) {
             $query->where("region_id", $request->region_id);
@@ -938,7 +938,7 @@ class AjaxController extends Controller
 
     protected function getExperienceDetail(Request $request): JsonResponse
     {
-        $experience = Experience::with(["region", "hlh", "regenerativeProject"])
+        $experience = Experience::with(["region", "hlh", "regenerativeProject", "days"])
             ->where("id", $request->experience_id)
             ->where("is_active", true)
             ->first();
@@ -1343,7 +1343,7 @@ class AjaxController extends Controller
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["days" => []]);
 
-        $days = $trip->tripDays()->with(["experiences.experience", "services"])->get();
+        $days = $trip->tripDays()->with(["experiences.experience.days", "services"])->get();
         return response()->json(["days" => $days]);
     }
 
@@ -1988,7 +1988,7 @@ class AjaxController extends Controller
         $costCalculator = app(CostCalculatorService::class);
         $pricing = $costCalculator->calculate($trip);
 
-        $days = $trip->tripDays()->with(["experiences.experience", "services"])->get();
+        $days = $trip->tripDays()->with(["experiences.experience.days", "services"])->get();
 
         return response()->json([
             "success" => true,
@@ -2659,7 +2659,7 @@ class AjaxController extends Controller
 
     protected function getExperiencesList(Request $request): JsonResponse
     {
-        $query = Experience::with(["region", "hlh"]);
+        $query = Experience::with(["region", "hlh", "days"]);
         if ($request->filled("search")) {
             $search = $request->search;
             $query->where("name", "like", "%{$search}%");
@@ -2673,7 +2673,7 @@ class AjaxController extends Controller
 
     protected function saveExperience(Request $request): JsonResponse
     {
-        $data = $request->except(["_token", "save_experience"]);
+        $data = $request->except(["_token", "save_experience", "experience_days"]);
 
         if ($request->hasFile("card_image")) {
             $data["card_image"] = $request->file("card_image")->store("experiences", "public");
@@ -2699,6 +2699,21 @@ class AjaxController extends Controller
             $experience->update($data);
         } else {
             $experience = Experience::create($data);
+        }
+
+        // Save day-wise details
+        $experience->days()->delete();
+        $daysData = $request->input('experience_days', []);
+        foreach ($daysData as $idx => $dayData) {
+            $experience->days()->create([
+                'day_number' => $dayData['day_number'] ?? ($idx + 1),
+                'title' => $dayData['title'] ?? null,
+                'short_description' => $dayData['short_description'] ?? null,
+                'start_time' => $dayData['start_time'] ?? null,
+                'end_time' => $dayData['end_time'] ?? null,
+                'inclusions' => $dayData['inclusions'] ?? [],
+                'sort_order' => $idx,
+            ]);
         }
 
         return response()->json(["success" => true, "experience" => $experience]);
@@ -2832,6 +2847,7 @@ class AjaxController extends Controller
         $trip = Trip::with([
             "tripDays.experiences.experience.region",
             "tripDays.experiences.experience.hlh",
+            "tripDays.experiences.experience.days",
             "tripDays.services.serviceProvider",
             "selectedExperiences.experience",
         ])->findOrFail($request->trip_id);

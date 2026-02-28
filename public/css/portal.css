@@ -2110,7 +2110,9 @@
 
     .timeline-day-title {
         font-size: var(--text-sm);
-        color: var(--color-text-muted);
+        color: var(--heco-primary-700, #15803d);
+        font-weight: var(--font-medium, 500);
+        margin-left: var(--space-2, 8px);
     }
 
     .trip-id-display {
