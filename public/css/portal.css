@@ -2063,56 +2063,10 @@
     }
 
     /* ============================================
-       Timeline Styles
+       Timeline Styles — Day label left of line
        ============================================ */
     .timeline-container {
-        padding: var(--space-4);
-    }
-
-    .timeline-day {
-        position: relative;
-        padding-left: var(--space-6);
-        margin-bottom: var(--space-6);
-        border-left: 3px solid var(--heco-primary-300);
-    }
-
-    .timeline-day::before {
-        content: '';
-        position: absolute;
-        left: -8px;
-        top: 4px;
-        width: 14px;
-        height: 14px;
-        background: var(--heco-primary-600);
-        border: 3px solid var(--color-bg-white);
-        border-radius: var(--radius-full);
-        box-shadow: var(--shadow-sm);
-    }
-
-    .timeline-day-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: var(--space-3);
-    }
-
-    .timeline-day-info {
-        display: flex;
-        align-items: center;
-        gap: var(--space-3);
-    }
-
-    .timeline-day-number {
-        font-size: var(--text-base);
-        font-weight: var(--font-bold);
-        color: var(--heco-primary-700);
-    }
-
-    .timeline-day-title {
-        font-size: var(--text-sm);
-        color: var(--heco-primary-700, #15803d);
-        font-weight: var(--font-medium, 500);
-        margin-left: var(--space-2, 8px);
+        padding: var(--space-4) var(--space-2);
     }
 
     .trip-id-display {
@@ -2126,37 +2080,117 @@
         display: inline-block;
     }
 
+    /* Each day row: [label] [line+dot] [content] */
+    .timeline-day {
+        display: grid;
+        grid-template-columns: 64px 20px 1fr;
+        gap: 0;
+        position: relative;
+        min-height: 60px;
+    }
+
+    /* Left column — day label */
+    .timeline-day-label {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        padding-top: 2px;
+        padding-right: 8px;
+        text-align: right;
+    }
+
+    .timeline-day-number {
+        font-size: 0.8rem;
+        font-weight: var(--font-bold);
+        color: var(--heco-primary-700);
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
     .timeline-day-date {
-        font-size: var(--text-xs);
+        font-size: 0.65rem;
         color: var(--heco-primary-600);
         font-weight: var(--font-medium);
+        white-space: nowrap;
     }
 
-    .timeline-day-desc {
+    .timeline-day-svc-icons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+        margin-top: 4px;
+        justify-content: flex-end;
+    }
+    .timeline-day-svc-icons i {
+        font-size: 14px;
+        color: var(--heco-primary-600);
+    }
+
+    .timeline-day-title {
         font-size: var(--text-sm);
-        color: var(--color-text-secondary);
-        margin: 0 0 var(--space-3) 0;
-        line-height: 1.6;
+        color: var(--heco-primary-700);
+        font-weight: var(--font-medium);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
-    .timeline-day-desc ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-
-    .timeline-day-desc ul li {
+    /* Center column — vertical line + dot */
+    .timeline-day-line {
         position: relative;
-        padding-left: var(--space-4);
-        margin-bottom: 2px;
+        display: flex;
+        justify-content: center;
     }
 
-    .timeline-day-desc ul li::before {
-        content: '\2022';
+    /* Vertical green line running full height */
+    .timeline-day-line::before {
+        content: '';
         position: absolute;
-        left: var(--space-1);
-        color: var(--heco-primary-400);
-        font-weight: bold;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 3px;
+        background: var(--heco-primary-300);
+    }
+
+    /* First day: line starts from the dot */
+    .timeline-day:first-child .timeline-day-line::before {
+        top: 8px;
+    }
+
+    /* Last day: line ends at the dot */
+    .timeline-day:last-child .timeline-day-line::before {
+        bottom: calc(100% - 20px);
+    }
+
+    /* Circle dot */
+    .timeline-day-dot {
+        width: 14px;
+        height: 14px;
+        background: var(--heco-primary-600);
+        border: 3px solid var(--color-bg-white);
+        border-radius: 50%;
+        box-shadow: 0 0 0 2px var(--heco-primary-300);
+        position: relative;
+        z-index: 2;
+        margin-top: 4px;
+        flex-shrink: 0;
+    }
+
+    /* Right column — content */
+    .timeline-day-content {
+        padding: 0 0 var(--space-4) 10px;
+        min-width: 0;
+    }
+
+    .timeline-day-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--space-2);
+        min-height: 22px;
+        gap: var(--space-2);
     }
 
     .timeline-exp-item {
@@ -2265,6 +2299,121 @@
         color: var(--heco-error);
     }
 
+    /* Insert-day row between days */
+    .timeline-add-day-row {
+        display: grid;
+        grid-template-columns: 64px 20px 1fr;
+        padding: 4px 0;
+    }
+    .timeline-add-day-row .tl-insert-line {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .timeline-add-day-row .tl-insert-line::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 3px;
+        background: var(--heco-primary-300);
+    }
+    .btn-insert-day {
+        position: relative;
+        z-index: 2;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--color-bg-white);
+        border: 3px solid var(--heco-primary-600);
+        box-shadow: 0 0 0 2px var(--heco-primary-300);
+        color: var(--heco-primary-600);
+        font-size: 16px;
+        font-weight: 900;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        transition: all 0.2s;
+    }
+    .btn-insert-day:hover {
+        background: var(--heco-primary-600);
+        color: #fff;
+    }
+
+    /* ============================================
+       Journey Tab — AI Chat Section
+       ============================================ */
+    .journey-chat-section {
+        margin-bottom: var(--space-5);
+        background: var(--color-bg-white);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-2xl);
+        overflow: hidden;
+        box-shadow: var(--shadow-md);
+    }
+    .journey-chat-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+        color: white;
+        padding: var(--space-3) var(--space-5);
+        background: linear-gradient(135deg, var(--heco-primary-700) 0%, var(--heco-primary-600) 100%);
+    }
+    .journey-chat-header i {
+        font-size: 1.1rem;
+    }
+    .journey-chat-messages {
+        max-height: 250px;
+        overflow-y: auto;
+        padding: var(--space-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+        background: var(--heco-neutral-50, #f8f9fa);
+        scrollbar-width: thin;
+        scrollbar-color: var(--heco-neutral-300, #ccc) transparent;
+    }
+    .journey-chat-input-area {
+        display: flex;
+        align-items: center;
+        padding: var(--space-3) var(--space-4);
+        background: var(--color-bg-white);
+        border-top: 1px solid var(--color-border);
+        gap: var(--space-3);
+    }
+
+    /* Editable start date */
+    .editable-date {
+        cursor: pointer;
+        border-bottom: 1px dashed var(--heco-primary-400);
+        transition: all 0.2s;
+    }
+    .editable-date:hover {
+        color: var(--heco-primary-700);
+        border-bottom-color: var(--heco-primary-700);
+    }
+    .start-date-input {
+        border: 1px solid var(--heco-primary-300);
+        border-radius: var(--radius-md);
+        padding: 2px 6px;
+        font-size: var(--text-sm);
+        color: var(--heco-primary-700);
+        max-width: 140px;
+        outline: none;
+    }
+    .start-date-input:focus {
+        border-color: var(--heco-primary-600);
+        box-shadow: 0 0 0 2px rgba(22, 101, 52, 0.15);
+    }
+
     /* ============================================
        Right Panel - Details & Pricing
        ============================================ */
@@ -2322,6 +2471,7 @@
     .pricing-row {
         display: flex;
         justify-content: space-between;
+        align-items: center;
         padding: var(--space-2) 0;
         font-size: var(--text-sm);
         color: var(--color-text);

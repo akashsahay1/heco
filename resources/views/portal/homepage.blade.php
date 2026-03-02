@@ -331,6 +331,26 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
         <div class="tab-pane fade" id="pane-journey" role="tabpanel">
             <div class="content-container">
                 <div id="journeyContent">
+                    {{-- AI Chat inside Journey tab --}}
+                    <div class="journey-chat-section">
+                        <div class="journey-chat-header">
+                            <i class="bi bi-robot"></i> AI Assistant
+                        </div>
+                        <div class="journey-chat-messages" id="journeyChatMessages">
+                            <div class="chat-msg assistant">
+                                Hi! I can help you modify your trip — change dates, add or remove days, update preferences, and more. Just ask!
+                            </div>
+                        </div>
+                        <div class="journey-chat-input-area">
+                            <input type="text" class="inline-chat-input" id="journeyChatInput"
+                                placeholder="Ask AI to change dates, add days, update preferences..."
+                                autocomplete="off">
+                            <button class="inline-chat-send" id="journeyChatSend">
+                                <i class="bi bi-send-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+
                     {{-- Shown if no trip --}}
                     <div id="noTripMessage" class="journey-empty-state {{ $hasTrip ? 'd-none' : '' }}">
                         <div class="journey-empty-icon">
@@ -384,6 +404,14 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-header"><i class="bi bi-info-circle"></i> Trip Summary</div>
                                 <div class="detail-card-body">
+                                    <div class="pricing-row">
+                                        <span><i class="bi bi-calendar-event"></i> Start Date</span>
+                                        <span id="tripStartDateDisplay" class="editable-date" title="Click to change">
+                                            {{ ($trip->start_date ?? null) ? $trip->start_date->format('d M Y') : ($guestTripData['start_date'] ?? '--') }}
+                                        </span>
+                                        <input type="date" id="tripStartDateInput" class="start-date-input d-none"
+                                            value="{{ ($trip->start_date ?? null) ? $trip->start_date->format('Y-m-d') : ($guestTripData['start_date'] ?? '') }}">
+                                    </div>
                                     <div class="pricing-row"><span><i class="bi bi-clock"></i> Duration</span><span id="tripDuration">--</span></div>
                                     <div class="pricing-row"><span><i class="bi bi-geo-alt"></i> Regions</span><span id="tripRegions">--</span></div>
                                     <div class="pricing-row"><span><i class="bi bi-card-list"></i> Experiences</span><span id="tripExpCount">0</span></div>
@@ -492,6 +520,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             </div>
                         </div>
                     </div>
+
                 </div>
             </div>
         </div>
@@ -547,18 +576,6 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
     </div>
 </div>
 
-{{-- Insert Day Modal --}}
-<div id="insertDayModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.4); align-items:center; justify-content:center;">
-    <div style="background:#fff; border-radius:var(--radius-lg); padding:var(--space-5); width:90%; max-width:420px; box-shadow:0 8px 32px rgba(0,0,0,0.15);">
-        <h6 style="margin:0 0 var(--space-3); font-weight:var(--font-semibold);"><i class="bi bi-plus-circle"></i> Add a New Day</h6>
-        <p style="font-size:var(--text-sm); color:var(--color-text-muted); margin-bottom:var(--space-3);">What would you like to do on this day? <span style="font-size:var(--text-xs);">(e.g. "Rest day", "Explore local market", "Travel to next destination")</span></p>
-        <textarea id="insertDayNote" class="form-control" rows="3" placeholder="Describe your plan for this day..." style="margin-bottom:var(--space-3);"></textarea>
-        <div style="display:flex; justify-content:flex-end; gap:var(--space-2);">
-            <button class="exp-btn" id="insertDayCancel" style="padding:var(--space-2) var(--space-4);">Cancel</button>
-            <button class="exp-btn exp-btn-primary" id="insertDayConfirm" style="padding:var(--space-2) var(--space-4);"><i class="bi bi-plus-lg"></i> Add Day</button>
-        </div>
-    </div>
-</div>
 
 @endsection
 
@@ -719,19 +736,26 @@ jQuery(function() {
     // AUTO AI GENERATION
     // ===================================
     var aiGenerating = false;
+    var aiGenerateXhr = null;
 
     function autoGenerateItinerary() {
-        if (aiGenerating || !tripId || selectedExpIds.length === 0) return;
+        if (!tripId || selectedExpIds.length === 0) return;
+
+        // Abort any in-flight generation
+        if (aiGenerateXhr) {
+            aiGenerateXhr.abort();
+            aiGenerateXhr = null;
+        }
         aiGenerating = true;
 
         jQuery('#timelineContainer').html(
             '<div class="text-center py-4">' +
             '<div style="width:24px; height:24px; border:3px solid #e9ecef; border-top-color:#6c757d; border-radius:50%; animation:spinIcon 0.8s linear infinite; display:inline-block; vertical-align:middle; margin-right:10px;"></div>' +
-            '<span style="font-size:0.875rem; color:#6c757d; vertical-align:middle;">Generating your itinerary...</span>' +
+            '<span style="font-size:0.875rem; color:#6c757d; vertical-align:middle;">Regenerating your itinerary...</span>' +
             '</div>'
         );
 
-        jQuery.ajax({
+        aiGenerateXhr = jQuery.ajax({
             url: '/ajax',
             method: 'POST',
             data: { generate_itinerary: 1, trip_id: tripId },
@@ -739,18 +763,14 @@ jQuery(function() {
             skipGlobalError: true,
             success: function(resp) {
                 aiGenerating = false;
-                if (resp.success) {
-                    loadTimeline();
-                    loadPricing();
-                } else {
-                    // AI returned error, fall back to existing timeline
-                    loadTimeline();
-                    loadPricing();
-                }
+                aiGenerateXhr = null;
+                loadTimeline();
+                loadPricing();
             },
-            error: function(xhr) {
+            error: function(xhr, status) {
+                aiGenerateXhr = null;
+                if (status === 'abort') return;
                 aiGenerating = false;
-                // AI failed (quota, timeout, etc.), fall back to existing timeline
                 loadTimeline();
                 loadPricing();
             }
@@ -1039,11 +1059,17 @@ jQuery(function() {
     // YOUR JOURNEY TAB
     // ===================================
 
+    // Sync chats when switching to Discover tab
+    jQuery('button[data-bs-target="#pane-discover"]').on('shown.bs.tab', function() {
+        syncChats();
+    });
+
     // Load journey data on tab show
     jQuery('button[data-bs-target="#pane-journey"]').on('shown.bs.tab', function() {
         if (tripId) {
             loadJourneyData();
         }
+        syncChats();
     });
 
     function loadJourneyData() {
@@ -1143,11 +1169,25 @@ jQuery(function() {
     function renderTimelineData(resp) {
         var days = resp.days || [];
         if (days.length === 0) {
+            // If we have experiences but no days, auto-generate the itinerary
+            if (selectedExpIds.length > 0 && !aiGenerating) {
+                autoGenerateItinerary();
+                return;
+            }
             jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);" id="emptyTimeline">Days will appear here when experiences are added</p>');
             return;
         }
 
         var html = '';
+        var tripStartDate = resp.start_date ? new Date(resp.start_date) : null;
+
+        // Sync start date display & input
+        if (resp.start_date) {
+            var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            var sd = new Date(resp.start_date);
+            jQuery('#tripStartDateDisplay').text(sd.getDate() + ' ' + months[sd.getMonth()] + ' ' + sd.getFullYear());
+            jQuery('#tripStartDateInput').val(resp.start_date);
+        }
 
         // Trip ID header (only for logged-in users with real trip)
         if (tripId && tripId !== 'guest') {
@@ -1155,15 +1195,28 @@ jQuery(function() {
         }
 
         days.forEach(function(day, index) {
-            // Add "insert day" button between days (not before the first day)
+            // Insert-day button — only show between different experiences
             if (index > 0) {
-                html += '<div class="timeline-add-day-row" style="display:flex; justify-content:center; padding: var(--space-1) 0;">';
-                html += '<button class="btn-insert-day" data-after-day="' + days[index - 1].day_number + '" title="Add a day here" style="background:none; border:1px dashed var(--heco-primary); color:var(--heco-primary); border-radius:var(--radius-md); padding:var(--space-1) var(--space-3); font-size:var(--text-sm); cursor:pointer; transition:all 0.2s;">';
-                html += '<i class="bi bi-plus-lg"></i>';
-                html += '</button>';
+                var prevExpIds = (days[index - 1].experiences || []).map(function(de) { return de.experience_id; });
+                var currExpIds = (day.experiences || []).map(function(de) { return de.experience_id; });
+                var sameExperience = prevExpIds.length > 0 && currExpIds.length > 0 && prevExpIds.some(function(id) { return currExpIds.indexOf(id) !== -1; });
+
+                html += '<div class="timeline-add-day-row">';
+                html += '<div></div>';
+                if (!sameExperience) {
+                    html += '<div class="tl-insert-line">';
+                    html += '<button class="btn-insert-day" data-after-day="' + days[index - 1].day_number + '" title="Add a day here">';
+                    html += '<i class="bi bi-plus-lg"></i>';
+                    html += '</button>';
+                    html += '</div>';
+                } else {
+                    html += '<div class="tl-insert-line"></div>';
+                }
+                html += '<div></div>';
                 html += '</div>';
             }
-            // Get day-wise title from first experience's matching day
+
+            // Get day-wise title from first experience
             var dayTitle = '';
             if (day.experiences && day.experiences.length) {
                 var firstExp = day.experiences[0].experience;
@@ -1173,21 +1226,70 @@ jQuery(function() {
                 }
             }
 
-            html += '<div class="timeline-day" data-day-id="' + day.id + '">';
-            html += '<div class="timeline-day-header">';
-            html += '<div class="timeline-day-info">';
-            html += '<span class="timeline-day-number">Day ' + day.day_number + '</span>';
-            if (day.date) html += '<span class="timeline-day-date">' + day.date + '</span>';
-            if (dayTitle) html += '<span class="timeline-day-title">— ' + dayTitle + '</span>';
-            html += '</div>';
-            html += '<div style="display: flex; align-items: center; gap: var(--space-2);">';
-            if (day.is_locked) html += '<i class="bi bi-lock" style="color: var(--heco-warning);" title="Locked"></i>';
-            html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
-            html += '</div></div>';
+            // Format date as "2 Mar 2026"
+            var formattedDate = '';
+            var dateObj = null;
+            if (day.date) {
+                dateObj = new Date(day.date);
+            } else if (tripStartDate) {
+                dateObj = new Date(tripStartDate);
+                dateObj.setDate(dateObj.getDate() + (day.day_number - 1));
+            }
+            if (dateObj && !isNaN(dateObj)) {
+                var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                formattedDate = dateObj.getDate() + ' ' + months[dateObj.getMonth()] + ' ' + dateObj.getFullYear();
+            }
 
-            // Day experiences with full detail
+            // === 3-column grid row ===
+            html += '<div class="timeline-day" data-day-id="' + day.id + '">';
+
+            // Left column: day label + inclusion icons from ExperienceDay
+            html += '<div class="timeline-day-label">';
+            html += '<span class="timeline-day-number">Day ' + day.day_number + '</span>';
+            if (formattedDate) html += '<span class="timeline-day-date">' + formattedDate + '</span>';
+            // Collect inclusions from matching ExperienceDay
+            var dayInclusions = [];
             if (day.experiences && day.experiences.length) {
-                // Track shown experience names to avoid repeating
+                day.experiences.forEach(function(de) {
+                    var exp = de.experience;
+                    if (exp && exp.days && exp.days.length) {
+                        var ed = exp.days.length === 1 ? exp.days[0] : exp.days.find(function(d) { return d.day_number === day.day_number; }) || exp.days[0];
+                        if (ed && ed.inclusions && ed.inclusions.length) {
+                            ed.inclusions.forEach(function(inc) {
+                                if (dayInclusions.indexOf(inc) === -1) dayInclusions.push(inc);
+                            });
+                        }
+                    }
+                });
+            }
+            if (dayInclusions.length) {
+                var incIconMap = { breakfast: 'bi-cup-hot', lunch: 'bi-egg-fried', dinner: 'bi-moon-stars', snacks: 'bi-basket', accommodation: 'bi-house', guide: 'bi-person-badge', transport: 'bi-truck' };
+                html += '<div class="timeline-day-svc-icons">';
+                dayInclusions.forEach(function(inc) {
+                    var ico = incIconMap[inc] || 'bi-check';
+                    html += '<i class="bi ' + ico + '" title="' + inc.charAt(0).toUpperCase() + inc.slice(1) + '"></i>';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+
+            // Center column: line + dot
+            html += '<div class="timeline-day-line"><div class="timeline-day-dot"></div></div>';
+
+            // Right column: content
+            html += '<div class="timeline-day-content">';
+
+            // Header row (title on left, actions on right)
+            html += '<div class="timeline-day-header">';
+            if (dayTitle) html += '<span class="timeline-day-title" title="' + dayTitle + '">' + dayTitle + '</span>';
+            html += '<div style="display:flex;align-items:center;gap:4px;margin-left:auto;">';
+            if (day.is_locked) html += '<i class="bi bi-lock" style="color: var(--heco-warning); font-size: 13px;" title="Locked"></i>';
+            html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
+            html += '</div>';
+            html += '</div>';
+
+            // Day experiences
+            if (day.experiences && day.experiences.length) {
                 var shownExpNames = [];
                 day.experiences.forEach(function(de) {
                     var exp = de.experience;
@@ -1206,7 +1308,6 @@ jQuery(function() {
                     html += '<div class="timeline-exp-details">';
                     if (!alreadyShown) html += '<span class="timeline-exp-name">' + eName + '</span>';
 
-                    // Show matching day-wise description for this trip day
                     if (exp && exp.days && exp.days.length) {
                         var ed = exp.days.length === 1 ? exp.days[0] : exp.days.find(function(d) { return d.day_number === day.day_number; }) || exp.days[0];
                         if (ed && ed.short_description) {
@@ -1227,27 +1328,14 @@ jQuery(function() {
                 });
             }
 
-            // Day services
-            if (day.services && day.services.length) {
-                html += '<div class="service-icons">';
-                day.services.forEach(function(svc) {
-                    var iconMap = { accommodation: 'bi-house-door', transport: 'bi-car-front', guide: 'bi-person-badge', activity: 'bi-lightning', meal: 'bi-cup-hot', other: 'bi-three-dots' };
-                    var icon = iconMap[svc.service_type] || iconMap.other;
-                    var colorClass = svc.is_included ? 'included' : 'not-included';
-                    html += '<span class="service-icon-item" title="' + (svc.service_type ? svc.service_type.charAt(0).toUpperCase() + svc.service_type.slice(1) : '') + (svc.is_included ? ' (included)' : ' (not included)') + '">';
-                    html += '<i class="bi ' + icon + ' ' + colorClass + '"></i>';
-                    if (svc.description) html += ' ' + svc.description;
-                    if (svc.cost > 0) html += ' <span style="color: var(--heco-success); font-weight: var(--font-medium);">' + fmtCurrency(svc.cost) + '</span>';
-                    html += '</span>';
-                });
-                html += '</div>';
-            }
+            // Day services (icons shown in left column)
 
             if ((!day.experiences || !day.experiences.length) && (!day.services || !day.services.length)) {
                 html += '<p style="font-size: var(--text-sm); color: var(--color-text-muted); text-align: center; margin: 0; padding: var(--space-2);">No activities planned yet</p>';
             }
 
-            html += '</div>';
+            html += '</div>'; // .timeline-day-content
+            html += '</div>'; // .timeline-day
         });
         jQuery('#timelineContainer').html(html);
     }
@@ -1267,27 +1355,10 @@ jQuery(function() {
         });
     }
 
-    // Remove experience
+    // Remove experience — send to AI for confirmation
     jQuery(document).on('click', '.btn-remove-exp', function() {
-        var expId = parseInt(jQuery(this).data('exp-id'));
-        ajaxPost({ remove_experience_from_trip: 1, trip_id: tripId, experience_id: expId }, function() {
-            selectedExpIds = selectedExpIds.filter(function(id) { return parseInt(id) !== expId; });
-            // Swap discover card button back to + if visible
-            jQuery('.btn-remove-journey-exp[data-exp-id="' + expId + '"]')
-                .removeClass('btn-remove-journey-exp').addClass('btn-add-exp')
-                .attr('title', 'Add to Journey')
-                .html('<i class="bi bi-plus-lg"></i>');
-            updateJourneyBadge();
-            loadSelectedExperiences();
-            showAlert('Experience removed.', 'success');
-            if (selectedExpIds.length > 0) {
-                loadTimeline();
-                loadPricing();
-            } else {
-                jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);">Days will appear here when experiences are added</p>');
-                loadPricing();
-            }
-        });
+        var expName = jQuery(this).closest('.journey-exp-item').find('.exp-name').text().trim() || 'this experience';
+        sendAiMessage('I want to remove "' + expName + '" from my trip.');
     });
 
     // Drag and reorder
@@ -1320,118 +1391,106 @@ jQuery(function() {
             jQuery(this).removeClass('dragging');
             var order = [];
             jQuery('#selectedExpList .journey-exp-item').each(function() {
-                order.push(jQuery(this).data('exp-id'));
+                order.push(parseInt(jQuery(this).data('exp-id')));
             });
+            selectedExpIds = order;
+            // Save new order then regenerate timeline via AI
             ajaxPost({ reorder_experiences: 1, trip_id: tripId, order: order }, function() {
-                aiGenerating = false;
                 autoGenerateItinerary();
             });
         });
     }
 
 
-    // Insert Day between existing days — show modal first
-    var pendingInsertAfterDay = null;
+    // Helper: send a message to AI chat programmatically
+    function sendAiMessage(msg) {
+        // Switch to journey tab if not already there
+        var journeyTab = jQuery('#tab-journey');
+        if (journeyTab.length && !journeyTab.hasClass('active')) {
+            journeyTab.click();
+        }
+        // Set the journey chat input and trigger send
+        activeChatInput = '#journeyChatInput';
+        jQuery('#journeyChatInput').val(msg);
+        sendChatMessage();
+    }
 
+    // Insert Day — send to AI for confirmation
     jQuery(document).on('click', '.btn-insert-day', function() {
         if (!tripId) return;
-        pendingInsertAfterDay = jQuery(this).data('after-day');
-        jQuery('#insertDayNote').val('');
-        jQuery('#insertDayModal').css('display', 'flex');
-        jQuery('#insertDayNote').focus();
+        var afterDay = jQuery(this).data('after-day');
+        sendAiMessage('I want to add a new day after Day ' + afterDay + ' in my trip.');
     });
 
-    jQuery('#insertDayCancel').on('click', function() {
-        jQuery('#insertDayModal').hide();
-        pendingInsertAfterDay = null;
-    });
-
-    jQuery('#insertDayModal').on('click', function(e) {
-        if (e.target === this) {
-            jQuery('#insertDayModal').hide();
-            pendingInsertAfterDay = null;
-        }
-    });
-
-    jQuery('#insertDayNote').on('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            jQuery('#insertDayConfirm').click();
-        }
-    });
-
-    jQuery('#insertDayConfirm').on('click', function() {
-        var note = jQuery('#insertDayNote').val().trim();
-        if (!note) {
-            jQuery('#insertDayNote').addClass('is-invalid');
-            return;
-        }
-        jQuery('#insertDayNote').removeClass('is-invalid');
-        jQuery('#insertDayModal').hide();
-
-        ajaxPost({
-            add_day_to_trip: 1,
-            trip_id: tripId,
-            after_day_number: pendingInsertAfterDay,
-            day_note: note
-        }, function(resp) {
-            showAlert('Day added — regenerating itinerary...', 'success');
-            pendingInsertAfterDay = null;
-            autoGenerateItinerary();
-        });
-    });
-
-    // Remove Day
+    // Remove Day — send to AI for confirmation
     jQuery(document).on('click', '.btn-remove-day', function() {
         var dayId = jQuery(this).data('day-id');
-        if (!confirm('Remove this day from the trip?')) return;
-        ajaxPost({ remove_day_from_trip: 1, trip_id: tripId, day_id: dayId }, function() {
-            showAlert('Day removed.', 'success');
-            loadTimeline();
-            loadPricing();
-        });
+        var dayEl = jQuery(this).closest('.timeline-day');
+        var dayNum = dayEl.find('.timeline-day-number').text() || 'this day';
+        // Prefer "Day X" from the left label
+        var dayLabel = dayEl.find('.tl-day-num').text() || dayNum;
+        sendAiMessage('I want to remove ' + dayLabel + ' from my trip.');
     });
 
-    // Trip name save (debounced)
+    // Trip name — send to AI for confirmation
+    var tripNameTimer = null;
     jQuery('#tripName').on('input', function() {
         var val = jQuery(this).val();
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(function() {
-            if (tripId) {
-                ajaxPost({ save_trip_name: 1, trip_id: tripId, name: val });
+        clearTimeout(tripNameTimer);
+        tripNameTimer = setTimeout(function() {
+            if (val.trim()) {
+                sendAiMessage('I want to change my trip name to "' + val.trim() + '".');
             }
-        }, 800);
+        }, 1200);
     });
 
-    // Group details
+    // Group details — debounced, send to AI for confirmation
+    var groupTimer = null;
     jQuery('.group-input').on('change', function() {
-        if (!tripId) return;
-        ajaxPost({
-            update_group_details: 1,
-            trip_id: tripId,
-            adults: parseInt(jQuery('#grpAdults').val()) || 1,
-            children: parseInt(jQuery('#grpChildren').val()) || 0,
-            infants: parseInt(jQuery('#grpInfants').val()) || 0
-        }, function() {
-            loadPricing();
-        });
+        clearTimeout(groupTimer);
+        groupTimer = setTimeout(function() {
+            var adults = parseInt(jQuery('#grpAdults').val()) || 1;
+            var children = parseInt(jQuery('#grpChildren').val()) || 0;
+            var infants = parseInt(jQuery('#grpInfants').val()) || 0;
+            sendAiMessage('I want to update my group to ' + adults + ' adults, ' + children + ' children, and ' + infants + ' infants.');
+        }, 600);
     });
 
-    // Preferences
+    // Preferences — send to AI for confirmation
     jQuery('.pref-input').on('change', function() {
-        if (!tripId) return;
-        ajaxPost({
-            update_travel_preferences: 1,
-            trip_id: tripId,
-            accommodation_comfort: jQuery('#prefAccommodation').val(),
-            vehicle_comfort: jQuery('#prefVehicle').val(),
-            guide_preference: jQuery('#prefGuide').val(),
-            travel_pace: jQuery('#prefPace').val(),
-            budget_sensitivity: jQuery('#prefBudget').val()
-        }, function() {
-            loadTimeline();
-            loadPricing();
-        });
+        var label = jQuery(this).closest('.mb-3, .mb-2').find('label').text().trim();
+        var val = jQuery(this).val();
+        sendAiMessage('I want to change my ' + label + ' preference to "' + val + '".');
+    });
+
+    // Start Date — click to edit
+    jQuery('#tripStartDateDisplay').on('click', function() {
+        jQuery(this).addClass('d-none');
+        jQuery('#tripStartDateInput').removeClass('d-none').focus();
+    });
+
+    jQuery('#tripStartDateInput').on('change', function() {
+        var val = jQuery(this).val();
+        // Revert display and hide input — AI will update after confirmation
+        jQuery('#tripStartDateDisplay').removeClass('d-none');
+        jQuery(this).addClass('d-none');
+
+        if (val) {
+            var d = new Date(val);
+            var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            var formatted = d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+            sendAiMessage('I want to change my trip start date to ' + formatted + '.');
+        }
+    });
+
+    jQuery('#tripStartDateInput').on('blur', function() {
+        var self = jQuery(this);
+        setTimeout(function() {
+            if (!self.is(':focus')) {
+                self.addClass('d-none');
+                jQuery('#tripStartDateDisplay').removeClass('d-none');
+            }
+        }, 200);
     });
 
     // Request Support
@@ -1515,13 +1574,16 @@ jQuery(function() {
         if (role === 'assistant') {
             escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         }
-        var el = jQuery('<div class="chat-msg ' + role + '">' + escaped + '</div>');
+        var el = '<div class="chat-msg ' + role + '">' + escaped + '</div>';
         jQuery('#inlineChatMessages').append(el);
+        jQuery('#journeyChatMessages').append(el);
     }
 
     function scrollChat() {
-        var container = document.getElementById('inlineChatMessages');
-        if (container) container.scrollTop = container.scrollHeight;
+        var c1 = document.getElementById('inlineChatMessages');
+        var c2 = document.getElementById('journeyChatMessages');
+        if (c1) c1.scrollTop = c1.scrollHeight;
+        if (c2) c2.scrollTop = c2.scrollHeight;
     }
 
     function loadChatHistory() {
@@ -1531,6 +1593,7 @@ jQuery(function() {
             var messages = resp.messages || [];
             if (messages.length === 0) return;
             jQuery('#inlineChatMessages').find('.chat-msg.assistant').first().remove();
+            jQuery('#journeyChatMessages').find('.chat-msg.assistant').first().remove();
             messages.forEach(function(msg) {
                 appendChatMsg(msg.role, msg.content);
             });
@@ -1538,23 +1601,44 @@ jQuery(function() {
         });
     }
 
+    // Sync both chat containers — copy from whichever has more messages
+    function syncChats() {
+        var mainMsgs = jQuery('#inlineChatMessages .chat-msg');
+        var journeyMsgs = jQuery('#journeyChatMessages .chat-msg');
+        if (mainMsgs.length > journeyMsgs.length) {
+            jQuery('#journeyChatMessages').empty();
+            mainMsgs.each(function() {
+                jQuery('#journeyChatMessages').append(jQuery(this).clone());
+            });
+        } else if (journeyMsgs.length > mainMsgs.length) {
+            jQuery('#inlineChatMessages').empty();
+            journeyMsgs.each(function() {
+                jQuery('#inlineChatMessages').append(jQuery(this).clone());
+            });
+        }
+        scrollChat();
+    }
+
+    var activeChatInput = '#inlineChatInput';
+
     function sendChatMessage() {
-        var msg = jQuery('#inlineChatInput').val().trim();
+        var msg = jQuery(activeChatInput).val().trim();
         if (!msg) return;
 
-        jQuery('#inlineChatInput').val('');
+        jQuery(activeChatInput).val('');
         appendChatMsg('user', msg);
         scrollChat();
 
-        var typingEl = jQuery('<div class="chat-msg assistant"><i class="bi bi-three-dots"></i> Thinking...</div>');
-        jQuery('#inlineChatMessages').append(typingEl);
+        var typingHtml = '<div class="chat-msg assistant chat-typing"><i class="bi bi-three-dots"></i> Thinking...</div>';
+        jQuery('#inlineChatMessages').append(typingHtml);
+        jQuery('#journeyChatMessages').append(typingHtml);
         scrollChat();
 
         var params = { chat_with_ai: 1, message: msg };
         if (tripId) params.trip_id = tripId;
 
         ajaxPost(params, function(resp) {
-            typingEl.remove();
+            jQuery('.chat-typing').remove();
             appendChatMsg('assistant', resp.response || 'I could not generate a response. Please try again.');
 
             if (resp.trip_id && !tripId) {
@@ -1569,6 +1653,23 @@ jQuery(function() {
                 loadJourneyData();
                 selectedExpIds = resp.selected_experience_ids || selectedExpIds;
                 updateJourneyBadge();
+            }
+
+            // Sync UI inputs with AI-confirmed details
+            if (resp.updated_details) {
+                var d = resp.updated_details;
+                if (d.adults !== undefined) jQuery('#grpAdults').val(d.adults);
+                if (d.children !== undefined) jQuery('#grpChildren').val(d.children);
+                if (d.infants !== undefined) jQuery('#grpInfants').val(d.infants);
+                if (d.accommodation_comfort) jQuery('#prefAccommodation').val(d.accommodation_comfort);
+                if (d.vehicle_comfort) jQuery('#prefVehicle').val(d.vehicle_comfort);
+                if (d.guide_preference) jQuery('#prefGuide').val(d.guide_preference);
+                if (d.start_date) {
+                    jQuery('#tripStartDateInput').val(d.start_date);
+                    var sd = new Date(d.start_date);
+                    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    jQuery('#tripStartDateDisplay').text(sd.getDate() + ' ' + months[sd.getMonth()] + ' ' + sd.getFullYear());
+                }
             }
 
             // Handle AI auto-added experiences
@@ -1587,6 +1688,22 @@ jQuery(function() {
                 autoGenerateItinerary();
             }
 
+            // Handle AI-removed experiences
+            if (resp.removed_experience_ids && resp.removed_experience_ids.length > 0) {
+                resp.removed_experience_ids.forEach(function(id) {
+                    selectedExpIds = selectedExpIds.filter(function(eid) { return eid != id; });
+                    // Swap - button back to + button on card
+                    var btn = jQuery('.btn-remove-journey-exp[data-exp-id="' + id + '"]');
+                    if (btn.length) {
+                        btn.removeClass('btn-remove-journey-exp').addClass('btn-add-exp')
+                            .attr('title', 'Add to Journey').html('<i class="bi bi-plus-lg"></i>');
+                    }
+                });
+                updateJourneyBadge();
+                loadSelectedExperiences();
+                autoGenerateItinerary();
+            }
+
             // Highlight AI-recommended experiences
             if (resp.recommended_experience_ids && resp.recommended_experience_ids.length > 0) {
                 highlightRecommendedExperiences(resp.recommended_experience_ids);
@@ -1594,7 +1711,7 @@ jQuery(function() {
 
             scrollChat();
         }, function() {
-            typingEl.remove();
+            jQuery('.chat-typing').remove();
             appendChatMsg('assistant', 'Sorry, something went wrong. Please try again.');
             scrollChat();
         });
@@ -1630,11 +1747,27 @@ jQuery(function() {
     jQuery('#inlineChatInput').on('keydown', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
+            activeChatInput = '#inlineChatInput';
             sendChatMessage();
         }
     });
 
     jQuery('#inlineChatSend').on('click', function() {
+        activeChatInput = '#inlineChatInput';
+        sendChatMessage();
+    });
+
+    // Journey tab chat
+    jQuery('#journeyChatInput').on('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            activeChatInput = '#journeyChatInput';
+            sendChatMessage();
+        }
+    });
+
+    jQuery('#journeyChatSend').on('click', function() {
+        activeChatInput = '#journeyChatInput';
         sendChatMessage();
     });
 

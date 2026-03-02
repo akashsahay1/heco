@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class TripSelectedExperience extends Model
 {
-    protected $fillable = ['trip_id', 'experience_id', 'is_preferred'];
+    protected $fillable = ['trip_id', 'experience_id', 'is_preferred', 'sort_order'];
 
     protected function casts(): array
     {

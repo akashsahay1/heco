@@ -437,6 +437,9 @@ class AjaxController extends Controller
             if ($request->has('update_group_details')) {
                 return $this->updateGroupDetails($request);
             }
+            if ($request->has('update_trip_start_date')) {
+                return $this->updateTripStartDate($request);
+            }
             if ($request->has('update_travel_preferences')) {
                 return $this->updateTravelPreferences($request);
             }
@@ -1164,15 +1167,21 @@ class AjaxController extends Controller
 
         $recommendIdInstruction = "\n\nIMPORTANT: When recommending specific experiences from the catalog, include their IDs at the very end of your response in this exact format: [RECOMMEND_IDS:1,5,12] (comma-separated experience IDs). This tag is parsed by the frontend to highlight cards — do NOT include it in your visible text to the user.";
 
-        $tripDetailsInstruction = "\n\nTRIP DETAILS EXTRACTION: When the traveller tells you their name, starting city/location, travel dates, budget, anchor point choice, or pickup preference, include this tag at the END of your response (after RECOMMEND_IDS if present): [TRIP_DETAILS:{\"traveller_name\":\"Akash\",\"start_location\":\"Delhi\",\"start_date\":\"2026-03-15\",\"end_date\":\"2026-03-22\"}] — only include keys that were mentioned or changed in this message. Valid keys: traveller_name, start_location, end_location, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD), budget_notes, anchor_point, pickup_preference (private_taxi or local_transport). This tag is parsed by the system — do NOT show it in your visible text.";
+        $tripDetailsInstruction = "\n\nTRIP DETAILS EXTRACTION: When the traveller tells you their name, starting city/location, travel dates, budget, anchor point choice, pickup preference, group size, or comfort preferences — do NOT immediately apply the change. Instead, first SUMMARIZE what you understood and ASK FOR CONFIRMATION (e.g. \"Got it! So you'd like to start from **Delhi** on **15 Mar 2026**. Shall I update your trip with these details?\"). ONLY after the traveller explicitly confirms (e.g. \"yes\", \"confirm\", \"go ahead\", \"that's right\"), include the tag: [TRIP_DETAILS:{\"start_location\":\"Delhi\",\"start_date\":\"2026-03-15\"}] — only include keys that were confirmed. Valid keys: traveller_name, start_location, end_location, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD), budget_notes, anchor_point, pickup_preference (private_taxi or local_transport), adults (integer), children (integer), infants (integer), accommodation_comfort (one of: Cat E - Camping/Tents, Cat D - Basic/Homestay, Cat C - Standard, Cat B - Comfort, Cat A - Premium/Luxury), vehicle_comfort (one of: Local Transport, SUV (Bolero/Scorpio), SUV (Innova/Crysta), Premium (Fortuner/Similar), Tempo Traveller), guide_preference (one of: No Guide, Local Guide, English-speaking, Certified/Expert). This tag is parsed by the system — do NOT show it in your visible text. EXCEPTION: traveller_name can be saved immediately without confirmation.";
 
-        $addToTripInstruction = "\n\nADD TO TRIP: When the traveller confirms they want to add experiences to their itinerary (e.g. \"add it\", \"let's go with that\", \"add those to my trip\", \"yes add them\"), include this tag: [ADD_TO_TRIP:1,5,12] with the experience IDs to add. Only do this when the user CLEARLY confirms, not when you are still suggesting. Use the experience IDs from the catalog.";
+        $addToTripInstruction = "\n\nADD TO TRIP: When the traveller wants to add experiences — do NOT add them immediately. First SUMMARIZE which experiences you plan to add and ASK FOR CONFIRMATION (e.g. \"I'd recommend adding **Village Experience in Tar** (3 days) to your trip. Shall I add it?\"). ONLY after the traveller explicitly confirms (e.g. \"yes\", \"add it\", \"go ahead\"), include this tag: [ADD_TO_TRIP:1,5,12] with the experience IDs. NEVER include this tag without clear traveller confirmation. Use the experience IDs from the catalog.";
+
+        $removeFromTripInstruction = "\n\nREMOVE FROM TRIP: When the traveller wants to remove an experience — first confirm: \"You want to remove **Experience Name** from your trip. This will also remove the associated days. Are you sure?\". ONLY after explicit confirmation, include: [REMOVE_FROM_TRIP:5] with the experience ID. NEVER remove without confirmation.";
+
+        $confirmationRule = "\n\nCONFIRMATION RULE: The confirmation flow ONLY applies when the traveller explicitly asks to CHANGE something (add/remove experiences, update dates, change group size, rename trip, etc.). In that case: (1) Summarize the proposed change, (2) Ask for confirmation, (3) Apply only after they confirm. If they say no, do NOT apply. Never use action tags ([TRIP_DETAILS], [ADD_TO_TRIP], [REMOVE_FROM_TRIP]) without prior confirmation. BUT — for normal conversation like asking questions, getting recommendations, chatting about destinations, or general discussion — just respond naturally. Do NOT ask for confirmation when no change is being made.";
+
+        $allInstructions = $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $removeFromTripInstruction . $confirmationRule;
 
         $messages = [];
         if ($promptData) {
-            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction];
+            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $allInstructions];
         } else {
-            $messages[] = ["role" => "system", "content" => "You are a helpful travel assistant for HECO (Himalayan Ecotourism Collective). Help travellers plan regenerative trips. Suggest experiences, help with itinerary planning, and answer questions about destinations. Be warm, knowledgeable, and encourage sustainable travel.\n\nYou have access to the following experience catalog:\n" . $experiences->toJson() . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction];
+            $messages[] = ["role" => "system", "content" => "You are a helpful travel assistant for HECO (Himalayan Ecotourism Collective). Help travellers plan regenerative trips. Suggest experiences, help with itinerary planning, and answer questions about destinations. Be warm, knowledgeable, and encourage sustainable travel.\n\nYou have access to the following experience catalog:\n" . $experiences->toJson() . $allInstructions];
         }
 
         $messages = array_merge($messages, $history);
@@ -1200,7 +1209,7 @@ class AjaxController extends Controller
             $travellerName = $extractedDetails['traveller_name'] ?? null;
             unset($extractedDetails['traveller_name']);
 
-            $allowedKeys = ['start_location', 'end_location', 'start_date', 'end_date', 'budget_notes', 'anchor_point', 'pickup_preference'];
+            $allowedKeys = ['start_location', 'end_location', 'start_date', 'end_date', 'budget_notes', 'anchor_point', 'pickup_preference', 'adults', 'children', 'infants', 'accommodation_comfort', 'vehicle_comfort', 'guide_preference'];
             $extractedDetails = array_intersect_key($extractedDetails, array_flip($allowedKeys));
 
             if ($isGuest) {
@@ -1217,6 +1226,9 @@ class AjaxController extends Controller
                     $trip->update($extractedDetails);
                 }
             }
+            $detailsUpdated = true;
+        } else {
+            $detailsUpdated = false;
         }
 
         // Parse ADD_TO_TRIP tag
@@ -1256,7 +1268,43 @@ class AjaxController extends Controller
             }
         }
 
-        $tripUpdated = !empty($addedExperienceIds);
+        // Parse REMOVE_FROM_TRIP tag
+        $removedExperienceIds = [];
+        if (preg_match('/\[REMOVE_FROM_TRIP:([\d,]+)\]/', $responseText, $removeMatch)) {
+            $removeIds = array_map('intval', explode(',', $removeMatch[1]));
+            $responseText = trim(preg_replace('/\s*\[REMOVE_FROM_TRIP:[\d,]+\]/', '', $responseText));
+
+            if ($isGuest) {
+                $guestData = $this->guestTrip();
+                $existing = $guestData['experience_ids'] ?? [];
+                $guestData['experience_ids'] = array_values(array_filter($existing, function ($id) use ($removeIds) {
+                    return !in_array($id, $removeIds);
+                }));
+                $guestData['ai_itinerary'] = null;
+                $guestData['ai_raw_response'] = null;
+                $this->saveGuestTrip($guestData);
+                $removedExperienceIds = $removeIds;
+            } elseif ($trip) {
+                foreach ($removeIds as $expId) {
+                    TripSelectedExperience::where('trip_id', $trip->id)
+                        ->where('experience_id', $expId)
+                        ->delete();
+
+                    TripDayExperience::where('experience_id', $expId)
+                        ->whereHas('tripDay', function ($q) use ($trip) {
+                            $q->where('trip_id', $trip->id);
+                        })
+                        ->delete();
+
+                    $removedExperienceIds[] = $expId;
+                }
+                // Remove empty days (no experiences left)
+                $trip->tripDays()->whereDoesntHave('experiences')->delete();
+            }
+        }
+
+        $tripUpdated = !empty($addedExperienceIds) || !empty($removedExperienceIds) || $detailsUpdated;
+        $updatedDetails = $detailsUpdated ? ($extractedDetails ?? []) : [];
 
         // Save assistant response
         if ($isGuest) {
@@ -1272,7 +1320,9 @@ class AjaxController extends Controller
                 "trip_id" => "guest",
                 "recommended_experience_ids" => $recommendedIds,
                 "added_experience_ids" => $addedExperienceIds,
+                "removed_experience_ids" => $removedExperienceIds,
                 "trip_updated" => $tripUpdated,
+                "updated_details" => $updatedDetails,
             ]);
         }
 
@@ -1290,7 +1340,9 @@ class AjaxController extends Controller
             "trip_id" => $trip->id,
             "recommended_experience_ids" => $recommendedIds,
             "added_experience_ids" => $addedExperienceIds,
+            "removed_experience_ids" => $removedExperienceIds,
             "trip_updated" => $tripUpdated,
+            "updated_details" => $updatedDetails,
         ]);
     }
 
@@ -1311,7 +1363,10 @@ class AjaxController extends Controller
             $ids = $gt['experience_ids'] ?? [];
             if (empty($ids)) return response()->json(["experiences" => []]);
 
-            $exps = Experience::whereIn('id', $ids)->with('region')->get();
+            $exps = Experience::whereIn('id', $ids)->with('region')->get()
+                ->sortBy(function ($exp) use ($ids) {
+                    return array_search($exp->id, $ids);
+                })->values();
             $items = $exps->map(function ($exp) {
                 return [
                     'experience_id' => $exp->id,
@@ -1326,7 +1381,7 @@ class AjaxController extends Controller
 
         $experiences = TripSelectedExperience::where("trip_id", $trip->id)
             ->with("experience.region")
-            ->orderBy("id")
+            ->orderBy("sort_order")
             ->get();
 
         return response()->json(["experiences" => $experiences]);
@@ -1337,14 +1392,15 @@ class AjaxController extends Controller
         if (!Auth::check()) {
             $gt = $this->guestTrip();
             $days = $this->buildGuestTimeline($gt);
-            return response()->json(["days" => $days]);
+            $startDate = $gt['start_date'] ?? null;
+            return response()->json(["days" => $days, "start_date" => $startDate]);
         }
 
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["days" => []]);
 
         $days = $trip->tripDays()->with(["experiences.experience.days", "services"])->get();
-        return response()->json(["days" => $days]);
+        return response()->json(["days" => $days, "start_date" => $trip->start_date?->toDateString()]);
     }
 
     protected function getChatHistory(Request $request): JsonResponse
@@ -1384,9 +1440,12 @@ class AjaxController extends Controller
 
         $trip = $this->ensureAuthTrip($request);
 
+        $maxSort = TripSelectedExperience::where('trip_id', $trip->id)->max('sort_order') ?? 0;
         TripSelectedExperience::firstOrCreate([
             "trip_id" => $trip->id,
             "experience_id" => $experience->id,
+        ], [
+            "sort_order" => $maxSort + 1,
         ]);
 
         if ($experience->region_id) {
@@ -1459,9 +1518,12 @@ class AjaxController extends Controller
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["error" => "Trip not found"], 404);
 
+        $maxSort = TripSelectedExperience::where('trip_id', $trip->id)->max('sort_order') ?? 0;
         $sel = TripSelectedExperience::firstOrCreate([
             "trip_id" => $trip->id,
             "experience_id" => $request->experience_id,
+        ], [
+            "sort_order" => $maxSort + 1,
         ]);
         $sel->update(["is_preferred" => !$sel->is_preferred]);
 
@@ -1493,6 +1555,31 @@ class AjaxController extends Controller
 
     protected function reorderExperiences(Request $request): JsonResponse
     {
+        $order = $request->order;
+        if (!is_array($order) || empty($order)) {
+            return response()->json(["error" => "No order provided"], 422);
+        }
+
+        $order = array_map('intval', $order);
+
+        if (!Auth::check()) {
+            $gt = $this->guestTrip();
+            $gt['experience_ids'] = $order;
+            $gt['ai_itinerary'] = null;
+            $gt['ai_raw_response'] = null;
+            $this->saveGuestTrip($gt);
+            return response()->json(["success" => true]);
+        }
+
+        $trip = $this->resolveTrip($request);
+        if (!$trip) return response()->json(["error" => "Trip not found"], 404);
+
+        foreach ($order as $index => $expId) {
+            TripSelectedExperience::where('trip_id', $trip->id)
+                ->where('experience_id', $expId)
+                ->update(['sort_order' => $index]);
+        }
+
         return response()->json(["success" => true]);
     }
 
@@ -1511,6 +1598,30 @@ class AjaxController extends Controller
         if (!$trip) return response()->json(["error" => "Trip not found"], 404);
 
         $trip->update($request->only(["adults", "children", "infants", "traveller_origin"]));
+        return response()->json(["success" => true]);
+    }
+
+    protected function updateTripStartDate(Request $request): JsonResponse
+    {
+        $date = $request->start_date ?: null;
+
+        if (!Auth::check()) {
+            $gt = $this->guestTrip();
+            $gt['start_date'] = $date;
+            $this->saveGuestTrip($gt);
+            return response()->json(["success" => true]);
+        }
+
+        $trip = $this->ensureAuthTrip($request);
+        $trip->update(["start_date" => $date]);
+
+        // Update existing trip day dates
+        foreach ($trip->tripDays()->orderBy('day_number')->get() as $day) {
+            $day->update([
+                "date" => $date ? \Carbon\Carbon::parse($date)->addDays($day->day_number - 1) : null,
+            ]);
+        }
+
         return response()->json(["success" => true]);
     }
 
@@ -1760,14 +1871,16 @@ class AjaxController extends Controller
             ]);
         }
 
-        // Transfer selected experiences
-        foreach ($gt['experience_ids'] as $expId) {
+        // Transfer selected experiences (preserving guest order)
+        foreach ($gt['experience_ids'] as $index => $expId) {
             $experience = Experience::find($expId);
             if (!$experience) continue;
 
             TripSelectedExperience::firstOrCreate([
                 "trip_id" => $trip->id,
                 "experience_id" => $experience->id,
+            ], [
+                "sort_order" => $index,
             ]);
 
             if ($experience->region_id) {
@@ -1820,7 +1933,10 @@ class AjaxController extends Controller
             if (empty($expIds)) {
                 return response()->json(["error" => "Add experiences to your trip first"], 422);
             }
-            $expModels = Experience::whereIn('id', $expIds)->with('region')->get();
+            $expModels = Experience::whereIn('id', $expIds)->with('region')->get()
+                ->sortBy(function ($exp) use ($expIds) {
+                    return array_search($exp->id, $expIds);
+                })->values();
             $adults = $gt['adults'] ?? 2;
             $preferences = ($gt['accommodation_comfort'] ?: 'standard') . " comfort, " . ($gt['travel_pace'] ?: 'moderate') . " pace";
         } else {
@@ -1828,7 +1944,7 @@ class AjaxController extends Controller
             if (!$trip) {
                 return response()->json(["error" => "No trip found. Add experiences first."], 422);
             }
-            $trip->load(["selectedExperiences.experience.region"]);
+            $trip->load(["selectedExperiences" => function ($q) { $q->orderBy('sort_order'); }, "selectedExperiences.experience.region"]);
             $expModels = $trip->selectedExperiences->pluck('experience')->filter();
             $adults = $trip->adults ?? 2;
             $preferences = ($trip->accommodation_comfort ?? "standard") . " comfort, " . ($trip->travel_pace ?? "moderate") . " pace";
@@ -1906,15 +2022,17 @@ class AjaxController extends Controller
             "pickup_preference" => $pickupPref ?: 'Not specified',
         ]);
 
+        $orderInstruction = "\n\nCRITICAL: The experiences are listed in the traveller's chosen order. You MUST schedule them in EXACTLY this sequence — do NOT rearrange based on geography or logistics. The traveller has intentionally ordered them this way.";
+
         $messages = [];
         if ($promptData) {
-            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"]];
+            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $orderInstruction];
             $messages[] = ["role" => "user", "content" => $promptData["user_prompt"]];
         } else {
             $fallbackContext = "Create a " . $duration . "-day itinerary for " . $adults . " adults using: " . json_encode($experiences);
             if ($startLocation) $fallbackContext .= "\nStarting from: " . $startLocation;
             if ($startDate) $fallbackContext .= "\nDates: " . $startDate . " to " . ($endDate ?: 'flexible');
-            $messages[] = ["role" => "system", "content" => "You are an itinerary planner. Output JSON only: {\"days\": [{\"title\": \"...\", \"experiences\": [{\"experience_id\": N, \"name\": \"...\", \"start_time\": \"09:00\", \"end_time\": \"17:00\", \"notes\": \"...\"}], \"notes\": \"...\"}]}"];
+            $messages[] = ["role" => "system", "content" => "You are an itinerary planner. Output JSON only: {\"days\": [{\"title\": \"...\", \"experiences\": [{\"experience_id\": N, \"name\": \"...\", \"start_time\": \"09:00\", \"end_time\": \"17:00\", \"notes\": \"...\"}], \"notes\": \"...\"}]}" . $orderInstruction];
             $messages[] = ["role" => "user", "content" => $fallbackContext];
         }
 
