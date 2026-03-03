@@ -1173,7 +1173,7 @@ class AjaxController extends Controller
 
         $removeFromTripInstruction = "\n\nREMOVE FROM TRIP: When the traveller wants to remove an experience — first confirm: \"You want to remove **Experience Name** from your trip. This will also remove the associated days. Are you sure?\". ONLY after explicit confirmation, include: [REMOVE_FROM_TRIP:5] with the experience ID. NEVER remove without confirmation.";
 
-        $confirmationRule = "\n\nCONFIRMATION RULE: The confirmation flow ONLY applies when the traveller explicitly asks to CHANGE something (add/remove experiences, update dates, change group size, rename trip, etc.). In that case: (1) Summarize the proposed change, (2) Ask for confirmation, (3) Apply only after they confirm. If they say no, do NOT apply. Never use action tags ([TRIP_DETAILS], [ADD_TO_TRIP], [REMOVE_FROM_TRIP]) without prior confirmation. BUT — for normal conversation like asking questions, getting recommendations, chatting about destinations, or general discussion — just respond naturally. Do NOT ask for confirmation when no change is being made.";
+        $confirmationRule = "\n\nCONFIRMATION RULE: The confirmation flow ONLY applies when the traveller explicitly asks to CHANGE something (add/remove experiences, update dates, change group size, rename trip, etc.). In that case: (1) Summarize the proposed change, (2) Ask for confirmation, (3) Apply only after they confirm. If they say no, do NOT apply. Never use action tags ([TRIP_DETAILS], [ADD_TO_TRIP], [REMOVE_FROM_TRIP]) without prior confirmation. BUT — for normal conversation like asking questions, getting recommendations, chatting about destinations, or general discussion — just respond naturally. Do NOT ask for confirmation when no change is being made.\n\nCRITICAL — COMBINED CONFIRMATIONS: When the traveller confirms trip details that mention specific experiences (e.g. \"yes, I want the Village Experience in Tir starting 18th March\"), you MUST include BOTH [TRIP_DETAILS:{...}] AND [ADD_TO_TRIP:X] tags in the same response. Do NOT confirm trip details without also adding the experiences the traveller discussed. If the conversation context clearly indicates the traveller wants a specific experience as part of their trip, always include [ADD_TO_TRIP] alongside [TRIP_DETAILS] when they confirm.";
 
         $allInstructions = $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $removeFromTripInstruction . $confirmationRule;
 
@@ -1231,11 +1231,11 @@ class AjaxController extends Controller
             $detailsUpdated = false;
         }
 
-        // Parse ADD_TO_TRIP tag
+        // Parse ADD_TO_TRIP tag (flexible regex: handles spaces, trailing commas)
         $addedExperienceIds = [];
-        if (preg_match('/\[ADD_TO_TRIP:([\d,]+)\]/', $responseText, $addMatch)) {
-            $requestedIds = array_map('intval', explode(',', $addMatch[1]));
-            $responseText = trim(preg_replace('/\s*\[ADD_TO_TRIP:[\d,]+\]/', '', $responseText));
+        if (preg_match('/\[ADD_TO_TRIP:\s*([\d,\s]+?)\s*\]/', $responseText, $addMatch)) {
+            $requestedIds = array_map('intval', array_filter(preg_split('/[\s,]+/', $addMatch[1]), fn($v) => $v !== ''));
+            $responseText = trim(preg_replace('/\s*\[ADD_TO_TRIP:\s*[\d,\s]+?\s*\]/', '', $responseText));
 
             // Validate experience IDs exist
             $validIds = Experience::where('is_active', true)->whereIn('id', $requestedIds)->pluck('id')->toArray();
@@ -1268,11 +1268,52 @@ class AjaxController extends Controller
             }
         }
 
+        // Fallback: if AI text says it added/adding an experience but no [ADD_TO_TRIP] tag was found,
+        // try to match experience names from the catalog and add them automatically
+        if (empty($addedExperienceIds) && preg_match('/(?:added|adding|I\'ve added|I have added|added .* to your trip|adding .* to your)/i', $responseText)) {
+            $fallbackIds = [];
+            foreach ($experiences as $exp) {
+                // Check if the experience name appears in the AI response
+                if (stripos($responseText, $exp->name) !== false) {
+                    $fallbackIds[] = $exp->id;
+                }
+            }
+            if (!empty($fallbackIds)) {
+                \Log::info('AI ADD_TO_TRIP fallback triggered', ['experience_ids' => $fallbackIds, 'trip_id' => $trip?->id]);
+                if ($isGuest) {
+                    $guestData = $this->guestTrip();
+                    $existing = $guestData['experience_ids'] ?? [];
+                    foreach ($fallbackIds as $expId) {
+                        if (!in_array($expId, $existing)) {
+                            $existing[] = $expId;
+                            $addedExperienceIds[] = $expId;
+                        }
+                    }
+                    $guestData['experience_ids'] = $existing;
+                    $this->saveGuestTrip($guestData);
+                } elseif ($trip) {
+                    foreach ($fallbackIds as $expId) {
+                        $alreadyAdded = TripSelectedExperience::where('trip_id', $trip->id)
+                            ->where('experience_id', $expId)->exists();
+                        if (!$alreadyAdded) {
+                            $maxSort = TripSelectedExperience::where('trip_id', $trip->id)->max('sort_order') ?? 0;
+                            TripSelectedExperience::create([
+                                'trip_id' => $trip->id,
+                                'experience_id' => $expId,
+                                'sort_order' => $maxSort + 1,
+                            ]);
+                            $addedExperienceIds[] = $expId;
+                        }
+                    }
+                }
+            }
+        }
+
         // Parse REMOVE_FROM_TRIP tag
         $removedExperienceIds = [];
-        if (preg_match('/\[REMOVE_FROM_TRIP:([\d,]+)\]/', $responseText, $removeMatch)) {
-            $removeIds = array_map('intval', explode(',', $removeMatch[1]));
-            $responseText = trim(preg_replace('/\s*\[REMOVE_FROM_TRIP:[\d,]+\]/', '', $responseText));
+        if (preg_match('/\[REMOVE_FROM_TRIP:\s*([\d,\s]+?)\s*\]/', $responseText, $removeMatch)) {
+            $removeIds = array_map('intval', array_filter(preg_split('/[\s,]+/', $removeMatch[1]), fn($v) => $v !== ''));
+            $responseText = trim(preg_replace('/\s*\[REMOVE_FROM_TRIP:\s*[\d,\s]+?\s*\]/', '', $responseText));
 
             if ($isGuest) {
                 $guestData = $this->guestTrip();
@@ -2024,15 +2065,17 @@ class AjaxController extends Controller
 
         $orderInstruction = "\n\nCRITICAL: The experiences are listed in the traveller's chosen order. You MUST schedule them in EXACTLY this sequence — do NOT rearrange based on geography or logistics. The traveller has intentionally ordered them this way.";
 
+        $multiDayInstruction = "\n\nMULTI-DAY EXPERIENCES: When an experience has duration_days > 1, you MUST include that experience in the 'experiences' array of ALL its days. For example, a 3-day experience MUST appear in 3 consecutive days — each day must have an entry with the same experience_id. Do NOT create empty arrival or departure days that waste experience days. Every single day of the itinerary MUST have at least one experience in its 'experiences' array. Travel/pickup logistics should be handled as services, not as standalone days.";
+
         $messages = [];
         if ($promptData) {
-            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $orderInstruction];
+            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $orderInstruction . $multiDayInstruction];
             $messages[] = ["role" => "user", "content" => $promptData["user_prompt"]];
         } else {
             $fallbackContext = "Create a " . $duration . "-day itinerary for " . $adults . " adults using: " . json_encode($experiences);
             if ($startLocation) $fallbackContext .= "\nStarting from: " . $startLocation;
             if ($startDate) $fallbackContext .= "\nDates: " . $startDate . " to " . ($endDate ?: 'flexible');
-            $messages[] = ["role" => "system", "content" => "You are an itinerary planner. Output JSON only: {\"days\": [{\"title\": \"...\", \"experiences\": [{\"experience_id\": N, \"name\": \"...\", \"start_time\": \"09:00\", \"end_time\": \"17:00\", \"notes\": \"...\"}], \"notes\": \"...\"}]}" . $orderInstruction];
+            $messages[] = ["role" => "system", "content" => "You are an itinerary planner. Output JSON only: {\"days\": [{\"title\": \"...\", \"experiences\": [{\"experience_id\": N, \"name\": \"...\", \"start_time\": \"09:00\", \"end_time\": \"17:00\", \"notes\": \"...\"}], \"notes\": \"...\"}]}" . $orderInstruction . $multiDayInstruction];
             $messages[] = ["role" => "user", "content" => $fallbackContext];
         }
 

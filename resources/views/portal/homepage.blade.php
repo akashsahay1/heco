@@ -943,7 +943,7 @@ jQuery(function() {
                     html += buildExpCardHtml(exp);
                 });
 
-                if (resp.has_more) {
+                if (resp.next_page_url) {
                     discoverHasMore = true;
                     jQuery('#loadMoreWrap').removeClass('d-none');
                 } else {
@@ -960,8 +960,15 @@ jQuery(function() {
 
             // Update map markers
             updateMapMarkers(allDiscoverExps);
-        }, function() {
+        }, function(xhr) {
             discoverLoading = false;
+            var errorHtml = '<div class="journey-empty-state" style="grid-column: 1 / -1;">';
+            errorHtml += '<div class="journey-empty-icon"><i class="bi bi-exclamation-circle" style="color:#dc3545;"></i></div>';
+            errorHtml += '<h3 class="journey-empty-title">Failed to load experiences</h3>';
+            errorHtml += '<p class="journey-empty-desc">Something went wrong. Please refresh the page and try again.</p>';
+            errorHtml += '<button class="exp-btn exp-btn-primary" style="display:inline-flex; padding:var(--space-3) var(--space-6); margin-top:var(--space-3);" onclick="loadExperiences(false)"><i class="bi bi-arrow-clockwise me-2"></i>Retry</button>';
+            errorHtml += '</div>';
+            jQuery('#experienceGrid').html(errorHtml);
         });
     }
 
@@ -1168,6 +1175,12 @@ jQuery(function() {
 
     function renderTimelineData(resp) {
         var days = resp.days || [];
+
+        // Filter out empty days (no experiences and no services)
+        days = days.filter(function(day) {
+            return (day.experiences && day.experiences.length > 0) || (day.services && day.services.length > 0);
+        });
+
         if (days.length === 0) {
             // If we have experiences but no days, auto-generate the itinerary
             if (selectedExpIds.length > 0 && !aiGenerating) {
@@ -1180,6 +1193,48 @@ jQuery(function() {
 
         var html = '';
         var tripStartDate = resp.start_date ? new Date(resp.start_date) : null;
+
+        // Pre-compute experience day occurrence numbers for correct ExperienceDay matching
+        // e.g. 1st trip day with exp X -> ExperienceDay 1, 2nd -> ExperienceDay 2, etc.
+        var _expOcc = {};
+        days.forEach(function(d) {
+            if (d.experiences && d.experiences.length) {
+                d.experiences.forEach(function(de) {
+                    var eid = de.experience_id || (de.experience && de.experience.id);
+                    if (eid) {
+                        _expOcc[eid] = (_expOcc[eid] || 0) + 1;
+                        de._expDayNum = _expOcc[eid];
+                    }
+                });
+            }
+        });
+
+        // Fill missing days for multi-day experiences that have more ExperienceDays than TripDays
+        var _expSeen = {};
+        days.forEach(function(d) {
+            if (d.experiences && d.experiences.length) {
+                d.experiences.forEach(function(de) {
+                    var eid = de.experience_id || (de.experience && de.experience.id);
+                    if (eid) _expSeen[eid] = { count: _expOcc[eid], experience: de.experience, de: de };
+                });
+            }
+        });
+        Object.keys(_expSeen).forEach(function(eid) {
+            var info = _expSeen[eid];
+            var exp = info.experience;
+            if (exp && exp.days && exp.days.length > info.count) {
+                // This experience has more ExperienceDays than assigned TripDays — add virtual days
+                for (var n = info.count + 1; n <= exp.days.length; n++) {
+                    var virtualDe = { experience_id: parseInt(eid), experience: exp, _expDayNum: n, cost_per_person: info.de.cost_per_person, start_time: null, end_time: null };
+                    var expDay = exp.days.find(function(ed) { return ed.day_number === n; });
+                    if (expDay) {
+                        virtualDe.start_time = expDay.start_time;
+                        virtualDe.end_time = expDay.end_time;
+                    }
+                    days.push({ id: 'virtual_' + eid + '_' + n, day_number: days.length + 1, experiences: [virtualDe], services: [] });
+                }
+            }
+        });
 
         // Sync start date display & input
         if (resp.start_date) {
@@ -1195,7 +1250,7 @@ jQuery(function() {
         }
 
         days.forEach(function(day, index) {
-            // Insert-day button — only show between different experiences
+            // Insert-day button — only between different experiences, not within the same multi-day experience
             if (index > 0) {
                 var prevExpIds = (days[index - 1].experiences || []).map(function(de) { return de.experience_id; });
                 var currExpIds = (day.experiences || []).map(function(de) { return de.experience_id; });
@@ -1203,9 +1258,13 @@ jQuery(function() {
 
                 html += '<div class="timeline-add-day-row">';
                 html += '<div></div>';
-                if (!sameExperience) {
+                // Show add-day button: between different experiences, or after the first day of a multi-day experience
+                var prevDe = days[index - 1].experiences && days[index - 1].experiences[0];
+                var showInsert = !sameExperience || (prevDe && prevDe._expDayNum === 1);
+
+                if (showInsert) {
                     html += '<div class="tl-insert-line">';
-                    html += '<button class="btn-insert-day" data-after-day="' + days[index - 1].day_number + '" title="Add a day here">';
+                    html += '<button class="btn-insert-day" data-after-day="' + (days[index - 1].day_number || index) + '" title="Add a day here">';
                     html += '<i class="bi bi-plus-lg"></i>';
                     html += '</button>';
                     html += '</div>';
@@ -1216,12 +1275,14 @@ jQuery(function() {
                 html += '</div>';
             }
 
-            // Get day-wise title from first experience
+            // Get day-wise title from first experience (use occurrence-based matching)
             var dayTitle = '';
             if (day.experiences && day.experiences.length) {
-                var firstExp = day.experiences[0].experience;
+                var firstDe = day.experiences[0];
+                var firstExp = firstDe.experience;
                 if (firstExp && firstExp.days && firstExp.days.length) {
-                    var matchedDay = firstExp.days.length === 1 ? firstExp.days[0] : firstExp.days.find(function(d) { return d.day_number === day.day_number; }) || firstExp.days[0];
+                    var edNum = firstDe._expDayNum || 1;
+                    var matchedDay = firstExp.days.length === 1 ? firstExp.days[0] : firstExp.days.find(function(d) { return d.day_number === edNum; }) || firstExp.days[0];
                     if (matchedDay && matchedDay.title) dayTitle = matchedDay.title;
                 }
             }
@@ -1233,7 +1294,7 @@ jQuery(function() {
                 dateObj = new Date(day.date);
             } else if (tripStartDate) {
                 dateObj = new Date(tripStartDate);
-                dateObj.setDate(dateObj.getDate() + (day.day_number - 1));
+                dateObj.setDate(dateObj.getDate() + index);
             }
             if (dateObj && !isNaN(dateObj)) {
                 var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1245,7 +1306,7 @@ jQuery(function() {
 
             // Left column: day label + inclusion icons from ExperienceDay
             html += '<div class="timeline-day-label">';
-            html += '<span class="timeline-day-number">Day ' + day.day_number + '</span>';
+            html += '<span class="timeline-day-number">Day ' + (index + 1) + '</span>';
             if (formattedDate) html += '<span class="timeline-day-date">' + formattedDate + '</span>';
             // Collect inclusions from matching ExperienceDay
             var dayInclusions = [];
@@ -1253,7 +1314,8 @@ jQuery(function() {
                 day.experiences.forEach(function(de) {
                     var exp = de.experience;
                     if (exp && exp.days && exp.days.length) {
-                        var ed = exp.days.length === 1 ? exp.days[0] : exp.days.find(function(d) { return d.day_number === day.day_number; }) || exp.days[0];
+                        var edNum = de._expDayNum || 1;
+                        var ed = exp.days.length === 1 ? exp.days[0] : exp.days.find(function(d) { return d.day_number === edNum; }) || exp.days[0];
                         if (ed && ed.inclusions && ed.inclusions.length) {
                             ed.inclusions.forEach(function(inc) {
                                 if (dayInclusions.indexOf(inc) === -1) dayInclusions.push(inc);
@@ -1309,7 +1371,8 @@ jQuery(function() {
                     if (!alreadyShown) html += '<span class="timeline-exp-name">' + eName + '</span>';
 
                     if (exp && exp.days && exp.days.length) {
-                        var ed = exp.days.length === 1 ? exp.days[0] : exp.days.find(function(d) { return d.day_number === day.day_number; }) || exp.days[0];
+                        var edNum = de._expDayNum || 1;
+                        var ed = exp.days.length === 1 ? exp.days[0] : exp.days.find(function(d) { return d.day_number === edNum; }) || exp.days[0];
                         if (ed && ed.short_description) {
                             html += '<div style="font-size:0.7rem; color:var(--heco-neutral-600, #475569);">' + ed.short_description + '</div>';
                         }
@@ -1337,6 +1400,21 @@ jQuery(function() {
             html += '</div>'; // .timeline-day-content
             html += '</div>'; // .timeline-day
         });
+
+        // Add-day button after the last day
+        if (days.length > 0) {
+            var lastDay = days[days.length - 1];
+            html += '<div class="timeline-add-day-row">';
+            html += '<div></div>';
+            html += '<div class="tl-insert-line">';
+            html += '<button class="btn-insert-day" data-after-day="' + (lastDay.day_number || days.length) + '" title="Add a day here">';
+            html += '<i class="bi bi-plus-lg"></i>';
+            html += '</button>';
+            html += '</div>';
+            html += '<div></div>';
+            html += '</div>';
+        }
+
         jQuery('#timelineContainer').html(html);
     }
 
@@ -1357,8 +1435,29 @@ jQuery(function() {
 
     // Remove experience — send to AI for confirmation
     jQuery(document).on('click', '.btn-remove-exp', function() {
-        var expName = jQuery(this).closest('.journey-exp-item').find('.exp-name').text().trim() || 'this experience';
-        sendAiMessage('I want to remove "' + expName + '" from my trip.');
+        var btn = jQuery(this);
+        var expId = parseInt(btn.data('exp-id'));
+        var expName = btn.closest('.journey-exp-item').find('.exp-name').text().trim() || 'this experience';
+        if (!tripId || !expId) return;
+        if (!confirm('Remove "' + expName + '" from your trip?')) return;
+        btn.prop('disabled', true);
+        ajaxPost({ remove_experience_from_trip: 1, trip_id: tripId, experience_id: expId }, function() {
+            selectedExpIds = selectedExpIds.filter(function(id) { return parseInt(id) !== expId; });
+            updateJourneyBadge();
+            loadSelectedExperiences();
+            loadTimeline();
+            loadPricing();
+            // Reset the add/remove button on the discover card
+            jQuery('.btn-remove-journey-exp[data-exp-id="' + expId + '"]')
+                .removeClass('btn-remove-journey-exp').addClass('btn-add-exp')
+                .attr('title', 'Add to Journey')
+                .html('<i class="bi bi-plus-lg"></i>');
+            appendChatMsg('assistant', 'You have removed **' + expName + '** from your trip.');
+            scrollChat();
+        }, function() {
+            btn.prop('disabled', false);
+            alert('Failed to remove experience. Please try again.');
+        });
     });
 
     // Drag and reorder
@@ -1641,17 +1740,18 @@ jQuery(function() {
             jQuery('.chat-typing').remove();
             appendChatMsg('assistant', resp.response || 'I could not generate a response. Please try again.');
 
-            if (resp.trip_id && !tripId) {
+            if (resp.trip_id) {
+                if (!tripId) {
+                    jQuery('#noTripMessage').addClass('d-none');
+                    jQuery('#journeyPanels').removeClass('d-none');
+                    jQuery('#noImpactMessage').addClass('d-none');
+                    jQuery('#impactData').removeClass('d-none');
+                }
                 tripId = resp.trip_id;
-                jQuery('#noTripMessage').addClass('d-none');
-                jQuery('#journeyPanels').removeClass('d-none');
-                jQuery('#noImpactMessage').addClass('d-none');
-                jQuery('#impactData').removeClass('d-none');
             }
 
             if (resp.trip_updated) {
                 loadJourneyData();
-                selectedExpIds = resp.selected_experience_ids || selectedExpIds;
                 updateJourneyBadge();
             }
 
