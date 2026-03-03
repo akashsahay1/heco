@@ -228,12 +228,13 @@ class AjaxController extends Controller
         if (!$itinerary || !isset($itinerary['days'])) return [];
 
         $adults = $guestData['adults'] ?? 2;
+        $currentExpIds = $guestData['experience_ids'] ?? [];
 
-        // Collect all experience IDs to fetch from DB in one query
+        // Collect all experience IDs to fetch from DB in one query (only those still in trip)
         $expIds = [];
         foreach ($itinerary['days'] as $day) {
             foreach ($day['experiences'] ?? [] as $exp) {
-                if (isset($exp['experience_id'])) {
+                if (isset($exp['experience_id']) && in_array($exp['experience_id'], $currentExpIds)) {
                     $expIds[] = $exp['experience_id'];
                 }
             }
@@ -241,10 +242,14 @@ class AjaxController extends Controller
         $experiences = Experience::with('days')->whereIn('id', $expIds)->get()->keyBy('id');
 
         $days = [];
+        $dayNum = 0;
         foreach ($itinerary['days'] as $i => $day) {
             $dayExperiences = [];
-            foreach ($day['experiences'] ?? [] as $j => $exp) {
+            $j = 0;
+            foreach ($day['experiences'] ?? [] as $exp) {
                 $eid = $exp['experience_id'] ?? null;
+                // Skip experiences that were removed from the trip
+                if ($eid && !in_array($eid, $currentExpIds)) continue;
                 $expModel = $eid ? ($experiences[$eid] ?? null) : null;
                 $costPerPerson = $expModel ? $expModel->base_cost_per_person : 0;
 
@@ -258,12 +263,17 @@ class AjaxController extends Controller
                     'total_cost' => $costPerPerson * $adults,
                     'experience' => $expModel ? $expModel->toArray() : null,
                 ];
+                $j++;
             }
 
+            // Skip days with no experiences and no description after filtering
+            if (empty($dayExperiences) && empty($day['description'])) continue;
+            $dayNum++;
+
             $days[] = [
-                'id' => $i + 1,
-                'day_number' => $i + 1,
-                'title' => $day['title'] ?? 'Day ' . ($i + 1),
+                'id' => $i + 1, // raw itinerary index (1-based) for correct removal
+                'day_number' => $dayNum,
+                'title' => $day['title'] ?? 'Day ' . $dayNum,
                 'description' => $day['description'] ?? null,
                 'date' => $day['date'] ?? null,
                 'is_locked' => false,
@@ -1191,6 +1201,10 @@ class AjaxController extends Controller
             "max_tokens" => $promptData["max_tokens"] ?? 4096,
         ]);
 
+        if (!$aiResponse || empty($aiResponse["content"])) {
+            \Log::warning('AI chat: all providers failed', ['is_guest' => $isGuest, 'trip_id' => $trip?->id]);
+        }
+
         $responseText = $aiResponse["content"] ?? "I apologize, I am having trouble connecting right now. Please try again or contact our team for assistance.";
 
         // Parse recommended experience IDs
@@ -2116,7 +2130,24 @@ class AjaxController extends Controller
         $parsed = $this->normalizeItinerary($parsed);
 
         if ($isGuest) {
-            // Store in session only — no DB writes
+            // Re-read session to get latest experience_ids (may have changed during AI processing)
+            $gt = $this->guestTrip();
+            $currentExpIds = $gt['experience_ids'] ?? [];
+
+            // Filter AI itinerary to only include experiences still in the trip
+            if (!empty($currentExpIds) && isset($parsed['days'])) {
+                foreach ($parsed['days'] as &$day) {
+                    $day['experiences'] = array_values(array_filter($day['experiences'] ?? [], function ($exp) use ($currentExpIds) {
+                        return in_array($exp['experience_id'] ?? null, $currentExpIds);
+                    }));
+                }
+                unset($day);
+                // Remove days with no experiences left
+                $parsed['days'] = array_values(array_filter($parsed['days'], function ($day) {
+                    return !empty($day['experiences']);
+                }));
+            }
+
             $gt['ai_itinerary'] = $parsed;
             $gt['ai_raw_response'] = $responseText;
             $this->saveGuestTrip($gt);

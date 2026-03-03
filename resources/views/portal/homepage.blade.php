@@ -352,7 +352,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                     </div>
 
                     {{-- Shown if no trip --}}
-                    <div id="noTripMessage" class="journey-empty-state {{ $hasTrip ? 'd-none' : '' }}">
+                    <div id="noTripMessage" class="journey-empty-state d-none">
                         <div class="journey-empty-icon">
                             <i class="bi bi-map"></i>
                         </div>
@@ -363,8 +363,8 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                         </button>
                     </div>
 
-                    {{-- Shown if trip exists --}}
-                    <div id="journeyPanels" class="journey-panels {{ $hasTrip ? '' : 'd-none' }}">
+                    {{-- Journey panels — always visible --}}
+                    <div id="journeyPanels" class="journey-panels">
                         {{-- Left: Selected Experiences List --}}
                         <div class="journey-panel">
                             <div class="journey-panel-header">
@@ -372,7 +372,6 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 <span class="tab-badge" id="expListCount">0</span>
                             </div>
                             <div class="journey-panel-body journey-sidebar" id="selectedExpList">
-                                <p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-4);">No experiences added yet</p>
                             </div>
                         </div>
 
@@ -384,9 +383,6 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 </div>
                             </div>
                             <div class="timeline-container" id="timelineContainer">
-                                <p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);" id="emptyTimeline">
-                                    Days will appear here when experiences are added
-                                </p>
                             </div>
                         </div>
 
@@ -412,9 +408,9 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                         <input type="date" id="tripStartDateInput" class="start-date-input d-none"
                                             value="{{ ($trip->start_date ?? null) ? $trip->start_date->format('Y-m-d') : ($guestTripData['start_date'] ?? '') }}">
                                     </div>
-                                    <div class="pricing-row"><span><i class="bi bi-clock"></i> Duration</span><span id="tripDuration">--</span></div>
-                                    <div class="pricing-row"><span><i class="bi bi-geo-alt"></i> Regions</span><span id="tripRegions">--</span></div>
-                                    <div class="pricing-row"><span><i class="bi bi-card-list"></i> Experiences</span><span id="tripExpCount">0</span></div>
+                                    <div class="pricing-row"><span><i class="bi bi-clock"></i> Duration</span><span id="tripDuration"></span></div>
+                                    <div class="pricing-row"><span><i class="bi bi-geo-alt"></i> Regions</span><span id="tripRegions"></span></div>
+                                    <div class="pricing-row"><span><i class="bi bi-card-list"></i> Experiences</span><span id="tripExpCount"></span></div>
                                 </div>
                             </div>
 
@@ -497,15 +493,15 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-header"><i class="bi bi-receipt"></i> Pricing Summary</div>
                                 <div class="detail-card-body" id="pricingSummary">
-                                    <div class="pricing-row"><span>Transport</span><span id="prTransport">--</span></div>
-                                    <div class="pricing-row"><span>Accommodation</span><span id="prAccommodation">--</span></div>
-                                    <div class="pricing-row"><span>Guide</span><span id="prGuide">--</span></div>
-                                    <div class="pricing-row"><span>Activities</span><span id="prActivities">--</span></div>
-                                    <div class="pricing-row"><span>Other</span><span id="prOther">--</span></div>
-                                    <div class="pricing-row"><span>Subtotal</span><span id="prSubtotal">--</span></div>
-                                    <div class="pricing-row"><span>RP Contribution</span><span id="prRP" class="rp-contribution">--</span></div>
-                                    <div class="pricing-row"><span>GST</span><span id="prGST">--</span></div>
-                                    <div class="pricing-row total"><span>Final Price</span><span id="prFinal">--</span></div>
+                                    <div class="pricing-row"><span>Transport</span><span id="prTransport"></span></div>
+                                    <div class="pricing-row"><span>Accommodation</span><span id="prAccommodation"></span></div>
+                                    <div class="pricing-row"><span>Guide</span><span id="prGuide"></span></div>
+                                    <div class="pricing-row"><span>Activities</span><span id="prActivities"></span></div>
+                                    <div class="pricing-row"><span>Other</span><span id="prOther"></span></div>
+                                    <div class="pricing-row"><span>Subtotal</span><span id="prSubtotal"></span></div>
+                                    <div class="pricing-row"><span>RP Contribution</span><span id="prRP" class="rp-contribution"></span></div>
+                                    <div class="pricing-row"><span>GST</span><span id="prGST"></span></div>
+                                    <div class="pricing-row total"><span>Final Price</span><span id="prFinal"></span></div>
                                 </div>
                             </div>
 
@@ -576,6 +572,54 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
     </div>
 </div>
 
+
+{{-- Add Day Modal --}}
+<div class="modal fade" id="addDayModal" tabindex="-1" aria-labelledby="addDayModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content" style="border-radius: 16px; border: none; box-shadow: 0 12px 40px rgba(22,163,74,0.15), 0 4px 16px rgba(0,0,0,0.08); overflow: hidden;">
+            {{-- Green gradient header --}}
+            <div style="background: linear-gradient(135deg, var(--heco-primary-600) 0%, var(--heco-primary-500) 100%); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 34px; height: 34px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                        <i class="bi bi-calendar-plus" style="color: #fff; font-size: 16px;"></i>
+                    </div>
+                    <div>
+                        <h6 id="addDayModalLabel" style="font-weight: 700; color: #fff; margin: 0; font-size: 15px;">Add a Day</h6>
+                        <p id="addDayModalSubtitle" style="font-size: 12px; color: rgba(255,255,255,0.8); margin: 0;"></p>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="font-size: 0.65rem; opacity: 0.8;"></button>
+            </div>
+            {{-- Body --}}
+            <div style="padding: 20px;">
+                <label style="font-size: 13px; font-weight: 600; color: var(--heco-neutral-700); margin-bottom: 8px; display: block;">
+                    What would you like to do on this day?
+                </label>
+                <textarea id="addDayDescription" class="form-control" rows="3"
+                    placeholder="e.g. A rest day in Pokhara with lakeside walk and local food tasting..."
+                    style="font-size: 13px; border-radius: 10px; resize: none; border: 1.5px solid var(--heco-primary-200); transition: border-color 0.2s, box-shadow 0.2s;"
+                    onfocus="this.style.borderColor='var(--heco-primary-400)';this.style.boxShadow='0 0 0 3px rgba(34,197,94,0.1)'"
+                    onblur="this.style.borderColor='var(--heco-primary-200)';this.style.boxShadow='none'"></textarea>
+                <p style="font-size: 11px; color: var(--heco-neutral-400); margin: 8px 0 0; line-height: 1.4;">
+                    <i class="bi bi-info-circle"></i> Describe your plans and AI will build the day for you
+                </p>
+            </div>
+            {{-- Footer --}}
+            <div style="padding: 0 20px 16px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" data-bs-dismiss="modal"
+                    style="padding: 8px 18px; font-size: 13px; font-weight: 500; color: var(--heco-neutral-500); background: none; border: 1.5px solid var(--heco-neutral-200); border-radius: 10px; cursor: pointer; transition: all 0.2s;">
+                    Cancel
+                </button>
+                <button type="button" id="addDayConfirmBtn"
+                    style="padding: 8px 22px; font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(135deg, var(--heco-primary-500), var(--heco-primary-600)); border: none; border-radius: 10px; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(22,163,74,0.25);"
+                    onmouseover="this.style.boxShadow='0 4px 14px rgba(22,163,74,0.35)';this.style.transform='translateY(-1px)'"
+                    onmouseout="this.style.boxShadow='0 2px 8px rgba(22,163,74,0.25)';this.style.transform='none'">
+                    <i class="bi bi-plus-lg" style="margin-right: 4px;"></i> Add Day
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @endsection
 
@@ -737,6 +781,8 @@ jQuery(function() {
     // ===================================
     var aiGenerating = false;
     var aiGenerateXhr = null;
+    var aiRetryCount = 0;
+    var AI_MAX_RETRIES = 1;
 
     function autoGenerateItinerary() {
         if (!tripId || selectedExpIds.length === 0) return;
@@ -1023,7 +1069,10 @@ jQuery(function() {
                 }
                 jQuery('#noTripMessage').addClass('d-none');
                 jQuery('#journeyPanels').removeClass('d-none');
+                jQuery('#noImpactMessage').addClass('d-none');
+                jQuery('#impactData').removeClass('d-none');
                 loadSelectedExperiences();
+                aiRetryCount = 0;
                 autoGenerateItinerary();
             }, function() {
                 btn.prop('disabled', false).html('<i class="bi bi-plus-lg"></i>');
@@ -1111,14 +1160,14 @@ jQuery(function() {
                 }
             });
             jQuery('#tripDuration').text(totalDays + (totalDays === 1 ? ' Day' : ' Days'));
-            jQuery('#tripRegions').text(regions.length > 0 ? regions.join(', ') : '--');
+            jQuery('#tripRegions').text(regions.length > 0 ? regions.join(', ') : '');
             jQuery('#tripExpCount').text(items.length);
 
             if (items.length === 0) {
-                jQuery('#selectedExpList').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-4);">No experiences added yet</p>');
-                jQuery('#tripDuration').text('--');
-                jQuery('#tripRegions').text('--');
-                jQuery('#tripExpCount').text('0');
+                jQuery('#selectedExpList').empty();
+                jQuery('#tripDuration').text('');
+                jQuery('#tripRegions').text('');
+                jQuery('#tripExpCount').text('');
                 return;
             }
             var html = '';
@@ -1176,29 +1225,46 @@ jQuery(function() {
     function renderTimelineData(resp) {
         var days = resp.days || [];
 
-        // Filter out empty days (no experiences and no services)
+        // Filter out empty days (no experiences, no services, and no description)
         days = days.filter(function(day) {
-            return (day.experiences && day.experiences.length > 0) || (day.services && day.services.length > 0);
+            return (day.experiences && day.experiences.length > 0) || (day.services && day.services.length > 0) || day.description;
         });
 
         if (days.length === 0) {
-            // If we have experiences but no days, auto-generate the itinerary
-            if (selectedExpIds.length > 0 && !aiGenerating) {
+            // If we have experiences but no days, auto-generate (with retry limit to avoid infinite loops)
+            if (selectedExpIds.length > 0 && !aiGenerating && aiRetryCount <= AI_MAX_RETRIES) {
+                aiRetryCount++;
                 autoGenerateItinerary();
                 return;
             }
-            jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);" id="emptyTimeline">Days will appear here when experiences are added</p>');
+            if (selectedExpIds.length > 0) {
+                jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);" id="emptyTimeline">Could not generate itinerary. Please click "Regenerate" or try again later.</p>');
+            } else {
+                jQuery('#timelineContainer').empty();
+            }
             return;
         }
 
         var html = '';
         var tripStartDate = resp.start_date ? new Date(resp.start_date) : null;
 
-        // Pre-compute experience day occurrence numbers for correct ExperienceDay matching
-        // e.g. 1st trip day with exp X -> ExperienceDay 1, 2nd -> ExperienceDay 2, etc.
+        // Deduplicate experiences within each day and limit multi-day experiences to their duration_days
         var _expOcc = {};
         days.forEach(function(d) {
             if (d.experiences && d.experiences.length) {
+                // Remove duplicate experience_ids within the same day
+                // AND cap multi-day experiences to their duration_days
+                var seen = {};
+                d.experiences = d.experiences.filter(function(de) {
+                    var eid = de.experience_id || (de.experience && de.experience.id);
+                    if (!eid || seen[eid]) return false;
+                    seen[eid] = true;
+                    // Check if this experience already reached its max days
+                    var exp = de.experience;
+                    var maxDays = (exp && exp.duration_type === 'multi_day' && exp.duration_days) ? exp.duration_days : 1;
+                    if ((_expOcc[eid] || 0) >= maxDays) return false;
+                    return true;
+                });
                 d.experiences.forEach(function(de) {
                     var eid = de.experience_id || (de.experience && de.experience.id);
                     if (eid) {
@@ -1209,7 +1275,7 @@ jQuery(function() {
             }
         });
 
-        // Fill missing days for multi-day experiences that have more ExperienceDays than TripDays
+        // Fill missing days for multi-day experiences that have fewer TripDays than duration_days
         var _expSeen = {};
         days.forEach(function(d) {
             if (d.experiences && d.experiences.length) {
@@ -1222,11 +1288,13 @@ jQuery(function() {
         Object.keys(_expSeen).forEach(function(eid) {
             var info = _expSeen[eid];
             var exp = info.experience;
-            if (exp && exp.days && exp.days.length > info.count) {
-                // This experience has more ExperienceDays than assigned TripDays — add virtual days
-                for (var n = info.count + 1; n <= exp.days.length; n++) {
+            if (!exp) return;
+            // Use duration_days as the authoritative day count, fall back to exp.days.length
+            var expectedDays = (exp.duration_type === 'multi_day' && exp.duration_days) ? exp.duration_days : (exp.days ? exp.days.length : 0);
+            if (expectedDays > info.count) {
+                for (var n = info.count + 1; n <= expectedDays; n++) {
                     var virtualDe = { experience_id: parseInt(eid), experience: exp, _expDayNum: n, cost_per_person: info.de.cost_per_person, start_time: null, end_time: null };
-                    var expDay = exp.days.find(function(ed) { return ed.day_number === n; });
+                    var expDay = exp.days ? exp.days.find(function(ed) { return ed.day_number === n; }) : null;
                     if (expDay) {
                         virtualDe.start_time = expDay.start_time;
                         virtualDe.end_time = expDay.end_time;
@@ -1250,21 +1318,49 @@ jQuery(function() {
         }
 
         days.forEach(function(day, index) {
-            // Insert-day button — only between different experiences, not within the same multi-day experience
-            if (index > 0) {
-                var prevExpIds = (days[index - 1].experiences || []).map(function(de) { return de.experience_id; });
-                var currExpIds = (day.experiences || []).map(function(de) { return de.experience_id; });
-                var sameExperience = prevExpIds.length > 0 && currExpIds.length > 0 && prevExpIds.some(function(id) { return currExpIds.indexOf(id) !== -1; });
+            // Insert-day button: before Day 1 of each experience, after Day 1, and after last day
+            if (index === 0) {
+                // Always show add-day button before the very first day
+                html += '<div class="timeline-add-day-row">';
+                html += '<div></div>';
+                html += '<div class="tl-insert-line">';
+                html += '<button class="btn-insert-day" data-after-day="0" title="Add a day here">';
+                html += '<i class="bi bi-plus-lg"></i>';
+                html += '</button>';
+                html += '</div>';
+                html += '<div></div>';
+                html += '</div>';
+            } else {
+                var prevDay = days[index - 1];
+                var curDay = day;
+                var showInsert = false;
+
+                if (!prevDay.experiences || !prevDay.experiences.length) {
+                    showInsert = true;
+                } else {
+                    var prevDe = prevDay.experiences[0];
+                    var prevExp = prevDe.experience;
+                    var prevDayNum = prevDe._expDayNum || 1;
+                    var prevMaxDays = (prevExp && prevExp.duration_type === 'multi_day' && prevExp.duration_days) ? prevExp.duration_days : 1;
+
+                    // Show after last day of experience only
+                    if (prevDayNum >= prevMaxDays) {
+                        showInsert = true;
+                    }
+                }
+
+                // Also show before Day 1 of a new experience
+                if (!showInsert && curDay.experiences && curDay.experiences.length) {
+                    var curDe = curDay.experiences[0];
+                    var curDayNum = curDe._expDayNum || 1;
+                    if (curDayNum === 1) showInsert = true;
+                }
 
                 html += '<div class="timeline-add-day-row">';
                 html += '<div></div>';
-                // Show add-day button: between different experiences, or after the first day of a multi-day experience
-                var prevDe = days[index - 1].experiences && days[index - 1].experiences[0];
-                var showInsert = !sameExperience || (prevDe && prevDe._expDayNum === 1);
-
                 if (showInsert) {
                     html += '<div class="tl-insert-line">';
-                    html += '<button class="btn-insert-day" data-after-day="' + (days[index - 1].day_number || index) + '" title="Add a day here">';
+                    html += '<button class="btn-insert-day" data-after-day="' + (prevDay.day_number || index) + '" title="Add a day here">';
                     html += '<i class="bi bi-plus-lg"></i>';
                     html += '</button>';
                     html += '</div>';
@@ -1394,7 +1490,21 @@ jQuery(function() {
             // Day services (icons shown in left column)
 
             if ((!day.experiences || !day.experiences.length) && (!day.services || !day.services.length)) {
-                html += '<p style="font-size: var(--text-sm); color: var(--color-text-muted); text-align: center; margin: 0; padding: var(--space-2);">No activities planned yet</p>';
+                var emptyDayText = 'Travel / Transition Day';
+                var emptyDayDesc = '';
+                if (day.description) {
+                    emptyDayDesc = day.description;
+                } else if (day.notes) {
+                    emptyDayDesc = day.notes;
+                }
+                html += '<div style="text-align: center; padding: var(--space-3);">';
+                html += '<p style="font-size: var(--text-sm); color: var(--heco-green, #2d6a4f); font-weight: 600; margin: 0;"><i class="bi bi-signpost-split"></i> ' + emptyDayText + '</p>';
+                if (emptyDayDesc) {
+                    html += '<p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 4px 0 0;">' + emptyDayDesc + '</p>';
+                } else {
+                    html += '<p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 4px 0 0;">Rest, travel between destinations, or explore at your own pace</p>';
+                }
+                html += '</div>';
             }
 
             html += '</div>'; // .timeline-day-content
@@ -1512,23 +1622,57 @@ jQuery(function() {
         activeChatInput = '#journeyChatInput';
         jQuery('#journeyChatInput').val(msg);
         sendChatMessage();
+        // Scroll to chat section so user can see the AI response
+        var chatSection = document.querySelector('.journey-chat-section');
+        if (chatSection) chatSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    // Insert Day — send to AI for confirmation
+    // Insert Day — show popup for description, then send to AI
+    var pendingInsertAfterDay = null;
     jQuery(document).on('click', '.btn-insert-day', function() {
         if (!tripId) return;
-        var afterDay = jQuery(this).data('after-day');
-        sendAiMessage('I want to add a new day after Day ' + afterDay + ' in my trip.');
+        pendingInsertAfterDay = jQuery(this).data('after-day');
+        jQuery('#addDayModalSubtitle').text('Adding a new day after Day ' + pendingInsertAfterDay);
+        jQuery('#addDayDescription').val('');
+        var modal = new bootstrap.Modal(document.getElementById('addDayModal'));
+        modal.show();
+        setTimeout(function() { jQuery('#addDayDescription').focus(); }, 300);
     });
 
-    // Remove Day — send to AI for confirmation
+    jQuery('#addDayConfirmBtn').on('click', function() {
+        if (pendingInsertAfterDay === null) return;
+        var desc = jQuery('#addDayDescription').val().trim();
+        var btn = jQuery(this);
+        btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Adding...');
+        ajaxPost({
+            add_day_to_trip: 1,
+            trip_id: tripId,
+            after_day_number: pendingInsertAfterDay,
+            day_note: desc
+        }, function(resp) {
+            bootstrap.Modal.getInstance(document.getElementById('addDayModal')).hide();
+            btn.prop('disabled', false).html('<i class="bi bi-plus-lg" style="margin-right:4px"></i> Add Day');
+            showAlert('Day added successfully!', 'success');
+            loadTimeline();
+            loadPricing();
+            pendingInsertAfterDay = null;
+        }, function() {
+            btn.prop('disabled', false).html('<i class="bi bi-plus-lg" style="margin-right:4px"></i> Add Day');
+            showAlert('Failed to add day. Please try again.', 'danger');
+        });
+    });
+
+    // Remove Day — direct AJAX call
     jQuery(document).on('click', '.btn-remove-day', function() {
         var dayId = jQuery(this).data('day-id');
         var dayEl = jQuery(this).closest('.timeline-day');
-        var dayNum = dayEl.find('.timeline-day-number').text() || 'this day';
-        // Prefer "Day X" from the left label
-        var dayLabel = dayEl.find('.tl-day-num').text() || dayNum;
-        sendAiMessage('I want to remove ' + dayLabel + ' from my trip.');
+        var dayLabel = dayEl.find('.timeline-day-number').text() || 'this day';
+        if (!confirm('Remove ' + dayLabel + ' from your trip?')) return;
+        ajaxPost({ remove_day_from_trip: 1, trip_id: tripId, day_id: dayId }, function() {
+            showAlert('Day removed.', 'success');
+            loadTimeline();
+            loadPricing();
+        });
     });
 
     // Trip name — send to AI for confirmation
@@ -1785,7 +1929,9 @@ jQuery(function() {
                 });
                 updateJourneyBadge();
                 loadSelectedExperiences();
+                aiRetryCount = 0;
                 autoGenerateItinerary();
+                showAlert(resp.added_experience_ids.length + ' experience(s) added to your journey!', 'success');
             }
 
             // Handle AI-removed experiences
@@ -1801,7 +1947,9 @@ jQuery(function() {
                 });
                 updateJourneyBadge();
                 loadSelectedExperiences();
+                aiRetryCount = 0;
                 autoGenerateItinerary();
+                showAlert('Experience(s) removed from journey.', 'info');
             }
 
             // Highlight AI-recommended experiences
