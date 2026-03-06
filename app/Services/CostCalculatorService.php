@@ -73,7 +73,7 @@ class CostCalculatorService
             foreach ($day->experiences as $dayExp) {
                 $expCost = $dayExp->total_cost;
                 if ($expCost == 0 && $dayExp->cost_per_person > 0) {
-                    $expCost = $dayExp->cost_per_person * ($trip->adults ?? 2);
+                    $expCost = $dayExp->cost_per_person * ($trip->adults ?: 1);
                     $dayExp->update(['total_cost' => $expCost]);
                 }
                 $activityCost += $expCost;

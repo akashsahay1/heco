@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\AiConversation;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
 
@@ -48,6 +49,32 @@ class SocialAuthController extends Controller
         }
 
         Auth::login($user, true);
+
+        // Clear previous trip data so traveller starts fresh each login
+        if ($user->isTraveller()) {
+            $trips = $user->trips()->whereIn('status', ['draft', 'not_confirmed'])->get();
+            foreach ($trips as $t) {
+                $t->aiConversations()->where('context_type', 'traveller_chat')->delete();
+                $t->tripDays()->each(function ($day) {
+                    $day->experiences()->delete();
+                    $day->services()->delete();
+                    $day->delete();
+                });
+                $t->selectedExperiences()->delete();
+                $t->tripRegions()->delete();
+                $t->update([
+                    'adults' => 2, 'children' => 0, 'infants' => 0,
+                    'start_location' => null, 'end_location' => null,
+                    'start_date' => null, 'end_date' => null,
+                    'anchor_point' => null, 'pickup_preference' => null,
+                    'accommodation_comfort' => null, 'vehicle_comfort' => null,
+                    'guide_preference' => null, 'travel_pace' => null,
+                    'budget_sensitivity' => null, 'ai_raw_response' => null,
+                    'trip_name' => 'My Trip',
+                ]);
+            }
+            session()->forget(['guest_chat', 'guest_trip']);
+        }
 
         return match(true) {
             $user->isHct() => redirect('//' . config('app.admin_domain') . '/dashboard'),

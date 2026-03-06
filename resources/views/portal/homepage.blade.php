@@ -25,18 +25,81 @@
         font-size: 13px;
         line-height: 1.4;
     }
+    .map-exp-popup .leaflet-popup-content-wrapper {
+        padding: 0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    .map-exp-popup .leaflet-popup-content {
+        margin: 0;
+        width: 100% !important;
+    }
+    .map-popup-card {
+        width: 320px;
+    }
+    .map-popup-card > img {
+        width: 100%;
+        height: 130px;
+        object-fit: cover;
+        border-radius: 12px 12px 0 0;
+    }
+    .map-popup-body {
+        padding: 10px 12px 12px;
+    }
     .map-popup-title {
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 14px;
         margin-bottom: 4px;
+        color: var(--color-text, #1a1a1a);
     }
     .map-popup-meta {
         color: #6c757d;
+        font-size: 11px;
+        margin-bottom: 6px;
+    }
+    .map-popup-meta i {
+        color: var(--heco-primary-500, #22c55e);
+    }
+    .map-popup-desc {
         font-size: 12px;
+        color: #555;
+        line-height: 1.4;
+        margin-bottom: 8px;
+    }
+    .map-popup-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
     }
     .map-popup-price {
-        color: #2d6a4f;
+        color: var(--heco-primary-700, #15803d);
+        font-weight: 700;
+        font-size: 13px;
+    }
+    .map-popup-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 5px 12px;
+        font-size: 11px;
         font-weight: 600;
-        margin-top: 4px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        background: var(--heco-primary-500, #22c55e);
+        color: #fff;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    .map-popup-btn:hover {
+        background: var(--heco-primary-600, #16a34a);
+    }
+    .map-popup-btn.added {
+        background: var(--heco-neutral-200, #e5e7eb);
+        color: var(--heco-neutral-500, #6b7280);
+        cursor: default;
     }
     /* View toggle tabs */
     .discover-view-tabs {
@@ -217,7 +280,11 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             </h2>
                             <div id="inlineChatMessages">
                                 <div class="chat-msg assistant">
-                                    Hey there! I'm the HECO AI Assistant &mdash; I'd love to help you plan an amazing Himalayan adventure. What's your name?
+                                    @if(auth()->check())
+                                        Hey {{ auth()->user()->full_name ?? 'there' }}! I'm the HECO AI Assistant &mdash; welcome back! I'd love to help you plan an amazing adventure. What kind of experience are you looking for?
+                                    @else
+                                        Hey there! I'm the HECO AI Assistant &mdash; I'd love to help you plan an amazing Himalayan adventure. What's your name?
+                                    @endif
                                 </div>
                             </div>
                             <div class="inline-chat-input-area">
@@ -338,7 +405,11 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                         </div>
                         <div class="journey-chat-messages" id="journeyChatMessages">
                             <div class="chat-msg assistant">
-                                Hi! I can help you modify your trip — change dates, add or remove days, update preferences, and more. Just ask!
+                                @if(auth()->check())
+                                    Hi {{ auth()->user()->full_name ?? 'there' }}! I can help you plan and modify your trip &mdash; change dates, add or remove days, update preferences, and more. Just ask!
+                                @else
+                                    Hi! I can help you modify your trip &mdash; change dates, add or remove days, update preferences, and more. Just ask!
+                                @endif
                             </div>
                         </div>
                         <div class="journey-chat-input-area">
@@ -771,30 +842,50 @@ jQuery(function() {
             else if (exp.duration_type === 'single_day') durationText = '1 Day';
             else durationText = (exp.duration_days || '?') + ' Days';
 
-            var popupHtml = '<div class="map-popup-title">' + exp.name + '</div>';
+            var imgHtml = exp.card_image
+                ? '<img src="' + exp.card_image + '">'
+                : '';
+            var isAdded = selectedExpIds.indexOf(exp.id) !== -1;
+            var addBtnHtml = isAdded
+                ? '<button class="map-popup-btn added" disabled><i class="bi bi-check-lg"></i> Added</button>'
+                : '<button class="map-popup-btn btn-map-add-exp" data-exp-id="' + exp.id + '" data-exp-name="' + (exp.name || '').replace(/"/g, '&quot;') + '"><i class="bi bi-plus-lg"></i> Add to Journey</button>';
+
+            var popupHtml = '<div class="map-popup-card">';
+            popupHtml += imgHtml;
+            popupHtml += '<div class="map-popup-body">';
+            popupHtml += '<div class="map-popup-title">' + exp.name + '</div>';
             popupHtml += '<div class="map-popup-meta">';
-            if (exp.region) popupHtml += '<i class="bi bi-geo-alt"></i> ' + exp.region.name + '<br>';
+            if (exp.region) popupHtml += '<i class="bi bi-geo-alt"></i> ' + exp.region.name + '&nbsp;&nbsp;';
             popupHtml += '<i class="bi bi-clock"></i> ' + durationText;
-            if (exp.difficulty_level) popupHtml += ' &middot; ' + exp.difficulty_level;
+            if (exp.difficulty_level) popupHtml += '&nbsp;&nbsp;<i class="bi bi-speedometer2"></i> ' + exp.difficulty_level;
             popupHtml += '</div>';
-            if (exp.base_cost_per_person > 0) {
-                popupHtml += '<div class="map-popup-price">' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + '/person</div>';
+            if (exp.short_description) {
+                var desc = exp.short_description.length > 80 ? exp.short_description.substring(0, 80) + '...' : exp.short_description;
+                popupHtml += '<div class="map-popup-desc">' + desc + '</div>';
             }
+            popupHtml += '<div class="map-popup-footer">';
+            if (exp.base_cost_per_person > 0) {
+                popupHtml += '<span class="map-popup-price">' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + '/person</span>';
+            }
+            popupHtml += addBtnHtml;
+            popupHtml += '</div>';
+            popupHtml += '</div></div>';
 
             var marker = L.marker([lat, lng], { icon: redIcon })
-                .bindPopup(popupHtml, { maxWidth: 250 })
+                .bindPopup(popupHtml, { maxWidth: 350, minWidth: 320, className: 'map-exp-popup', autoPan: false })
                 .addTo(map);
 
-            marker.on('click', function() {
-                var card = jQuery('#experienceGrid .exp-card[data-exp-id="' + exp.id + '"]');
-                if (card.length) {
-                    jQuery('#experienceGrid .exp-card').removeClass('map-highlight');
-                    card.addClass('map-highlight');
-                    // Switch to grid view to show the highlighted card
-                    jQuery('.discover-view-tab[data-view="grid"]').trigger('click');
-                    var grid = jQuery('#experienceGrid');
-                    grid.animate({ scrollTop: grid.scrollTop() + card.position().top - 10 }, 300);
+            marker.on('mouseover', function() { this.openPopup(); });
+            marker.on('mouseout', function(e) {
+                var popup = this.getPopup();
+                if (popup && popup.getElement()) {
+                    var popupEl = popup.getElement();
+                    // Keep open if mouse moved into the popup
+                    popupEl.onmouseenter = function() { marker._keepPopup = true; };
+                    popupEl.onmouseleave = function() { marker._keepPopup = false; marker.closePopup(); };
                 }
+                var self = this;
+                setTimeout(function() { if (!self._keepPopup) self.closePopup(); }, 100);
             });
 
             markers.push(marker);
@@ -1144,8 +1235,43 @@ jQuery(function() {
                 loadSelectedExperiences();
                 aiRetryCount = 0;
                 autoGenerateItinerary();
+                // Notify AI chat
+                appendChatMsg('assistant', 'You have added **' + expName + '** to your trip.');
+                scrollChat();
             }, function() {
                 btn.prop('disabled', false).html('<i class="bi bi-plus-lg"></i>');
+            });
+        });
+    });
+
+    // Add to Journey from map popup
+    jQuery(document).on('click', '.btn-map-add-exp', function(e) {
+        e.stopPropagation();
+        var btn = jQuery(this);
+        var expId = parseInt(btn.data('exp-id'));
+        var expName = btn.data('exp-name') || 'this experience';
+        btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Adding...');
+        ensureTrip(function(tId) {
+            ajaxPost({ add_experience_to_trip: 1, trip_id: tId, experience_id: expId }, function(resp) {
+                if (selectedExpIds.indexOf(expId) === -1) selectedExpIds.push(expId);
+                btn.addClass('added').prop('disabled', true).html('<i class="bi bi-check-lg"></i> Added');
+                // Also update the grid card button
+                jQuery('.btn-add-exp[data-exp-id="' + expId + '"]')
+                    .removeClass('btn-add-exp').addClass('btn-remove-journey-exp')
+                    .attr('title', 'Remove from Journey')
+                    .html('<i class="bi bi-dash-lg"></i>');
+                updateJourneyBadge();
+                if (resp.trip_id && !tripId) tripId = resp.trip_id;
+                jQuery('#noTripMessage').addClass('d-none');
+                jQuery('#journeyPanels').removeClass('d-none');
+                loadSelectedExperiences();
+                aiRetryCount = 0;
+                autoGenerateItinerary();
+                // Notify AI chat
+                appendChatMsg('assistant', 'You have added **' + expName + '** to your trip.');
+                scrollChat();
+            }, function() {
+                btn.prop('disabled', false).html('<i class="bi bi-plus-lg"></i> Add to Journey');
             });
         });
     });

@@ -55,7 +55,7 @@ class ItineraryService
 
                             if ($experience) {
                                 $costPerPerson = $expData['cost_per_person'] ?? $experience->base_cost_per_person;
-                                $adults = $trip->adults ?? 2;
+                                $adults = $trip->adults ?: 1;
 
                                 TripDayExperience::create([
                                     'trip_day_id' => $day->id,
@@ -123,7 +123,7 @@ class ItineraryService
         $experience->loadMissing('days');
         $maxSort = $day->experiences()->max('sort_order') ?? -1;
         $costPerPerson = $data['cost_per_person'] ?? $experience->base_cost_per_person;
-        $adults = $day->trip->adults ?? 2;
+        $adults = $day->trip->adults ?: 1;
 
         return TripDayExperience::create([
             'trip_day_id' => $day->id,
@@ -149,7 +149,7 @@ class ItineraryService
      */
     protected function fillMissingExperienceDays(Trip $trip, int &$dayNumber): void
     {
-        $adults = $trip->adults ?? 2;
+        $adults = $trip->adults ?: 1;
 
         // Count how many trip days each experience was assigned to
         $tripDays = $trip->tripDays()->with('experiences')->get();

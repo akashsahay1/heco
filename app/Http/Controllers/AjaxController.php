@@ -78,7 +78,7 @@ class AjaxController extends Controller
             'trip_name' => 'My Trip',
             'status' => 'not_confirmed',
             'stage' => 'open',
-            'adults' => 2,
+            'adults' => 1,
             'children' => 0,
             'infants' => 0,
         ]);
@@ -91,7 +91,7 @@ class AjaxController extends Controller
     {
         return session('guest_trip', [
             'experience_ids' => [],
-            'adults' => 2,
+            'adults' => 1,
             'children' => 0,
             'infants' => 0,
             'trip_name' => 'My Trip',
@@ -125,7 +125,7 @@ class AjaxController extends Controller
      */
     protected function computeGuestPricing(array $guestData): array
     {
-        $adults = $guestData['adults'] ?? 2;
+        $adults = $guestData['adults'] ?: 1;
         $activityCost = 0;
         $numDays = 0;
 
@@ -227,7 +227,7 @@ class AjaxController extends Controller
         $itinerary = $guestData['ai_itinerary'] ?? null;
         if (!$itinerary || !isset($itinerary['days'])) return [];
 
-        $adults = $guestData['adults'] ?? 2;
+        $adults = $guestData['adults'] ?: 1;
         $currentExpIds = $guestData['experience_ids'] ?? [];
 
         // Collect all experience IDs to fetch from DB in one query (only those still in trip)
@@ -809,6 +809,33 @@ class AjaxController extends Controller
         if (Auth::attempt(["email" => $request->email, "password" => $request->password], $request->boolean("remember"))) {
             $request->session()->regenerate();
             $user = Auth::user();
+
+            // Clear previous trip data so traveller starts fresh each login
+            if ($user->isTraveller()) {
+                $trips = $user->trips()->whereIn('status', ['draft', 'not_confirmed'])->get();
+                foreach ($trips as $t) {
+                    $t->aiConversations()->where('context_type', 'traveller_chat')->delete();
+                    $t->tripDays()->each(function ($day) {
+                        $day->experiences()->delete();
+                        $day->services()->delete();
+                        $day->delete();
+                    });
+                    $t->selectedExperiences()->delete();
+                    $t->tripRegions()->delete();
+                    $t->update([
+                        'adults' => 1, 'children' => 0, 'infants' => 0,
+                        'start_location' => null, 'end_location' => null,
+                        'start_date' => null, 'end_date' => null,
+                        'anchor_point' => null, 'pickup_preference' => null,
+                        'accommodation_comfort' => null, 'vehicle_comfort' => null,
+                        'guide_preference' => null, 'travel_pace' => null,
+                        'budget_sensitivity' => null, 'ai_raw_response' => null,
+                        'trip_name' => 'My Trip',
+                    ]);
+                }
+                session()->forget(['guest_chat', 'guest_trip']);
+            }
+
             $redirect = match(true) {
                 $user->isHct() => '//' . config('app.admin_domain') . '/dashboard',
                 $user->isServiceProvider() => "/sp/dashboard",
@@ -1093,7 +1120,7 @@ class AjaxController extends Controller
             }
             $tripContext = json_encode([
                 "trip_id" => "guest",
-                "adults" => $gt["adults"] ?? 2,
+                "adults" => $gt["adults"] ?? 0,
                 "children" => $gt["children"] ?? 0,
                 "start_location" => $gt["start_location"] ?? null,
                 "end_location" => $gt["end_location"] ?? null,
@@ -1525,6 +1552,12 @@ class AjaxController extends Controller
             // Clear itinerary since experiences changed
             $gt['ai_itinerary'] = null;
             $gt['ai_raw_response'] = null;
+            // Reset group size if no experiences left
+            if (empty($gt['experience_ids'])) {
+                $gt['adults'] = 0;
+                $gt['children'] = 0;
+                $gt['infants'] = 0;
+            }
             $this->saveGuestTrip($gt);
             return response()->json(["success" => true, "trip_id" => "guest"]);
         }
@@ -1545,6 +1578,11 @@ class AjaxController extends Controller
 
         // Remove empty days (no experiences left)
         $trip->tripDays()->whereDoesntHave('experiences')->delete();
+
+        // Reset group size if no experiences left
+        if ($trip->selectedExperiences()->count() === 0) {
+            $trip->update(['adults' => 0, 'children' => 0, 'infants' => 0]);
+        }
 
         return response()->json(["success" => true, "trip_id" => $trip->id]);
     }
@@ -1644,7 +1682,7 @@ class AjaxController extends Controller
     {
         if (!Auth::check()) {
             $gt = $this->guestTrip();
-            $gt['adults'] = (int) ($request->adults ?? 2);
+            $gt['adults'] = (int) ($request->adults ?? 0);
             $gt['children'] = (int) ($request->children ?? 0);
             $gt['infants'] = (int) ($request->infants ?? 0);
             $this->saveGuestTrip($gt);
@@ -1917,7 +1955,7 @@ class AjaxController extends Controller
                 "trip_name" => $gt['trip_name'] ?? "My Trip",
                 "status" => "draft",
                 "stage" => "traveller_exploring",
-                "adults" => $gt['adults'] ?? 2,
+                "adults" => $gt['adults'] ?? 0,
                 "children" => $gt['children'] ?? 0,
                 "infants" => $gt['infants'] ?? 0,
                 "accommodation_comfort" => $gt['accommodation_comfort'] ?? null,
@@ -1994,7 +2032,7 @@ class AjaxController extends Controller
                 ->sortBy(function ($exp) use ($expIds) {
                     return array_search($exp->id, $expIds);
                 })->values();
-            $adults = $gt['adults'] ?? 2;
+            $adults = $gt['adults'] ?: 1;
             $preferences = ($gt['accommodation_comfort'] ?: 'standard') . " comfort, " . ($gt['travel_pace'] ?: 'moderate') . " pace";
         } else {
             $trip = $this->resolveTrip($request);
@@ -2003,7 +2041,7 @@ class AjaxController extends Controller
             }
             $trip->load(["selectedExperiences" => function ($q) { $q->orderBy('sort_order'); }, "selectedExperiences.experience.region"]);
             $expModels = $trip->selectedExperiences->pluck('experience')->filter();
-            $adults = $trip->adults ?? 2;
+            $adults = $trip->adults ?: 1;
             $preferences = ($trip->accommodation_comfort ?? "standard") . " comfort, " . ($trip->travel_pace ?? "moderate") . " pace";
         }
 
