@@ -583,7 +583,7 @@
                             <label class="form-label">Card Image</label>
                             @if($e && $e->card_image)
                                 <div class="mb-2">
-                                    <img src="{{ asset('storage/' . $e->card_image) }}" class="rounded" style="max-height: 120px;" alt="Card image" id="currentCardImage">
+                                    <img src="{{ $e->card_image }}" class="rounded" style="max-height: 120px;" alt="Card image" id="currentCardImage">
                                 </div>
                             @endif
                             <input type="file" class="form-control" name="card_image" accept="image/*" id="cardImageInput">

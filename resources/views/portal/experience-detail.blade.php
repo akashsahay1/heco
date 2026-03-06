@@ -67,7 +67,7 @@
 {{-- Hero Section --}}
 <div class="hero-section {{ $experience->card_image ? '' : 'hero-no-image' }}"
     @if($experience->card_image)
-        style="background-image: url('/storage/{{ $experience->card_image }}');"
+        style="background-image: url('{{ $experience->card_image }}');"
     @endif
 >
     <div class="hero-content p-4 text-white">

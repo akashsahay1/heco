@@ -106,7 +106,7 @@ jQuery(function() {
         var html = '<div class="wishlist-grid">';
         items.forEach(function(exp) {
             var imgHtml = exp.card_image
-                ? '<img src="/storage/' + exp.card_image + '" alt="' + exp.name + '">'
+                ? '<img src="' + exp.card_image + '" alt="' + exp.name + '">'
                 : '<div class="exp-placeholder"><i class="bi bi-image"></i></div>';
 
             var durationText = '';

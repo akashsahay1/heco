@@ -1185,7 +1185,9 @@ class AjaxController extends Controller
 
         $confirmationRule = "\n\nCONFIRMATION RULE: The confirmation flow ONLY applies when the traveller explicitly asks to CHANGE something (add/remove experiences, update dates, change group size, rename trip, etc.). In that case: (1) Summarize the proposed change, (2) Ask for confirmation, (3) Apply only after they confirm. If they say no, do NOT apply. Never use action tags ([TRIP_DETAILS], [ADD_TO_TRIP], [REMOVE_FROM_TRIP]) without prior confirmation. BUT — for normal conversation like asking questions, getting recommendations, chatting about destinations, or general discussion — just respond naturally. Do NOT ask for confirmation when no change is being made.\n\nCRITICAL — COMBINED CONFIRMATIONS: When the traveller confirms trip details that mention specific experiences (e.g. \"yes, I want the Village Experience in Tir starting 18th March\"), you MUST include BOTH [TRIP_DETAILS:{...}] AND [ADD_TO_TRIP:X] tags in the same response. Do NOT confirm trip details without also adding the experiences the traveller discussed. If the conversation context clearly indicates the traveller wants a specific experience as part of their trip, always include [ADD_TO_TRIP] alongside [TRIP_DETAILS] when they confirm.";
 
-        $allInstructions = $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $removeFromTripInstruction . $confirmationRule;
+        $startingCityReminder = "\n\nSTARTING CITY REMINDER: Check the CURRENT TRIP CONTEXT — if start_location is null or empty, you MUST ask the traveller where they will be travelling from (their starting city) early in the conversation (after learning their interests). This is essential for planning logistics and anchor point suggestions. Do NOT skip this question. Example: \"Where will you be starting your journey from?\"";
+
+        $allInstructions = $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $removeFromTripInstruction . $confirmationRule . $startingCityReminder;
 
         $messages = [];
         if ($promptData) {
@@ -1727,7 +1729,7 @@ class AjaxController extends Controller
             $itinerary = $gt['ai_itinerary'] ?? ['days' => []];
             $dayCount = count($itinerary['days']);
 
-            if ($afterDayNumber) {
+            if ($afterDayNumber !== null && $afterDayNumber !== '') {
                 // Insert after the specified day and renumber
                 $insertAt = (int) $afterDayNumber; // 0-indexed insert position
                 array_splice($itinerary['days'], $insertAt, 0, [[
@@ -1750,14 +1752,14 @@ class AjaxController extends Controller
 
             $gt['ai_itinerary'] = $itinerary;
             $this->saveGuestTrip($gt);
-            $newDayNum = $afterDayNumber ? (int) $afterDayNumber + 1 : $dayCount + 1;
+            $newDayNum = ($afterDayNumber !== null && $afterDayNumber !== '') ? (int) $afterDayNumber + 1 : $dayCount + 1;
             return response()->json(["success" => true, "day" => ['id' => $newDayNum, 'day_number' => $newDayNum]]);
         }
 
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["error" => "Trip not found"], 404);
 
-        if ($afterDayNumber) {
+        if ($afterDayNumber !== null && $afterDayNumber !== '') {
             $afterDayNumber = (int) $afterDayNumber;
             // Shift all days after the insertion point up by 1
             $trip->tripDays()
@@ -2868,7 +2870,10 @@ class AjaxController extends Controller
         $data = $request->except(["_token", "save_experience", "experience_days"]);
 
         if ($request->hasFile("card_image")) {
-            $data["card_image"] = $request->file("card_image")->store("experiences", "public");
+            $file = $request->file("card_image");
+            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $file->move(public_path('uploads/experiences'), $filename);
+            $data["card_image"] = '/uploads/experiences/' . $filename;
         } else {
             unset($data["card_image"]);
         }

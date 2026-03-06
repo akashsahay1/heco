@@ -621,6 +621,76 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
     </div>
 </div>
 
+{{-- Remove Experience Confirmation Modal --}}
+<div class="modal fade" id="removeExpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content" style="border-radius: 16px; border: none; box-shadow: 0 12px 40px rgba(220,38,38,0.15), 0 4px 16px rgba(0,0,0,0.08); overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 34px; height: 34px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                        <i class="bi bi-x-circle" style="color: #fff; font-size: 16px;"></i>
+                    </div>
+                    <div>
+                        <h6 style="font-weight: 700; color: #fff; margin: 0; font-size: 15px;">Remove Experience</h6>
+                        <p id="removeExpModalSubtitle" style="font-size: 12px; color: rgba(255,255,255,0.8); margin: 0; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></p>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="font-size: 0.65rem; opacity: 0.8;"></button>
+            </div>
+            <div style="padding: 20px;">
+                <p id="removeExpModalMsg" style="font-size: 13px; color: var(--heco-neutral-700); margin: 0; line-height: 1.5;">Are you sure you want to remove this experience?</p>
+            </div>
+            <div style="padding: 0 20px 16px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" data-bs-dismiss="modal"
+                    style="padding: 8px 18px; font-size: 13px; font-weight: 500; color: var(--heco-neutral-500); background: none; border: 1.5px solid var(--heco-neutral-200); border-radius: 10px; cursor: pointer; transition: all 0.2s;">
+                    Cancel
+                </button>
+                <button type="button" id="removeExpConfirmBtn"
+                    style="padding: 8px 22px; font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(135deg, #dc2626, #ef4444); border: none; border-radius: 10px; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(220,38,38,0.25);"
+                    onmouseover="this.style.boxShadow='0 4px 14px rgba(220,38,38,0.35)';this.style.transform='translateY(-1px)'"
+                    onmouseout="this.style.boxShadow='0 2px 8px rgba(220,38,38,0.25)';this.style.transform='none'">
+                    <i class="bi bi-trash3" style="margin-right: 4px;"></i> Remove
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Remove Day Confirmation Modal --}}
+<div class="modal fade" id="removeDayModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content" style="border-radius: 16px; border: none; box-shadow: 0 12px 40px rgba(220,38,38,0.15), 0 4px 16px rgba(0,0,0,0.08); overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 34px; height: 34px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                        <i class="bi bi-calendar-x" style="color: #fff; font-size: 16px;"></i>
+                    </div>
+                    <div>
+                        <h6 style="font-weight: 700; color: #fff; margin: 0; font-size: 15px;">Remove Day</h6>
+                        <p id="removeDayModalSubtitle" style="font-size: 12px; color: rgba(255,255,255,0.8); margin: 0;"></p>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="font-size: 0.65rem; opacity: 0.8;"></button>
+            </div>
+            <div style="padding: 20px;">
+                <p id="removeDayModalMsg" style="font-size: 13px; color: var(--heco-neutral-700); margin: 0; line-height: 1.5;">Are you sure you want to remove this day?</p>
+            </div>
+            <div style="padding: 0 20px 16px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" data-bs-dismiss="modal"
+                    style="padding: 8px 18px; font-size: 13px; font-weight: 500; color: var(--heco-neutral-500); background: none; border: 1.5px solid var(--heco-neutral-200); border-radius: 10px; cursor: pointer; transition: all 0.2s;">
+                    Cancel
+                </button>
+                <button type="button" id="removeDayConfirmBtn"
+                    style="padding: 8px 22px; font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(135deg, #dc2626, #ef4444); border: none; border-radius: 10px; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(220,38,38,0.25);"
+                    onmouseover="this.style.boxShadow='0 4px 14px rgba(220,38,38,0.35)';this.style.transform='translateY(-1px)'"
+                    onmouseout="this.style.boxShadow='0 2px 8px rgba(220,38,38,0.25)';this.style.transform='none'">
+                    <i class="bi bi-trash3" style="margin-right: 4px;"></i> Remove
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @section('js')
@@ -891,7 +961,7 @@ jQuery(function() {
     function buildExpCardHtml(exp) {
         var isPreferred = preferredExpIds.indexOf(exp.id) !== -1;
         var imgHtml = exp.card_image
-            ? '<img src="/storage/' + exp.card_image + '" alt="' + exp.name + '">'
+            ? '<img src="' + exp.card_image + '" alt="' + exp.name + '">'
             : '<div class="exp-placeholder"><i class="bi bi-image"></i></div>';
 
         var durationText = '';
@@ -1543,30 +1613,44 @@ jQuery(function() {
         });
     }
 
-    // Remove experience — send to AI for confirmation
+    // Remove experience — styled modal confirmation
+    var pendingRemoveExpId = null;
+    var pendingRemoveExpName = '';
     jQuery(document).on('click', '.btn-remove-exp', function() {
         var btn = jQuery(this);
-        var expId = parseInt(btn.data('exp-id'));
-        var expName = btn.closest('.journey-exp-item').find('.exp-name').text().trim() || 'this experience';
-        if (!tripId || !expId) return;
-        if (!confirm('Remove "' + expName + '" from your trip?')) return;
-        btn.prop('disabled', true);
+        pendingRemoveExpId = parseInt(btn.data('exp-id'));
+        pendingRemoveExpName = btn.closest('.journey-exp-item').find('.exp-name').text().trim() || 'this experience';
+        if (!tripId || !pendingRemoveExpId) return;
+        jQuery('#removeExpModalSubtitle').text(pendingRemoveExpName);
+        jQuery('#removeExpModalMsg').html('Are you sure you want to remove <strong>' + pendingRemoveExpName + '</strong> from your trip?');
+        var modal = new bootstrap.Modal(document.getElementById('removeExpModal'));
+        modal.show();
+    });
+    jQuery('#removeExpConfirmBtn').on('click', function() {
+        if (!pendingRemoveExpId) return;
+        var btn = jQuery(this);
+        var expId = pendingRemoveExpId;
+        var expName = pendingRemoveExpName;
+        btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Removing...');
         ajaxPost({ remove_experience_from_trip: 1, trip_id: tripId, experience_id: expId }, function() {
+            bootstrap.Modal.getInstance(document.getElementById('removeExpModal')).hide();
+            btn.prop('disabled', false).html('<i class="bi bi-trash3" style="margin-right:4px"></i> Remove');
             selectedExpIds = selectedExpIds.filter(function(id) { return parseInt(id) !== expId; });
             updateJourneyBadge();
             loadSelectedExperiences();
             loadTimeline();
             loadPricing();
-            // Reset the add/remove button on the discover card
             jQuery('.btn-remove-journey-exp[data-exp-id="' + expId + '"]')
                 .removeClass('btn-remove-journey-exp').addClass('btn-add-exp')
                 .attr('title', 'Add to Journey')
                 .html('<i class="bi bi-plus-lg"></i>');
             appendChatMsg('assistant', 'You have removed **' + expName + '** from your trip.');
             scrollChat();
+            pendingRemoveExpId = null;
+            pendingRemoveExpName = '';
         }, function() {
-            btn.prop('disabled', false);
-            alert('Failed to remove experience. Please try again.');
+            btn.prop('disabled', false).html('<i class="bi bi-trash3" style="margin-right:4px"></i> Remove');
+            showAlert('Failed to remove experience. Please try again.', 'danger');
         });
     });
 
@@ -1643,11 +1727,12 @@ jQuery(function() {
         if (pendingInsertAfterDay === null) return;
         var desc = jQuery('#addDayDescription').val().trim();
         var btn = jQuery(this);
+        var insertAfter = pendingInsertAfterDay;
         btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Adding...');
         ajaxPost({
             add_day_to_trip: 1,
             trip_id: tripId,
-            after_day_number: pendingInsertAfterDay,
+            after_day_number: insertAfter,
             day_note: desc
         }, function(resp) {
             bootstrap.Modal.getInstance(document.getElementById('addDayModal')).hide();
@@ -1655,6 +1740,11 @@ jQuery(function() {
             showAlert('Day added successfully!', 'success');
             loadTimeline();
             loadPricing();
+            // Notify AI about the added day
+            var newDayNum = parseInt(insertAfter) + 1;
+            var chatMsg = 'I have added a new day (Day ' + newDayNum + ') to my trip' + (insertAfter > 0 ? ' after Day ' + insertAfter : ' at the beginning') + '.';
+            if (desc) chatMsg += ' Note: ' + desc;
+            sendAiMessage(chatMsg);
             pendingInsertAfterDay = null;
         }, function() {
             btn.prop('disabled', false).html('<i class="bi bi-plus-lg" style="margin-right:4px"></i> Add Day');
@@ -1662,16 +1752,37 @@ jQuery(function() {
         });
     });
 
-    // Remove Day — direct AJAX call
+    // Remove Day — styled modal confirmation
+    var pendingRemoveDayId = null;
+    var pendingRemoveDayLabel = '';
     jQuery(document).on('click', '.btn-remove-day', function() {
-        var dayId = jQuery(this).data('day-id');
+        pendingRemoveDayId = jQuery(this).data('day-id');
         var dayEl = jQuery(this).closest('.timeline-day');
-        var dayLabel = dayEl.find('.timeline-day-number').text() || 'this day';
-        if (!confirm('Remove ' + dayLabel + ' from your trip?')) return;
-        ajaxPost({ remove_day_from_trip: 1, trip_id: tripId, day_id: dayId }, function() {
+        pendingRemoveDayLabel = dayEl.find('.timeline-day-number').text() || 'this day';
+        jQuery('#removeDayModalSubtitle').text(pendingRemoveDayLabel);
+        jQuery('#removeDayModalMsg').html('Are you sure you want to remove <strong>' + pendingRemoveDayLabel + '</strong> from your trip? This action cannot be undone.');
+        var modal = new bootstrap.Modal(document.getElementById('removeDayModal'));
+        modal.show();
+    });
+    jQuery('#removeDayConfirmBtn').on('click', function() {
+        if (!pendingRemoveDayId) return;
+        var btn = jQuery(this);
+        var dayLabel = pendingRemoveDayLabel;
+        btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Removing...');
+        ajaxPost({ remove_day_from_trip: 1, trip_id: tripId, day_id: pendingRemoveDayId }, function() {
+            bootstrap.Modal.getInstance(document.getElementById('removeDayModal')).hide();
+            btn.prop('disabled', false).html('<i class="bi bi-trash3" style="margin-right:4px"></i> Remove');
             showAlert('Day removed.', 'success');
             loadTimeline();
             loadPricing();
+            // Notify AI about the removed day
+            appendChatMsg('assistant', 'You have removed **' + dayLabel + '** from your trip.');
+            scrollChat();
+            pendingRemoveDayId = null;
+            pendingRemoveDayLabel = '';
+        }, function() {
+            btn.prop('disabled', false).html('<i class="bi bi-trash3" style="margin-right:4px"></i> Remove');
+            showAlert('Failed to remove day. Please try again.', 'danger');
         });
     });
 
