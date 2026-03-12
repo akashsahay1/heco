@@ -381,6 +381,8 @@
 .site-footer {
     background: var(--heco-neutral-900);
     color: var(--heco-neutral-300);
+    position: relative;
+    z-index: 2;
 }
 
 .footer-main {
@@ -1268,9 +1270,9 @@
         font-size: 1.1rem;
     }
 
-    #inlineChatMessages {
-        min-height: calc(100vh - 350px);
-        max-height: calc(100vh - 300px);
+    #popupChatMessages {
+        min-height: 280px;
+        max-height: 360px;
         overflow-y: auto;
         padding: var(--space-4);
         display: flex;
@@ -1361,7 +1363,7 @@
         background: var(--color-bg-white);
         border-bottom: 1px solid var(--color-border);
         position: sticky;
-        top: 0;
+        top: 72px;
         z-index: var(--z-sticky);
         box-shadow: var(--shadow-sm);
     }
@@ -1616,7 +1618,7 @@
        ============================================ */
     .experience-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
         gap: var(--space-5);
     }
 
@@ -1806,7 +1808,6 @@
         gap: var(--space-1);
         margin-top: auto;
         padding-top: var(--space-3);
-        border-top: 1px solid var(--color-border);
     }
 
     .exp-price-amount {
@@ -2750,18 +2751,6 @@
             font-size: var(--text-xs);
         }
 
-        .inline-chat-section {
-            max-width: 100%;
-            border-radius: var(--radius-xl);
-            position: relative;
-            top: 0;
-        }
-
-        #inlineChatMessages {
-            min-height: unset;
-            max-height: 200px;
-        }
-
         .region-card {
             width: 120px;
         }
@@ -2841,4 +2830,276 @@
         font-size: 0.75rem;
         color: var(--color-text-muted, #6b7280);
         line-height: 1.2;
+    }
+
+    /* ============================================
+       Discover Layout (Cards + Map side by side)
+       ============================================ */
+    #pane-discover {
+        overflow: hidden;
+        padding-bottom: var(--space-16);
+    }
+
+    .discover-layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--space-5);
+        min-height: calc(100vh - 280px);
+    }
+
+    .discover-cards-panel {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .discover-map-panel {
+        position: sticky;
+        top: 120px;
+        height: calc(100vh - 280px);
+    }
+
+    .discover-map-panel #mapViewPanel {
+        display: block !important;
+        height: 100%;
+    }
+
+    .discover-map-panel #discoverMap {
+        height: 100%;
+        min-height: 400px;
+        border-radius: 12px;
+        box-shadow: var(--shadow-md);
+    }
+
+    /* Collapsible Filter Toolbar */
+    .discover-toolbar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        margin-bottom: var(--space-4);
+    }
+
+    .btn-filter-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1.2rem;
+        border-radius: 2rem;
+        border: 1px solid var(--color-border, #dee2e6);
+        background: var(--color-bg-white, #fff);
+        color: var(--heco-neutral-600, #6c757d);
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+
+    .btn-filter-toggle:hover,
+    .btn-filter-toggle.active {
+        background: var(--heco-success, #2d6a4f);
+        color: #fff;
+        border-color: var(--heco-success, #2d6a4f);
+    }
+
+    .filter-count-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        border-radius: 50%;
+        background: #dc3545;
+        color: #fff;
+        margin-left: 4px;
+    }
+
+    .filter-collapse .filter-bar {
+        margin-bottom: var(--space-4);
+    }
+
+    /* ============================================
+       Floating Chatbot FAB
+       ============================================ */
+    .chatbot-fab {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--heco-primary-600, #16a34a), var(--heco-primary-700, #15803d));
+        color: white;
+        z-index: 1060;
+        cursor: pointer;
+        box-shadow: 0 6px 24px rgba(21, 128, 61, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        transition: box-shadow 0.2s ease, transform 0.2s ease;
+    }
+
+    .chatbot-fab:hover {
+        box-shadow: 0 8px 32px rgba(21, 128, 61, 0.5);
+        transform: scale(1.05);
+    }
+
+    .chatbot-fab-pulse {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        border: 3px solid var(--heco-primary-400, #4ade80);
+        animation: chatbotPulse 2s ease-out infinite;
+        pointer-events: none;
+    }
+
+    @keyframes chatbotPulse {
+        0% {
+            transform: scale(1);
+            opacity: 0.7;
+        }
+        100% {
+            transform: scale(1.6);
+            opacity: 0;
+        }
+    }
+
+    /* ============================================
+       Chatbot Popup Overlay
+       ============================================ */
+    .chatbot-popup {
+        position: fixed;
+        bottom: 100px;
+        right: 30px;
+        width: 380px;
+        max-height: 520px;
+        border-radius: var(--radius-2xl, 16px);
+        z-index: 1060;
+        background: var(--color-bg-white, #fff);
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15), 0 4px 16px rgba(0, 0, 0, 0.08);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: popupSlideUp 0.3s ease-out;
+    }
+
+    @keyframes popupSlideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .chatbot-popup-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 18px;
+        background: linear-gradient(135deg, var(--heco-primary-700, #15803d) 0%, var(--heco-primary-600, #16a34a) 100%);
+        color: white;
+    }
+
+    .chatbot-popup-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    .chatbot-popup-title i {
+        font-size: 1.1rem;
+    }
+
+    .chatbot-popup-close {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 0.75rem;
+        transition: background 0.2s;
+    }
+
+    .chatbot-popup-close:hover {
+        background: rgba(255, 255, 255, 0.35);
+    }
+
+    .chatbot-popup-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--space-4, 16px);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3, 12px);
+        background: var(--heco-neutral-50, #f8f9fa);
+        min-height: 280px;
+        max-height: 360px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--heco-neutral-300, #ccc) transparent;
+    }
+
+    .chatbot-popup-input-area {
+        display: flex;
+        align-items: center;
+        padding: var(--space-3, 12px) var(--space-4, 16px);
+        background: var(--color-bg-white, #fff);
+        border-top: 1px solid var(--color-border, #e5e7eb);
+        gap: var(--space-3, 12px);
+    }
+
+    /* ============================================
+       Discover Layout — Responsive
+       ============================================ */
+    @media (max-width: 991px) {
+        .discover-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .discover-map-panel {
+            position: relative;
+            top: 0;
+            height: 350px;
+            order: -1;
+            margin-bottom: var(--space-4);
+        }
+
+        .discover-map-panel #discoverMap {
+            min-height: 300px;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .chatbot-fab {
+            width: 50px;
+            height: 50px;
+            font-size: 1.2rem;
+            bottom: 20px;
+            right: 20px;
+        }
+
+        .chatbot-popup {
+            width: calc(100vw - 24px);
+            right: 12px;
+            bottom: 80px;
+            max-height: 70vh;
+        }
+
+        .chatbot-popup-messages {
+            min-height: 200px;
+            max-height: 50vh;
+        }
     }

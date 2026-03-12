@@ -4,15 +4,268 @@
 @section('css')
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 <style>
+    /* Custom dropdown styles */
+    .custom-select-wrap {
+        position: relative;
+    }
+    .custom-select-wrap select {
+        display: none;
+    }
+    .custom-select-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        font-size: 1rem;
+        border: 1px solid var(--color-border, #dee2e6);
+        border-radius: 6px;
+        background: #fff;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-height: 42px;
+    }
+    .custom-select-trigger:hover {
+        border-color: var(--heco-primary-500, #22c55e);
+    }
+    .custom-select-trigger .caret {
+        margin-left: 8px;
+        font-size: 0.7rem;
+        color: var(--heco-neutral-400, #999);
+        flex-shrink: 0;
+    }
+    .custom-select-options {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        z-index: 1080;
+        background: #fff;
+        border: 1px solid var(--color-border, #dee2e6);
+        border-radius: 6px;
+        margin-top: 2px;
+        max-height: 220px;
+        overflow-y: auto;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        scrollbar-width: thin;
+    }
+    .custom-select-wrap.open .custom-select-options {
+        display: block;
+    }
+    .custom-select-option {
+        padding: 10px 16px;
+        font-size: 1rem;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .custom-select-option:hover {
+        background: var(--heco-neutral-50, #f8f9fa);
+        color: var(--heco-primary-700, #15803d);
+    }
+    .custom-select-option.selected {
+        background: var(--heco-primary-50, #f0fdf4);
+        color: var(--heco-primary-700, #15803d);
+        font-weight: 600;
+    }
     .experience-grid-split {
-        max-height: calc(100vh - 320px);
+        max-height: calc(100vh - 260px);
         overflow-y: auto;
         grid-template-columns: repeat(2, 1fr) !important;
+        gap: 18px !important;
         padding: 4px;
     }
     .experience-grid-split .exp-card {
         margin-bottom: 0;
+        position: relative;
+        border-radius: 12px;
     }
+    .experience-grid-split .exp-card-image {
+        height: 170px;
+    }
+    .experience-grid-split .exp-card-body {
+        padding: 14px 16px 14px;
+    }
+    .experience-grid-split .exp-card-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        margin-bottom: 4px;
+        line-height: 1.35;
+    }
+    /* Card host line */
+    .exp-card-host {
+        font-size: 0.82rem;
+        color: var(--color-text-muted, #6c757d);
+        margin: 0 0 3px;
+        line-height: 1.35;
+    }
+    /* Card duration line */
+    .exp-card-duration {
+        font-size: 0.82rem;
+        color: var(--color-text-muted, #6c757d);
+        margin: 0 0 8px;
+        line-height: 1.35;
+    }
+    .exp-card-duration i {
+        font-size: 0.72rem;
+        color: var(--heco-primary-500, #22c55e);
+        margin-right: 2px;
+    }
+    /* Inline heart/fav button in bottom row */
+    .exp-card-fav {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        margin-left: auto;
+        flex-shrink: 0;
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+    }
+    .exp-card-fav i {
+        font-size: 1.5rem;
+        color: #6b7280;
+        transition: color 0.2s;
+    }
+    .exp-card-fav:hover i {
+        color: #ef4444;
+    }
+    .exp-card-fav.preferred i {
+        color: #ef4444;
+    }
+    /* Price + stars bottom row */
+    .exp-card-bottom {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: nowrap;
+        padding: 10px 0;
+        margin-top: auto;
+        border-top: 1px solid var(--color-border, #e5e7eb);
+    }
+    .exp-card-price {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: var(--color-text, #1a1a1a);
+        position: relative;
+        top: -2px;
+    }
+    .exp-card-stars {
+        display: inline-flex;
+        align-items: center;
+        gap: 1px;
+        font-size: 1rem;
+    }
+    .exp-card-stars .bi-star-fill {
+        color: #f5a623;
+    }
+    .exp-card-stars .bi-star {
+        color: #ccc;
+    }
+    /* Small add/remove button on card */
+    .exp-card-add-btn {
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 1.5px solid var(--heco-primary-500, #22c55e);
+        background: #fff;
+        color: var(--heco-primary-600, #16a34a);
+        font-size: 0.95rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        padding: 0;
+    }
+    .exp-card-add-btn:hover {
+        background: var(--heco-primary-500, #22c55e);
+        color: #fff;
+    }
+    .exp-card-add-btn.added {
+        background: var(--heco-primary-500, #22c55e);
+        color: #fff;
+        border-color: var(--heco-primary-500, #22c55e);
+    }
+    /* Collapsible Chat Panel */
+    .chat-collapse {
+        margin-bottom: var(--space-4, 16px);
+    }
+    .chat-collapse-outer {
+        height: auto;
+        margin-bottom: 25px;
+        position: relative;
+        z-index: 40;
+    }
+    .chat-collapse-panel {
+        background: var(--color-bg-white, #fff);
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .chat-collapse-panel.expanded {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+    }
+    .chat-collapse-messages {
+        max-height: 85px;
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        transition: max-height 0.3s ease;
+    }
+    .chat-collapse-panel.expanded .chat-collapse-messages {
+        max-height: 350px;
+    }
+    .chat-collapse-input-area {
+        display: flex;
+        align-items: center;
+        padding: 10px 16px;
+        border-top: 1px solid var(--color-border, #e5e7eb);
+        gap: 8px;
+    }
+    .chat-collapse-input-area .inline-chat-input {
+        flex: 1;
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: 2rem;
+        padding: 8px 16px;
+        font-size: 0.85rem;
+        outline: none;
+    }
+    .chat-collapse-input-area .inline-chat-input:focus {
+        border-color: var(--heco-primary-500, #22c55e);
+        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15);
+    }
+    .chat-collapse-input-area .inline-chat-send {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: none;
+        background: var(--heco-primary-500, #22c55e);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .chat-collapse-input-area .inline-chat-send:hover {
+        background: var(--heco-primary-600, #16a34a);
+    }
+
     .experience-grid-split .exp-card.map-highlight {
         box-shadow: 0 0 0 3px var(--heco-success, #2d6a4f);
         transition: box-shadow 0.3s ease;
@@ -101,39 +354,8 @@
         color: var(--heco-neutral-500, #6b7280);
         cursor: default;
     }
-    /* View toggle tabs */
-    .discover-view-tabs {
-        display: flex;
-        gap: 0.5rem;
-    }
-    .discover-view-tab {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        padding: 0.45rem 1rem;
-        border-radius: 2rem;
-        border: 1px solid var(--color-border, #dee2e6);
-        background: var(--color-bg-white, #fff);
-        color: var(--heco-neutral-600, #6c757d);
-        font-size: 0.85rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-    .discover-view-tab:hover {
-        border-color: var(--heco-success, #2d6a4f);
-        color: var(--heco-success, #2d6a4f);
-    }
-    .discover-view-tab.active {
-        background: var(--heco-success, #2d6a4f);
-        border-color: var(--heco-success, #2d6a4f);
-        color: #fff;
-    }
-    #mapViewPanel {
-        display: none;
-    }
     #mapViewPanel #discoverMap {
-        height: calc(100vh - 320px);
+        height: 100%;
         min-height: 400px;
         border-radius: 12px;
     }
@@ -141,54 +363,13 @@
         .experience-grid-split {
             max-height: none;
             overflow-y: visible;
-        }
-        #mapViewPanel #discoverMap {
-            height: 350px !important;
-            min-height: unset;
+            grid-template-columns: repeat(2, 1fr) !important;
         }
     }
-    .exp-card-price-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.75rem 1rem;
-        border-top: 1px solid var(--color-border, #f0f0f0);
-        margin-top: auto;
-    }
-    .exp-card-price-left {
-        display: flex;
-        align-items: baseline;
-        gap: 0.25rem;
-    }
-    .exp-card-price-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-    }
-    .exp-action-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 34px;
-        height: 34px;
-        border-radius: 50%;
-        border: 1px solid #e0e0e0;
-        background: #fff;
-        color: #555;
-        font-size: 1rem;
-        cursor: pointer;
-        transition: all 0.2s;
-        text-decoration: none;
-    }
-    .exp-action-icon:hover {
-        background: var(--heco-green, #2d6a4f);
-        color: #fff;
-        border-color: var(--heco-green, #2d6a4f);
-    }
-    .exp-action-icon.added {
-        background: var(--heco-green, #2d6a4f);
-        color: #fff;
-        border-color: var(--heco-green, #2d6a4f);
+    @media (max-width: 576px) {
+        .experience-grid-split {
+            grid-template-columns: 1fr !important;
+        }
     }
 </style>
 @endsection
@@ -219,6 +400,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 
 <div class="heco-page">
     {{-- Hero Section --}}
+    {{-- Hero section hidden
     <section class="hero-section">
         <div class="container">
             <div class="hero-content">
@@ -233,6 +415,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
             </div>
         </div>
     </section>
+    --}}
 
     {{-- Main Tab Navigation --}}
     <div class="main-tabs-wrapper">
@@ -269,103 +452,40 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
         <div class="tab-pane fade show active" id="pane-discover" role="tabpanel">
             <div class="content-container">
 
-                {{-- Two-column layout: Chat left + Content right --}}
-                <div class="row g-4">
-                    {{-- Left: AI Chat --}}
-                    <div class="col-lg-5">
-                        <div class="inline-chat-section">
-                            <h2 class="inline-chat-heading">
-                                <i class="bi bi-robot"></i>
-                                HECO AI Assistant
-                            </h2>
-                            <div id="inlineChatMessages">
+                {{-- Side-by-side layout: Cards left + Map right --}}
+                <div class="discover-layout">
+                    {{-- LEFT: Filter button + Experience Cards --}}
+                    <div class="discover-cards-panel">
+                        {{-- AI Chat Panel (always visible) --}}
+                        <div class="chat-collapse-outer">
+                        <div class="chat-collapse-panel">
+                            <div class="chatbot-popup-header" style="cursor:pointer;" id="chatCollapseToggle">
+                                <div class="chatbot-popup-title">
+                                    <i class="bi bi-robot"></i> AI Assistant
+                                </div>
+                                <button class="chatbot-popup-close" id="chatCollapseBtn">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
+                            <div class="chat-collapse-messages" id="collapseChatMessages">
                                 <div class="chat-msg assistant">
                                     @if(auth()->check())
-                                        Hey {{ auth()->user()->full_name ?? 'there' }}! I'm the HECO AI Assistant &mdash; welcome back! I'd love to help you plan an amazing adventure. What kind of experience are you looking for?
+                                        Hey {{ auth()->user()->full_name ?? 'there' }}! I'm the HECO AI Assistant &mdash; welcome back! What kind of experience are you looking for?
                                     @else
                                         Hey there! I'm the HECO AI Assistant &mdash; I'd love to help you plan an amazing Himalayan adventure. What's your name?
                                     @endif
                                 </div>
                             </div>
-                            <div class="inline-chat-input-area">
-                                <input type="text" class="inline-chat-input" id="inlineChatInput"
-                                    placeholder="Ask anything about experiences, destinations, travel plans..."
-                                    autocomplete="off">
-                                <button class="inline-chat-send" id="inlineChatSend">
+                            <div class="chat-collapse-input-area">
+                                <input type="text" class="inline-chat-input" id="collapseChatInput" placeholder="Ask anything about experiences..." autocomplete="off">
+                                <button class="inline-chat-send" id="collapseChatSend">
                                     <i class="bi bi-send-fill"></i>
                                 </button>
                             </div>
                         </div>
-                    </div>
-
-                    {{-- Right: Tabs + Filters + Cards/Map --}}
-                    <div class="col-lg-7">
-                        {{-- View toggle tabs --}}
-                        <div class="discover-view-tabs mb-3">
-                            <button class="discover-view-tab active" data-view="grid">
-                                <i class="bi bi-grid-3x3-gap-fill"></i> Grid View
-                            </button>
-                            <button class="discover-view-tab" data-view="map">
-                                <i class="bi bi-map"></i> Map View
-                            </button>
                         </div>
 
-                        {{-- Filter bar --}}
-                        <div class="filter-bar">
-                            <div class="row g-3 align-items-end">
-                                <div class="col-lg-3 col-md-6 col-6">
-                                    <label class="form-label">Experience Type</label>
-                                    <select class="form-select" id="filterType">
-                                        <option value="">All Types</option>
-                                        <option value="trek">Trek</option>
-                                        <option value="cultural">Cultural</option>
-                                        <option value="spiritual">Spiritual</option>
-                                        <option value="nature">Nature & Wildlife</option>
-                                        <option value="adventure">Adventure</option>
-                                        <option value="wellness">Wellness</option>
-                                        <option value="culinary">Culinary</option>
-                                        <option value="volunteering">Volunteering</option>
-                                    </select>
-                                </div>
-                                <div class="col-lg-3 col-md-6 col-6">
-                                    <label class="form-label">Difficulty</label>
-                                    <select class="form-select" id="filterDifficulty">
-                                        <option value="">All Levels</option>
-                                        <option value="easy">Easy</option>
-                                        <option value="moderate">Moderate</option>
-                                        <option value="challenging">Challenging</option>
-                                        <option value="difficult">Difficult</option>
-                                        <option value="expert">Expert</option>
-                                    </select>
-                                </div>
-                                <div class="col-lg-3 col-md-6 col-6">
-                                    <label class="form-label">Month</label>
-                                    <select class="form-select" id="filterMonth">
-                                        <option value="">Any Month</option>
-                                        <option value="1">January</option>
-                                        <option value="2">February</option>
-                                        <option value="3">March</option>
-                                        <option value="4">April</option>
-                                        <option value="5">May</option>
-                                        <option value="6">June</option>
-                                        <option value="7">July</option>
-                                        <option value="8">August</option>
-                                        <option value="9">September</option>
-                                        <option value="10">October</option>
-                                        <option value="11">November</option>
-                                        <option value="12">December</option>
-                                    </select>
-                                </div>
-                                <div class="col-lg-3 col-md-6 col-6">
-                                    <button class="btn-clear-filters w-100" id="clearFilters">
-                                        <i class="bi bi-x-circle"></i>
-                                        <span>Clear Filters</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {{-- Grid View (default) --}}
+                        {{-- Grid View (always visible) --}}
                         <div id="gridViewPanel">
                             <div id="experienceGrid" class="experience-grid experience-grid-split">
                                 <div class="loading-state" style="grid-column: 1 / -1;">
@@ -382,8 +502,77 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 </button>
                             </div>
                         </div>
+                    </div>
 
-                        {{-- Map View (hidden by default) --}}
+                    {{-- RIGHT: Filters + Map --}}
+                    <div class="discover-map-panel">
+                        <div class="filter-bar">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-lg-4 col-md-4 col-6">
+                                    <label class="form-label">Continent</label>
+                                    <select class="form-select form-select-sm" id="filterContinent">
+                                        <option value="">All Continents</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-4 col-md-4 col-6">
+                                    <label class="form-label">Country</label>
+                                    <select class="form-select form-select-sm" id="filterCountry">
+                                        <option value="">All Countries</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-4 col-md-4 col-6">
+                                    <label class="form-label">Region</label>
+                                    <select class="form-select form-select-sm" id="filterRegion">
+                                        @foreach($regions as $region)
+                                            <option value="{{ $region->id }}" @if($region->name === 'Tirthan Valley') selected @endif>{{ $region->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-lg-4 col-md-4 col-6">
+                                    <label class="form-label">Experience Type</label>
+                                    <select class="form-select form-select-sm" id="filterType">
+                                        <option value="">All Types</option>
+                                        <option value="trek">Trek</option>
+                                        <option value="cultural">Cultural</option>
+                                        <option value="spiritual">Spiritual</option>
+                                        <option value="nature">Nature & Wildlife</option>
+                                        <option value="adventure">Adventure</option>
+                                        <option value="wellness">Wellness</option>
+                                        <option value="culinary">Culinary</option>
+                                        <option value="volunteering">Volunteering</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-4 col-md-4 col-6">
+                                    <label class="form-label">Difficulty</label>
+                                    <select class="form-select form-select-sm" id="filterDifficulty">
+                                        <option value="">All Levels</option>
+                                        <option value="easy">Easy</option>
+                                        <option value="moderate">Moderate</option>
+                                        <option value="challenging">Challenging</option>
+                                        <option value="difficult">Difficult</option>
+                                        <option value="expert">Expert</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-4 col-md-4 col-6">
+                                    <label class="form-label">Month</label>
+                                    <select class="form-select form-select-sm" id="filterMonth">
+                                        <option value="">Any Month</option>
+                                        <option value="1">January</option>
+                                        <option value="2">February</option>
+                                        <option value="3">March</option>
+                                        <option value="4">April</option>
+                                        <option value="5">May</option>
+                                        <option value="6">June</option>
+                                        <option value="7">July</option>
+                                        <option value="8">August</option>
+                                        <option value="9">September</option>
+                                        <option value="10">October</option>
+                                        <option value="11">November</option>
+                                        <option value="12">December</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
                         <div id="mapViewPanel">
                             <div id="discoverMap"></div>
                         </div>
@@ -644,6 +833,17 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 </div>
 
 
+{{-- Floating AI Chatbot (hidden - replaced by collapsible panel in toolbar) --}}
+{{--
+<div class="chatbot-fab" id="chatbotFab" title="Chat with HECO AI">
+    <i class="bi bi-robot"></i>
+    <span class="chatbot-fab-pulse"></span>
+</div>
+<div class="chatbot-popup" id="chatbotPopup" style="display:none;">
+    ...
+</div>
+--}}
+
 {{-- Add Day Modal --}}
 <div class="modal fade" id="addDayModal" tabindex="-1" aria-labelledby="addDayModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm">
@@ -778,6 +978,136 @@ jQuery(function() {
     var currentRegionId = '';
     var debounceTimer = null;
 
+    // Region data for cascading filters
+    var allRegions = {!! json_encode($regions->map(function($r) {
+        return ['id' => $r->id, 'name' => $r->name, 'continent' => $r->continent, 'country' => $r->country];
+    })->values()) !!};
+
+    // Build continent dropdown from region data
+    (function() {
+        var continents = [];
+        var countries = [];
+        allRegions.forEach(function(r) {
+            if (r.continent && continents.indexOf(r.continent) === -1) continents.push(r.continent);
+            if (r.country && countries.indexOf(r.country) === -1) countries.push(r.country);
+        });
+        continents.sort();
+        countries.sort();
+        var cSel = jQuery('#filterContinent');
+        continents.forEach(function(c) {
+            cSel.append('<option value="' + c + '">' + c + '</option>');
+        });
+    })();
+
+    // Cascade: Continent → Country → Region
+    function updateCountryOptions() {
+        var continent = jQuery('#filterContinent').val();
+        var cSel = jQuery('#filterCountry');
+        var prevVal = cSel.val();
+        cSel.find('option:not(:first)').remove();
+        var countries = [];
+        allRegions.forEach(function(r) {
+            if ((!continent || r.continent === continent) && r.country && countries.indexOf(r.country) === -1) {
+                countries.push(r.country);
+            }
+        });
+        countries.sort();
+        countries.forEach(function(c) {
+            cSel.append('<option value="' + c + '">' + c + '</option>');
+        });
+        if (countries.indexOf(prevVal) === -1) cSel.val('');
+    }
+
+    function updateRegionOptions() {
+        var continent = jQuery('#filterContinent').val();
+        var country = jQuery('#filterCountry').val();
+        var rSel = jQuery('#filterRegion');
+        var prevVal = rSel.val();
+        rSel.empty();
+        allRegions.forEach(function(r) {
+            if ((!continent || r.continent === continent) && (!country || r.country === country)) {
+                rSel.append('<option value="' + r.id + '">' + r.name + '</option>');
+            }
+        });
+        if (!rSel.find('option[value="' + prevVal + '"]').length) rSel.val(rSel.find('option:first').val());
+    }
+
+    // Initialize country options on load
+    updateCountryOptions();
+
+    // ===================================
+    // Custom dropdown builder
+    // ===================================
+    function buildCustomDropdown(sel) {
+        var $sel = jQuery(sel);
+        if ($sel.closest('.custom-select-wrap').length) {
+            // Already wrapped — just rebuild options
+            var $wrap = $sel.closest('.custom-select-wrap');
+            var $optList = $wrap.find('.custom-select-options');
+            var $trigger = $wrap.find('.custom-select-trigger span');
+            $optList.empty();
+            $sel.find('option').each(function() {
+                var cls = 'custom-select-option' + ($sel.val() == jQuery(this).val() ? ' selected' : '');
+                $optList.append('<div class="' + cls + '" data-value="' + jQuery(this).val() + '">' + jQuery(this).text() + '</div>');
+            });
+            var selText = $sel.find('option:selected').text() || $sel.find('option:first').text();
+            $trigger.text(selText);
+            return;
+        }
+        // First time — wrap the select
+        var $wrap = jQuery('<div class="custom-select-wrap"></div>');
+        $sel.wrap($wrap);
+        $wrap = $sel.parent();
+        var selText = $sel.find('option:selected').text() || $sel.find('option:first').text();
+        var $trigger = jQuery('<div class="custom-select-trigger"><span>' + selText + '</span><i class="bi bi-chevron-down caret"></i></div>');
+        var $optList = jQuery('<div class="custom-select-options"></div>');
+        $sel.find('option').each(function() {
+            var cls = 'custom-select-option' + ($sel.val() == jQuery(this).val() ? ' selected' : '');
+            $optList.append('<div class="' + cls + '" data-value="' + jQuery(this).val() + '">' + jQuery(this).text() + '</div>');
+        });
+        $wrap.append($trigger).append($optList);
+
+        // Toggle open
+        $trigger.on('click', function(e) {
+            e.stopPropagation();
+            jQuery('.custom-select-wrap').not($wrap).removeClass('open');
+            $wrap.toggleClass('open');
+        });
+
+        // Select option
+        $optList.on('click', '.custom-select-option', function(e) {
+            e.stopPropagation();
+            var val = jQuery(this).data('value');
+            $sel.val(val).trigger('change');
+            $trigger.find('span').text(jQuery(this).text());
+            $optList.find('.custom-select-option').removeClass('selected');
+            jQuery(this).addClass('selected');
+            $wrap.removeClass('open');
+        });
+    }
+
+    // Close all custom dropdowns on outside click
+    jQuery(document).on('click', function() {
+        jQuery('.custom-select-wrap').removeClass('open');
+    });
+
+    // Initialize all filter dropdowns
+    jQuery('.filter-bar select').each(function() {
+        buildCustomDropdown(this);
+    });
+
+    // Rebuild custom dropdown after dynamic option changes
+    var origUpdateCountry = updateCountryOptions;
+    updateCountryOptions = function() {
+        origUpdateCountry();
+        buildCustomDropdown(jQuery('#filterCountry')[0]);
+    };
+    var origUpdateRegion = updateRegionOptions;
+    updateRegionOptions = function() {
+        origUpdateRegion();
+        buildCustomDropdown(jQuery('#filterRegion')[0]);
+    };
+
     // ===================================
     // LEAFLET MAP (lazy init)
     // ===================================
@@ -898,25 +1228,6 @@ jQuery(function() {
         }
     }
 
-    // ===================================
-    // VIEW TOGGLE (Grid / Map)
-    // ===================================
-    jQuery('.discover-view-tab').on('click', function() {
-        var view = jQuery(this).data('view');
-        jQuery('.discover-view-tab').removeClass('active');
-        jQuery(this).addClass('active');
-
-        if (view === 'map') {
-            jQuery('#gridViewPanel').hide();
-            jQuery('#mapViewPanel').show();
-            initMap();
-            setTimeout(function() { map.invalidateSize(); }, 100);
-        } else {
-            jQuery('#mapViewPanel').hide();
-            jQuery('#gridViewPanel').show();
-        }
-    });
-
     // Highlight marker on card hover
     jQuery(document).on('mouseenter', '.exp-card', function() {
         var expId = jQuery(this).data('exp-id');
@@ -1020,8 +1331,25 @@ jQuery(function() {
     // DISCOVER TAB
     // ===================================
 
-    // Filter changes
-    jQuery('#filterType, #filterDifficulty, #filterMonth').on('change', function() {
+    // Continent cascade → update Country & Region dropdowns
+    jQuery('#filterContinent').on('change', function() {
+        updateCountryOptions();
+        updateRegionOptions();
+        discoverPage = 1;
+        discoverHasMore = true;
+        loadExperiences(false);
+    });
+
+    // Country cascade → update Region dropdown
+    jQuery('#filterCountry').on('change', function() {
+        updateRegionOptions();
+        discoverPage = 1;
+        discoverHasMore = true;
+        loadExperiences(false);
+    });
+
+    // Filter changes (non-cascading filters)
+    jQuery('#filterRegion, #filterType, #filterDifficulty, #filterMonth').on('change', function() {
         discoverPage = 1;
         discoverHasMore = true;
         loadExperiences(false);
@@ -1029,7 +1357,10 @@ jQuery(function() {
 
     // Clear filters
     jQuery('#clearFilters').on('click', function() {
-        jQuery('#filterType, #filterDifficulty, #filterMonth').val('');
+        jQuery('#filterContinent, #filterCountry, #filterRegion, #filterType, #filterDifficulty, #filterMonth').val('');
+        updateCountryOptions();
+        updateRegionOptions();
+        jQuery('.filter-bar select').each(function() { buildCustomDropdown(this); });
         jQuery('#experienceGrid .exp-card').removeClass('ai-recommended');
         currentRegionId = '';
         discoverPage = 1;
@@ -1057,57 +1388,44 @@ jQuery(function() {
 
         var durationText = '';
         if (exp.duration_type === 'less_than_day') {
-            durationText = exp.duration_hours + 'h';
+            durationText = exp.duration_hours + ' hours';
         } else if (exp.duration_type === 'single_day') {
             durationText = '1 Day';
         } else {
             durationText = (exp.duration_days || '?') + ' Days';
         }
 
-        var regionName = exp.region ? exp.region.name : '';
-        var expType = exp.type ? exp.type.charAt(0).toUpperCase() + exp.type.slice(1) : '';
-        var difficulty = exp.difficulty_level ? exp.difficulty_level.charAt(0).toUpperCase() + exp.difficulty_level.slice(1) : '';
+        var hostName = (exp.hlh && exp.hlh.name) ? exp.hlh.name : (exp.region ? exp.region.name : '');
+        var isAdded = selectedExpIds.indexOf(exp.id) !== -1;
 
         var h = '<div class="exp-card" data-exp-id="' + exp.id + '">';
         h += '<div class="exp-card-image">';
         h += imgHtml;
-        if (expType) h += '<span class="exp-card-badge">' + expType + '</span>';
-        h += '<button class="exp-card-heart ' + (isPreferred ? 'preferred' : '') + '" data-exp-id="' + exp.id + '" title="Add to favorites"><i class="bi bi-heart-fill"></i></button>';
         h += '</div>';
         h += '<div class="exp-card-body">';
         h += '<h3 class="exp-card-title"><a href="/experience/' + exp.slug + '" target="_blank">' + exp.name + '</a></h3>';
-        h += '<p class="exp-card-desc">' + (exp.short_description ? exp.short_description.substring(0, 120) + (exp.short_description.length > 120 ? '...' : '') : '') + '</p>';
-        if (exp.reviews_count > 0) {
-            var avg = parseFloat(exp.reviews_avg_rating) || 0;
-            var rounded = Math.round(avg);
-            h += '<div class="exp-card-rating">';
+        if (hostName) h += '<p class="exp-card-host">Hosted by ' + hostName + '</p>';
+        h += '<p class="exp-card-duration"><i class="bi bi-clock"></i> ' + durationText + '</p>';
+        // Price + stars + heart row
+        h += '<div class="exp-card-bottom">';
+        if (exp.base_cost_per_person > 0) {
+            h += '<span class="exp-card-price">From ' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + '</span>';
+        }
+        var avg = parseFloat(exp.reviews_avg_rating) || 0;
+        var rounded = Math.round(avg);
+        if (avg > 0) {
+            h += '<span class="exp-card-stars">';
             for (var s = 1; s <= 5; s++) {
                 h += '<i class="bi ' + (s <= rounded ? 'bi-star-fill' : 'bi-star') + '"></i>';
             }
-            h += ' <span class="exp-rating-text">' + avg.toFixed(1) + ' (' + exp.reviews_count + ')</span>';
-            h += '</div>';
+            h += '</span>';
         }
-        h += '<div class="exp-card-meta">';
-        if (regionName) h += '<span class="exp-meta-item"><i class="bi bi-geo-alt"></i> ' + regionName + '</span>';
-        h += '<span class="exp-meta-item"><i class="bi bi-clock"></i> ' + durationText + '</span>';
-        if (difficulty) h += '<span class="exp-difficulty-badge">' + difficulty + '</span>';
-        h += '</div>';
-        var isAdded = selectedExpIds.indexOf(exp.id) !== -1;
-        h += '<div class="exp-card-price-row">';
-        h += '<div class="exp-card-price-left">';
-        if (exp.base_cost_per_person > 0) {
-            h += '<span class="exp-price-amount">' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + '</span>';
-            h += '<span class="exp-price-label">/ person</span>';
-        }
-        h += '</div>';
-        h += '<div class="exp-card-price-actions">';
-        h += '<a href="/experience/' + exp.slug + '" target="_blank" class="exp-action-icon" title="View Details"><i class="bi bi-eye"></i></a>';
+        h += '<button class="exp-card-fav ' + (isPreferred ? 'preferred' : '') + '" data-exp-id="' + exp.id + '" title="Add to favorites"><i class="bi bi-heart-fill"></i></button>';
         if (isAdded) {
-            h += '<button class="exp-action-icon btn-remove-journey-exp" data-exp-id="' + exp.id + '" data-exp-name="' + exp.name + '" title="Remove from Journey"><i class="bi bi-dash-lg"></i></button>';
+            h += '<button class="exp-card-add-btn added btn-remove-journey-exp" data-exp-id="' + exp.id + '" data-exp-name="' + (exp.name || '').replace(/"/g, '&quot;') + '" title="Remove from Journey"><i class="bi bi-check-lg"></i></button>';
         } else {
-            h += '<button class="exp-action-icon btn-add-exp" data-exp-id="' + exp.id + '" data-exp-name="' + exp.name + '" title="Add to Journey"><i class="bi bi-plus-lg"></i></button>';
+            h += '<button class="exp-card-add-btn btn-add-exp" data-exp-id="' + exp.id + '" data-exp-name="' + (exp.name || '').replace(/"/g, '&quot;') + '" title="Add to Journey"><i class="bi bi-plus-lg"></i></button>';
         }
-        h += '</div>';
         h += '</div>';
         h += '</div>';
         h += '</div>';
@@ -1122,7 +1440,10 @@ jQuery(function() {
             get_experiences_for_discover: 1,
             page: discoverPage
         };
-        if (currentRegionId) params.region_id = currentRegionId;
+        if (jQuery('#filterContinent').val()) params.continent = jQuery('#filterContinent').val();
+        if (jQuery('#filterCountry').val()) params.country = jQuery('#filterCountry').val();
+        var regionVal = jQuery('#filterRegion').val() || currentRegionId;
+        if (regionVal) params.region_id = regionVal;
         if (jQuery('#filterType').val()) params.type = jQuery('#filterType').val();
         if (jQuery('#filterDifficulty').val()) params.difficulty = jQuery('#filterDifficulty').val();
         if (jQuery('#filterMonth').val()) params.month = jQuery('#filterMonth').val();
@@ -1181,9 +1502,11 @@ jQuery(function() {
 
     // Initial load
     loadExperiences(false);
+    initMap();
+    setTimeout(function() { if (map) map.invalidateSize(); }, 300);
 
     // Heart/Prefer button
-    jQuery(document).on('click', '.exp-card-heart', function(e) {
+    jQuery(document).on('click', '.exp-card-fav', function(e) {
         e.stopPropagation();
         if (!isLoggedIn) {
             if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
@@ -1220,9 +1543,9 @@ jQuery(function() {
                 }
                 // Swap to remove button
                 btn.prop('disabled', false)
-                    .removeClass('btn-add-exp').addClass('btn-remove-journey-exp')
+                    .removeClass('btn-add-exp').addClass('btn-remove-journey-exp added')
                     .attr('title', 'Remove from Journey')
-                    .html('<i class="bi bi-dash-lg"></i>');
+                    .html('<i class="bi bi-check-lg"></i>');
                 updateJourneyBadge();
                 showAlert('"' + expName + '" added to your journey!', 'success');
                 if (resp.trip_id && !tripId) {
@@ -1257,9 +1580,9 @@ jQuery(function() {
                 btn.addClass('added').prop('disabled', true).html('<i class="bi bi-check-lg"></i> Added');
                 // Also update the grid card button
                 jQuery('.btn-add-exp[data-exp-id="' + expId + '"]')
-                    .removeClass('btn-add-exp').addClass('btn-remove-journey-exp')
+                    .removeClass('btn-add-exp').addClass('btn-remove-journey-exp added')
                     .attr('title', 'Remove from Journey')
-                    .html('<i class="bi bi-dash-lg"></i>');
+                    .html('<i class="bi bi-check-lg"></i>');
                 updateJourneyBadge();
                 if (resp.trip_id && !tripId) tripId = resp.trip_id;
                 jQuery('#noTripMessage').addClass('d-none');
@@ -1291,7 +1614,7 @@ jQuery(function() {
             selectedExpIds = selectedExpIds.filter(function(id) { return parseInt(id) !== expId; });
             // Swap back to add button
             btn.prop('disabled', false)
-                .removeClass('btn-remove-journey-exp').addClass('btn-add-exp')
+                .removeClass('btn-remove-journey-exp added').addClass('btn-add-exp')
                 .attr('title', 'Add to Journey')
                 .html('<i class="bi bi-plus-lg"></i>');
             updateJourneyBadge();
@@ -1311,9 +1634,10 @@ jQuery(function() {
     // YOUR JOURNEY TAB
     // ===================================
 
-    // Sync chats when switching to Discover tab
+    // Sync chats + invalidate map when switching to Discover tab
     jQuery('button[data-bs-target="#pane-discover"]').on('shown.bs.tab', function() {
         syncChats();
+        if (mapInitialized && map) setTimeout(function() { map.invalidateSize(); }, 100);
     });
 
     // Load journey data on tab show
@@ -1767,7 +2091,7 @@ jQuery(function() {
             loadTimeline();
             loadPricing();
             jQuery('.btn-remove-journey-exp[data-exp-id="' + expId + '"]')
-                .removeClass('btn-remove-journey-exp').addClass('btn-add-exp')
+                .removeClass('btn-remove-journey-exp added').addClass('btn-add-exp')
                 .attr('title', 'Add to Journey')
                 .html('<i class="bi bi-plus-lg"></i>');
             appendChatMsg('assistant', 'You have removed **' + expName + '** from your trip.');
@@ -2055,12 +2379,12 @@ jQuery(function() {
             escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         }
         var el = '<div class="chat-msg ' + role + '">' + escaped + '</div>';
-        jQuery('#inlineChatMessages').append(el);
+        jQuery('#collapseChatMessages').append(el);
         jQuery('#journeyChatMessages').append(el);
     }
 
     function scrollChat() {
-        var c1 = document.getElementById('inlineChatMessages');
+        var c1 = document.getElementById('collapseChatMessages');
         var c2 = document.getElementById('journeyChatMessages');
         if (c1) c1.scrollTop = c1.scrollHeight;
         if (c2) c2.scrollTop = c2.scrollHeight;
@@ -2072,7 +2396,7 @@ jQuery(function() {
             chatHistoryLoaded = true;
             var messages = resp.messages || [];
             if (messages.length === 0) return;
-            jQuery('#inlineChatMessages').find('.chat-msg.assistant').first().remove();
+            jQuery('#collapseChatMessages').find('.chat-msg.assistant').first().remove();
             jQuery('#journeyChatMessages').find('.chat-msg.assistant').first().remove();
             messages.forEach(function(msg) {
                 appendChatMsg(msg.role, msg.content);
@@ -2083,7 +2407,7 @@ jQuery(function() {
 
     // Sync both chat containers — copy from whichever has more messages
     function syncChats() {
-        var mainMsgs = jQuery('#inlineChatMessages .chat-msg');
+        var mainMsgs = jQuery('#collapseChatMessages .chat-msg');
         var journeyMsgs = jQuery('#journeyChatMessages .chat-msg');
         if (mainMsgs.length > journeyMsgs.length) {
             jQuery('#journeyChatMessages').empty();
@@ -2091,15 +2415,15 @@ jQuery(function() {
                 jQuery('#journeyChatMessages').append(jQuery(this).clone());
             });
         } else if (journeyMsgs.length > mainMsgs.length) {
-            jQuery('#inlineChatMessages').empty();
+            jQuery('#collapseChatMessages').empty();
             journeyMsgs.each(function() {
-                jQuery('#inlineChatMessages').append(jQuery(this).clone());
+                jQuery('#collapseChatMessages').append(jQuery(this).clone());
             });
         }
         scrollChat();
     }
 
-    var activeChatInput = '#inlineChatInput';
+    var activeChatInput = '#collapseChatInput';
 
     function sendChatMessage() {
         var msg = jQuery(activeChatInput).val().trim();
@@ -2110,7 +2434,7 @@ jQuery(function() {
         scrollChat();
 
         var typingHtml = '<div class="chat-msg assistant chat-typing"><i class="bi bi-three-dots"></i> Thinking...</div>';
-        jQuery('#inlineChatMessages').append(typingHtml);
+        jQuery('#collapseChatMessages').append(typingHtml);
         jQuery('#journeyChatMessages').append(typingHtml);
         scrollChat();
 
@@ -2157,11 +2481,11 @@ jQuery(function() {
             if (resp.added_experience_ids && resp.added_experience_ids.length > 0) {
                 resp.added_experience_ids.forEach(function(id) {
                     if (selectedExpIds.indexOf(id) === -1) selectedExpIds.push(id);
-                    // Swap + button to - button on card
+                    // Swap + button to check button on card
                     var btn = jQuery('.btn-add-exp[data-exp-id="' + id + '"]');
                     if (btn.length) {
-                        btn.removeClass('btn-add-exp').addClass('btn-remove-journey-exp')
-                            .attr('title', 'Remove from Journey').html('<i class="bi bi-dash-lg"></i>');
+                        btn.removeClass('btn-add-exp').addClass('btn-remove-journey-exp added')
+                            .attr('title', 'Remove from Journey').html('<i class="bi bi-check-lg"></i>');
                     }
                 });
                 updateJourneyBadge();
@@ -2175,10 +2499,10 @@ jQuery(function() {
             if (resp.removed_experience_ids && resp.removed_experience_ids.length > 0) {
                 resp.removed_experience_ids.forEach(function(id) {
                     selectedExpIds = selectedExpIds.filter(function(eid) { return eid != id; });
-                    // Swap - button back to + button on card
+                    // Swap check button back to + button on card
                     var btn = jQuery('.btn-remove-journey-exp[data-exp-id="' + id + '"]');
                     if (btn.length) {
-                        btn.removeClass('btn-remove-journey-exp').addClass('btn-add-exp')
+                        btn.removeClass('btn-remove-journey-exp added').addClass('btn-add-exp')
                             .attr('title', 'Add to Journey').html('<i class="bi bi-plus-lg"></i>');
                     }
                 });
@@ -2229,16 +2553,16 @@ jQuery(function() {
         }
     }
 
-    jQuery('#inlineChatInput').on('keydown', function(e) {
+    jQuery('#collapseChatInput').on('keydown', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            activeChatInput = '#inlineChatInput';
+            activeChatInput = '#collapseChatInput';
             sendChatMessage();
         }
     });
 
-    jQuery('#inlineChatSend').on('click', function() {
-        activeChatInput = '#inlineChatInput';
+    jQuery('#collapseChatSend').on('click', function() {
+        activeChatInput = '#collapseChatInput';
         sendChatMessage();
     });
 
@@ -2271,6 +2595,32 @@ jQuery(function() {
         loadExperiences(false);
         if (typeof allDiscoverExps !== 'undefined' && allDiscoverExps.length) {
             updateMapMarkers(allDiscoverExps);
+        }
+    });
+
+    // ===================================
+    // AI CHAT COLLAPSE TOGGLE
+    // ===================================
+    jQuery('#chatCollapseToggle').on('click', function() {
+        var panel = jQuery('.chat-collapse-panel');
+        var outer = jQuery('.chat-collapse-outer');
+        var icon = jQuery('#chatCollapseBtn i');
+
+        if (!panel.hasClass('expanded')) {
+            // Lock outer height before panel goes absolute
+            outer.css('height', outer.outerHeight() + 'px');
+            panel.addClass('expanded');
+            icon.removeClass('bi-plus-lg').addClass('bi-dash-lg');
+            var msgs = document.getElementById('collapseChatMessages');
+            if (msgs) msgs.scrollTop = msgs.scrollHeight;
+        } else {
+            // First collapse messages back to 85px, then remove absolute
+            panel.removeClass('expanded');
+            icon.removeClass('bi-dash-lg').addClass('bi-plus-lg');
+            // Wait for transition to finish, then release fixed height
+            setTimeout(function() {
+                outer.css('height', 'auto');
+            }, 320);
         }
     });
 });

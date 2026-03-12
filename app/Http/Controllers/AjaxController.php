@@ -927,6 +927,16 @@ class AjaxController extends Controller
     {
         $query = Experience::where("is_active", true)->with(["region", "hlh", "days"]);
 
+        if ($request->filled("continent")) {
+            $query->whereHas("region", function ($q) use ($request) {
+                $q->where("continent", $request->continent);
+            });
+        }
+        if ($request->filled("country")) {
+            $query->whereHas("region", function ($q) use ($request) {
+                $q->where("country", $request->country);
+            });
+        }
         if ($request->filled("region_id")) {
             $query->where("region_id", $request->region_id);
         }
