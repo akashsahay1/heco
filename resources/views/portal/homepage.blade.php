@@ -228,7 +228,7 @@
         transition: max-height 0.3s ease;
     }
     .chat-collapse-panel.expanded .chat-collapse-messages {
-        max-height: 350px;
+        max-height: 500px;
     }
     .chat-collapse-input-area {
         display: flex;
@@ -290,6 +290,7 @@
     }
     .map-popup-card {
         width: 320px;
+        cursor: pointer;
     }
     .map-popup-card > img {
         width: 100%;
@@ -390,6 +391,16 @@ if ($trip) {
     $preferredExpIds = [];
 }
 $hasTrip = $trip || ($tripId === 'guest');
+// Get the region of currently selected experiences (single-region constraint)
+$tripRegionId = null;
+$tripRegionName = null;
+if (!empty($selectedExpIds)) {
+    $firstExp = \App\Models\Experience::whereIn('id', $selectedExpIds)->whereNotNull('region_id')->first();
+    if ($firstExp) {
+        $tripRegionId = $firstExp->region_id;
+        $tripRegionName = $firstExp->region ? $firstExp->region->name : null;
+    }
+}
 // Preference values (from DB trip or guest session)
 $pAccom = ($trip ? $trip->accommodation_comfort : null) ?: ($guestTripData['accommodation_comfort'] ?? null) ?: 'Cat C - Standard';
 $pVehicle = ($trip ? $trip->vehicle_comfort : null) ?: ($guestTripData['vehicle_comfort'] ?? null) ?: 'SUV (Innova/Crysta)';
@@ -587,12 +598,18 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
         <div class="tab-pane fade" id="pane-journey" role="tabpanel">
             <div class="content-container">
                 <div id="journeyContent">
-                    {{-- AI Chat inside Journey tab --}}
-                    <div class="journey-chat-section">
-                        <div class="journey-chat-header">
-                            <i class="bi bi-robot"></i> AI Assistant
+                    {{-- AI Chat inside Journey tab (collapsible) --}}
+                    <div class="chat-collapse-outer journey-chat-collapse-outer">
+                    <div class="chat-collapse-panel journey-chat-collapse-panel">
+                        <div class="chatbot-popup-header" style="cursor:pointer;" id="journeyChatCollapseToggle">
+                            <div class="chatbot-popup-title">
+                                <i class="bi bi-robot"></i> AI Assistant
+                            </div>
+                            <button class="chatbot-popup-close" id="journeyChatCollapseBtn">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
                         </div>
-                        <div class="journey-chat-messages" id="journeyChatMessages">
+                        <div class="chat-collapse-messages" id="journeyChatMessages">
                             <div class="chat-msg assistant">
                                 @if(auth()->check())
                                     Hi {{ auth()->user()->full_name ?? 'there' }}! I can help you plan and modify your trip &mdash; change dates, add or remove days, update preferences, and more. Just ask!
@@ -601,7 +618,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 @endif
                             </div>
                         </div>
-                        <div class="journey-chat-input-area">
+                        <div class="chat-collapse-input-area">
                             <input type="text" class="inline-chat-input" id="journeyChatInput"
                                 placeholder="Ask AI to change dates, add days, update preferences..."
                                 autocomplete="off">
@@ -609,6 +626,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 <i class="bi bi-send-fill"></i>
                             </button>
                         </div>
+                    </div>
                     </div>
 
                     {{-- Shown if no trip --}}
@@ -972,6 +990,8 @@ jQuery(function() {
     var tripId = {!! json_encode($tripId) !!};
     var selectedExpIds = {!! json_encode($selectedExpIds) !!};
     var preferredExpIds = {!! json_encode($preferredExpIds) !!};
+    var tripRegionId = {!! json_encode($tripRegionId) !!};
+    var tripRegionName = {!! json_encode($tripRegionName) !!};
     var discoverPage = 1;
     var discoverLoading = false;
     var discoverHasMore = true;
@@ -1175,12 +1195,8 @@ jQuery(function() {
             var imgHtml = exp.card_image
                 ? '<img src="' + exp.card_image + '">'
                 : '';
-            var isAdded = selectedExpIds.indexOf(exp.id) !== -1;
-            var addBtnHtml = isAdded
-                ? '<button class="map-popup-btn added" disabled><i class="bi bi-check-lg"></i> Added</button>'
-                : '<button class="map-popup-btn btn-map-add-exp" data-exp-id="' + exp.id + '" data-exp-name="' + (exp.name || '').replace(/"/g, '&quot;') + '"><i class="bi bi-plus-lg"></i> Add to Journey</button>';
 
-            var popupHtml = '<div class="map-popup-card">';
+            var popupHtml = '<div class="map-popup-card" data-exp-id="' + exp.id + '">';
             popupHtml += imgHtml;
             popupHtml += '<div class="map-popup-body">';
             popupHtml += '<div class="map-popup-title">' + exp.name + '</div>';
@@ -1197,7 +1213,6 @@ jQuery(function() {
             if (exp.base_cost_per_person > 0) {
                 popupHtml += '<span class="map-popup-price">' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + '/person</span>';
             }
-            popupHtml += addBtnHtml;
             popupHtml += '</div>';
             popupHtml += '</div></div>';
 
@@ -1206,14 +1221,33 @@ jQuery(function() {
                 .addTo(map);
 
             marker.on('mouseover', function() { this.openPopup(); });
-            marker.on('mouseout', function(e) {
+            marker.on('popupopen', function() {
+                // Highlight card immediately when popup opens
+                jQuery('.exp-card.map-highlight').removeClass('map-highlight');
+                jQuery('.exp-card[data-exp-id="' + exp.id + '"]').addClass('map-highlight');
+
                 var popup = this.getPopup();
                 if (popup && popup.getElement()) {
                     var popupEl = popup.getElement();
-                    // Keep open if mouse moved into the popup
-                    popupEl.onmouseenter = function() { marker._keepPopup = true; };
-                    popupEl.onmouseleave = function() { marker._keepPopup = false; marker.closePopup(); };
+                    popupEl.onmouseenter = function() {
+                        marker._keepPopup = true;
+                    };
+                    popupEl.onmouseleave = function() {
+                        marker._keepPopup = false;
+                        marker.closePopup();
+                    };
+                    popupEl.onclick = function() {
+                        var card = jQuery('.exp-card[data-exp-id="' + exp.id + '"]');
+                        if (card.length) {
+                            card[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    };
                 }
+            });
+            marker.on('popupclose', function() {
+                jQuery('.exp-card[data-exp-id="' + exp.id + '"]').removeClass('map-highlight');
+            });
+            marker.on('mouseout', function(e) {
                 var self = this;
                 setTimeout(function() { if (!self._keepPopup) self.closePopup(); }, 100);
             });
@@ -1240,6 +1274,27 @@ jQuery(function() {
         var expId = jQuery(this).data('exp-id');
         if (mapInitialized && markerMap[expId]) {
             markerMap[expId].closePopup();
+        }
+    });
+
+    // Highlight experience card on map popup hover
+    jQuery(document).on('mouseenter', '.map-popup-card', function() {
+        var expId = jQuery(this).data('exp-id');
+        jQuery('.exp-card[data-exp-id="' + expId + '"]').addClass('map-highlight');
+    });
+    jQuery(document).on('mouseleave', '.map-popup-card', function() {
+        var expId = jQuery(this).data('exp-id');
+        jQuery('.exp-card[data-exp-id="' + expId + '"]').removeClass('map-highlight');
+    });
+
+    // Scroll to experience card on map popup click
+    jQuery(document).on('click', '.map-popup-card', function() {
+        var expId = jQuery(this).data('exp-id');
+        var card = jQuery('.exp-card[data-exp-id="' + expId + '"]');
+        if (card.length) {
+            card[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.addClass('map-highlight');
+            setTimeout(function() { card.removeClass('map-highlight'); }, 2000);
         }
     });
 
@@ -1527,6 +1582,14 @@ jQuery(function() {
         });
     });
 
+    // Helper: find experience object from allDiscoverExps
+    function findExpData(expId) {
+        for (var i = 0; i < allDiscoverExps.length; i++) {
+            if (allDiscoverExps[i].id == expId) return allDiscoverExps[i];
+        }
+        return null;
+    }
+
     // Add to Journey button
     jQuery(document).on('click', '.btn-add-exp', function(e) {
         e.stopPropagation();
@@ -1534,12 +1597,24 @@ jQuery(function() {
         var expId = btn.data('exp-id');
         var expName = btn.data('exp-name');
 
+        // Single-region constraint: block if experience is from a different region
+        var expData = findExpData(expId);
+        if (expData && tripRegionId && expData.region_id && expData.region_id != tripRegionId) {
+            showAlert('You can only add experiences from one region at a time. Your current trip is in <strong>' + (tripRegionName || 'another region') + '</strong>. Remove existing experiences first to switch regions.', 'warning');
+            return;
+        }
+
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
 
         ensureTrip(function(tId) {
             ajaxPost({ add_experience_to_trip: 1, trip_id: tId, experience_id: expId }, function(resp) {
                 if (selectedExpIds.indexOf(expId) === -1) {
                     selectedExpIds.push(expId);
+                }
+                // Track the region of added experience
+                if (expData && expData.region_id && !tripRegionId) {
+                    tripRegionId = expData.region_id;
+                    tripRegionName = expData.region ? expData.region.name : '';
                 }
                 // Swap to remove button
                 btn.prop('disabled', false)
@@ -1612,6 +1687,7 @@ jQuery(function() {
 
         ajaxPost({ remove_experience_from_trip: 1, trip_id: tripId, experience_id: expId }, function() {
             selectedExpIds = selectedExpIds.filter(function(id) { return parseInt(id) !== expId; });
+            if (selectedExpIds.length === 0) { tripRegionId = null; tripRegionName = null; }
             // Swap back to add button
             btn.prop('disabled', false)
                 .removeClass('btn-remove-journey-exp added').addClass('btn-add-exp')
@@ -1640,6 +1716,24 @@ jQuery(function() {
         if (mapInitialized && map) setTimeout(function() { map.invalidateSize(); }, 100);
     });
 
+    // Block journey tab for guests — show auth modal, redirect to Discover on cancel
+    var authFromJourney = false;
+    jQuery('#tab-journey').on('click', function(e) {
+        if (!isLoggedIn) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            authFromJourney = true;
+            if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
+            return false;
+        }
+    });
+    jQuery('#authModal').on('hidden.bs.modal', function() {
+        if (authFromJourney) {
+            authFromJourney = false;
+            jQuery('#tab-discover').click();
+        }
+    });
+
     // Load journey data on tab show
     jQuery('button[data-bs-target="#pane-journey"]').on('shown.bs.tab', function() {
         if (tripId) {
@@ -1663,6 +1757,18 @@ jQuery(function() {
             var items = resp.experiences || [];
             selectedExpIds = items.map(function(e) { return e.experience_id; });
             updateJourneyBadge();
+
+            // Sync single-region constraint from server data
+            tripRegionId = null;
+            tripRegionName = null;
+            for (var ri = 0; ri < items.length; ri++) {
+                var rExp = items[ri].experience;
+                if (rExp && rExp.region_id) {
+                    tripRegionId = rExp.region_id;
+                    tripRegionName = rExp.region ? rExp.region.name : '';
+                    break;
+                }
+            }
 
             // Update trip summary
             var totalDays = 0;
@@ -2086,6 +2192,7 @@ jQuery(function() {
             bootstrap.Modal.getInstance(document.getElementById('removeExpModal')).hide();
             btn.prop('disabled', false).html('<i class="bi bi-trash3" style="margin-right:4px"></i> Remove');
             selectedExpIds = selectedExpIds.filter(function(id) { return parseInt(id) !== expId; });
+            if (selectedExpIds.length === 0) { tripRegionId = null; tripRegionName = null; }
             updateJourneyBadge();
             loadSelectedExperiences();
             loadTimeline();
@@ -2599,28 +2706,44 @@ jQuery(function() {
     });
 
     // ===================================
-    // AI CHAT COLLAPSE TOGGLE
+    // AI CHAT COLLAPSE TOGGLE (Discover tab)
     // ===================================
     jQuery('#chatCollapseToggle').on('click', function() {
-        var panel = jQuery('.chat-collapse-panel');
-        var outer = jQuery('.chat-collapse-outer');
+        var outer = jQuery(this).closest('.chat-collapse-outer');
+        var panel = outer.find('.chat-collapse-panel');
         var icon = jQuery('#chatCollapseBtn i');
 
         if (!panel.hasClass('expanded')) {
-            // Lock outer height before panel goes absolute
             outer.css('height', outer.outerHeight() + 'px');
             panel.addClass('expanded');
             icon.removeClass('bi-plus-lg').addClass('bi-dash-lg');
             var msgs = document.getElementById('collapseChatMessages');
             if (msgs) msgs.scrollTop = msgs.scrollHeight;
         } else {
-            // First collapse messages back to 85px, then remove absolute
             panel.removeClass('expanded');
             icon.removeClass('bi-dash-lg').addClass('bi-plus-lg');
-            // Wait for transition to finish, then release fixed height
-            setTimeout(function() {
-                outer.css('height', 'auto');
-            }, 320);
+            setTimeout(function() { outer.css('height', 'auto'); }, 320);
+        }
+    });
+
+    // ===================================
+    // AI CHAT COLLAPSE TOGGLE (Journey tab)
+    // ===================================
+    jQuery('#journeyChatCollapseToggle').on('click', function() {
+        var outer = jQuery(this).closest('.chat-collapse-outer');
+        var panel = outer.find('.chat-collapse-panel');
+        var icon = jQuery('#journeyChatCollapseBtn i');
+
+        if (!panel.hasClass('expanded')) {
+            outer.css('height', outer.outerHeight() + 'px');
+            panel.addClass('expanded');
+            icon.removeClass('bi-plus-lg').addClass('bi-dash-lg');
+            var msgs = document.getElementById('journeyChatMessages');
+            if (msgs) msgs.scrollTop = msgs.scrollHeight;
+        } else {
+            panel.removeClass('expanded');
+            icon.removeClass('bi-dash-lg').addClass('bi-plus-lg');
+            setTimeout(function() { outer.css('height', 'auto'); }, 320);
         }
     });
 });

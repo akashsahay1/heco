@@ -1284,6 +1284,21 @@ class AjaxController extends Controller
             $detailsUpdated = false;
         }
 
+        // Determine the current trip region (single-region constraint)
+        $currentTripRegionId = null;
+        if ($isGuest) {
+            $guestData = $this->guestTrip();
+            $guestIds = $guestData['experience_ids'] ?? [];
+            if (!empty($guestIds)) {
+                $currentTripRegionId = Experience::whereIn('id', $guestIds)->whereNotNull('region_id')->value('region_id');
+            }
+        } elseif ($trip) {
+            $currentTripRegionId = TripSelectedExperience::where('trip_id', $trip->id)
+                ->join('experiences', 'experiences.id', '=', 'trip_selected_experiences.experience_id')
+                ->whereNotNull('experiences.region_id')
+                ->value('experiences.region_id');
+        }
+
         // Parse ADD_TO_TRIP tag (flexible regex: handles spaces, trailing commas)
         $addedExperienceIds = [];
         if (preg_match('/\[ADD_TO_TRIP:\s*([\d,\s]+?)\s*\]/', $responseText, $addMatch)) {
@@ -1292,6 +1307,14 @@ class AjaxController extends Controller
 
             // Validate experience IDs exist
             $validIds = Experience::where('is_active', true)->whereIn('id', $requestedIds)->pluck('id')->toArray();
+
+            // Filter by single-region constraint
+            $validIds = array_filter($validIds, function ($id) use (&$currentTripRegionId) {
+                $exp = Experience::find($id);
+                if (!$exp || !$exp->region_id) return true;
+                if (!$currentTripRegionId) { $currentTripRegionId = $exp->region_id; return true; }
+                return $exp->region_id == $currentTripRegionId;
+            });
 
             if ($isGuest) {
                 $guestData = $this->guestTrip();
@@ -1328,6 +1351,8 @@ class AjaxController extends Controller
             foreach ($experiences as $exp) {
                 // Check if the experience name appears in the AI response
                 if (stripos($responseText, $exp->name) !== false) {
+                    // Single-region constraint
+                    if ($exp->region_id && $currentTripRegionId && $exp->region_id != $currentTripRegionId) continue;
                     $fallbackIds[] = $exp->id;
                 }
             }
@@ -1340,6 +1365,9 @@ class AjaxController extends Controller
                         if (!in_array($expId, $existing)) {
                             $existing[] = $expId;
                             $addedExperienceIds[] = $expId;
+                            if (!$currentTripRegionId) {
+                                $currentTripRegionId = Experience::find($expId)?->region_id;
+                            }
                         }
                     }
                     $guestData['experience_ids'] = $existing;
@@ -1356,6 +1384,9 @@ class AjaxController extends Controller
                                 'sort_order' => $maxSort + 1,
                             ]);
                             $addedExperienceIds[] = $expId;
+                            if (!$currentTripRegionId) {
+                                $currentTripRegionId = Experience::find($expId)?->region_id;
+                            }
                         }
                     }
                 }
@@ -1524,6 +1555,15 @@ class AjaxController extends Controller
         if (!Auth::check()) {
             $gt = $this->guestTrip();
             $ids = $gt['experience_ids'] ?? [];
+
+            // Single-region constraint for guests
+            if (!empty($ids) && $experience->region_id) {
+                $existingRegionId = Experience::whereIn('id', $ids)->whereNotNull('region_id')->value('region_id');
+                if ($existingRegionId && $existingRegionId != $experience->region_id) {
+                    return response()->json(["error" => "You can only add experiences from one region at a time."], 422);
+                }
+            }
+
             if (!in_array($experience->id, $ids)) {
                 $ids[] = $experience->id;
             }
@@ -1533,6 +1573,17 @@ class AjaxController extends Controller
         }
 
         $trip = $this->ensureAuthTrip($request);
+
+        // Single-region constraint: only allow experiences from one region per trip
+        if ($experience->region_id) {
+            $existingRegionId = TripSelectedExperience::where('trip_id', $trip->id)
+                ->join('experiences', 'experiences.id', '=', 'trip_selected_experiences.experience_id')
+                ->whereNotNull('experiences.region_id')
+                ->value('experiences.region_id');
+            if ($existingRegionId && $existingRegionId != $experience->region_id) {
+                return response()->json(["error" => "You can only add experiences from one region at a time."], 422);
+            }
+        }
 
         $maxSort = TripSelectedExperience::where('trip_id', $trip->id)->max('sort_order') ?? 0;
         TripSelectedExperience::firstOrCreate([
