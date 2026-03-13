@@ -1717,22 +1717,22 @@ jQuery(function() {
     });
 
     // Block journey tab for guests — show auth modal, redirect to Discover on cancel
-    var authFromJourney = false;
-    jQuery('#tab-journey').on('click', function(e) {
-        if (!isLoggedIn) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            authFromJourney = true;
-            if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
-            return false;
-        }
-    });
-    jQuery('#authModal').on('hidden.bs.modal', function() {
-        if (authFromJourney) {
-            authFromJourney = false;
-            jQuery('#tab-discover').click();
-        }
-    });
+    // var authFromJourney = false;
+    // jQuery('#tab-journey').on('click', function(e) {
+    //     if (!isLoggedIn) {
+    //         e.preventDefault();
+    //         e.stopImmediatePropagation();
+    //         authFromJourney = true;
+    //         if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
+    //         return false;
+    //     }
+    // });
+    // jQuery('#authModal').on('hidden.bs.modal', function() {
+    //     if (authFromJourney) {
+    //         authFromJourney = false;
+    //         jQuery('#tab-discover').click();
+    //     }
+    // });
 
     // Load journey data on tab show
     jQuery('button[data-bs-target="#pane-journey"]').on('shown.bs.tab', function() {
