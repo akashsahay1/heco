@@ -266,9 +266,27 @@
         background: var(--heco-primary-600, #16a34a);
     }
 
-    .experience-grid-split .exp-card.map-highlight {
-        box-shadow: 0 0 0 3px var(--heco-success, #2d6a4f);
-        transition: box-shadow 0.3s ease;
+    .experience-grid-split .exp-card.map-highlight .exp-card-body {
+        background: var(--heco-primary-600, #16a34a);
+    }
+    .experience-grid-split .exp-card.map-highlight .exp-card-body,
+    .experience-grid-split .exp-card.map-highlight .exp-card-title a,
+    .experience-grid-split .exp-card.map-highlight .exp-card-host,
+    .experience-grid-split .exp-card.map-highlight .exp-card-duration,
+    .experience-grid-split .exp-card.map-highlight .exp-card-duration i,
+    .experience-grid-split .exp-card.map-highlight .exp-card-price,
+    .experience-grid-split .exp-card.map-highlight .exp-card-stars .bi-star-fill,
+    .experience-grid-split .exp-card.map-highlight .exp-card-stars .bi-star,
+    .experience-grid-split .exp-card.map-highlight .exp-card-fav i,
+    .experience-grid-split .exp-card.map-highlight .exp-card-add-btn {
+        color: #fff;
+    }
+    .experience-grid-split .exp-card.map-highlight .exp-card-bottom {
+        border-top-color: rgba(255,255,255,0.3);
+    }
+    .experience-grid-split .exp-card.map-highlight .exp-card-add-btn {
+        border-color: #fff;
+        background: transparent;
     }
     .leaflet-popup-content-wrapper {
         border-radius: 10px;
@@ -470,12 +488,12 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                         {{-- AI Chat Panel (always visible) --}}
                         <div class="chat-collapse-outer">
                         <div class="chat-collapse-panel">
-                            <div class="chatbot-popup-header" style="cursor:pointer;" id="chatCollapseToggle">
+                            <div class="chatbot-popup-header" id="chatCollapseToggle">
                                 <div class="chatbot-popup-title">
                                     <i class="bi bi-robot"></i> AI Assistant
                                 </div>
-                                <button class="chatbot-popup-close" id="chatCollapseBtn">
-                                    <i class="bi bi-plus-lg"></i>
+                                <button class="chatbot-popup-close d-none" id="chatCollapseBtn">
+                                    <i class="bi bi-dash-lg"></i>
                                 </button>
                             </div>
                             <div class="chat-collapse-messages" id="collapseChatMessages">
@@ -601,12 +619,12 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                     {{-- AI Chat inside Journey tab (collapsible) --}}
                     <div class="chat-collapse-outer journey-chat-collapse-outer">
                     <div class="chat-collapse-panel journey-chat-collapse-panel">
-                        <div class="chatbot-popup-header" style="cursor:pointer;" id="journeyChatCollapseToggle">
+                        <div class="chatbot-popup-header" id="journeyChatCollapseToggle">
                             <div class="chatbot-popup-title">
                                 <i class="bi bi-robot"></i> AI Assistant
                             </div>
-                            <button class="chatbot-popup-close" id="journeyChatCollapseBtn">
-                                <i class="bi bi-plus-lg"></i>
+                            <button class="chatbot-popup-close d-none" id="journeyChatCollapseBtn">
+                                <i class="bi bi-dash-lg"></i>
                             </button>
                         </div>
                         <div class="chat-collapse-messages" id="journeyChatMessages">
@@ -1454,9 +1472,11 @@ jQuery(function() {
         var isAdded = selectedExpIds.indexOf(exp.id) !== -1;
 
         var h = '<div class="exp-card" data-exp-id="' + exp.id + '">';
+        h += '<a href="/experience/' + exp.slug + '" target="_blank" class="exp-card-image-link">';
         h += '<div class="exp-card-image">';
         h += imgHtml;
         h += '</div>';
+        h += '</a>';
         h += '<div class="exp-card-body">';
         h += '<h3 class="exp-card-title"><a href="/experience/' + exp.slug + '" target="_blank">' + exp.name + '</a></h3>';
         if (hostName) h += '<p class="exp-card-host">Hosted by ' + hostName + '</p>';
@@ -1716,7 +1736,7 @@ jQuery(function() {
         if (mapInitialized && map) setTimeout(function() { map.invalidateSize(); }, 100);
     });
 
-    // Block journey tab for guests — show auth modal, redirect to Discover on cancel
+    // TEMPORARILY DISABLED: Block journey tab for guests — show auth modal, redirect to Discover on cancel
     // var authFromJourney = false;
     // jQuery('#tab-journey').on('click', function(e) {
     //     if (!isLoggedIn) {
@@ -2706,45 +2726,53 @@ jQuery(function() {
     });
 
     // ===================================
-    // AI CHAT COLLAPSE TOGGLE (Discover tab)
+    // AI CHAT COLLAPSE - expand on typing (Discover tab)
     // ===================================
-    jQuery('#chatCollapseToggle').on('click', function() {
+    jQuery('#collapseChatInput').on('focus input', function() {
         var outer = jQuery(this).closest('.chat-collapse-outer');
         var panel = outer.find('.chat-collapse-panel');
-        var icon = jQuery('#chatCollapseBtn i');
-
         if (!panel.hasClass('expanded')) {
             outer.css('height', outer.outerHeight() + 'px');
             panel.addClass('expanded');
-            icon.removeClass('bi-plus-lg').addClass('bi-dash-lg');
+            jQuery('#chatCollapseBtn').removeClass('d-none');
             var msgs = document.getElementById('collapseChatMessages');
             if (msgs) msgs.scrollTop = msgs.scrollHeight;
-        } else {
-            panel.removeClass('expanded');
-            icon.removeClass('bi-dash-lg').addClass('bi-plus-lg');
-            setTimeout(function() { outer.css('height', 'auto'); }, 320);
         }
     });
 
-    // ===================================
-    // AI CHAT COLLAPSE TOGGLE (Journey tab)
-    // ===================================
-    jQuery('#journeyChatCollapseToggle').on('click', function() {
+    // Collapse only on minus button click (Discover tab)
+    jQuery('#chatCollapseBtn').on('click', function(e) {
+        e.stopPropagation();
         var outer = jQuery(this).closest('.chat-collapse-outer');
         var panel = outer.find('.chat-collapse-panel');
-        var icon = jQuery('#journeyChatCollapseBtn i');
+        panel.removeClass('expanded');
+        jQuery('#chatCollapseBtn').addClass('d-none');
+        setTimeout(function() { outer.css('height', 'auto'); }, 320);
+    });
 
+    // ===================================
+    // AI CHAT COLLAPSE - expand on typing (Journey tab)
+    // ===================================
+    jQuery('#journeyChatInput').on('focus input', function() {
+        var outer = jQuery(this).closest('.chat-collapse-outer');
+        var panel = outer.find('.chat-collapse-panel');
         if (!panel.hasClass('expanded')) {
             outer.css('height', outer.outerHeight() + 'px');
             panel.addClass('expanded');
-            icon.removeClass('bi-plus-lg').addClass('bi-dash-lg');
+            jQuery('#journeyChatCollapseBtn').removeClass('d-none');
             var msgs = document.getElementById('journeyChatMessages');
             if (msgs) msgs.scrollTop = msgs.scrollHeight;
-        } else {
-            panel.removeClass('expanded');
-            icon.removeClass('bi-dash-lg').addClass('bi-plus-lg');
-            setTimeout(function() { outer.css('height', 'auto'); }, 320);
         }
+    });
+
+    // Collapse only on minus button click (Journey tab)
+    jQuery('#journeyChatCollapseBtn').on('click', function(e) {
+        e.stopPropagation();
+        var outer = jQuery(this).closest('.chat-collapse-outer');
+        var panel = outer.find('.chat-collapse-panel');
+        panel.removeClass('expanded');
+        jQuery('#journeyChatCollapseBtn').addClass('d-none');
+        setTimeout(function() { outer.css('height', 'auto'); }, 320);
     });
 });
 </script>

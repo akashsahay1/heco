@@ -1638,6 +1638,35 @@
         box-shadow: var(--shadow-xl);
     }
 
+    .exp-card:hover .exp-card-body {
+        background: var(--heco-primary-600, #16a34a);
+        transition: background 0.3s ease;
+    }
+    .exp-card:hover .exp-card-body,
+    .exp-card:hover .exp-card-title a,
+    .exp-card:hover .exp-card-host,
+    .exp-card:hover .exp-card-duration,
+    .exp-card:hover .exp-card-duration i,
+    .exp-card:hover .exp-card-price,
+    .exp-card:hover .exp-card-stars .bi-star-fill,
+    .exp-card:hover .exp-card-stars .bi-star,
+    .exp-card:hover .exp-card-fav i,
+    .exp-card:hover .exp-card-add-btn {
+        color: #fff !important;
+    }
+    .exp-card:hover .exp-card-bottom {
+        border-top-color: rgba(255,255,255,0.3);
+    }
+    .exp-card:hover .exp-card-add-btn {
+        border-color: #fff;
+        background: transparent;
+    }
+
+    .exp-card-image-link {
+        display: block;
+        text-decoration: none;
+    }
+
     .exp-card-image {
         position: relative;
         height: 200px;
@@ -1736,6 +1765,10 @@
 
     .exp-card-title a:hover {
         color: var(--heco-primary-700);
+    }
+
+    .exp-card:hover .exp-card-title a:hover {
+        color: #fff !important;
     }
 
     .exp-card-desc {
