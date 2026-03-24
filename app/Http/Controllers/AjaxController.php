@@ -817,6 +817,10 @@ class AjaxController extends Controller
             $request->session()->regenerate();
             $user = Auth::user();
 
+            // Preserve guest trip data so syncGuestJourney can transfer it after login
+            $guestTrip = session('guest_trip');
+            $guestChat = session('guest_chat');
+
             // Clear previous trip data so traveller starts fresh each login
             if ($user->isTraveller()) {
                 $trips = $user->trips()->whereIn('status', ['draft', 'not_confirmed'])->get();
@@ -840,6 +844,13 @@ class AjaxController extends Controller
                         'trip_name' => 'My Trip',
                     ]);
                 }
+            }
+
+            // Restore guest trip data into session so syncGuestJourney can pick it up
+            if (!empty($guestTrip['experience_ids'] ?? [])) {
+                session(['guest_trip' => $guestTrip]);
+                if ($guestChat) session(['guest_chat' => $guestChat]);
+            } else {
                 session()->forget(['guest_chat', 'guest_trip']);
             }
 
@@ -1205,8 +1216,8 @@ class AjaxController extends Controller
 
         // Experience catalog for AI context
         $experiences = Experience::where("is_active", true)
-            ->select("id", "name", "slug", "type", "short_description", "region_id", "duration_type", "difficulty_level", "base_cost_per_person")
-            ->with("region:id,name")
+            ->select("id", "name", "slug", "type", "short_description", "region_id", "duration_type", "duration_days", "difficulty_level", "base_cost_per_person", "best_seasons", "available_months")
+            ->with("region:id,name,continent,country")
             ->limit(50)
             ->get();
 
@@ -1219,6 +1230,44 @@ class AjaxController extends Controller
             $destinationHierarchy[$continent][$country][] = ['id' => $r->id, 'name' => $r->name];
         }
 
+        // Build rich summary: types, difficulty levels, best months per region
+        $regionSummary = [];
+        foreach ($experiences as $exp) {
+            $rName = $exp->region->name ?? 'Unknown';
+            $rId = $exp->region_id;
+            if (!isset($regionSummary[$rId])) {
+                $regionSummary[$rId] = [
+                    'name' => $rName,
+                    'continent' => $exp->region->continent ?? '',
+                    'country' => $exp->region->country ?? '',
+                    'types' => [],
+                    'difficulty_levels' => [],
+                    'best_months' => [],
+                    'experiences' => [],
+                ];
+            }
+            $rs = &$regionSummary[$rId];
+            if ($exp->type && !in_array($exp->type, $rs['types'])) $rs['types'][] = $exp->type;
+            if ($exp->difficulty_level && !in_array($exp->difficulty_level, $rs['difficulty_levels'])) $rs['difficulty_levels'][] = $exp->difficulty_level;
+            if (is_array($exp->available_months)) {
+                foreach ($exp->available_months as $m) {
+                    if (!in_array($m, $rs['best_months'])) $rs['best_months'][] = $m;
+                }
+            }
+            $rs['experiences'][] = [
+                'id' => $exp->id,
+                'name' => $exp->name,
+                'type' => $exp->type,
+                'difficulty' => $exp->difficulty_level,
+                'duration' => $exp->duration_type === 'multi_day' ? ($exp->duration_days ?? 1) . ' days' : '1 day',
+                'price' => $exp->base_cost_per_person ? '₹' . number_format($exp->base_cost_per_person) . '/person' : null,
+                'best_months' => $exp->available_months,
+                'description' => $exp->short_description,
+            ];
+            unset($rs);
+        }
+        $regionSummaryJson = json_encode($regionSummary, JSON_PRETTY_PRINT);
+
         $promptBuilder = app(PromptBuilderService::class);
         $promptData = $promptBuilder->build("traveller_chat", [
             "user_name" => $userName,
@@ -1226,7 +1275,9 @@ class AjaxController extends Controller
             "trip_context" => $tripContext,
         ]);
 
-        $formattingInstruction = "\n\nFORMATTING: Use **bold** (double asterisks) to highlight important words and key information in your responses — such as experience names, destinations, dates, prices, durations, and key action items. This helps travellers quickly scan your message. Keep it natural, don't over-bold.";
+        $currentDateInstruction = "\n\nTODAY'S DATE: " . now()->format('jS F Y') . ". Always assume travel dates are in the FUTURE. When a traveller mentions a date without a year, assume it is the nearest upcoming occurrence (never in the past). For example, if today is March 2026 and they say '25 March', assume March 25th, 2026 (not 2025).";
+
+        $formattingInstruction = "\n\nFORMATTING: Use **bold** (double asterisks) to highlight important words and key information in your responses. ALWAYS bold: every continent name (e.g. **Asia**, **Africa**), every country name (e.g. **India**, **Nepal**), every region name (e.g. **Ladakh**, **Spiti Valley**), every experience name, dates, prices, durations, and key action items. When listing options for the traveller to choose from, EVERY option value MUST be bolded. This helps travellers quickly scan your message.";
 
         $recommendIdInstruction = "\n\nIMPORTANT: When recommending specific experiences from the catalog, include their IDs at the very end of your response in this exact format: [RECOMMEND_IDS:1,5,12] (comma-separated experience IDs). This tag is parsed by the frontend to highlight cards — do NOT include it in your visible text to the user.";
 
@@ -1238,11 +1289,25 @@ class AjaxController extends Controller
 
         $confirmationRule = "\n\nCONFIRMATION RULE: The confirmation flow ONLY applies when the traveller explicitly asks to CHANGE something (add/remove experiences, update dates, change group size, rename trip, etc.). In that case: (1) Summarize the proposed change, (2) Ask for confirmation, (3) Apply only after they confirm. If they say no, do NOT apply. Never use action tags ([TRIP_DETAILS], [ADD_TO_TRIP], [REMOVE_FROM_TRIP]) without prior confirmation. BUT — for normal conversation like asking questions, getting recommendations, chatting about destinations, or general discussion — just respond naturally. Do NOT ask for confirmation when no change is being made.\n\nCRITICAL — COMBINED CONFIRMATIONS: When the traveller confirms trip details that mention specific experiences (e.g. \"yes, I want the Village Experience in Tir starting 18th March\"), you MUST include BOTH [TRIP_DETAILS:{...}] AND [ADD_TO_TRIP:X] tags in the same response. Do NOT confirm trip details without also adding the experiences the traveller discussed. If the conversation context clearly indicates the traveller wants a specific experience as part of their trip, always include [ADD_TO_TRIP] alongside [TRIP_DETAILS] when they confirm.";
 
-        $startingCityReminder = "\n\nSTARTING CITY REMINDER: Check the CURRENT TRIP CONTEXT — if start_location is null or empty, you MUST ask the traveller where they will be travelling from (their starting city) early in the conversation (after learning their interests). This is essential for planning logistics and anchor point suggestions. Do NOT skip this question. Example: \"Where will you be starting your journey from?\"";
+        // Build current filter context from request
+        $currentFilters = $request->get('current_filters') ? json_decode($request->get('current_filters'), true) : [];
+        $filterContext = "";
+        if (!empty($currentFilters)) {
+            $filterParts = [];
+            if (!empty($currentFilters['continent'])) $filterParts[] = "Continent: " . $currentFilters['continent'];
+            if (!empty($currentFilters['country'])) $filterParts[] = "Country: " . $currentFilters['country'];
+            if (!empty($currentFilters['region_name'])) $filterParts[] = "Region: " . $currentFilters['region_name'];
+            if (!empty($currentFilters['experience_type'])) $filterParts[] = "Experience Type: " . $currentFilters['experience_type'];
+            if (!empty($currentFilters['difficulty'])) $filterParts[] = "Difficulty: " . $currentFilters['difficulty'];
+            if (!empty($currentFilters['month'])) $filterParts[] = "Month: " . $currentFilters['month'];
+            if (!empty($filterParts)) {
+                $filterContext = "\n\nCURRENT FILTER SELECTIONS (set by the traveller on the page):\n" . implode("\n", $filterParts) . "\nThe traveller has already selected these filters manually. Acknowledge what they've chosen and do NOT re-ask about details that are already selected. Only ask about MISSING information.";
+            }
+        }
 
-        $conversationFlowInstruction = "\n\nCONVERSATION FLOW: Follow this order when starting a new conversation:\n1. First, learn the traveller's name (for guests).\n2. Guide the traveller through selecting a destination step by step. Present the available options from the DESTINATION HIERARCHY below — first ask which CONTINENT, then which COUNTRY within that continent, then which REGION within that country. Only show options that actually exist in the hierarchy. If a continent has only one country, or a country has only one region, you may skip that step and mention it directly.\n3. Once you know the region, ask about their interests and travel style.\n4. Then ask about their starting city, travel dates, and group size.\n5. ONLY THEN recommend specific experiences from the catalog that match their chosen region and interests.\nDo NOT skip straight to recommending experiences without first understanding which region/destination the traveller wants to explore.\n\nSINGLE-REGION RULE: A traveller can only select ONE region per trip. Each region has multiple experiences to choose from. Once the traveller picks a region, only recommend experiences that belong to that region. Do NOT suggest experiences from other regions. If they want to switch regions, they must start a new trip.\n\nDESTINATION HIERARCHY (these are the ONLY valid options):\n" . json_encode($destinationHierarchy, JSON_PRETTY_PRINT) . "\n\nSET FILTERS: When the traveller selects or confirms a continent, country, or region, include this tag at the end of your response: [SET_FILTERS:{\"continent\":\"Asia\",\"country\":\"India\",\"region_id\":5}]. Include only the keys the traveller has chosen so far. Use the exact continent/country strings from the hierarchy above, and use the numeric region id. This tag syncs the page filters — do NOT show it in your visible text.";
+        $conversationFlowInstruction = "\n\nCONVERSATION FLOW: Follow this order when starting a new conversation. At each step, DISPLAY the available options so the traveller can see everything and make informed choices.\n\n1. First, learn the traveller's name (for guests).\n\n2. DESTINATION SELECTION — Guide step by step and SHOW all available options at each level:\n   a. Show all available **continents** as a list and ask which one they'd like to explore.\n   b. Once continent is chosen, show all **countries** within that continent and ask which one.\n   c. Once country is chosen, show all **regions** within that country. For each region, briefly mention the types of experiences available there and the best months to visit (use the REGION SUMMARY data below). Ask which region.\n\n3. EXPERIENCE PREFERENCES — Once the region is confirmed, show the traveller:\n   - All **experience types** available in that region (e.g. **Trek**, **Cultural**, **Nature & Wildlife**) with a count of how many experiences of each type exist\n   - All **difficulty levels** available (e.g. **Easy**, **Moderate**, **Challenging**)\n   - The **best months to visit** for that region\n   Ask what type and difficulty they prefer.\n\n4. TRAVEL DETAILS — Ask these one or two at a time:\n   - **Journey start date** — When do they want to travel? Mention the best months for their chosen region.\n   - **Group size** — How many adults, children, infants?\n   - **Starting point** — Where will they be travelling from?\n\n5. RECOMMEND EXPERIENCES — Now show all matching experiences from the catalog with their names, durations, difficulty, prices, and brief descriptions. Let the traveller choose which ones to add to their trip.\n\nDISPLAY RULES:\n- When listing options, ALWAYS show them as a clear numbered or bulleted list with each option **bolded**\n- Include relevant details next to each option (e.g. region: types available, best months; experience: duration, price, difficulty)\n- This is KEY — travellers should be able to see ALL their choices clearly in the chat without having to ask \"what options do I have?\"\n\nIMPORTANT: If the traveller has already selected filters on the page (see CURRENT FILTER SELECTIONS), acknowledge those choices and skip ahead to ask only about the MISSING details. Do NOT re-ask about continent/country/region if already selected. You may combine 2 related questions in one message to keep the conversation flowing, but do NOT dump all questions at once.\n\nSINGLE-REGION RULE: A traveller can only select ONE region per trip. Each region has multiple experiences to choose from. Once the traveller picks a region, only recommend experiences that belong to that region. Do NOT suggest experiences from other regions. If they want to switch regions, they must start a new trip.\n\nDESTINATION HIERARCHY (these are the ONLY valid options):\n" . json_encode($destinationHierarchy, JSON_PRETTY_PRINT) . "\n\nREGION SUMMARY (experience types, difficulty levels, best months, and experiences per region):\n" . $regionSummaryJson . "\n\nSET FILTERS: When the traveller selects or confirms a continent, country, or region, include this tag at the end of your response: [SET_FILTERS:{\"continent\":\"Asia\",\"country\":\"India\",\"region_id\":5}]. Include only the keys the traveller has chosen so far. Use the exact continent/country strings from the hierarchy above, and use the numeric region id. This tag syncs the page filters — do NOT show it in your visible text." . $filterContext;
 
-        $allInstructions = $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $removeFromTripInstruction . $confirmationRule . $startingCityReminder . $conversationFlowInstruction;
+        $allInstructions = $currentDateInstruction . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $removeFromTripInstruction . $confirmationRule . $conversationFlowInstruction;
 
         $messages = [];
         if ($promptData) {

@@ -4,6 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\AiConversation;
+use App\Models\Experience;
+use App\Models\Trip;
+use App\Models\TripRegion;
+use App\Models\TripSelectedExperience;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
 
@@ -50,6 +54,10 @@ class SocialAuthController extends Controller
 
         Auth::login($user, true);
 
+        // Preserve guest trip data before clearing
+        $guestTrip = session('guest_trip');
+        $guestChat = session('guest_chat');
+
         // Clear previous trip data so traveller starts fresh each login
         if ($user->isTraveller()) {
             $trips = $user->trips()->whereIn('status', ['draft', 'not_confirmed'])->get();
@@ -73,6 +81,56 @@ class SocialAuthController extends Controller
                     'trip_name' => 'My Trip',
                 ]);
             }
+        }
+
+        // Restore guest trip data and sync to DB trip
+        if (!empty($guestTrip['experience_ids'] ?? [])) {
+            session(['guest_trip' => $guestTrip]);
+            if ($guestChat) session(['guest_chat' => $guestChat]);
+
+            // Sync guest journey to DB immediately (social login redirects, no AJAX sync call)
+            $trip = Trip::where("user_id", $user->id)
+                ->whereIn("status", ["draft", "not_confirmed"])
+                ->orderBy("updated_at", "desc")
+                ->first();
+            if (!$trip) {
+                $trip = Trip::create([
+                    "trip_id" => Trip::generateTripId(),
+                    "user_id" => $user->id,
+                    "trip_name" => $guestTrip['trip_name'] ?? "My Trip",
+                    "status" => "draft",
+                    "stage" => "traveller_exploring",
+                    "adults" => $guestTrip['adults'] ?? 1,
+                    "children" => $guestTrip['children'] ?? 0,
+                    "infants" => $guestTrip['infants'] ?? 0,
+                    "accommodation_comfort" => $guestTrip['accommodation_comfort'] ?? null,
+                    "vehicle_comfort" => $guestTrip['vehicle_comfort'] ?? null,
+                    "guide_preference" => $guestTrip['guide_preference'] ?? null,
+                ]);
+            } else {
+                $trip->update([
+                    "adults" => $guestTrip['adults'] ?? $trip->adults,
+                    "children" => $guestTrip['children'] ?? $trip->children,
+                    "infants" => $guestTrip['infants'] ?? $trip->infants,
+                    "trip_name" => $guestTrip['trip_name'] ?? $trip->trip_name,
+                ]);
+            }
+            foreach ($guestTrip['experience_ids'] as $index => $expId) {
+                $experience = Experience::find($expId);
+                if (!$experience) continue;
+                TripSelectedExperience::firstOrCreate([
+                    "trip_id" => $trip->id,
+                    "experience_id" => $experience->id,
+                ], ["sort_order" => $index]);
+                if ($experience->region_id) {
+                    TripRegion::firstOrCreate([
+                        "trip_id" => $trip->id,
+                        "region_id" => $experience->region_id,
+                    ]);
+                }
+            }
+            session()->forget(['guest_chat', 'guest_trip']);
+        } else {
             session()->forget(['guest_chat', 'guest_trip']);
         }
 

@@ -92,7 +92,12 @@
       "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" E:/heco/test_regex.php)",
       "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -r \"require 'E:/heco/vendor/autoload.php'; $app = require_once 'E:/heco/bootstrap/app.php'; $app->make\\('Illuminate\\\\Contracts\\\\Console\\\\Kernel'\\)->bootstrap\\(\\); $exps = App\\\\Models\\\\Experience::whereIn\\('id', [5, 6]\\)->get\\(['id','name','duration_type','duration_days','duration_hours']\\); foreach\\($exps as $e\\) echo $e->id . ': ' . $e->name . ' | type=' . $e->duration_type . ' | days=' . $e->duration_days . ' | hours=' . $e->duration_hours . PHP_EOL;\")",
       "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" E:/heco/check_exp.php)",
-      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" E:/heco/artisan optimize:clear)"
+      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" E:/heco/artisan optimize:clear)",
+      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -l E:\\\\heco\\\\app\\\\Http\\\\Controllers\\\\AjaxController.php)",
+      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -l \"E:/heco/app/Http/Controllers/AjaxController.php\")",
+      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -l \"E:/heco/resources/views/portal/homepage.blade.php\")",
+      "Bash(git checkout:*)",
+      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -l \"E:/heco/app/Http/Controllers/SocialAuthController.php\")"
     ]
   }
 }

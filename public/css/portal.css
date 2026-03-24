@@ -1570,8 +1570,8 @@
 
     .filter-bar .form-label {
         font-size: var(--text-xs);
-        font-weight: var(--font-semibold);
-        color: var(--color-text-muted);
+        font-weight: 700;
+        color: var(--heco-primary-700, #2d6a4f);
         text-transform: uppercase;
         letter-spacing: var(--tracking-wide);
         margin-bottom: var(--space-2);

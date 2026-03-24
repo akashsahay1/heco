@@ -499,9 +499,9 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="chat-collapse-messages" id="collapseChatMessages">
                                 <div class="chat-msg assistant">
                                     @if(auth()->check())
-                                        Hey {{ auth()->user()->full_name ?? 'there' }}! I'm the HECO AI Assistant &mdash; welcome back! Which region or destination are you interested in exploring?
+                                        Hey <strong>{{ auth()->user()->full_name ?? 'there' }}</strong>! I'm the <strong>HECO AI Assistant</strong> &mdash; welcome back! Which region or destination are you interested in exploring?
                                     @else
-                                        Hey there! I'm the HECO AI Assistant &mdash; I'd love to help you plan an amazing Himalayan adventure. What's your name?
+                                        Hey there! I'm the <strong>HECO AI Assistant</strong> &mdash; I'd love to help you plan an amazing Himalayan adventure. What's your name?
                                     @endif
                                 </div>
                             </div>
@@ -540,13 +540,11 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Continent</label>
                                     <select class="form-select form-select-sm" id="filterContinent">
-                                        <option value="">All Continents</option>
                                     </select>
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Country</label>
                                     <select class="form-select form-select-sm" id="filterCountry">
-                                        <option value="">All Countries</option>
                                     </select>
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
@@ -630,7 +628,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                         <div class="chat-collapse-messages" id="journeyChatMessages">
                             <div class="chat-msg assistant">
                                 @if(auth()->check())
-                                    Hi {{ auth()->user()->full_name ?? 'there' }}! I can help you plan and modify your trip &mdash; change dates, add or remove days, update preferences, and more. Just ask!
+                                    Hi <strong>{{ auth()->user()->full_name ?? 'there' }}</strong>! I can help you plan and modify your trip &mdash; change dates, add or remove days, update preferences, and more. Just ask!
                                 @else
                                     Hi! I can help you modify your trip &mdash; change dates, add or remove days, update preferences, and more. Just ask!
                                 @endif
@@ -1024,20 +1022,19 @@ jQuery(function() {
         return ['id' => $r->id, 'name' => $r->name, 'continent' => $r->continent, 'country' => $r->country];
     })->values()) !!};
 
-    // Build continent dropdown from region data
+    // Build continent dropdown from region data (first one auto-selected)
     (function() {
         var continents = [];
-        var countries = [];
         allRegions.forEach(function(r) {
             if (r.continent && continents.indexOf(r.continent) === -1) continents.push(r.continent);
-            if (r.country && countries.indexOf(r.country) === -1) countries.push(r.country);
         });
         continents.sort();
-        countries.sort();
         var cSel = jQuery('#filterContinent');
         continents.forEach(function(c) {
             cSel.append('<option value="' + c + '">' + c + '</option>');
         });
+        // Default to Asia
+        if (cSel.find('option[value="Asia"]').length) cSel.val('Asia');
     })();
 
     // Cascade: Continent → Country → Region
@@ -1045,7 +1042,7 @@ jQuery(function() {
         var continent = jQuery('#filterContinent').val();
         var cSel = jQuery('#filterCountry');
         var prevVal = cSel.val();
-        cSel.find('option:not(:first)').remove();
+        cSel.empty();
         var countries = [];
         allRegions.forEach(function(r) {
             if ((!continent || r.continent === continent) && r.country && countries.indexOf(r.country) === -1) {
@@ -1056,7 +1053,11 @@ jQuery(function() {
         countries.forEach(function(c) {
             cSel.append('<option value="' + c + '">' + c + '</option>');
         });
-        if (countries.indexOf(prevVal) === -1) cSel.val('');
+        if (!cSel.find('option[value="' + prevVal + '"]').length) {
+            // Default to India if available, otherwise first option
+            if (cSel.find('option[value="India"]').length) cSel.val('India');
+            else cSel.val(cSel.find('option:first').val());
+        }
     }
 
     function updateRegionOptions() {
@@ -1492,9 +1493,10 @@ jQuery(function() {
         });
     });
 
-    // Clear filters
+    // Clear filters (reset to first option for continent/country/region, empty for others)
     jQuery('#clearFilters').on('click', function() {
-        jQuery('#filterContinent, #filterCountry, #filterRegion, #filterType, #filterDifficulty, #filterMonth').val('');
+        jQuery('#filterType, #filterDifficulty, #filterMonth').val('');
+        jQuery('#filterContinent').val('Asia');
         updateCountryOptions();
         updateRegionOptions();
         jQuery('.filter-bar select').each(function() { buildCustomDropdown(this); });
@@ -1800,23 +1802,23 @@ jQuery(function() {
         if (mapInitialized && map) setTimeout(function() { map.invalidateSize(); }, 100);
     });
 
-    // TEMPORARILY DISABLED: Block journey tab for guests — show auth modal, redirect to Discover on cancel
-    // var authFromJourney = false;
-    // jQuery('#tab-journey').on('click', function(e) {
-    //     if (!isLoggedIn) {
-    //         e.preventDefault();
-    //         e.stopImmediatePropagation();
-    //         authFromJourney = true;
-    //         if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
-    //         return false;
-    //     }
-    // });
-    // jQuery('#authModal').on('hidden.bs.modal', function() {
-    //     if (authFromJourney) {
-    //         authFromJourney = false;
-    //         jQuery('#tab-discover').click();
-    //     }
-    // });
+    // Block journey tab for guests — show auth modal, redirect to Discover on cancel
+    var authFromJourney = false;
+    jQuery('#tab-journey').on('click', function(e) {
+        if (!isLoggedIn) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            authFromJourney = true;
+            if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
+            return false;
+        }
+    });
+    jQuery('#authModal').on('hidden.bs.modal', function() {
+        if (authFromJourney) {
+            authFromJourney = false;
+            jQuery('#tab-discover').click();
+        }
+    });
 
     // Load journey data on tab show
     jQuery('button[data-bs-target="#pane-journey"]').on('shown.bs.tab', function() {
@@ -2631,6 +2633,19 @@ jQuery(function() {
 
         var params = { chat_with_ai: 1, message: msg };
         if (tripId) params.trip_id = tripId;
+        // Send current filter state so AI knows what's already selected
+        var currentFilters = {};
+        if (jQuery('#filterContinent').val()) currentFilters.continent = jQuery('#filterContinent').val();
+        if (jQuery('#filterCountry').val()) currentFilters.country = jQuery('#filterCountry').val();
+        var regionId = jQuery('#filterRegion').val();
+        if (regionId) {
+            currentFilters.region_id = regionId;
+            currentFilters.region_name = jQuery('#filterRegion').find('option:selected').text();
+        }
+        if (jQuery('#filterType').val()) currentFilters.experience_type = jQuery('#filterType').val();
+        if (jQuery('#filterDifficulty').val()) currentFilters.difficulty = jQuery('#filterDifficulty').val();
+        if (jQuery('#filterMonth').val()) currentFilters.month = jQuery('#filterMonth').find('option:selected').text();
+        if (Object.keys(currentFilters).length > 0) params.current_filters = JSON.stringify(currentFilters);
 
         ajaxPost(params, function(resp) {
             jQuery('.chat-typing').remove();
