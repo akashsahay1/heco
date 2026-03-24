@@ -499,7 +499,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="chat-collapse-messages" id="collapseChatMessages">
                                 <div class="chat-msg assistant">
                                     @if(auth()->check())
-                                        Hey {{ auth()->user()->full_name ?? 'there' }}! I'm the HECO AI Assistant &mdash; welcome back! What kind of experience are you looking for?
+                                        Hey {{ auth()->user()->full_name ?? 'there' }}! I'm the HECO AI Assistant &mdash; welcome back! Which region or destination are you interested in exploring?
                                     @else
                                         Hey there! I'm the HECO AI Assistant &mdash; I'd love to help you plan an amazing Himalayan adventure. What's your name?
                                     @endif
@@ -676,6 +676,9 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="journey-panel-header">
                                 <h6 class="journey-panel-title"><i class="bi bi-calendar3"></i> Trip Timeline</h6>
                                 <div class="d-flex gap-2">
+                                    <button class="btn btn-sm" id="btnRegenerateItinerary" style="background: var(--heco-primary-500, #22c55e); color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 0.78rem; font-weight: 600;">
+                                        <i class="bi bi-arrow-clockwise me-1"></i>Regenerate
+                                    </button>
                                 </div>
                             </div>
                             <div class="timeline-container" id="timelineContainer">
@@ -1263,7 +1266,7 @@ jQuery(function() {
                 }
             });
             marker.on('popupclose', function() {
-                jQuery('.exp-card[data-exp-id="' + exp.id + '"]').removeClass('map-highlight');
+                jQuery('.exp-card.map-highlight').removeClass('map-highlight');
             });
             marker.on('mouseout', function(e) {
                 var self = this;
@@ -1289,6 +1292,7 @@ jQuery(function() {
     });
 
     jQuery(document).on('mouseleave', '.exp-card', function() {
+        jQuery(this).removeClass('map-highlight');
         var expId = jQuery(this).data('exp-id');
         if (mapInitialized && markerMap[expId]) {
             markerMap[expId].closePopup();
@@ -1303,6 +1307,11 @@ jQuery(function() {
     jQuery(document).on('mouseleave', '.map-popup-card', function() {
         var expId = jQuery(this).data('exp-id');
         jQuery('.exp-card[data-exp-id="' + expId + '"]').removeClass('map-highlight');
+    });
+
+    // Remove stuck highlights when scrolling the experience grid
+    jQuery('#experienceGrid').on('scroll', function() {
+        jQuery('.exp-card.map-highlight').removeClass('map-highlight');
     });
 
     // Scroll to experience card on map popup click
@@ -1400,11 +1409,24 @@ jQuery(function() {
 
 
 
+    // Regenerate Itinerary button
+    jQuery('#btnRegenerateItinerary').on('click', function() {
+        if (aiGenerating) return;
+        if (!tripId || selectedExpIds.length === 0) {
+            showAlert('Add at least one experience to regenerate the itinerary.', 'warning');
+            return;
+        }
+        aiRetryCount = 0;
+        autoGenerateItinerary();
+    });
+
     // ===================================
     // DISCOVER TAB
     // ===================================
 
     // Continent cascade → update Country & Region dropdowns
+    var filterSetByAi = false;
+
     jQuery('#filterContinent').on('change', function() {
         updateCountryOptions();
         updateRegionOptions();
@@ -1426,6 +1448,48 @@ jQuery(function() {
         discoverPage = 1;
         discoverHasMore = true;
         loadExperiences(false);
+    });
+
+    // Notify chatbot when user manually selects a region
+    jQuery('#filterRegion').on('change', function() {
+        if (filterSetByAi) return;
+        var regionId = jQuery(this).val();
+        if (!regionId) return;
+        var regionName = jQuery(this).find('option:selected').text();
+        var continent = jQuery('#filterContinent').val() || '';
+        var country = jQuery('#filterCountry').val() || '';
+        var locationParts = [];
+        if (regionName) locationParts.push(regionName);
+        if (country) locationParts.push(country);
+        if (continent) locationParts.push(continent);
+        var locationStr = locationParts.join(', ');
+        var systemMsg = 'I want to explore experiences in ' + locationStr;
+        appendChatMsg('user', systemMsg);
+        scrollChat();
+        var typingHtml = '<div class="chat-msg assistant chat-typing"><i class="bi bi-three-dots"></i> Thinking...</div>';
+        jQuery('#collapseChatMessages').append(typingHtml);
+        jQuery('#journeyChatMessages').append(typingHtml);
+        scrollChat();
+        var params = { chat_with_ai: 1, message: systemMsg };
+        if (tripId) params.trip_id = tripId;
+        ajaxPost(params, function(resp) {
+            jQuery('.chat-typing').remove();
+            appendChatMsg('assistant', resp.response || 'Great choice!');
+            if (resp.trip_id && !tripId) {
+                jQuery('#noTripMessage').addClass('d-none');
+                jQuery('#journeyPanels').removeClass('d-none');
+                jQuery('#noImpactMessage').addClass('d-none');
+                jQuery('#impactData').removeClass('d-none');
+                tripId = resp.trip_id;
+            }
+            if (resp.recommended_experience_ids && resp.recommended_experience_ids.length > 0) {
+                highlightRecommendedExperiences(resp.recommended_experience_ids);
+            }
+            scrollChat();
+        }, function() {
+            jQuery('.chat-typing').remove();
+            scrollChat();
+        });
     });
 
     // Clear filters
@@ -2643,6 +2707,40 @@ jQuery(function() {
             // Highlight AI-recommended experiences
             if (resp.recommended_experience_ids && resp.recommended_experience_ids.length > 0) {
                 highlightRecommendedExperiences(resp.recommended_experience_ids);
+            }
+
+            // Sync filter bar when AI sets filters
+            if (resp.set_filters) {
+                filterSetByAi = true;
+                var f = resp.set_filters;
+                // If region_id is set, look up its continent/country to ensure dropdowns are consistent
+                if (f.region_id !== undefined && (!f.continent || !f.country)) {
+                    for (var ri = 0; ri < allRegions.length; ri++) {
+                        if (allRegions[ri].id == f.region_id) {
+                            if (!f.continent) f.continent = allRegions[ri].continent;
+                            if (!f.country) f.country = allRegions[ri].country;
+                            break;
+                        }
+                    }
+                }
+                if (f.continent !== undefined) {
+                    jQuery('#filterContinent').val(f.continent);
+                    updateCountryOptions();
+                    buildCustomDropdown(jQuery('#filterContinent')[0]);
+                }
+                if (f.country !== undefined) {
+                    jQuery('#filterCountry').val(f.country);
+                    updateRegionOptions();
+                    buildCustomDropdown(jQuery('#filterCountry')[0]);
+                }
+                if (f.region_id !== undefined) {
+                    jQuery('#filterRegion').val(f.region_id);
+                    buildCustomDropdown(jQuery('#filterRegion')[0]);
+                }
+                discoverPage = 1;
+                discoverHasMore = true;
+                loadExperiences(false);
+                filterSetByAi = false;
             }
 
             scrollChat();

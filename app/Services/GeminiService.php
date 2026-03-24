@@ -80,7 +80,8 @@ class GeminiService
             $model = $options['gemini_model'] ?? $this->model;
             $url = $this->baseUrl . '/models/' . $model . ':generateContent?key=' . $this->apiKey;
 
-            $response = Http::timeout($this->timeout)->post($url, $payload);
+            $timeout = $options['timeout'] ?? $this->timeout;
+            $response = Http::timeout($timeout)->post($url, $payload);
 
             if ($response->successful()) {
                 $data = $response->json();

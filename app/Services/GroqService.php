@@ -44,7 +44,8 @@ class GroqService
                 $payload['response_format'] = ['type' => 'json_object'];
             }
 
-            $response = Http::timeout($this->timeout)
+            $timeout = $options['timeout'] ?? $this->timeout;
+            $response = Http::timeout($timeout)
                 ->withHeaders([
                     'Authorization' => 'Bearer ' . $this->apiKey,
                     'Content-Type' => 'application/json',

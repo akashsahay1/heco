@@ -95,9 +95,6 @@ class ItineraryService
                 }
             }
 
-            // Ensure multi-day experiences span their full duration_days
-            $this->fillMissingExperienceDays($trip, $dayNumber);
-
             DB::commit();
 
             // Auto-assign available SPs (non-fatal)

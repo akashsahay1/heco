@@ -351,15 +351,22 @@ class AjaxController extends Controller
      */
     protected function callAi(array $messages, array $options = []): ?array
     {
+        // Allow callers to override timeout for faster fallback (e.g. itinerary generation)
+        $fastTimeout = $options['fast_timeout'] ?? null;
+
         $gemini = app(GeminiService::class);
         if ($gemini->isAvailable()) {
-            $response = $gemini->chat($messages, $options);
+            $geminiOpts = $options;
+            if ($fastTimeout) $geminiOpts['timeout'] = $fastTimeout;
+            $response = $gemini->chat($messages, $geminiOpts);
             if ($response) return $response;
         }
 
         $groq = app(GroqService::class);
         if ($groq->isAvailable()) {
-            $response = $groq->chat($messages, $options);
+            $groqOpts = $options;
+            if ($fastTimeout) $groqOpts['timeout'] = $fastTimeout;
+            $response = $groq->chat($messages, $groqOpts);
             if ($response) return $response;
         }
 
@@ -1203,6 +1210,15 @@ class AjaxController extends Controller
             ->limit(50)
             ->get();
 
+        // Build available destinations hierarchy for AI context
+        $activeRegions = Region::where('is_active', true)->orderBy('sort_order')->get(['id', 'name', 'continent', 'country']);
+        $destinationHierarchy = [];
+        foreach ($activeRegions as $r) {
+            $continent = $r->continent ?: 'Other';
+            $country = $r->country ?: 'Other';
+            $destinationHierarchy[$continent][$country][] = ['id' => $r->id, 'name' => $r->name];
+        }
+
         $promptBuilder = app(PromptBuilderService::class);
         $promptData = $promptBuilder->build("traveller_chat", [
             "user_name" => $userName,
@@ -1224,7 +1240,9 @@ class AjaxController extends Controller
 
         $startingCityReminder = "\n\nSTARTING CITY REMINDER: Check the CURRENT TRIP CONTEXT — if start_location is null or empty, you MUST ask the traveller where they will be travelling from (their starting city) early in the conversation (after learning their interests). This is essential for planning logistics and anchor point suggestions. Do NOT skip this question. Example: \"Where will you be starting your journey from?\"";
 
-        $allInstructions = $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $removeFromTripInstruction . $confirmationRule . $startingCityReminder;
+        $conversationFlowInstruction = "\n\nCONVERSATION FLOW: Follow this order when starting a new conversation:\n1. First, learn the traveller's name (for guests).\n2. Guide the traveller through selecting a destination step by step. Present the available options from the DESTINATION HIERARCHY below — first ask which CONTINENT, then which COUNTRY within that continent, then which REGION within that country. Only show options that actually exist in the hierarchy. If a continent has only one country, or a country has only one region, you may skip that step and mention it directly.\n3. Once you know the region, ask about their interests and travel style.\n4. Then ask about their starting city, travel dates, and group size.\n5. ONLY THEN recommend specific experiences from the catalog that match their chosen region and interests.\nDo NOT skip straight to recommending experiences without first understanding which region/destination the traveller wants to explore.\n\nSINGLE-REGION RULE: A traveller can only select ONE region per trip. Each region has multiple experiences to choose from. Once the traveller picks a region, only recommend experiences that belong to that region. Do NOT suggest experiences from other regions. If they want to switch regions, they must start a new trip.\n\nDESTINATION HIERARCHY (these are the ONLY valid options):\n" . json_encode($destinationHierarchy, JSON_PRETTY_PRINT) . "\n\nSET FILTERS: When the traveller selects or confirms a continent, country, or region, include this tag at the end of your response: [SET_FILTERS:{\"continent\":\"Asia\",\"country\":\"India\",\"region_id\":5}]. Include only the keys the traveller has chosen so far. Use the exact continent/country strings from the hierarchy above, and use the numeric region id. This tag syncs the page filters — do NOT show it in your visible text.";
+
+        $allInstructions = $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $removeFromTripInstruction . $confirmationRule . $startingCityReminder . $conversationFlowInstruction;
 
         $messages = [];
         if ($promptData) {
@@ -1245,6 +1263,13 @@ class AjaxController extends Controller
         }
 
         $responseText = $aiResponse["content"] ?? "I apologize, I am having trouble connecting right now. Please try again or contact our team for assistance.";
+
+        // Parse SET_FILTERS tag
+        $setFilters = null;
+        if (preg_match('/\[SET_FILTERS:(\{[^]]+\})\]/', $responseText, $filterMatch)) {
+            $setFilters = json_decode($filterMatch[1], true) ?: null;
+            $responseText = trim(preg_replace('/\s*\[SET_FILTERS:\{[^]]+\}\]/', '', $responseText));
+        }
 
         // Parse recommended experience IDs
         $recommendedIds = [];
@@ -1448,6 +1473,7 @@ class AjaxController extends Controller
                 "removed_experience_ids" => $removedExperienceIds,
                 "trip_updated" => $tripUpdated,
                 "updated_details" => $updatedDetails,
+                "set_filters" => $setFilters,
             ]);
         }
 
@@ -1468,6 +1494,7 @@ class AjaxController extends Controller
             "removed_experience_ids" => $removedExperienceIds,
             "trip_updated" => $tripUpdated,
             "updated_details" => $updatedDetails,
+            "set_filters" => $setFilters,
         ]);
     }
 
@@ -2129,15 +2156,23 @@ class AjaxController extends Controller
             return response()->json(["error" => "Add experiences to your trip first"], 422);
         }
 
-        // Calculate suggested duration
-        $totalDays = 0;
+        // Calculate duration and build day-to-experience mapping
+        $dayMapping = [];
+        $dayNum = 1;
         foreach ($experiences as $exp) {
-            if ($exp["duration_type"] === "multi_day") {
-                $totalDays += ($exp["duration_days"] ?? 1);
-            } else {
-                $totalDays += 1;
+            $expDays = ($exp["duration_type"] === "multi_day") ? ($exp["duration_days"] ?? 1) : 1;
+            for ($d = 1; $d <= $expDays; $d++) {
+                $dayMapping[] = [
+                    "day" => $dayNum,
+                    "experience_id" => $exp["experience_id"],
+                    "experience_name" => $exp["name"],
+                    "day_of_experience" => $d,
+                    "total_experience_days" => $expDays,
+                ];
+                $dayNum++;
             }
         }
+        $totalDays = $dayNum - 1;
         $duration = max($totalDays, $request->get("duration", $totalDays));
 
         // Build regions list from experiences
@@ -2178,19 +2213,17 @@ class AjaxController extends Controller
             "pickup_preference" => $pickupPref ?: 'Not specified',
         ]);
 
-        $orderInstruction = "\n\nCRITICAL: The experiences are listed in the traveller's chosen order. You MUST schedule them in EXACTLY this sequence — do NOT rearrange based on geography or logistics. The traveller has intentionally ordered them this way.";
-
-        $multiDayInstruction = "\n\nMULTI-DAY EXPERIENCES: When an experience has duration_days > 1, you MUST include that experience in the 'experiences' array of ALL its days. For example, a 3-day experience MUST appear in 3 consecutive days — each day must have an entry with the same experience_id. Do NOT create empty arrival or departure days that waste experience days. Every single day of the itinerary MUST have at least one experience in its 'experiences' array. Travel/pickup logistics should be handled as services, not as standalone days.";
+        $dayMappingInstruction = "\n\nDAY-TO-EXPERIENCE MAPPING (follow this EXACTLY — do NOT add, remove, or reorder days):\n" . json_encode($dayMapping) . "\n\nYou MUST create exactly " . $totalDays . " days. Each day MUST include the experience_id specified in the mapping above in its 'experiences' array. For multi-day experiences, write a unique title and notes for each day (e.g. Day 1 of 3: arrival and setup, Day 2 of 3: main activity, Day 3 of 3: wrap-up). Do NOT create extra arrival/departure days. Travel/pickup logistics should be handled as services within the existing days.";
 
         $messages = [];
         if ($promptData) {
-            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $orderInstruction . $multiDayInstruction];
+            $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $dayMappingInstruction];
             $messages[] = ["role" => "user", "content" => $promptData["user_prompt"]];
         } else {
             $fallbackContext = "Create a " . $duration . "-day itinerary for " . $adults . " adults using: " . json_encode($experiences);
             if ($startLocation) $fallbackContext .= "\nStarting from: " . $startLocation;
             if ($startDate) $fallbackContext .= "\nDates: " . $startDate . " to " . ($endDate ?: 'flexible');
-            $messages[] = ["role" => "system", "content" => "You are an itinerary planner. Output JSON only: {\"days\": [{\"title\": \"...\", \"experiences\": [{\"experience_id\": N, \"name\": \"...\", \"start_time\": \"09:00\", \"end_time\": \"17:00\", \"notes\": \"...\"}], \"notes\": \"...\"}]}" . $orderInstruction . $multiDayInstruction];
+            $messages[] = ["role" => "system", "content" => "You are an itinerary planner. Output JSON only: {\"days\": [{\"title\": \"...\", \"experiences\": [{\"experience_id\": N, \"name\": \"...\", \"start_time\": \"09:00\", \"end_time\": \"17:00\", \"notes\": \"...\"}], \"notes\": \"...\"}]}" . $dayMappingInstruction];
             $messages[] = ["role" => "user", "content" => $fallbackContext];
         }
 
@@ -2198,37 +2231,54 @@ class AjaxController extends Controller
             "temperature" => $promptData["temperature"] ?? 0.5,
             "max_tokens" => $promptData["max_tokens"] ?? 2048,
             "format" => "json",
+            "gemini_model" => "gemini-2.5-flash-lite",
+            "fast_timeout" => 30,
         ]);
 
-        if (!$aiResponse || empty($aiResponse["content"])) {
-            return response()->json(["success" => false, "error" => "AI service is unavailable. Please try again later."], 503);
+        // Try to get AI titles/notes, but don't fail if AI is unavailable
+        $aiDays = [];
+        $responseText = '';
+        if ($aiResponse && !empty($aiResponse["content"])) {
+            $responseText = $aiResponse["content"];
+            $jsonStr = $responseText;
+            if (preg_match('/```(?:json)?\s*([\s\S]*?)```/', $responseText, $m)) {
+                $jsonStr = trim($m[1]);
+            }
+            $aiParsed = json_decode($jsonStr, true);
+            if (!$aiParsed) {
+                $aiParsed = json_decode($this->repairTruncatedJson($jsonStr), true);
+            }
+            if ($aiParsed && isset($aiParsed["days"])) {
+                $aiParsed = $this->normalizeItinerary($aiParsed);
+                $aiDays = $aiParsed["days"];
+            }
         }
 
-        $responseText = $aiResponse["content"];
+        // Build deterministic itinerary from day mapping — AI only provides titles/notes
+        $parsed = ["days" => []];
+        foreach ($dayMapping as $idx => $dm) {
+            $aiDay = $aiDays[$idx] ?? [];
+            $expName = $dm["experience_name"];
+            $dayOfExp = $dm["day_of_experience"];
+            $totalExpDays = $dm["total_experience_days"];
+            $defaultTitle = $totalExpDays > 1
+                ? $expName . " — Day " . $dayOfExp . " of " . $totalExpDays
+                : $expName;
 
-        $jsonStr = $responseText;
-        if (preg_match('/```(?:json)?\s*([\s\S]*?)```/', $responseText, $m)) {
-            $jsonStr = trim($m[1]);
+            $parsed["days"][] = [
+                "title" => $aiDay["title"] ?? $defaultTitle,
+                "description" => $aiDay["description"] ?? $aiDay["notes"] ?? null,
+                "notes" => $aiDay["notes"] ?? null,
+                "experiences" => [[
+                    "experience_id" => $dm["experience_id"],
+                    "name" => $expName,
+                    "start_time" => $aiDay["experiences"][0]["start_time"] ?? "09:00",
+                    "end_time" => $aiDay["experiences"][0]["end_time"] ?? "17:00",
+                    "notes" => $aiDay["experiences"][0]["notes"] ?? null,
+                ]],
+                "services" => $aiDay["services"] ?? [],
+            ];
         }
-
-        $parsed = json_decode($jsonStr, true);
-
-        // If JSON is truncated, try to repair by closing open brackets
-        if (!$parsed) {
-            $repaired = $this->repairTruncatedJson($jsonStr);
-            $parsed = json_decode($repaired, true);
-        }
-
-        if (!$parsed || !isset($parsed["days"])) {
-            return response()->json([
-                "success" => false,
-                "error" => "AI response could not be parsed. Please try again.",
-                "raw_response" => $responseText,
-            ], 422);
-        }
-
-        // Normalize: convert array description/notes to newline-separated strings
-        $parsed = $this->normalizeItinerary($parsed);
 
         if ($isGuest) {
             // Re-read session to get latest experience_ids (may have changed during AI processing)
