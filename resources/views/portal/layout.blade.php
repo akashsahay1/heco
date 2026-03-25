@@ -727,7 +727,7 @@
                         showAlert('Login successful!', 'success');
                         if (bsAuthModal) bsAuthModal.hide();
                         setTimeout(function() {
-                            syncGuestJourneyAndRedirect(resp.redirect || '/home');
+                            window.location.href = resp.redirect || '/home';
                         }, 500);
                     }
                 },
@@ -755,7 +755,7 @@
                         showAlert('Account created successfully!', 'success');
                         if (bsAuthModal) bsAuthModal.hide();
                         setTimeout(function() {
-                            syncGuestJourneyAndRedirect(resp.redirect || '/home');
+                            window.location.href = resp.redirect || '/home';
                         }, 500);
                     }
                 },
@@ -802,9 +802,13 @@
         // Sync guest session trip to logged-in user after login/register, then redirect
         window.syncGuestJourneyAndRedirect = function(redirectUrl) {
             ajaxPost({ sync_guest_journey: 1 }, function(resp) {
-                window.location.href = '/home';
+                var url = redirectUrl || '/home';
+                if (resp.trip_id) {
+                    url = '/home?trip_id=' + resp.trip_id;
+                }
+                window.location.href = url;
             }, function() {
-                window.location.href = redirectUrl;
+                window.location.href = redirectUrl || '/home';
             });
         };
 

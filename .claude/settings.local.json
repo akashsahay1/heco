@@ -97,7 +97,8 @@
       "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -l \"E:/heco/app/Http/Controllers/AjaxController.php\")",
       "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -l \"E:/heco/resources/views/portal/homepage.blade.php\")",
       "Bash(git checkout:*)",
-      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -l \"E:/heco/app/Http/Controllers/SocialAuthController.php\")"
+      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -l \"E:/heco/app/Http/Controllers/SocialAuthController.php\")",
+      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat\" -l \"E:/heco/resources/views/portal/layout.blade.php\")"
     ]
   }
 }

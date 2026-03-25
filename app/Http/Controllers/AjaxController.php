@@ -353,6 +353,7 @@ class AjaxController extends Controller
     {
         // Allow callers to override timeout for faster fallback (e.g. itinerary generation)
         $fastTimeout = $options['fast_timeout'] ?? null;
+        $maxRetries = $options['max_retries'] ?? 2;
 
         $gemini = app(GeminiService::class);
         if ($gemini->isAvailable()) {
@@ -366,8 +367,14 @@ class AjaxController extends Controller
         if ($groq->isAvailable()) {
             $groqOpts = $options;
             if ($fastTimeout) $groqOpts['timeout'] = $fastTimeout;
-            $response = $groq->chat($messages, $groqOpts);
-            if ($response) return $response;
+            // Retry Groq with delay on rate limit (429)
+            for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
+                $response = $groq->chat($messages, $groqOpts);
+                if ($response) return $response;
+                if ($attempt < $maxRetries) {
+                    sleep(3); // Wait 3 seconds before retry (TPM limit resets quickly)
+                }
+            }
         }
 
         $ollama = app(OllamaService::class);
@@ -813,13 +820,13 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
+        // Capture guest trip data BEFORE login (session regenerate will lose it)
+        $guestTrip = session('guest_trip');
+        $guestChat = session('guest_chat');
+
         if (Auth::attempt(["email" => $request->email, "password" => $request->password], $request->boolean("remember"))) {
             $request->session()->regenerate();
             $user = Auth::user();
-
-            // Preserve guest trip data so syncGuestJourney can transfer it after login
-            $guestTrip = session('guest_trip');
-            $guestChat = session('guest_chat');
 
             // Clear previous trip data so traveller starts fresh each login
             if ($user->isTraveller()) {
@@ -846,20 +853,19 @@ class AjaxController extends Controller
                 }
             }
 
-            // Restore guest trip data into session so syncGuestJourney can pick it up
-            if (!empty($guestTrip['experience_ids'] ?? [])) {
-                session(['guest_trip' => $guestTrip]);
-                if ($guestChat) session(['guest_chat' => $guestChat]);
-            } else {
-                session()->forget(['guest_chat', 'guest_trip']);
+            // Sync guest trip directly into DB (don't rely on separate AJAX call)
+            $syncedTripId = null;
+            if ($user->isTraveller() && !empty($guestTrip['experience_ids'] ?? [])) {
+                $syncedTripId = $this->syncGuestTripToDb($user, $guestTrip, $guestChat ?: []);
             }
+            session()->forget(['guest_chat', 'guest_trip']);
 
             $redirect = match(true) {
                 $user->isHct() => '//' . config('app.admin_domain') . '/dashboard',
                 $user->isServiceProvider() => "/sp/dashboard",
-                default => "/home",
+                default => $syncedTripId ? "/home?trip_id={$syncedTripId}" : "/home",
             };
-            return response()->json(["success" => true, "redirect" => $redirect]);
+            return response()->json(["success" => true, "redirect" => $redirect, "trip_id" => $syncedTripId]);
         }
 
         return response()->json(["error" => "Invalid credentials"], 401);
@@ -880,6 +886,10 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
+        // Capture guest trip data BEFORE creating user (Auth::login regenerates session)
+        $guestTrip = session('guest_trip');
+        $guestChat = session('guest_chat');
+
         $user = User::create([
             "full_name" => $fullName,
             "email" => $request->email,
@@ -889,7 +899,16 @@ class AjaxController extends Controller
         ]);
 
         Auth::login($user);
-        return response()->json(["success" => true, "redirect" => "/home"]);
+
+        // Sync guest trip directly into DB
+        $syncedTripId = null;
+        if (!empty($guestTrip['experience_ids'] ?? [])) {
+            $syncedTripId = $this->syncGuestTripToDb($user, $guestTrip, $guestChat ?: []);
+        }
+        session()->forget(['guest_chat', 'guest_trip']);
+
+        $redirect = $syncedTripId ? "/home?trip_id={$syncedTripId}" : "/home";
+        return response()->json(["success" => true, "redirect" => $redirect, "trip_id" => $syncedTripId]);
     }
 
     protected function updateProfile(Request $request): JsonResponse
@@ -1214,9 +1233,9 @@ class AjaxController extends Controller
             $userName = $user->full_name ?? "Traveller";
         }
 
-        // Experience catalog for AI context
+        // Experience catalog for AI context (compact — no short_description to reduce token usage)
         $experiences = Experience::where("is_active", true)
-            ->select("id", "name", "slug", "type", "short_description", "region_id", "duration_type", "duration_days", "difficulty_level", "base_cost_per_person", "best_seasons", "available_months")
+            ->select("id", "name", "type", "region_id", "duration_type", "duration_days", "difficulty_level", "base_cost_per_person", "available_months")
             ->with("region:id,name,continent,country")
             ->limit(50)
             ->get();
@@ -1230,64 +1249,59 @@ class AjaxController extends Controller
             $destinationHierarchy[$continent][$country][] = ['id' => $r->id, 'name' => $r->name];
         }
 
-        // Build rich summary: types, difficulty levels, best months per region
+        // Build compact region summary: types, difficulty levels, best months per region
         $regionSummary = [];
         foreach ($experiences as $exp) {
-            $rName = $exp->region->name ?? 'Unknown';
             $rId = $exp->region_id;
             if (!isset($regionSummary[$rId])) {
                 $regionSummary[$rId] = [
-                    'name' => $rName,
-                    'continent' => $exp->region->continent ?? '',
-                    'country' => $exp->region->country ?? '',
+                    'name' => $exp->region->name ?? 'Unknown',
                     'types' => [],
-                    'difficulty_levels' => [],
+                    'difficulties' => [],
                     'best_months' => [],
-                    'experiences' => [],
+                    'count' => 0,
                 ];
             }
             $rs = &$regionSummary[$rId];
+            $rs['count']++;
             if ($exp->type && !in_array($exp->type, $rs['types'])) $rs['types'][] = $exp->type;
-            if ($exp->difficulty_level && !in_array($exp->difficulty_level, $rs['difficulty_levels'])) $rs['difficulty_levels'][] = $exp->difficulty_level;
+            if ($exp->difficulty_level && !in_array($exp->difficulty_level, $rs['difficulties'])) $rs['difficulties'][] = $exp->difficulty_level;
             if (is_array($exp->available_months)) {
                 foreach ($exp->available_months as $m) {
                     if (!in_array($m, $rs['best_months'])) $rs['best_months'][] = $m;
                 }
             }
-            $rs['experiences'][] = [
-                'id' => $exp->id,
-                'name' => $exp->name,
-                'type' => $exp->type,
-                'difficulty' => $exp->difficulty_level,
-                'duration' => $exp->duration_type === 'multi_day' ? ($exp->duration_days ?? 1) . ' days' : '1 day',
-                'price' => $exp->base_cost_per_person ? '₹' . number_format($exp->base_cost_per_person) . '/person' : null,
-                'best_months' => $exp->available_months,
-                'description' => $exp->short_description,
-            ];
             unset($rs);
         }
-        $regionSummaryJson = json_encode($regionSummary, JSON_PRETTY_PRINT);
+        $regionSummaryJson = json_encode($regionSummary);
 
         $promptBuilder = app(PromptBuilderService::class);
         $promptData = $promptBuilder->build("traveller_chat", [
             "user_name" => $userName,
-            "experiences_json" => $experiences->toJson(),
+            "experiences_json" => $experiences->map(function ($e) {
+                return [
+                    'id' => $e->id, 'name' => $e->name, 'type' => $e->type,
+                    'region' => $e->region->name ?? '', 'region_id' => $e->region_id,
+                    'duration' => $e->duration_type === 'multi_day' ? ($e->duration_days ?? 1) . 'd' : '1d',
+                    'difficulty' => $e->difficulty_level,
+                    'price' => $e->base_cost_per_person,
+                    'months' => $e->available_months,
+                ];
+            })->toJson(),
             "trip_context" => $tripContext,
         ]);
 
-        $currentDateInstruction = "\n\nTODAY'S DATE: " . now()->format('jS F Y') . ". Always assume travel dates are in the FUTURE. When a traveller mentions a date without a year, assume it is the nearest upcoming occurrence (never in the past). For example, if today is March 2026 and they say '25 March', assume March 25th, 2026 (not 2025).";
+        $currentDateInstruction = "\n\nTODAY: " . now()->format('jS F Y') . ". Dates without a year = nearest future occurrence.";
 
-        $formattingInstruction = "\n\nFORMATTING: Use **bold** (double asterisks) to highlight important words and key information in your responses. ALWAYS bold: every continent name (e.g. **Asia**, **Africa**), every country name (e.g. **India**, **Nepal**), every region name (e.g. **Ladakh**, **Spiti Valley**), every experience name, dates, prices, durations, and key action items. When listing options for the traveller to choose from, EVERY option value MUST be bolded. This helps travellers quickly scan your message.";
+        $formattingInstruction = "\n\nFORMATTING: Bold (**text**) all continent/country/region/experience names, dates, prices, durations. Every option in a list MUST be bolded.";
 
-        $recommendIdInstruction = "\n\nIMPORTANT: When recommending specific experiences from the catalog, include their IDs at the very end of your response in this exact format: [RECOMMEND_IDS:1,5,12] (comma-separated experience IDs). This tag is parsed by the frontend to highlight cards — do NOT include it in your visible text to the user.";
+        $recommendIdInstruction = "\n\nRECOMMEND: When recommending experiences, append [RECOMMEND_IDS:1,5,12] at end (hidden from user).";
 
-        $tripDetailsInstruction = "\n\nTRIP DETAILS EXTRACTION: When the traveller tells you their name, starting city/location, travel dates, budget, anchor point choice, pickup preference, group size, or comfort preferences — do NOT immediately apply the change. Instead, first SUMMARIZE what you understood and ASK FOR CONFIRMATION (e.g. \"Got it! So you'd like to start from **Delhi** on **15 Mar 2026**. Shall I update your trip with these details?\"). ONLY after the traveller explicitly confirms (e.g. \"yes\", \"confirm\", \"go ahead\", \"that's right\"), include the tag: [TRIP_DETAILS:{\"start_location\":\"Delhi\",\"start_date\":\"2026-03-15\"}] — only include keys that were confirmed. Valid keys: traveller_name, start_location, end_location, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD), budget_notes, anchor_point, pickup_preference (private_taxi or local_transport), adults (integer), children (integer), infants (integer), accommodation_comfort (one of: Cat E - Camping/Tents, Cat D - Basic/Homestay, Cat C - Standard, Cat B - Comfort, Cat A - Premium/Luxury), vehicle_comfort (one of: Local Transport, SUV (Bolero/Scorpio), SUV (Innova/Crysta), Premium (Fortuner/Similar), Tempo Traveller), guide_preference (one of: No Guide, Local Guide, English-speaking, Certified/Expert). This tag is parsed by the system — do NOT show it in your visible text. EXCEPTION: traveller_name can be saved immediately without confirmation.";
+        $tripDetailsInstruction = "\n\nTRIP DETAILS: When traveller provides details, summarize & confirm first. After confirmation, append [TRIP_DETAILS:{\"key\":\"value\"}] (hidden). Keys: traveller_name (no confirm needed), start_location, end_location, start_date (YYYY-MM-DD), end_date, budget_notes, anchor_point, pickup_preference (private_taxi/local_transport), adults, children, infants (integers), accommodation_comfort (Cat A-E), vehicle_comfort, guide_preference.";
 
-        $addToTripInstruction = "\n\nADD TO TRIP: When the traveller wants to add experiences — do NOT add them immediately. First SUMMARIZE which experiences you plan to add and ASK FOR CONFIRMATION (e.g. \"I'd recommend adding **Village Experience in Tar** (3 days) to your trip. Shall I add it?\"). ONLY after the traveller explicitly confirms (e.g. \"yes\", \"add it\", \"go ahead\"), include this tag: [ADD_TO_TRIP:1,5,12] with the experience IDs. NEVER include this tag without clear traveller confirmation. Use the experience IDs from the catalog.";
+        $addToTripInstruction = "\n\nADD/REMOVE: Confirm before adding/removing. After confirmation: [ADD_TO_TRIP:1,5] or [REMOVE_FROM_TRIP:5] (hidden). If traveller confirms details + experiences together, include BOTH [TRIP_DETAILS] and [ADD_TO_TRIP] in same response.";
 
-        $removeFromTripInstruction = "\n\nREMOVE FROM TRIP: When the traveller wants to remove an experience — first confirm: \"You want to remove **Experience Name** from your trip. This will also remove the associated days. Are you sure?\". ONLY after explicit confirmation, include: [REMOVE_FROM_TRIP:5] with the experience ID. NEVER remove without confirmation.";
-
-        $confirmationRule = "\n\nCONFIRMATION RULE: The confirmation flow ONLY applies when the traveller explicitly asks to CHANGE something (add/remove experiences, update dates, change group size, rename trip, etc.). In that case: (1) Summarize the proposed change, (2) Ask for confirmation, (3) Apply only after they confirm. If they say no, do NOT apply. Never use action tags ([TRIP_DETAILS], [ADD_TO_TRIP], [REMOVE_FROM_TRIP]) without prior confirmation. BUT — for normal conversation like asking questions, getting recommendations, chatting about destinations, or general discussion — just respond naturally. Do NOT ask for confirmation when no change is being made.\n\nCRITICAL — COMBINED CONFIRMATIONS: When the traveller confirms trip details that mention specific experiences (e.g. \"yes, I want the Village Experience in Tir starting 18th March\"), you MUST include BOTH [TRIP_DETAILS:{...}] AND [ADD_TO_TRIP:X] tags in the same response. Do NOT confirm trip details without also adding the experiences the traveller discussed. If the conversation context clearly indicates the traveller wants a specific experience as part of their trip, always include [ADD_TO_TRIP] alongside [TRIP_DETAILS] when they confirm.";
+        $confirmationRule = "\n\nCONFIRMATION: Only confirm when CHANGING something (add/remove/update). Normal chat = respond naturally, no confirmation needed. Never use action tags without confirmation.";
 
         // Build current filter context from request
         $currentFilters = $request->get('current_filters') ? json_decode($request->get('current_filters'), true) : [];
@@ -1305,9 +1319,9 @@ class AjaxController extends Controller
             }
         }
 
-        $conversationFlowInstruction = "\n\nCONVERSATION FLOW: Follow this order when starting a new conversation. At each step, DISPLAY the available options so the traveller can see everything and make informed choices.\n\n1. First, learn the traveller's name (for guests).\n\n2. DESTINATION SELECTION — Guide step by step and SHOW all available options at each level:\n   a. Show all available **continents** as a list and ask which one they'd like to explore.\n   b. Once continent is chosen, show all **countries** within that continent and ask which one.\n   c. Once country is chosen, show all **regions** within that country. For each region, briefly mention the types of experiences available there and the best months to visit (use the REGION SUMMARY data below). Ask which region.\n\n3. EXPERIENCE PREFERENCES — Once the region is confirmed, show the traveller:\n   - All **experience types** available in that region (e.g. **Trek**, **Cultural**, **Nature & Wildlife**) with a count of how many experiences of each type exist\n   - All **difficulty levels** available (e.g. **Easy**, **Moderate**, **Challenging**)\n   - The **best months to visit** for that region\n   Ask what type and difficulty they prefer.\n\n4. TRAVEL DETAILS — Ask these one or two at a time:\n   - **Journey start date** — When do they want to travel? Mention the best months for their chosen region.\n   - **Group size** — How many adults, children, infants?\n   - **Starting point** — Where will they be travelling from?\n\n5. RECOMMEND EXPERIENCES — Now show all matching experiences from the catalog with their names, durations, difficulty, prices, and brief descriptions. Let the traveller choose which ones to add to their trip.\n\nDISPLAY RULES:\n- When listing options, ALWAYS show them as a clear numbered or bulleted list with each option **bolded**\n- Include relevant details next to each option (e.g. region: types available, best months; experience: duration, price, difficulty)\n- This is KEY — travellers should be able to see ALL their choices clearly in the chat without having to ask \"what options do I have?\"\n\nIMPORTANT: If the traveller has already selected filters on the page (see CURRENT FILTER SELECTIONS), acknowledge those choices and skip ahead to ask only about the MISSING details. Do NOT re-ask about continent/country/region if already selected. You may combine 2 related questions in one message to keep the conversation flowing, but do NOT dump all questions at once.\n\nSINGLE-REGION RULE: A traveller can only select ONE region per trip. Each region has multiple experiences to choose from. Once the traveller picks a region, only recommend experiences that belong to that region. Do NOT suggest experiences from other regions. If they want to switch regions, they must start a new trip.\n\nDESTINATION HIERARCHY (these are the ONLY valid options):\n" . json_encode($destinationHierarchy, JSON_PRETTY_PRINT) . "\n\nREGION SUMMARY (experience types, difficulty levels, best months, and experiences per region):\n" . $regionSummaryJson . "\n\nSET FILTERS: When the traveller selects or confirms a continent, country, or region, include this tag at the end of your response: [SET_FILTERS:{\"continent\":\"Asia\",\"country\":\"India\",\"region_id\":5}]. Include only the keys the traveller has chosen so far. Use the exact continent/country strings from the hierarchy above, and use the numeric region id. This tag syncs the page filters — do NOT show it in your visible text." . $filterContext;
+        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only)\n2. Destination: Continent → Country → Region. Show available options at each step. For regions, mention types & best months from REGION SUMMARY.\n3. Experience type & difficulty preference (show what's available in the region).\n4. Travel date (mention best months), group size, starting city — ask 2 at a time max.\n5. Recommend matching experiences with name, duration, difficulty, price.\n\nIf filters already selected (see CURRENT FILTERS), skip those steps. Only ask MISSING details. Single region per trip — don't suggest other regions.\n\nDESTINATIONS:" . json_encode($destinationHierarchy) . "\nREGION SUMMARY:" . $regionSummaryJson . "\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
 
-        $allInstructions = $currentDateInstruction . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $removeFromTripInstruction . $confirmationRule . $conversationFlowInstruction;
+        $allInstructions = $currentDateInstruction . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $confirmationRule . $conversationFlowInstruction;
 
         $messages = [];
         if ($promptData) {
@@ -2095,6 +2109,25 @@ class AjaxController extends Controller
             return response()->json(["success" => true]);
         }
 
+        // Guest trip details to transfer
+        $guestDetails = [
+            "trip_name" => $gt['trip_name'] ?? "My Trip",
+            "adults" => $gt['adults'] ?? 1,
+            "children" => $gt['children'] ?? 0,
+            "infants" => $gt['infants'] ?? 0,
+            "start_location" => $gt['start_location'] ?? null,
+            "end_location" => $gt['end_location'] ?? null,
+            "start_date" => $gt['start_date'] ?? null,
+            "end_date" => $gt['end_date'] ?? null,
+            "anchor_point" => $gt['anchor_point'] ?? null,
+            "pickup_preference" => $gt['pickup_preference'] ?? null,
+            "accommodation_comfort" => $gt['accommodation_comfort'] ?? null,
+            "vehicle_comfort" => $gt['vehicle_comfort'] ?? null,
+            "guide_preference" => $gt['guide_preference'] ?? null,
+            "travel_pace" => $gt['travel_pace'] ?? null,
+            "budget_sensitivity" => $gt['budget_sensitivity'] ?? null,
+        ];
+
         // Find or create a trip for the logged-in user
         $trip = Trip::where("user_id", $user->id)
             ->whereIn("status", ["draft", "not_confirmed"])
@@ -2102,21 +2135,15 @@ class AjaxController extends Controller
             ->first();
 
         if (!$trip) {
-            $trip = Trip::create([
+            $trip = Trip::create(array_merge($guestDetails, [
                 "trip_id" => Trip::generateTripId(),
                 "user_id" => $user->id,
-                "trip_name" => $gt['trip_name'] ?? "My Trip",
                 "status" => "draft",
                 "stage" => "traveller_exploring",
-                "adults" => $gt['adults'] ?? 0,
-                "children" => $gt['children'] ?? 0,
-                "infants" => $gt['infants'] ?? 0,
-                "accommodation_comfort" => $gt['accommodation_comfort'] ?? null,
-                "vehicle_comfort" => $gt['vehicle_comfort'] ?? null,
-                "guide_preference" => $gt['guide_preference'] ?? null,
-                "travel_pace" => $gt['travel_pace'] ?? null,
-                "budget_sensitivity" => $gt['budget_sensitivity'] ?? null,
-            ]);
+            ]));
+        } else {
+            // Update existing trip with guest details
+            $trip->update($guestDetails);
         }
 
         // Transfer selected experiences (preserving guest order)
@@ -2160,12 +2187,115 @@ class AjaxController extends Controller
             $costCalculator->calculate($trip);
         }
 
+        // Transfer guest chat history to DB
+        $guestChat = session('guest_chat', []);
+        if (!empty($guestChat)) {
+            foreach ($guestChat as $msg) {
+                AiConversation::create([
+                    "trip_id" => $trip->id,
+                    "user_id" => $user->id,
+                    "role" => $msg['role'] ?? 'user',
+                    "content" => $msg['content'] ?? '',
+                    "context_type" => "traveller_chat",
+                ]);
+            }
+        }
+
         app(LeadService::class)->createOrGetLead($trip);
 
         // Clear guest session
-        session()->forget('guest_trip');
+        session()->forget(['guest_trip', 'guest_chat']);
 
         return response()->json(["success" => true, "trip_id" => $trip->id]);
+    }
+
+    /**
+     * Sync guest trip data directly into DB for a user (called from login/signup).
+     * Returns the trip ID or null.
+     */
+    protected function syncGuestTripToDb($user, array $gt, array $chatHistory = []): ?int
+    {
+        if (empty($gt['experience_ids'] ?? [])) return null;
+
+        $guestDetails = [
+            "trip_name" => $gt['trip_name'] ?? "My Trip",
+            "adults" => $gt['adults'] ?? 1,
+            "children" => $gt['children'] ?? 0,
+            "infants" => $gt['infants'] ?? 0,
+            "start_location" => $gt['start_location'] ?? null,
+            "end_location" => $gt['end_location'] ?? null,
+            "start_date" => $gt['start_date'] ?? null,
+            "end_date" => $gt['end_date'] ?? null,
+            "anchor_point" => $gt['anchor_point'] ?? null,
+            "pickup_preference" => $gt['pickup_preference'] ?? null,
+            "accommodation_comfort" => $gt['accommodation_comfort'] ?? null,
+            "vehicle_comfort" => $gt['vehicle_comfort'] ?? null,
+            "guide_preference" => $gt['guide_preference'] ?? null,
+            "travel_pace" => $gt['travel_pace'] ?? null,
+            "budget_sensitivity" => $gt['budget_sensitivity'] ?? null,
+        ];
+
+        $trip = Trip::where("user_id", $user->id)
+            ->whereIn("status", ["draft", "not_confirmed"])
+            ->orderBy("updated_at", "desc")
+            ->first();
+
+        if (!$trip) {
+            $trip = Trip::create(array_merge($guestDetails, [
+                "trip_id" => Trip::generateTripId(),
+                "user_id" => $user->id,
+                "status" => "draft",
+                "stage" => "traveller_exploring",
+            ]));
+        } else {
+            $trip->update($guestDetails);
+        }
+
+        // Transfer selected experiences
+        foreach ($gt['experience_ids'] as $index => $expId) {
+            $experience = Experience::find($expId);
+            if (!$experience) continue;
+            TripSelectedExperience::firstOrCreate([
+                "trip_id" => $trip->id,
+                "experience_id" => $experience->id,
+            ], ["sort_order" => $index]);
+            if ($experience->region_id) {
+                TripRegion::firstOrCreate([
+                    "trip_id" => $trip->id,
+                    "region_id" => $experience->region_id,
+                ]);
+            }
+        }
+
+        // Transfer AI itinerary if exists
+        $aiItinerary = $gt['ai_itinerary'] ?? null;
+        if ($aiItinerary && isset($aiItinerary['days'])) {
+            $trip->update(["ai_raw_response" => $gt['ai_raw_response'] ?? null]);
+            $trip->tripDays()->each(function ($day) {
+                $day->experiences()->delete();
+                $day->services()->delete();
+                $day->delete();
+            });
+            app(ItineraryService::class)->parseAndCreateFromAi($trip, $aiItinerary);
+            app(CostCalculatorService::class)->calculate($trip);
+        }
+
+        // Transfer chat history
+        if (!empty($chatHistory)) {
+            foreach ($chatHistory as $msg) {
+                AiConversation::create([
+                    "trip_id" => $trip->id,
+                    "user_id" => $user->id,
+                    "role" => $msg['role'] ?? 'user',
+                    "content" => $msg['content'] ?? '',
+                    "context_type" => "traveller_chat",
+                ]);
+            }
+        }
+
+        app(LeadService::class)->createOrGetLead($trip);
+
+        return $trip->id;
     }
 
     protected function generateItinerary(Request $request): JsonResponse
