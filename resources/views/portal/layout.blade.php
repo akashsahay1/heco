@@ -410,11 +410,38 @@
             headers: { 'X-CSRF-TOKEN': jQuery('meta[name="csrf-token"]').attr('content') }
         });
 
+        // Auto-retry on 419 (CSRF token expired) — fetch fresh token and replay
+        jQuery.ajaxPrefilter(function(options, originalOptions, jqXHR) {
+            if (options._csrfRetry) return; // already a retry
+            var originalError = options.error;
+            options.error = function(xhr) {
+                if (xhr.status === 419 && !options._csrfRetry) {
+                    // Fetch a fresh CSRF token from the server
+                    jQuery.get('/csrf-token').done(function(data) {
+                        var newToken = data.token || data;
+                        jQuery('meta[name="csrf-token"]').attr('content', newToken);
+                        jQuery.ajaxSetup({ headers: { 'X-CSRF-TOKEN': newToken } });
+                        // Retry original request
+                        var retryOpts = jQuery.extend({}, originalOptions, { _csrfRetry: true });
+                        jQuery.ajax(retryOpts);
+                    }).fail(function() {
+                        // Fresh token fetch failed — reload the page
+                        window.location.reload();
+                    });
+                } else if (originalError) {
+                    originalError.apply(this, arguments);
+                }
+            };
+        });
+
         // Global AJAX error handler
         jQuery(document).ajaxError(function(event, jqXHR, settings) {
             // Skip global error handling for requests that handle errors themselves
-            if (settings.skipGlobalError) return;
-            if (jqXHR.status === 401) {
+            if (settings.skipGlobalError || settings._csrfRetry) return;
+            if (jqXHR.status === 419) {
+                // Handled by ajaxPrefilter retry above
+                return;
+            } else if (jqXHR.status === 401) {
                 if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
             } else if (jqXHR.status === 422) {
                 var resp = jqXHR.responseJSON;

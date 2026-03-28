@@ -367,20 +367,35 @@ class AjaxController extends Controller
         if ($groq->isAvailable()) {
             $groqOpts = $options;
             if ($fastTimeout) $groqOpts['timeout'] = $fastTimeout;
-            // Retry Groq with delay on rate limit (429)
-            for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
-                $response = $groq->chat($messages, $groqOpts);
-                if ($response) return $response;
-                if ($attempt < $maxRetries) {
-                    sleep(3); // Wait 3 seconds before retry (TPM limit resets quickly)
-                }
-            }
+            $response = $groq->chat($messages, $groqOpts);
+            if ($response) return $response;
+            // Skip retries — daily rate limits (TPD) won't reset in seconds
         }
 
         $ollama = app(OllamaService::class);
-        if (!$ollama->isAvailable()) return null;
+        if (!$ollama->isAvailable()) {
+            \Log::warning('Ollama not available, all AI providers failed');
+            return null;
+        }
 
-        return $ollama->chat($messages, $options['model'] ?? null, $options);
+        // Minimal prompt + short history for local model speed
+        $ollamaMessages = [
+            ['role' => 'system', 'content' => 'You are a helpful travel assistant for HECO. Help plan eco-friendly trips. Be concise.']
+        ];
+        // Only keep last 2 user/assistant exchanges
+        $nonSystem = array_filter($messages, fn($m) => $m['role'] !== 'system');
+        $ollamaMessages = array_merge($ollamaMessages, array_slice(array_values($nonSystem), -3));
+
+        $ollamaOpts = $options;
+        $ollamaOpts['max_tokens'] = 256;
+        $ollamaOpts['timeout'] = 90;
+
+        \Log::info('Calling Ollama as fallback');
+        $result = $ollama->chat($ollamaMessages, $ollamaOpts['model'] ?? null, $ollamaOpts);
+        if (!$result) {
+            \Log::warning('Ollama chat returned null');
+        }
+        return $result;
     }
 
     public function index(Request $request): JsonResponse
@@ -828,31 +843,6 @@ class AjaxController extends Controller
             $request->session()->regenerate();
             $user = Auth::user();
 
-            // Clear previous trip data so traveller starts fresh each login
-            if ($user->isTraveller()) {
-                $trips = $user->trips()->whereIn('status', ['draft', 'not_confirmed'])->get();
-                foreach ($trips as $t) {
-                    $t->aiConversations()->where('context_type', 'traveller_chat')->delete();
-                    $t->tripDays()->each(function ($day) {
-                        $day->experiences()->delete();
-                        $day->services()->delete();
-                        $day->delete();
-                    });
-                    $t->selectedExperiences()->delete();
-                    $t->tripRegions()->delete();
-                    $t->update([
-                        'adults' => 1, 'children' => 0, 'infants' => 0,
-                        'start_location' => null, 'end_location' => null,
-                        'start_date' => null, 'end_date' => null,
-                        'anchor_point' => null, 'pickup_preference' => null,
-                        'accommodation_comfort' => null, 'vehicle_comfort' => null,
-                        'guide_preference' => null, 'travel_pace' => null,
-                        'budget_sensitivity' => null, 'ai_raw_response' => null,
-                        'trip_name' => 'My Trip',
-                    ]);
-                }
-            }
-
             // Sync guest trip directly into DB (don't rely on separate AJAX call)
             $syncedTripId = null;
             if ($user->isTraveller() && !empty($guestTrip['experience_ids'] ?? [])) {
@@ -860,11 +850,23 @@ class AjaxController extends Controller
             }
             session()->forget(['guest_chat', 'guest_trip']);
 
+            // Check if traveller has any planned journey
+            $hasPlannedJourney = $syncedTripId || ($user->isTraveller() && $user->trips()
+                ->whereIn('status', ['draft', 'not_confirmed'])
+                ->where(function ($q) {
+                    $q->whereHas('selectedExperiences')
+                      ->orWhereHas('tripDays');
+                })
+                ->exists());
+
             $redirect = match(true) {
                 $user->isHct() => '//' . config('app.admin_domain') . '/dashboard',
                 $user->isServiceProvider() => "/sp/dashboard",
-                default => $syncedTripId ? "/home?trip_id={$syncedTripId}" : "/home",
+                $syncedTripId !== null => "/home?trip_id={$syncedTripId}&tab=journey",
+                $hasPlannedJourney => "/home?tab=journey",
+                default => "/home",
             };
+
             return response()->json(["success" => true, "redirect" => $redirect, "trip_id" => $syncedTripId]);
         }
 
@@ -907,7 +909,7 @@ class AjaxController extends Controller
         }
         session()->forget(['guest_chat', 'guest_trip']);
 
-        $redirect = $syncedTripId ? "/home?trip_id={$syncedTripId}" : "/home";
+        $redirect = $syncedTripId ? "/home?trip_id={$syncedTripId}&tab=journey" : "/home";
         return response()->json(["success" => true, "redirect" => $redirect, "trip_id" => $syncedTripId]);
     }
 
@@ -1368,6 +1370,13 @@ class AjaxController extends Controller
 
             $allowedKeys = ['start_location', 'end_location', 'start_date', 'end_date', 'budget_notes', 'anchor_point', 'pickup_preference', 'adults', 'children', 'infants', 'accommodation_comfort', 'vehicle_comfort', 'guide_preference'];
             $extractedDetails = array_intersect_key($extractedDetails, array_flip($allowedKeys));
+
+            // Convert empty date strings to null to avoid MySQL date format errors
+            foreach (['start_date', 'end_date'] as $dateKey) {
+                if (isset($extractedDetails[$dateKey]) && $extractedDetails[$dateKey] === '') {
+                    $extractedDetails[$dateKey] = null;
+                }
+            }
 
             if ($isGuest) {
                 $guestData = $this->guestTrip();
@@ -2117,8 +2126,8 @@ class AjaxController extends Controller
             "infants" => $gt['infants'] ?? 0,
             "start_location" => $gt['start_location'] ?? null,
             "end_location" => $gt['end_location'] ?? null,
-            "start_date" => $gt['start_date'] ?? null,
-            "end_date" => $gt['end_date'] ?? null,
+            "start_date" => $gt['start_date'] ?: null,
+            "end_date" => $gt['end_date'] ?: null,
             "anchor_point" => $gt['anchor_point'] ?? null,
             "pickup_preference" => $gt['pickup_preference'] ?? null,
             "accommodation_comfort" => $gt['accommodation_comfort'] ?? null,
@@ -2224,8 +2233,8 @@ class AjaxController extends Controller
             "infants" => $gt['infants'] ?? 0,
             "start_location" => $gt['start_location'] ?? null,
             "end_location" => $gt['end_location'] ?? null,
-            "start_date" => $gt['start_date'] ?? null,
-            "end_date" => $gt['end_date'] ?? null,
+            "start_date" => $gt['start_date'] ?: null,
+            "end_date" => $gt['end_date'] ?: null,
             "anchor_point" => $gt['anchor_point'] ?? null,
             "pickup_preference" => $gt['pickup_preference'] ?? null,
             "accommodation_comfort" => $gt['accommodation_comfort'] ?? null,
@@ -3323,7 +3332,7 @@ class AjaxController extends Controller
     protected function updateTripInfo(Request $request): JsonResponse
     {
         $trip = Trip::findOrFail($request->trip_id);
-        $trip->update($request->only([
+        $data = $request->only([
             "trip_name", "traveller_origin", "adults", "children", "infants",
             "start_date", "end_date", "start_location", "end_location",
             "pickup_location", "pickup_time", "drop_location", "drop_time",
@@ -3331,7 +3340,14 @@ class AjaxController extends Controller
             "guide_preference", "travel_pace", "budget_sensitivity",
             "margin_rp_percent", "margin_hrp_percent", "commission_hct_percent",
             "general_notes",
-        ]));
+        ]);
+        // Convert empty date strings to null to avoid MySQL date format errors
+        foreach (['start_date', 'end_date'] as $dateKey) {
+            if (isset($data[$dateKey]) && $data[$dateKey] === '') {
+                $data[$dateKey] = null;
+            }
+        }
+        $trip->update($data);
 
         app(CostCalculatorService::class)->calculate($trip);
 

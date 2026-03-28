@@ -38,7 +38,8 @@ class OllamaService
                 'stream' => false,
                 'options' => [
                     'temperature' => $options['temperature'] ?? 0.7,
-                    'num_predict' => $options['max_tokens'] ?? 4096,
+                    'num_predict' => $options['max_tokens'] ?? 512,
+                    'num_ctx' => 2048,
                 ],
             ];
 
@@ -46,7 +47,8 @@ class OllamaService
                 $payload['format'] = $options['format'];
             }
 
-            $response = Http::timeout($this->timeout)
+            $timeout = $options['timeout'] ?? $this->timeout;
+            $response = Http::timeout($timeout)
                 ->post($this->host . '/api/chat', $payload);
 
             if ($response->successful()) {

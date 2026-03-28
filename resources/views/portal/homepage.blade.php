@@ -425,6 +425,7 @@ $pVehicle = ($trip ? $trip->vehicle_comfort : null) ?: ($guestTripData['vehicle_
 $pGuide = ($trip ? $trip->guide_preference : null) ?: ($guestTripData['guide_preference'] ?? null) ?: 'English-speaking';
 $pPace = ($trip ? $trip->travel_pace : null) ?: ($guestTripData['travel_pace'] ?? null) ?: 'Moderate';
 $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget_sensitivity'] ?? null) ?: 'Mid-range';
+$activeTab = request('tab') === 'journey' && auth()->check() ? 'journey' : 'discover';
 @endphp
 
 <div class="heco-page">
@@ -451,13 +452,13 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
         <div class="container">
             <ul class="nav main-tabs" id="mainTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="tab-discover" data-bs-toggle="tab" data-bs-target="#pane-discover" type="button" role="tab">
+                    <button class="nav-link {{ $activeTab === 'discover' ? 'active' : '' }}" id="tab-discover" data-bs-toggle="tab" data-bs-target="#pane-discover" type="button" role="tab">
                         <i class="bi bi-compass"></i>
                         <span>Discover Regions and Experiences</span>
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="tab-journey" data-bs-toggle="tab" data-bs-target="#pane-journey" type="button" role="tab">
+                    <button class="nav-link {{ $activeTab === 'journey' ? 'active' : '' }}" id="tab-journey" data-bs-toggle="tab" data-bs-target="#pane-journey" type="button" role="tab">
                         <i class="bi bi-map"></i>
                         <span>Your Journey</span>
                         <span class="tab-badge" id="journeyCount">0</span>
@@ -478,7 +479,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
         {{-- ============================================= --}}
         {{-- DISCOVER TAB --}}
         {{-- ============================================= --}}
-        <div class="tab-pane fade show active" id="pane-discover" role="tabpanel">
+        <div class="tab-pane fade {{ $activeTab === 'discover' ? 'show active' : '' }}" id="pane-discover" role="tabpanel">
             <div class="content-container">
 
                 {{-- Side-by-side layout: Cards left + Map right --}}
@@ -506,7 +507,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 </div>
                             </div>
                             <div class="chat-collapse-input-area">
-                                <input type="text" class="inline-chat-input" id="collapseChatInput" placeholder="Ask anything about experiences..." autocomplete="off">
+                                <input type="text" class="inline-chat-input" id="collapseChatInput" placeholder="Ask anything about experiences..." autocomplete="off" autocorrect="off" spellcheck="false" name="chat_msg_discover">
                                 <button class="inline-chat-send" id="collapseChatSend">
                                     <i class="bi bi-send-fill"></i>
                                 </button>
@@ -611,7 +612,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
         {{-- ============================================= --}}
         {{-- YOUR JOURNEY TAB --}}
         {{-- ============================================= --}}
-        <div class="tab-pane fade" id="pane-journey" role="tabpanel">
+        <div class="tab-pane fade {{ $activeTab === 'journey' ? 'show active' : '' }}" id="pane-journey" role="tabpanel">
             <div class="content-container">
                 <div id="journeyContent">
                     {{-- AI Chat inside Journey tab (collapsible) --}}
@@ -637,7 +638,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                         <div class="chat-collapse-input-area">
                             <input type="text" class="inline-chat-input" id="journeyChatInput"
                                 placeholder="Ask AI to change dates, add days, update preferences..."
-                                autocomplete="off">
+                                autocomplete="off" autocorrect="off" spellcheck="false" name="chat_msg_journey">
                             <button class="inline-chat-send" id="journeyChatSend">
                                 <i class="bi bi-send-fill"></i>
                             </button>
@@ -1646,6 +1647,21 @@ jQuery(function() {
     initMap();
     setTimeout(function() { if (map) map.invalidateSize(); }, 300);
 
+    // If journey tab is active on page load, load its data immediately
+    if (jQuery('#pane-journey').hasClass('active') && tripId) {
+        loadJourneyData();
+        syncChats();
+    }
+
+    // Clean tab/trip_id params from URL
+    var urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('tab')) {
+        urlParams.delete('tab');
+        urlParams.delete('trip_id');
+        var cleanUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+        window.history.replaceState({}, '', cleanUrl);
+    }
+
     // Heart/Prefer button
     jQuery(document).on('click', '.exp-card-fav', function(e) {
         e.stopPropagation();
@@ -2647,7 +2663,12 @@ jQuery(function() {
         if (jQuery('#filterMonth').val()) currentFilters.month = jQuery('#filterMonth').find('option:selected').text();
         if (Object.keys(currentFilters).length > 0) params.current_filters = JSON.stringify(currentFilters);
 
-        ajaxPost(params, function(resp) {
+        jQuery.ajax({
+            url: '/ajax',
+            method: 'POST',
+            data: params,
+            timeout: 180000, // 3 minutes for slow local AI models
+            success: function(resp) {
             jQuery('.chat-typing').remove();
             appendChatMsg('assistant', resp.response || 'I could not generate a response. Please try again.');
 
@@ -2759,10 +2780,12 @@ jQuery(function() {
             }
 
             scrollChat();
-        }, function() {
+        },
+            error: function() {
             jQuery('.chat-typing').remove();
             appendChatMsg('assistant', 'Sorry, something went wrong. Please try again.');
             scrollChat();
+        }
         });
     }
 

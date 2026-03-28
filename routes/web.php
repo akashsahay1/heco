@@ -79,6 +79,7 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::get('/home', [HomepageController::class, 'home'])->name('home');
     Route::get('/experience/{slug}', [HomepageController::class, 'experienceDetail'])->name('experience.detail');
     Route::get('/join', [SpController::class, 'application'])->name('sp.application');
+    Route::get('/csrf-token', fn() => response()->json(['token' => csrf_token()]));
 
     // Static Pages
     Route::get('/about', fn() => view('portal.pages.about'))->name('about');
