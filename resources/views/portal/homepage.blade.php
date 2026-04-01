@@ -425,7 +425,7 @@ $pVehicle = ($trip ? $trip->vehicle_comfort : null) ?: ($guestTripData['vehicle_
 $pGuide = ($trip ? $trip->guide_preference : null) ?: ($guestTripData['guide_preference'] ?? null) ?: 'English-speaking';
 $pPace = ($trip ? $trip->travel_pace : null) ?: ($guestTripData['travel_pace'] ?? null) ?: 'Moderate';
 $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget_sensitivity'] ?? null) ?: 'Mid-range';
-$activeTab = request('tab') === 'journey' && auth()->check() ? 'journey' : 'discover';
+$activeTab = $activeTab ?? 'discover';
 @endphp
 
 <div class="heco-page">
@@ -507,7 +507,7 @@ $activeTab = request('tab') === 'journey' && auth()->check() ? 'journey' : 'disc
                                 </div>
                             </div>
                             <div class="chat-collapse-input-area">
-                                <input type="text" class="inline-chat-input" id="collapseChatInput" placeholder="Ask anything about experiences..." autocomplete="off" autocorrect="off" spellcheck="false" name="chat_msg_discover">
+                                <input type="search" class="inline-chat-input" id="collapseChatInput" placeholder="Ask anything about experiences..." autocomplete="new-password" role="presentation">
                                 <button class="inline-chat-send" id="collapseChatSend">
                                     <i class="bi bi-send-fill"></i>
                                 </button>
@@ -636,9 +636,9 @@ $activeTab = request('tab') === 'journey' && auth()->check() ? 'journey' : 'disc
                             </div>
                         </div>
                         <div class="chat-collapse-input-area">
-                            <input type="text" class="inline-chat-input" id="journeyChatInput"
+                            <input type="search" class="inline-chat-input" id="journeyChatInput"
                                 placeholder="Ask AI to change dates, add days, update preferences..."
-                                autocomplete="off" autocorrect="off" spellcheck="false" name="chat_msg_journey">
+                                autocomplete="new-password" role="presentation">
                             <button class="inline-chat-send" id="journeyChatSend">
                                 <i class="bi bi-send-fill"></i>
                             </button>
