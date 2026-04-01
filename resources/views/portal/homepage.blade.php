@@ -425,7 +425,6 @@ $pVehicle = ($trip ? $trip->vehicle_comfort : null) ?: ($guestTripData['vehicle_
 $pGuide = ($trip ? $trip->guide_preference : null) ?: ($guestTripData['guide_preference'] ?? null) ?: 'English-speaking';
 $pPace = ($trip ? $trip->travel_pace : null) ?: ($guestTripData['travel_pace'] ?? null) ?: 'Moderate';
 $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget_sensitivity'] ?? null) ?: 'Mid-range';
-$activeTab = $activeTab ?? 'discover';
 @endphp
 
 <div class="heco-page">
@@ -452,13 +451,13 @@ $activeTab = $activeTab ?? 'discover';
         <div class="container">
             <ul class="nav main-tabs" id="mainTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link {{ $activeTab === 'discover' ? 'active' : '' }}" id="tab-discover" data-bs-toggle="tab" data-bs-target="#pane-discover" type="button" role="tab">
+                    <button class="nav-link active" id="tab-discover" data-bs-toggle="tab" data-bs-target="#pane-discover" type="button" role="tab">
                         <i class="bi bi-compass"></i>
                         <span>Discover Regions and Experiences</span>
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link {{ $activeTab === 'journey' ? 'active' : '' }}" id="tab-journey" data-bs-toggle="tab" data-bs-target="#pane-journey" type="button" role="tab">
+                    <button class="nav-link" id="tab-journey" data-bs-toggle="tab" data-bs-target="#pane-journey" type="button" role="tab">
                         <i class="bi bi-map"></i>
                         <span>Your Journey</span>
                         <span class="tab-badge" id="journeyCount">0</span>
@@ -479,7 +478,7 @@ $activeTab = $activeTab ?? 'discover';
         {{-- ============================================= --}}
         {{-- DISCOVER TAB --}}
         {{-- ============================================= --}}
-        <div class="tab-pane fade {{ $activeTab === 'discover' ? 'show active' : '' }}" id="pane-discover" role="tabpanel">
+        <div class="tab-pane fade show active" id="pane-discover" role="tabpanel">
             <div class="content-container">
 
                 {{-- Side-by-side layout: Cards left + Map right --}}
@@ -612,7 +611,7 @@ $activeTab = $activeTab ?? 'discover';
         {{-- ============================================= --}}
         {{-- YOUR JOURNEY TAB --}}
         {{-- ============================================= --}}
-        <div class="tab-pane fade {{ $activeTab === 'journey' ? 'show active' : '' }}" id="pane-journey" role="tabpanel">
+        <div class="tab-pane fade" id="pane-journey" role="tabpanel">
             <div class="content-container">
                 <div id="journeyContent">
                     {{-- AI Chat inside Journey tab (collapsible) --}}
@@ -1647,15 +1646,12 @@ jQuery(function() {
     initMap();
     setTimeout(function() { if (map) map.invalidateSize(); }, 300);
 
-    // If journey tab is active on page load, load its data immediately
-    if (jQuery('#pane-journey').hasClass('active') && tripId) {
-        loadJourneyData();
-        syncChats();
-    }
 
-    // Clean tab/trip_id params from URL
+    // Auto-switch to journey tab if logged in with a trip and tab=journey in URL
     var urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('tab')) {
+    if (urlParams.get('tab') === 'journey' && isLoggedIn) {
+        jQuery('#tab-journey').click();
+        if (tripId) { loadJourneyData(); syncChats(); }
         urlParams.delete('tab');
         urlParams.delete('trip_id');
         var cleanUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
@@ -2046,9 +2042,8 @@ jQuery(function() {
         }
 
         days.forEach(function(day, index) {
-            // Insert-day button: before Day 1 of each experience, after Day 1, and after last day
+            // Always show add-day button before the first day
             if (index === 0) {
-                // Always show add-day button before the very first day
                 html += '<div class="timeline-add-day-row">';
                 html += '<div></div>';
                 html += '<div class="tl-insert-line">';
@@ -2058,7 +2053,9 @@ jQuery(function() {
                 html += '</div>';
                 html += '<div></div>';
                 html += '</div>';
-            } else {
+            }
+            // Insert-day button between days based on experience boundaries
+            if (index > 0) {
                 var prevDay = days[index - 1];
                 var curDay = day;
                 var showInsert = false;
@@ -2170,7 +2167,9 @@ jQuery(function() {
             if (dayTitle) html += '<span class="timeline-day-title" title="' + dayTitle + '">' + dayTitle + '</span>';
             html += '<div style="display:flex;align-items:center;gap:4px;margin-left:auto;">';
             if (day.is_locked) html += '<i class="bi bi-lock" style="color: var(--heco-warning); font-size: 13px;" title="Locked"></i>';
-            html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
+            if (!day.experiences || !day.experiences.length) {
+                html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
+            }
             html += '</div>';
             html += '</div>';
 

@@ -48,12 +48,7 @@ class HomepageController extends Controller
             $guestTripData = session('guest_trip');
         }
 
-        $activeTab = ($request->get('tab') === 'journey') ? 'journey' : 'discover';
-
-        return response()
-            ->view("portal.homepage", compact("regions", "experiences", "trip", "guestTripData", "activeTab"))
-            ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-            ->header('Pragma', 'no-cache');
+        return view("portal.homepage", compact("regions", "experiences", "trip", "guestTripData"));
     }
 
     public function experienceDetail(string $slug)

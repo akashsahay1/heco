@@ -59,6 +59,9 @@ class CostCalculatorService
         $activityCost = 0;
         $otherCost = 0;
 
+        // Track which experiences have already been costed (charge once per experience, not per day)
+        $chargedExperienceIds = [];
+
         foreach ($trip->tripDays as $day) {
             foreach ($day->services as $service) {
                 $cost = $service->cost;
@@ -71,10 +74,21 @@ class CostCalculatorService
                 };
             }
             foreach ($day->experiences as $dayExp) {
-                $expCost = $dayExp->total_cost;
-                if ($expCost == 0 && $dayExp->cost_per_person > 0) {
-                    $expCost = $dayExp->cost_per_person * ($trip->adults ?: 1);
+                // Only charge each experience once across all days
+                if (in_array($dayExp->experience_id, $chargedExperienceIds)) {
+                    $dayExp->update(['total_cost' => 0]);
+                    continue;
+                }
+                $chargedExperienceIds[] = $dayExp->experience_id;
+
+                if ($dayExp->cost_per_person > 0) {
+                    $adults = max($trip->adults, 1);
+                    $children = $trip->children ?: 0;
+                    // Children charged at 50% rate
+                    $expCost = ($dayExp->cost_per_person * $adults) + ($dayExp->cost_per_person * 0.5 * $children);
                     $dayExp->update(['total_cost' => $expCost]);
+                } else {
+                    $expCost = $dayExp->total_cost;
                 }
                 $activityCost += $expCost;
             }

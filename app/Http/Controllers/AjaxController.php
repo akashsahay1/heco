@@ -851,19 +851,16 @@ class AjaxController extends Controller
             session()->forget(['guest_chat', 'guest_trip']);
 
             // Check if traveller has any planned journey
-            $hasPlannedJourney = $syncedTripId || ($user->isTraveller() && $user->trips()
+            $hasTrip = $syncedTripId || ($user->isTraveller() && $user->trips()
                 ->whereIn('status', ['draft', 'not_confirmed'])
-                ->where(function ($q) {
-                    $q->whereHas('selectedExperiences')
-                      ->orWhereHas('tripDays');
-                })
+                ->where(fn($q) => $q->whereHas('selectedExperiences')->orWhereHas('tripDays'))
                 ->exists());
 
             $redirect = match(true) {
                 $user->isHct() => '//' . config('app.admin_domain') . '/dashboard',
                 $user->isServiceProvider() => "/sp/dashboard",
                 $syncedTripId !== null => "/home?trip_id={$syncedTripId}&tab=journey",
-                $hasPlannedJourney => "/home?tab=journey",
+                $hasTrip => "/home?tab=journey",
                 default => "/home",
             };
 

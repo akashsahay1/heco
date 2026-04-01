@@ -80,6 +80,7 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::get('/experience/{slug}', [HomepageController::class, 'experienceDetail'])->name('experience.detail');
     Route::get('/join', [SpController::class, 'application'])->name('sp.application');
     Route::get('/csrf-token', fn() => response()->json(['token' => csrf_token()]));
+    Route::get('/opcache-reset', fn() => (function_exists('opcache_reset') && opcache_reset()) ? 'cleared' : 'no opcache');
 
     // Static Pages
     Route::get('/about', fn() => view('portal.pages.about'))->name('about');
