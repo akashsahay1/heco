@@ -1216,6 +1216,18 @@ class AjaxController extends Controller
                     ->mapWithKeys(fn($r) => [$r->name => $r->anchor_points])
                     ->toArray();
             }
+            // Build trip days summary for AI context
+            $tripDays = $trip->tripDays()
+                ->with('experiences.experience:id,name')
+                ->orderBy('day_number')
+                ->get()
+                ->map(fn($d) => [
+                    'day' => $d->day_number,
+                    'title' => $d->title ?: null,
+                    'date' => $d->date?->toDateString(),
+                    'experiences' => $d->experiences->map(fn($e) => $e->experience?->name)->filter()->values(),
+                ]);
+
             $tripContext = json_encode([
                 "trip_id" => $trip->id,
                 "adults" => $trip->adults,
@@ -1228,6 +1240,8 @@ class AjaxController extends Controller
                 "pickup_preference" => $trip->pickup_preference,
                 "region_anchor_points" => $regionAnchors,
                 "preferences" => session("landing_preferences", []),
+                "total_days" => $tripDays->count(),
+                "itinerary" => $tripDays,
             ]);
             $userName = $user->full_name ?? "Traveller";
         }

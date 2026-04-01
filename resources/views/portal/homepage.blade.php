@@ -2042,56 +2042,23 @@ jQuery(function() {
         }
 
         days.forEach(function(day, index) {
-            // Always show add-day button before the first day
+            // Add-day button before the first day
             if (index === 0) {
                 html += '<div class="timeline-add-day-row">';
                 html += '<div></div>';
                 html += '<div class="tl-insert-line">';
-                html += '<button class="btn-insert-day" data-after-day="0" title="Add a day here">';
+                html += '<button class="btn-insert-day" data-after-day="0" title="Add a day before Day 1">';
                 html += '<i class="bi bi-plus-lg"></i>';
                 html += '</button>';
                 html += '</div>';
                 html += '<div></div>';
                 html += '</div>';
             }
-            // Insert-day button between days based on experience boundaries
+            // Simple connector line between days (no buttons)
             if (index > 0) {
-                var prevDay = days[index - 1];
-                var curDay = day;
-                var showInsert = false;
-
-                if (!prevDay.experiences || !prevDay.experiences.length) {
-                    showInsert = true;
-                } else {
-                    var prevDe = prevDay.experiences[0];
-                    var prevExp = prevDe.experience;
-                    var prevDayNum = prevDe._expDayNum || 1;
-                    var prevMaxDays = (prevExp && prevExp.duration_type === 'multi_day' && prevExp.duration_days) ? prevExp.duration_days : 1;
-
-                    // Show after last day of experience only
-                    if (prevDayNum >= prevMaxDays) {
-                        showInsert = true;
-                    }
-                }
-
-                // Also show before Day 1 of a new experience
-                if (!showInsert && curDay.experiences && curDay.experiences.length) {
-                    var curDe = curDay.experiences[0];
-                    var curDayNum = curDe._expDayNum || 1;
-                    if (curDayNum === 1) showInsert = true;
-                }
-
                 html += '<div class="timeline-add-day-row">';
                 html += '<div></div>';
-                if (showInsert) {
-                    html += '<div class="tl-insert-line">';
-                    html += '<button class="btn-insert-day" data-after-day="' + (prevDay.day_number || index) + '" title="Add a day here">';
-                    html += '<i class="bi bi-plus-lg"></i>';
-                    html += '</button>';
-                    html += '</div>';
-                } else {
-                    html += '<div class="tl-insert-line"></div>';
-                }
+                html += '<div class="tl-insert-line"></div>';
                 html += '<div></div>';
                 html += '</div>';
             }
@@ -2433,8 +2400,8 @@ jQuery(function() {
             showAlert('Day removed.', 'success');
             loadTimeline();
             loadPricing();
-            // Notify AI about the removed day
-            appendChatMsg('assistant', 'You have removed **' + dayLabel + '** from your trip.');
+            // Notify in chat UI (AI will see updated itinerary in next message's context)
+            appendChatMsg('assistant', 'You have removed **' + dayLabel + '** from your trip. The itinerary has been updated.');
             scrollChat();
             pendingRemoveDayId = null;
             pendingRemoveDayLabel = '';
