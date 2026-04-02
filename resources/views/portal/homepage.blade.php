@@ -794,6 +794,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     <div class="pricing-row"><span>Accommodation</span><span id="prAccommodation"></span></div>
                                     <div class="pricing-row"><span>Guide</span><span id="prGuide"></span></div>
                                     <div class="pricing-row"><span>Activities</span><span id="prActivities"></span></div>
+                                    <div class="pricing-row"><span>Extra Days</span><span id="prExtraDays"></span></div>
                                     <div class="pricing-row"><span>Other</span><span id="prOther"></span></div>
                                     <div class="pricing-row"><span>Subtotal</span><span id="prSubtotal"></span></div>
                                     <div class="pricing-row"><span>RP Contribution</span><span id="prRP" class="rp-contribution"></span></div>
@@ -901,16 +902,24 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
             {{-- Body --}}
             <div style="padding: 20px;">
                 <label style="font-size: 13px; font-weight: 600; color: var(--heco-neutral-700); margin-bottom: 8px; display: block;">
-                    What would you like to do on this day?
+                    Day Type
                 </label>
-                <textarea id="addDayDescription" class="form-control" rows="3"
-                    placeholder="e.g. A rest day in Pokhara with lakeside walk and local food tasting..."
+                <div id="addDayTypeSelector" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;">
+                    <button type="button" class="day-type-btn active" data-type="rest" style="padding: 6px 14px; font-size: 12px; font-weight: 500; border: 1.5px solid var(--heco-primary-400); border-radius: 20px; background: var(--heco-primary-50); color: var(--heco-primary-700); cursor: pointer; transition: all 0.2s;">
+                        <i class="bi bi-moon"></i> Rest & Relax
+                    </button>
+                    <button type="button" class="day-type-btn" data-type="activity" style="padding: 6px 14px; font-size: 12px; font-weight: 500; border: 1.5px solid var(--heco-neutral-200); border-radius: 20px; background: #fff; color: var(--heco-neutral-600); cursor: pointer; transition: all 0.2s;">
+                        <i class="bi bi-lightning"></i> Activity Day
+                    </button>
+                </div>
+                <label style="font-size: 13px; font-weight: 600; color: var(--heco-neutral-700); margin-bottom: 8px; display: block;">
+                    Description <span style="font-weight: 400; color: var(--heco-neutral-400);">(optional)</span>
+                </label>
+                <textarea id="addDayDescription" class="form-control" rows="2"
+                    placeholder="e.g. A rest day with lakeside walk and local food tasting..."
                     style="font-size: 13px; border-radius: 10px; resize: none; border: 1.5px solid var(--heco-primary-200); transition: border-color 0.2s, box-shadow 0.2s;"
                     onfocus="this.style.borderColor='var(--heco-primary-400)';this.style.boxShadow='0 0 0 3px rgba(34,197,94,0.1)'"
                     onblur="this.style.borderColor='var(--heco-primary-200)';this.style.boxShadow='none'"></textarea>
-                <p style="font-size: 11px; color: var(--heco-neutral-400); margin: 8px 0 0; line-height: 1.4;">
-                    <i class="bi bi-info-circle"></i> Describe your plans and AI will build the day for you
-                </p>
             </div>
             {{-- Footer --}}
             <div style="padding: 0 20px 16px; display: flex; gap: 10px; justify-content: flex-end;">
@@ -1904,7 +1913,8 @@ jQuery(function() {
                 if (thumb) html += '<img src="' + thumb + '" alt="" class="exp-thumb">';
                 html += '<div class="exp-info">';
                 html += '<span class="exp-name">' + name + '</span>';
-                html += '<span class="exp-id">Experience ID : ' + item.experience_id + '</span>';
+                var price = exp && exp.base_cost_per_person ? fmtCurrency(exp.base_cost_per_person) + '/person' : '';
+                if (price) html += '<span style="font-size:0.65rem; color:var(--heco-primary-600); font-weight:500; margin-top:2px; display:block;">' + price + '</span>';
                 html += '</div>';
                 html += '<button class="btn-remove btn-remove-exp" data-exp-id="' + item.experience_id + '" title="Remove"><i class="bi bi-x"></i></button>';
                 html += '</div>';
@@ -1949,9 +1959,9 @@ jQuery(function() {
     function renderTimelineData(resp) {
         var days = resp.days || [];
 
-        // Filter out empty days (no experiences, no services, and no description)
+        // Filter out truly empty days (keep days with experiences, services, description, title, or a day_type)
         days = days.filter(function(day) {
-            return (day.experiences && day.experiences.length > 0) || (day.services && day.services.length > 0) || day.description;
+            return (day.experiences && day.experiences.length > 0) || (day.services && day.services.length > 0) || day.description || day.title || (day.day_type && day.day_type !== 'activity');
         });
 
         if (days.length === 0) {
@@ -2042,23 +2052,16 @@ jQuery(function() {
         }
 
         days.forEach(function(day, index) {
-            // Add-day button before the first day
-            if (index === 0) {
+            // Insert-day button between days
+            if (index > 0) {
+                var prevDay = days[index - 1];
                 html += '<div class="timeline-add-day-row">';
                 html += '<div></div>';
                 html += '<div class="tl-insert-line">';
-                html += '<button class="btn-insert-day" data-after-day="0" title="Add a day before Day 1">';
+                html += '<button class="btn-insert-day" data-after-day="' + (prevDay.day_number || index) + '" title="Add a day here">';
                 html += '<i class="bi bi-plus-lg"></i>';
                 html += '</button>';
                 html += '</div>';
-                html += '<div></div>';
-                html += '</div>';
-            }
-            // Simple connector line between days (no buttons)
-            if (index > 0) {
-                html += '<div class="timeline-add-day-row">';
-                html += '<div></div>';
-                html += '<div class="tl-insert-line"></div>';
                 html += '<div></div>';
                 html += '</div>';
             }
@@ -2173,9 +2176,6 @@ jQuery(function() {
                     html += '</div>';
                     html += '<div class="timeline-exp-meta">';
                     if (de.start_time) html += '<span class="timeline-exp-time">' + de.start_time + (de.end_time ? ' - ' + de.end_time : '') + '</span>';
-                    if (de.cost_per_person && parseFloat(de.cost_per_person) > 0) {
-                        html += '<span class="timeline-exp-cost">' + fmtCurrency(de.cost_per_person) + '/person</span>';
-                    }
                     html += '</div>';
                     html += '</div>';
                 });
@@ -2184,20 +2184,20 @@ jQuery(function() {
             // Day services (icons shown in left column)
 
             if ((!day.experiences || !day.experiences.length) && (!day.services || !day.services.length)) {
-                var emptyDayText = 'Travel / Transition Day';
-                var emptyDayDesc = '';
-                if (day.description) {
-                    emptyDayDesc = day.description;
-                } else if (day.notes) {
-                    emptyDayDesc = day.notes;
-                }
+                var dayTypeMap = {
+                    arrival: { icon: 'bi-airplane', label: 'Arrival & Acclimatization', desc: 'Rest, settle in, and prepare for your adventure' },
+                    departure: { icon: 'bi-airplane', label: 'Departure Day', desc: 'Check out and travel back to your starting location' },
+                    rest: { icon: 'bi-moon', label: 'Rest & Relax', desc: 'Take it easy — recharge for the next adventure' },
+                    travel: { icon: 'bi-signpost-split', label: 'Travel Day', desc: 'Travel between destinations' },
+                    free: { icon: 'bi-compass', label: 'Free Day — Explore Nearby', desc: 'Explore at your own pace, discover local culture' },
+                    activity: { icon: 'bi-lightning', label: 'Activity Day', desc: 'Planned activities for the day' },
+                };
+                var dt = dayTypeMap[day.day_type] || dayTypeMap['travel'];
+                var emptyDayText = day.title || dt.label;
+                var emptyDayDesc = day.description || day.notes || dt.desc;
                 html += '<div style="text-align: center; padding: var(--space-3);">';
-                html += '<p style="font-size: var(--text-sm); color: var(--heco-green, #2d6a4f); font-weight: 600; margin: 0;"><i class="bi bi-signpost-split"></i> ' + emptyDayText + '</p>';
-                if (emptyDayDesc) {
-                    html += '<p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 4px 0 0;">' + emptyDayDesc + '</p>';
-                } else {
-                    html += '<p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 4px 0 0;">Rest, travel between destinations, or explore at your own pace</p>';
-                }
+                html += '<p style="font-size: var(--text-sm); color: var(--heco-green, #2d6a4f); font-weight: 600; margin: 0;"><i class="bi ' + dt.icon + '"></i> ' + emptyDayText + '</p>';
+                html += '<p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 4px 0 0;">' + emptyDayDesc + '</p>';
                 html += '</div>';
             }
 
@@ -2229,6 +2229,7 @@ jQuery(function() {
             jQuery('#prAccommodation').text(fmtCurrency(p.accommodation_cost));
             jQuery('#prGuide').text(fmtCurrency(p.guide_cost));
             jQuery('#prActivities').text(fmtCurrency(p.activity_cost));
+            jQuery('#prExtraDays').text(fmtCurrency(p.extra_day_cost));
             jQuery('#prOther').text(fmtCurrency(p.other_cost));
             jQuery('#prSubtotal').text(fmtCurrency(p.subtotal));
             jQuery('#prRP').text(fmtCurrency(p.margin_rp_amount));
@@ -2336,6 +2337,12 @@ jQuery(function() {
         if (chatSection) chatSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    // Day type selector in Add Day modal
+    jQuery(document).on('click', '.day-type-btn', function() {
+        jQuery('.day-type-btn').css({ border: '1.5px solid var(--heco-neutral-200)', background: '#fff', color: 'var(--heco-neutral-600)' }).removeClass('active');
+        jQuery(this).css({ border: '1.5px solid var(--heco-primary-400)', background: 'var(--heco-primary-50)', color: 'var(--heco-primary-700)' }).addClass('active');
+    });
+
     // Insert Day — show popup for description, then send to AI
     var pendingInsertAfterDay = null;
     jQuery(document).on('click', '.btn-insert-day', function() {
@@ -2343,6 +2350,9 @@ jQuery(function() {
         pendingInsertAfterDay = jQuery(this).data('after-day');
         jQuery('#addDayModalSubtitle').text('Adding a new day after Day ' + pendingInsertAfterDay);
         jQuery('#addDayDescription').val('');
+        // Reset day type selector
+        jQuery('.day-type-btn').css({ border: '1.5px solid var(--heco-neutral-200)', background: '#fff', color: 'var(--heco-neutral-600)' }).removeClass('active');
+        jQuery('.day-type-btn[data-type="rest"]').css({ border: '1.5px solid var(--heco-primary-400)', background: 'var(--heco-primary-50)', color: 'var(--heco-primary-700)' }).addClass('active');
         var modal = new bootstrap.Modal(document.getElementById('addDayModal'));
         modal.show();
         setTimeout(function() { jQuery('#addDayDescription').focus(); }, 300);
@@ -2351,6 +2361,7 @@ jQuery(function() {
     jQuery('#addDayConfirmBtn').on('click', function() {
         if (pendingInsertAfterDay === null) return;
         var desc = jQuery('#addDayDescription').val().trim();
+        var dayType = jQuery('.day-type-btn.active').data('type') || 'rest';
         var btn = jQuery(this);
         var insertAfter = pendingInsertAfterDay;
         btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Adding...');
@@ -2358,18 +2369,18 @@ jQuery(function() {
             add_day_to_trip: 1,
             trip_id: tripId,
             after_day_number: insertAfter,
-            day_note: desc
+            day_note: desc,
+            day_type: dayType
         }, function(resp) {
             bootstrap.Modal.getInstance(document.getElementById('addDayModal')).hide();
             btn.prop('disabled', false).html('<i class="bi bi-plus-lg" style="margin-right:4px"></i> Add Day');
             showAlert('Day added successfully!', 'success');
             loadTimeline();
             loadPricing();
-            // Notify AI about the added day
             var newDayNum = parseInt(insertAfter) + 1;
-            var chatMsg = 'I have added a new day (Day ' + newDayNum + ') to my trip' + (insertAfter > 0 ? ' after Day ' + insertAfter : ' at the beginning') + '.';
-            if (desc) chatMsg += ' Note: ' + desc;
-            sendAiMessage(chatMsg);
+            var dayTypeLabel = jQuery('.day-type-btn.active').text().trim() || 'new day';
+            appendChatMsg('assistant', 'Added **' + dayTypeLabel + '** as Day ' + newDayNum + ' to your trip.');
+            scrollChat();
             pendingInsertAfterDay = null;
         }, function() {
             btn.prop('disabled', false).html('<i class="bi bi-plus-lg" style="margin-right:4px"></i> Add Day');

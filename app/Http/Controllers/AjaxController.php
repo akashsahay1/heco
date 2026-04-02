@@ -503,6 +503,9 @@ class AjaxController extends Controller
             if ($request->has('get_user_trips')) {
                 return $this->getUserTrips($request);
             }
+            if ($request->has('reopen_trip')) {
+                return $this->reopenTrip($request);
+            }
             if ($request->has('erase_trip')) {
                 return $this->eraseTrip($request);
             }
@@ -1223,6 +1226,7 @@ class AjaxController extends Controller
                 ->get()
                 ->map(fn($d) => [
                     'day' => $d->day_number,
+                    'type' => $d->day_type ?: 'activity',
                     'title' => $d->title ?: null,
                     'date' => $d->date?->toDateString(),
                     'experiences' => $d->experiences->map(fn($e) => $e->experience?->name)->filter()->values(),
@@ -1651,7 +1655,12 @@ class AjaxController extends Controller
         if (!$trip) return response()->json(["days" => []]);
 
         $days = $trip->tripDays()->with(["experiences.experience.days", "services"])->get();
-        return response()->json(["days" => $days, "start_date" => $trip->start_date?->toDateString()]);
+        return response()->json([
+            "days" => $days,
+            "start_date" => $trip->start_date?->toDateString(),
+            "trip_status" => $trip->status,
+            "trip_stage" => $trip->stage,
+        ]);
     }
 
     protected function getChatHistory(Request $request): JsonResponse
@@ -1948,6 +1957,9 @@ class AjaxController extends Controller
     {
         $afterDayNumber = $request->input('after_day_number');
         $dayNote = $request->input('day_note');
+        $dayType = $request->input('day_type', 'rest');
+        $validDayTypes = ['arrival', 'activity', 'rest', 'travel', 'departure', 'free'];
+        if (!in_array($dayType, $validDayTypes)) $dayType = 'rest';
 
         if (!Auth::check()) {
             $gt = $this->guestTrip();
@@ -1994,19 +2006,33 @@ class AjaxController extends Controller
                     $d->update(['day_number' => $d->day_number + 1, 'sort_order' => $d->day_number]);
                 });
 
+            $dayTypeLabels = ['rest' => 'Rest & Relax', 'travel' => 'Travel Day', 'free' => 'Explore Nearby', 'activity' => 'Activity Day', 'arrival' => 'Arrival Day', 'departure' => 'Departure Day'];
             $day = TripDay::create([
                 "trip_id" => $trip->id,
                 "day_number" => $afterDayNumber + 1,
                 "sort_order" => $afterDayNumber,
+                "title" => $dayTypeLabels[$dayType] ?? null,
                 "description" => $dayNote,
+                "day_type" => $dayType,
             ]);
         } else {
             $maxDay = $trip->tripDays()->max("day_number") ?? 0;
+            $dayTypeLabels = ['rest' => 'Rest & Relax', 'travel' => 'Travel Day', 'free' => 'Explore Nearby', 'activity' => 'Activity Day', 'arrival' => 'Arrival Day', 'departure' => 'Departure Day'];
             $day = TripDay::create([
                 "trip_id" => $trip->id,
                 "day_number" => $maxDay + 1,
                 "sort_order" => $maxDay,
+                "title" => $dayTypeLabels[$dayType] ?? null,
+                "description" => $dayNote,
+                "day_type" => $dayType,
             ]);
+        }
+
+        // Auto-update day date and trip end_date
+        if ($trip->start_date) {
+            $day->update(['date' => $trip->start_date->addDays($day->day_number - 1)]);
+            $maxDay = $trip->tripDays()->max('day_number');
+            $trip->update(['end_date' => $trip->start_date->addDays($maxDay - 1)]);
         }
 
         return response()->json(["success" => true, "day" => $day]);
@@ -2103,6 +2129,17 @@ class AjaxController extends Controller
             ->orderBy("updated_at", "desc")
             ->get();
         return response()->json(["trips" => $trips]);
+    }
+
+    protected function reopenTrip(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        $trip = Trip::where("id", $request->trip_id)->where("user_id", $user->id)->first();
+        if (!$trip) {
+            return response()->json(["error" => "Trip not found"], 404);
+        }
+        $trip->update(["status" => "not_confirmed", "stage" => "open"]);
+        return response()->json(["success" => true]);
     }
 
     protected function eraseTrip(Request $request): JsonResponse
@@ -2372,13 +2409,27 @@ class AjaxController extends Controller
         }
 
         // Calculate duration and build day-to-experience mapping
+        // Day 1 = arrival day (flexible), then experiences, then departure day
         $dayMapping = [];
         $dayNum = 1;
+
+        // Arrival day
+        $dayMapping[] = [
+            "day" => $dayNum,
+            "day_type" => "arrival",
+            "experience_id" => null,
+            "experience_name" => null,
+            "note" => "Arrival & acclimatization day — traveller can rest, explore nearby, or do light activities",
+        ];
+        $dayNum++;
+
+        // Experience days
         foreach ($experiences as $exp) {
             $expDays = ($exp["duration_type"] === "multi_day") ? ($exp["duration_days"] ?? 1) : 1;
             for ($d = 1; $d <= $expDays; $d++) {
                 $dayMapping[] = [
                     "day" => $dayNum,
+                    "day_type" => "activity",
                     "experience_id" => $exp["experience_id"],
                     "experience_name" => $exp["name"],
                     "day_of_experience" => $d,
@@ -2387,6 +2438,17 @@ class AjaxController extends Controller
                 $dayNum++;
             }
         }
+
+        // Departure day
+        $dayMapping[] = [
+            "day" => $dayNum,
+            "day_type" => "departure",
+            "experience_id" => null,
+            "experience_name" => null,
+            "note" => "Departure day — check out, travel back to starting location",
+        ];
+        $dayNum++;
+
         $totalDays = $dayNum - 1;
         $duration = max($totalDays, $request->get("duration", $totalDays));
 
@@ -2428,7 +2490,7 @@ class AjaxController extends Controller
             "pickup_preference" => $pickupPref ?: 'Not specified',
         ]);
 
-        $dayMappingInstruction = "\n\nDAY-TO-EXPERIENCE MAPPING (follow this EXACTLY — do NOT add, remove, or reorder days):\n" . json_encode($dayMapping) . "\n\nYou MUST create exactly " . $totalDays . " days. Each day MUST include the experience_id specified in the mapping above in its 'experiences' array. For multi-day experiences, write a unique title and notes for each day (e.g. Day 1 of 3: arrival and setup, Day 2 of 3: main activity, Day 3 of 3: wrap-up). Do NOT create extra arrival/departure days. Travel/pickup logistics should be handled as services within the existing days.";
+        $dayMappingInstruction = "\n\nDAY-TO-EXPERIENCE MAPPING (follow this EXACTLY — do NOT add, remove, or reorder days):\n" . json_encode($dayMapping) . "\n\nYou MUST create exactly " . $totalDays . " days. Rules:\n- Day 1 is ARRIVAL day (day_type=arrival): title should be 'Arrival & Acclimatization', no experiences, suggest rest/explore options in notes.\n- Last day is DEPARTURE day (day_type=departure): title should be 'Departure Day', no experiences, include checkout/travel notes.\n- Activity days: MUST include the experience_id from the mapping. For multi-day experiences, write unique title/notes per day.\n- Include 'day_type' field in each day's JSON output (arrival/activity/departure).";
 
         $messages = [];
         if ($promptData) {

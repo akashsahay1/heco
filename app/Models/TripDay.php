@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class TripDay extends Model
 {
     protected $fillable = [
-        'trip_id', 'day_number', 'date', 'title', 'description',
+        'trip_id', 'day_number', 'date', 'title', 'description', 'day_type',
         'is_experience_day', 'experience_group_id', 'is_locked', 'sort_order',
     ];
 

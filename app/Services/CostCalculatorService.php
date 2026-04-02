@@ -59,10 +59,25 @@ class CostCalculatorService
         $activityCost = 0;
         $otherCost = 0;
 
+        // Extra day costs — different rates for rest and activity days
+        $restDayCostPerPerson = (float) Setting::getValue('rest_day_cost_per_person', 2000);
+        $activityDayCostPerPerson = (float) Setting::getValue('activity_day_cost_per_person', 5000);
+        $adults = max($trip->adults, 1);
+        $children = $trip->children ?: 0;
+        $extraDayCost = 0;
+
         // Track which experiences have already been costed (charge once per experience, not per day)
         $chargedExperienceIds = [];
 
         foreach ($trip->tripDays as $day) {
+            // Charge extra days (days without experiences)
+            $hasExperiences = $day->experiences->isNotEmpty();
+            if (!$hasExperiences && $day->day_type) {
+                $costPerPerson = in_array($day->day_type, ['activity', 'free']) ? $activityDayCostPerPerson : $restDayCostPerPerson;
+                $dayCost = ($costPerPerson * $adults) + ($costPerPerson * 0.5 * $children);
+                $extraDayCost += $dayCost;
+            }
+
             foreach ($day->services as $service) {
                 $cost = $service->cost;
                 match ($service->service_type) {
@@ -94,7 +109,7 @@ class CostCalculatorService
             }
         }
 
-        $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost;
+        $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
 
         $rpPercent = $trip->margin_rp_percent ?: (float) Setting::getValue('default_rp_margin_percent', 5);
         $hrpPercent = $trip->margin_hrp_percent ?: (float) Setting::getValue('default_hrp_margin_percent', 10);
@@ -114,6 +129,7 @@ class CostCalculatorService
             'accommodation_cost' => $accommodationCost,
             'guide_cost' => $guideCost,
             'activity_cost' => $activityCost,
+            'extra_day_cost' => $extraDayCost,
             'other_cost' => $otherCost,
             'total_cost' => $totalCost,
             'margin_rp_percent' => $rpPercent,

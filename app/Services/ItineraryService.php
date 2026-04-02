@@ -27,10 +27,16 @@ class ItineraryService
             $dayNumber = 0;
             if (isset($aiResponse['days']) && is_array($aiResponse['days'])) {
                 foreach ($aiResponse['days'] as $index => $dayData) {
-                    // Skip empty days (no experiences and no services)
+                    // Determine day type
+                    $dayType = $dayData['day_type'] ?? 'activity';
+                    $validDayTypes = ['arrival', 'activity', 'rest', 'travel', 'departure', 'free'];
+                    if (!in_array($dayType, $validDayTypes)) $dayType = 'activity';
+
                     $hasExperiences = isset($dayData['experiences']) && is_array($dayData['experiences']) && !empty($dayData['experiences']);
                     $hasServices = isset($dayData['services']) && is_array($dayData['services']) && !empty($dayData['services']);
-                    if (!$hasExperiences && !$hasServices) {
+
+                    // Keep arrival/departure/rest/travel days even if empty
+                    if (!$hasExperiences && !$hasServices && $dayType === 'activity') {
                         continue;
                     }
 
@@ -40,7 +46,8 @@ class ItineraryService
                         'day_number' => $dayNumber,
                         'date' => $trip->start_date ? $trip->start_date->addDays($dayNumber - 1) : null,
                         'title' => $dayData['title'] ?? 'Day ' . $dayNumber,
-                        'description' => $dayData['description'] ?? null,
+                        'description' => $dayData['description'] ?? ($dayData['notes'] ?? null),
+                        'day_type' => $dayType,
                         'sort_order' => $dayNumber - 1,
                     ]);
 
