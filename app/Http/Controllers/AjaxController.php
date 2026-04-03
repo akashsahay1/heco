@@ -2535,9 +2535,24 @@ class AjaxController extends Controller
         $parsed = ["days" => []];
         foreach ($dayMapping as $idx => $dm) {
             $aiDay = $aiDays[$idx] ?? [];
+            $dayType = $dm["day_type"] ?? "activity";
+
+            // Arrival/departure days have no experiences
+            if (in_array($dayType, ['arrival', 'departure'])) {
+                $defaultTitle = $dayType === 'arrival' ? 'Arrival & Acclimatization' : 'Departure Day';
+                $parsed["days"][] = [
+                    "title" => $aiDay["title"] ?? $defaultTitle,
+                    "description" => $aiDay["description"] ?? $aiDay["notes"] ?? ($dm["note"] ?? null),
+                    "day_type" => $dayType,
+                    "experiences" => [],
+                    "services" => [],
+                ];
+                continue;
+            }
+
             $expName = $dm["experience_name"];
-            $dayOfExp = $dm["day_of_experience"];
-            $totalExpDays = $dm["total_experience_days"];
+            $dayOfExp = $dm["day_of_experience"] ?? 1;
+            $totalExpDays = $dm["total_experience_days"] ?? 1;
             $defaultTitle = $totalExpDays > 1
                 ? $expName . " — Day " . $dayOfExp . " of " . $totalExpDays
                 : $expName;
@@ -2546,6 +2561,7 @@ class AjaxController extends Controller
                 "title" => $aiDay["title"] ?? $defaultTitle,
                 "description" => $aiDay["description"] ?? $aiDay["notes"] ?? null,
                 "notes" => $aiDay["notes"] ?? null,
+                "day_type" => "activity",
                 "experiences" => [[
                     "experience_id" => $dm["experience_id"],
                     "name" => $expName,
