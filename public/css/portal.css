@@ -2101,6 +2101,9 @@
     .journey-exp-item .exp-id {
         font-size: 10px;
         color: var(--color-text-muted);
+        font-weight: 500;
+        display: block;
+        white-space: nowrap;
     }
 
     /* ============================================
@@ -2174,6 +2177,15 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+    .timeline-day-time {
+        font-size: 11px;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+    }
+    .timeline-day-time .bi {
+        font-size: 10px;
+        margin-right: 2px;
     }
 
     /* Center column — vertical line + dot */
@@ -2338,6 +2350,50 @@
 
     .service-icon-item i.not-included {
         color: var(--heco-error);
+    }
+
+    /* Experience group header — shown once before first day of an experience */
+    .timeline-exp-group-header {
+        display: grid;
+        grid-template-columns: 64px 20px 1fr;
+        padding: 2px 0;
+    }
+    .timeline-exp-group-header .tl-insert-line {
+        position: relative;
+    }
+    .timeline-exp-group-header .tl-insert-line::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 3px;
+        background: var(--heco-primary-300);
+    }
+    .timeline-exp-group-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: var(--text-sm);
+        font-weight: var(--font-bold);
+        color: var(--heco-green, #2d6a4f);
+        padding: 6px 12px;
+        background: linear-gradient(135deg, rgba(45,106,79,0.08), rgba(45,106,79,0.03));
+        border-radius: 6px;
+        border-left: 3px solid var(--heco-green, #2d6a4f);
+    }
+    .timeline-exp-group-price {
+        font-size: 12px;
+        font-weight: var(--font-semibold);
+        color: var(--heco-primary-600, #166534);
+        white-space: nowrap;
+    }
+    .timeline-exp-group-id {
+        font-size: 11px;
+        font-weight: var(--font-medium);
+        color: var(--color-text-muted);
+        margin-left: 4px;
     }
 
     /* Insert-day row between days */

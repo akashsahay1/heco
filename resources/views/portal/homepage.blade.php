@@ -1913,8 +1913,7 @@ jQuery(function() {
                 if (thumb) html += '<img src="' + thumb + '" alt="" class="exp-thumb">';
                 html += '<div class="exp-info">';
                 html += '<span class="exp-name">' + name + '</span>';
-                var price = exp && exp.base_cost_per_person ? fmtCurrency(exp.base_cost_per_person) + '/person' : '';
-                if (price) html += '<span style="font-size:0.65rem; color:var(--heco-primary-600); font-weight:500; margin-top:2px; display:block;">' + price + '</span>';
+                html += '<span class="exp-id">exp id: #' + item.experience_id + '</span>';
                 html += '</div>';
                 html += '<button class="btn-remove btn-remove-exp" data-exp-id="' + item.experience_id + '" title="Remove"><i class="bi bi-x"></i></button>';
                 html += '</div>';
@@ -2051,6 +2050,7 @@ jQuery(function() {
             html += '<div class="trip-id-display">Trip ID : ' + tripId + '</div>';
         }
 
+        var shownExpGroupNames = {}; // track experience names shown as group headers across all days
         days.forEach(function(day, index) {
             // Insert-day button between days
             if (index > 0) {
@@ -2064,6 +2064,25 @@ jQuery(function() {
                 html += '</div>';
                 html += '<div></div>';
                 html += '</div>';
+            }
+
+            // Experience group header — show experience name only before its first day
+            if (day.experiences && day.experiences.length) {
+                var firstExp = day.experiences[0].experience;
+                var firstExpName = firstExp ? firstExp.name : '';
+                if (firstExpName && !shownExpGroupNames[firstExpName]) {
+                    shownExpGroupNames[firstExpName] = true;
+                    html += '<div class="timeline-exp-group-header">';
+                    html += '<div></div>';
+                    html += '<div class="tl-insert-line"></div>';
+                    var firstExpId = firstExp ? firstExp.id : '';
+                    var firstExpPrice = firstExp && firstExp.base_cost_per_person ? fmtCurrency(firstExp.base_cost_per_person) + '/person' : '';
+                    html += '<div class="timeline-exp-group-title">';
+                    html += '<span>' + firstExpName + (firstExpId ? ' <span class="timeline-exp-group-id">#' + firstExpId + '</span>' : '') + '</span>';
+                    if (firstExpPrice) html += '<span class="timeline-exp-group-price">' + firstExpPrice + '</span>';
+                    html += '</div>';
+                    html += '</div>';
+                }
             }
 
             // Get day-wise title from first experience (use occurrence-based matching)
@@ -2132,10 +2151,18 @@ jQuery(function() {
             // Right column: content
             html += '<div class="timeline-day-content">';
 
-            // Header row (title on left, actions on right)
+            // Collect time from first experience for day header
+            var dayTime = '';
+            if (day.experiences && day.experiences.length) {
+                var firstDe2 = day.experiences[0];
+                if (firstDe2.start_time) dayTime = firstDe2.start_time + (firstDe2.end_time ? ' - ' + firstDe2.end_time : '');
+            }
+
+            // Header row (title on left, time + actions on right)
             html += '<div class="timeline-day-header">';
             if (dayTitle) html += '<span class="timeline-day-title" title="' + dayTitle + '">' + dayTitle + '</span>';
-            html += '<div style="display:flex;align-items:center;gap:4px;margin-left:auto;">';
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-left:auto;">';
+            if (dayTime) html += '<span class="timeline-day-time"><i class="bi bi-clock"></i> ' + dayTime + '</span>';
             if (day.is_locked) html += '<i class="bi bi-lock" style="color: var(--heco-warning); font-size: 13px;" title="Locked"></i>';
             if (!day.experiences || !day.experiences.length) {
                 html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
@@ -2161,7 +2188,8 @@ jQuery(function() {
                     html += '<div class="timeline-exp-item">';
                     html += '<i class="bi ' + expIcon + '"></i>';
                     html += '<div class="timeline-exp-details">';
-                    if (!alreadyShown) html += '<span class="timeline-exp-name">' + eName + '</span>';
+                    // Experience name shown as group header above first day, so skip here if already shown as group
+                    if (!alreadyShown && !shownExpGroupNames[eName]) html += '<span class="timeline-exp-name">' + eName + '</span>';
 
                     if (exp && exp.days && exp.days.length) {
                         var edNum = de._expDayNum || 1;
@@ -2173,9 +2201,6 @@ jQuery(function() {
                         html += '<div class="timeline-exp-notes">' + toBulletHtml(de.notes) + '</div>';
                     }
 
-                    html += '</div>';
-                    html += '<div class="timeline-exp-meta">';
-                    if (de.start_time) html += '<span class="timeline-exp-time">' + de.start_time + (de.end_time ? ' - ' + de.end_time : '') + '</span>';
                     html += '</div>';
                     html += '</div>';
                 });
