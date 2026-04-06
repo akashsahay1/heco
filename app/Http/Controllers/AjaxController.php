@@ -44,6 +44,7 @@ use App\Services\CostCalculatorService;
 use App\Services\LeadService;
 use App\Services\ImpactCalculatorService;
 use App\Services\SpAvailabilityService;
+use App\Services\RazorpayService;
 
 class AjaxController extends Controller
 {
@@ -494,6 +495,15 @@ class AjaxController extends Controller
             if ($request->has('get_trip_pricing')) {
                 return $this->getTripPricing($request);
             }
+            if ($request->has('create_razorpay_order')) {
+                return $this->createRazorpayOrder($request);
+            }
+            if ($request->has('verify_razorpay_payment')) {
+                return $this->verifyRazorpayPayment($request);
+            }
+            if ($request->has('get_traveller_payment_history')) {
+                return $this->getTravellerPaymentHistory($request);
+            }
             if ($request->has('get_trip_impact')) {
                 return $this->getTripImpact($request);
             }
@@ -855,7 +865,7 @@ class AjaxController extends Controller
 
             // Check if traveller has any planned journey
             $hasTrip = $syncedTripId || ($user->isTraveller() && $user->trips()
-                ->whereIn('status', ['draft', 'not_confirmed'])
+                ->whereIn('status', ['not_confirmed'])
                 ->where(fn($q) => $q->whereHas('selectedExperiences')->orWhereHas('tripDays'))
                 ->exists());
 
@@ -2078,6 +2088,14 @@ class AjaxController extends Controller
 
         $calculator = app(CostCalculatorService::class);
         $pricing = $calculator->calculate($trip);
+
+        // Include payment balance for portal
+        $totalPaid = $trip->travellerPayments()
+            ->where('payment_status', 'paid')
+            ->sum('amount');
+        $pricing['total_paid'] = $totalPaid;
+        $pricing['balance_due'] = max(0, ($pricing['final_price'] ?? 0) - $totalPaid);
+
         return response()->json(["success" => true, "pricing" => $pricing]);
     }
 
@@ -2125,6 +2143,7 @@ class AjaxController extends Controller
     {
         $user = Auth::user();
         $trips = Trip::where("user_id", $user->id)
+            ->where("status", "!=", "cancelled")
             ->with(["tripRegions.region", "selectedExperiences.experience"])
             ->orderBy("updated_at", "desc")
             ->get();
@@ -2187,7 +2206,7 @@ class AjaxController extends Controller
 
         // Find or create a trip for the logged-in user
         $trip = Trip::where("user_id", $user->id)
-            ->whereIn("status", ["draft", "not_confirmed"])
+            ->whereIn("status", ["not_confirmed"])
             ->orderBy("updated_at", "desc")
             ->first();
 
@@ -2195,8 +2214,8 @@ class AjaxController extends Controller
             $trip = Trip::create(array_merge($guestDetails, [
                 "trip_id" => Trip::generateTripId(),
                 "user_id" => $user->id,
-                "status" => "draft",
-                "stage" => "traveller_exploring",
+                "status" => "not_confirmed",
+                "stage" => "open",
             ]));
         } else {
             // Update existing trip with guest details
@@ -2293,7 +2312,7 @@ class AjaxController extends Controller
         ];
 
         $trip = Trip::where("user_id", $user->id)
-            ->whereIn("status", ["draft", "not_confirmed"])
+            ->whereIn("status", ["not_confirmed"])
             ->orderBy("updated_at", "desc")
             ->first();
 
@@ -2301,8 +2320,8 @@ class AjaxController extends Controller
             $trip = Trip::create(array_merge($guestDetails, [
                 "trip_id" => Trip::generateTripId(),
                 "user_id" => $user->id,
-                "status" => "draft",
-                "stage" => "traveller_exploring",
+                "status" => "not_confirmed",
+                "stage" => "open",
             ]));
         } else {
             $trip->update($guestDetails);
@@ -2958,17 +2977,17 @@ class AjaxController extends Controller
 
     protected function getTravellerPaymentsOverview(Request $request): JsonResponse
     {
-        $trips = Trip::whereIn("status", ["confirmed", "running", "completed"])
+        $trips = Trip::whereHas("travellerPayments")
             ->with(["user", "travellerPayments"])
             ->get()
             ->map(function ($trip) {
-                $totalPaid = $trip->travellerPayments->sum("amount");
+                $totalPaid = $trip->travellerPayments->where('payment_status', 'paid')->sum("amount");
                 return [
-                    "trip_id" => $trip->trip_id,
-                    "traveller" => $trip->user->full_name ?? $trip->user->email,
-                    "final_price" => $trip->final_price,
+                    "trip" => ["id" => $trip->id, "trip_id" => $trip->trip_id],
+                    "user" => ["full_name" => $trip->user->full_name ?? '', "email" => $trip->user->email ?? ''],
+                    "total_due" => $trip->final_price ?? 0,
                     "total_paid" => $totalPaid,
-                    "balance" => $trip->final_price - $totalPaid,
+                    "balance" => ($trip->final_price ?? 0) - $totalPaid,
                     "status" => $trip->status,
                 ];
             });
@@ -3470,6 +3489,96 @@ class AjaxController extends Controller
         app(LeadService::class)->checkPaymentAndTransition($trip);
 
         return response()->json(["success" => true]);
+    }
+
+    protected function createRazorpayOrder(Request $request): JsonResponse
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(["error" => "Please log in to make a payment."], 401);
+            }
+
+            $trip = $this->resolveTrip($request);
+            if (!$trip) {
+                return response()->json(["error" => "Trip not found."], 404);
+            }
+
+            $amountInRupees = (float) ($request->amount ?: $trip->final_price);
+            if ($amountInRupees <= 0) {
+                return response()->json(["error" => "Invalid payment amount."], 422);
+            }
+
+            $razorpay = app(RazorpayService::class);
+            $order = $razorpay->createOrder(
+                (int) round($amountInRupees * 100),
+                'INR',
+                'trip_' . $trip->id . '_' . time(),
+                ['trip_id' => (string) $trip->id, 'user_id' => (string) Auth::id()]
+            );
+
+            TravellerPayment::create([
+                'trip_id'            => $trip->id,
+                'user_id'            => Auth::id(),
+                'amount'             => $amountInRupees,
+                'payment_date'       => now()->toDateString(),
+                'mode'               => 'razorpay',
+                'razorpay_order_id'  => $order['id'],
+                'payment_status'     => 'pending',
+                'recorded_by'        => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success'  => true,
+                'order_id' => $order['id'],
+                'amount'   => (int) round($amountInRupees * 100),
+                'currency' => 'INR',
+                'key_id'   => config('services.razorpay.key_id'),
+                'name'     => Auth::user()->name,
+                'email'    => Auth::user()->email,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Razorpay order creation failed: ' . $e->getMessage());
+            return response()->json(["error" => "Payment order failed: " . $e->getMessage()], 500);
+        }
+    }
+
+    protected function verifyRazorpayPayment(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'razorpay_order_id'   => 'required|string',
+            'razorpay_payment_id' => 'required|string',
+            'razorpay_signature'  => 'required|string',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $razorpay = app(RazorpayService::class);
+        $verified = $razorpay->verifySignature(
+            $request->razorpay_order_id,
+            $request->razorpay_payment_id,
+            $request->razorpay_signature
+        );
+
+        $payment = TravellerPayment::where('razorpay_order_id', $request->razorpay_order_id)->first();
+        if (!$payment) {
+            return response()->json(["error" => "Payment record not found."], 404);
+        }
+
+        if ($verified) {
+            $payment->update([
+                'razorpay_payment_id' => $request->razorpay_payment_id,
+                'razorpay_signature'  => $request->razorpay_signature,
+                'payment_status'      => 'paid',
+            ]);
+
+            app(LeadService::class)->checkPaymentAndTransition($payment->trip);
+
+            return response()->json(['success' => true, 'message' => 'Payment verified successfully!']);
+        }
+
+        $payment->update(['payment_status' => 'failed']);
+        return response()->json(['error' => 'Payment verification failed.'], 400);
     }
 
     protected function getTravellerPaymentHistory(Request $request): JsonResponse

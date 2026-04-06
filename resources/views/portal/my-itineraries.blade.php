@@ -97,8 +97,13 @@ $(function() {
 
             var dateInfo = '';
             if (trip.start_date) {
-                dateInfo = trip.start_date;
-                if (trip.end_date) dateInfo += ' to ' + trip.end_date;
+                var sd = new Date(trip.start_date);
+                var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                dateInfo = sd.getDate() + ' ' + months[sd.getMonth()] + ' ' + sd.getFullYear();
+                if (trip.end_date) {
+                    var ed = new Date(trip.end_date);
+                    dateInfo += ' — ' + ed.getDate() + ' ' + months[ed.getMonth()] + ' ' + ed.getFullYear();
+                }
             }
 
             html += '<div class="col-md-6 col-lg-4">';
@@ -120,6 +125,7 @@ $(function() {
             }
             html += '</div>';
             html += '<div class="card-footer bg-transparent d-flex gap-2">';
+            html += '<a href="/trip/' + trip.id + '" class="btn btn-sm btn-outline-success"><i class="bi bi-eye"></i> View</a>';
             html += '<a href="/home?trip_id=' + trip.id + '" class="btn btn-sm btn-success flex-fill"><i class="bi bi-play-fill"></i> Resume</a>';
             html += '<button class="btn btn-sm btn-outline-danger btn-erase-trip" data-trip-id="' + trip.id + '" data-trip-name="' + tripName + '"><i class="bi bi-trash"></i> Erase</button>';
             html += '</div></div></div>';

@@ -172,7 +172,7 @@ function buildEntryTable(entries) {
 
 function loadTravellerPayments() {
     ajaxPost({ get_traveller_payments_overview: 1 }, function(resp) {
-        var items = resp.data || [];
+        var items = resp.payments || resp.data || [];
         var html = '';
         if (!items.length) {
             html = '<tr><td colspan="6" class="text-center text-muted">No traveller payments found</td></tr>';

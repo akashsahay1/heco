@@ -8,6 +8,7 @@ class TravellerPayment extends Model
 {
     protected $fillable = [
         'trip_id', 'user_id', 'amount', 'payment_date', 'mode', 'notes', 'recorded_by',
+        'razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature', 'payment_status',
     ];
 
     protected function casts(): array

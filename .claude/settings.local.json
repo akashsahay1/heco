@@ -93,7 +93,15 @@
       "Bash(echo \"App\\\\Models\\\\Trip::find\\(9\\)->update\\([''''adults'''' => 3, ''''children'''' => 1]\\); echo ''''Set 3 adults, 1 child'''';\")",
       "Bash(echo \"App\\\\Models\\\\TripDayExperience::whereHas\\(''''tripDay'''', fn\\($q\\) => $q->where\\(''''trip_id'''', 9\\)\\)->get\\([''''id'''',''''trip_day_id'''',''''experience_id'''',''''cost_per_person'''',''''total_cost'''']\\)->toArray\\(\\);\")",
       "Bash(echo \"App\\\\Models\\\\Trip::find\\(9, [''''id'''',''''status'''',''''stage'''']\\)->toArray\\(\\);\")",
-      "Bash(find /d/heco -name *PromptBuilder* -o -name *prompt*builder*)"
+      "Bash(find /d/heco -name *PromptBuilder* -o -name *prompt*builder*)",
+      "Bash(git checkout:*)",
+      "Bash(composer require:*)",
+      "Read(//c/Users/akash/AppData/Roaming/Composer/vendor/bin/**)",
+      "Read(//c/ProgramData/ComposerSetup/bin/**)",
+      "Read(//c/Users/akash/.config/herd/bin/**)",
+      "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\composer.bat\" require:*)",
+      "Bash(C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat artisan:*)",
+      "Bash(C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat:*)"
     ]
   }
 }

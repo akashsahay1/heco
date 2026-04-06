@@ -24,6 +24,15 @@ class TravellerController extends Controller
         return redirect("/home?trip_id=" . $trip->id);
     }
 
+    public function tripDetail(int $trip)
+    {
+        $trip = Trip::where('id', $trip)
+            ->where('user_id', auth()->id())
+            ->with(['tripRegions.region', 'selectedExperiences.experience'])
+            ->firstOrFail();
+        return view('portal.trip-detail', compact('trip'));
+    }
+
     public function wishlist()
     {
         return view("portal.wishlist");

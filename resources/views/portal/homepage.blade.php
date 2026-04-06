@@ -803,6 +803,31 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 </div>
                             </div>
 
+                            {{-- Pay Now --}}
+                            @auth
+                            <div class="detail-card" id="paymentCard" style="display:none;">
+                                <div class="detail-card-header"><i class="bi bi-credit-card"></i> Make Payment</div>
+                                <div class="detail-card-body">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span style="font-size:13px; color:var(--heco-neutral-600);">Amount Due</span>
+                                        <span id="payAmountDue" style="font-size:15px; font-weight:700; color:var(--heco-green);">--</span>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label style="font-size:12px; font-weight:600; color:var(--heco-neutral-600); margin-bottom:4px; display:block;">Pay Amount (INR)</label>
+                                        <input type="number" id="payAmountInput" class="form-control" min="1" step="0.01" placeholder="Enter amount"
+                                            style="font-size:14px; border-radius:8px; border:1.5px solid var(--heco-primary-200);">
+                                    </div>
+                                    <button id="btnPayNow" class="w-100"
+                                        style="padding:10px 20px; font-size:14px; font-weight:700; color:#fff; background:linear-gradient(135deg, var(--heco-primary-500), var(--heco-primary-600)); border:none; border-radius:10px; cursor:pointer; transition:all 0.2s; box-shadow:0 2px 8px rgba(22,163,74,0.25);">
+                                        <i class="bi bi-shield-lock me-1"></i> Pay Now
+                                    </button>
+                                    <p style="font-size:10px; color:var(--heco-neutral-400); text-align:center; margin:8px 0 0;">
+                                        Secured by Razorpay. UPI, Cards, Netbanking accepted.
+                                    </p>
+                                </div>
+                            </div>
+                            @endauth
+
                             {{-- Request Support --}}
                             <div class="detail-card">
                                 <div class="detail-card-body">
@@ -1016,6 +1041,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 jQuery(function() {
     var isLoggedIn = {{ auth()->check() ? 'true' : 'false' }};
     var tripId = {!! json_encode($tripId) !!};
+    window.tripId = tripId;
     var selectedExpIds = {!! json_encode($selectedExpIds) !!};
     var preferredExpIds = {!! json_encode($preferredExpIds) !!};
     var tripRegionId = {!! json_encode($tripRegionId) !!};
@@ -2260,6 +2286,16 @@ jQuery(function() {
             jQuery('#prRP').text(fmtCurrency(p.margin_rp_amount));
             jQuery('#prGST').text(fmtCurrency(p.gst_amount));
             jQuery('#prFinal').text(fmtCurrency(p.final_price));
+
+            // Show payment card if balance due
+            var balanceDue = parseFloat(p.balance_due) || parseFloat(p.final_price) || 0;
+            if (balanceDue > 0 && tripId && tripId !== 'guest') {
+                jQuery('#payAmountDue').text(fmtCurrency(balanceDue));
+                jQuery('#payAmountInput').attr('max', balanceDue).val(Math.round(balanceDue));
+                jQuery('#paymentCard').show();
+            } else {
+                jQuery('#paymentCard').hide();
+            }
         });
     }
 
@@ -2861,6 +2897,10 @@ jQuery(function() {
         if (typeof allDiscoverExps !== 'undefined' && allDiscoverExps.length) {
             updateMapMarkers(allDiscoverExps);
         }
+        // Update journey tab pricing and timeline with new currency
+        if (typeof loadPricing === 'function') loadPricing();
+        if (typeof loadTimeline === 'function') loadTimeline();
+        if (typeof loadSelectedExperiences === 'function') loadSelectedExperiences();
     });
 
     // ===================================
@@ -2914,4 +2954,69 @@ jQuery(function() {
     });
 });
 </script>
+
+{{-- Razorpay Checkout --}}
+@auth
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+jQuery(document).on('click', '#btnPayNow', function() {
+    var amount = parseFloat(jQuery('#payAmountInput').val());
+    if (!amount || amount <= 0) {
+        alert('Please enter a valid amount.');
+        return;
+    }
+
+    var btn = jQuery(this);
+    if (btn.prop('disabled')) return;
+    btn.prop('disabled', true).html('<i class="bi bi-hourglass-split me-1"></i> Processing...');
+
+    ajaxPost({ create_razorpay_order: 1, trip_id: window.tripId, amount: amount }, function(resp) {
+            var options = {
+                key: resp.key_id,
+                amount: resp.amount,
+                currency: resp.currency,
+                name: 'HECO Travel',
+                description: 'Trip Payment',
+                order_id: resp.order_id,
+                prefill: {
+                    name: resp.name || '',
+                    email: resp.email || ''
+                },
+                theme: { color: '#16a34a' },
+                handler: function(response) {
+                    // Verify payment on server
+                    ajaxPost({
+                        verify_razorpay_payment: 1,
+                        razorpay_order_id: response.razorpay_order_id,
+                        razorpay_payment_id: response.razorpay_payment_id,
+                        razorpay_signature: response.razorpay_signature
+                    }, function(vResp) {
+                        btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
+                        alert('Payment successful! ' + (vResp.message || ''));
+                        if (typeof loadPricing === 'function') loadPricing();
+                    }, function(err) {
+                        btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
+                        alert('Payment verification failed. Please contact support.');
+                    });
+                },
+                modal: {
+                    ondismiss: function() {
+                        btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
+                    }
+                }
+            };
+
+            var rzp = new Razorpay(options);
+            rzp.on('payment.failed', function(response) {
+                btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
+                alert('Payment failed: ' + (response.error.description || 'Unknown error'));
+            });
+            rzp.open();
+        }, function(err) {
+            btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
+            alert('Could not create payment order. Please try again.');
+        });
+});
+</script>
+@endauth
 @endsection

@@ -108,6 +108,7 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::middleware('auth')->group(function () {
         Route::get('/my-itineraries', [TravellerController::class, 'myItineraries'])->name('my-itineraries');
         Route::get('/my-itineraries/{trip_id}', [TravellerController::class, 'resumeTrip'])->name('trip.resume');
+        Route::get('/trip/{trip}', [TravellerController::class, 'tripDetail'])->name('trip.detail');
         Route::get('/wishlist', [TravellerController::class, 'wishlist'])->name('wishlist');
         Route::get('/profile', [TravellerController::class, 'profile'])->name('profile');
     });
