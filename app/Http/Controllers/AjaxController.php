@@ -79,7 +79,7 @@ class AjaxController extends Controller
             'trip_name' => 'My Trip',
             'status' => 'not_confirmed',
             'stage' => 'open',
-            'adults' => 1,
+            'adults' => 2,
             'children' => 0,
             'infants' => 0,
         ]);
@@ -92,7 +92,7 @@ class AjaxController extends Controller
     {
         return session('guest_trip', [
             'experience_ids' => [],
-            'adults' => 1,
+            'adults' => 2,
             'children' => 0,
             'infants' => 0,
             'trip_name' => 'My Trip',
@@ -267,8 +267,9 @@ class AjaxController extends Controller
                 $j++;
             }
 
-            // Skip days with no experiences and no description after filtering
-            if (empty($dayExperiences) && empty($day['description'])) continue;
+            // Skip empty activity days, but keep arrival/departure/rest/travel/free days
+            $dayType = $day['day_type'] ?? 'activity';
+            if (empty($dayExperiences) && empty($day['description']) && !in_array($dayType, ['arrival', 'departure', 'rest', 'travel', 'free'])) continue;
             $dayNum++;
 
             $days[] = [
@@ -276,6 +277,7 @@ class AjaxController extends Controller
                 'day_number' => $dayNum,
                 'title' => $day['title'] ?? 'Day ' . $dayNum,
                 'description' => $day['description'] ?? null,
+                'day_type' => $dayType,
                 'date' => $day['date'] ?? null,
                 'is_locked' => false,
                 'experiences' => $dayExperiences,
@@ -1203,6 +1205,7 @@ class AjaxController extends Controller
                     "user_id" => $user->id,
                     "status" => "not_confirmed",
                     "stage" => "open",
+                    "adults" => 2,
                 ]);
                 app(LeadService::class)->createOrGetLead($trip);
             }
@@ -1420,6 +1423,34 @@ class AjaxController extends Controller
             $detailsUpdated = true;
         } else {
             $detailsUpdated = false;
+        }
+
+        // Fallback: parse group size directly from user message if AI didn't extract it
+        $userMsg = $request->message ?? '';
+        if (preg_match('/(\d+)\s*adults?/i', $userMsg, $adultMatch)) {
+            $parsedAdults = (int) $adultMatch[1];
+            if ($parsedAdults > 0 && $parsedAdults <= 50) {
+                $fallbackDetails = ['adults' => $parsedAdults];
+                if (preg_match('/(\d+)\s*child(?:ren)?/i', $userMsg, $childMatch)) {
+                    $fallbackDetails['children'] = (int) $childMatch[1];
+                }
+                if (preg_match('/(\d+)\s*infants?/i', $userMsg, $infantMatch)) {
+                    $fallbackDetails['infants'] = (int) $infantMatch[1];
+                }
+                if ($isGuest) {
+                    $guestData = $this->guestTrip();
+                    foreach ($fallbackDetails as $k => $v) {
+                        $guestData[$k] = $v;
+                    }
+                    $this->saveGuestTrip($guestData);
+                } elseif ($trip) {
+                    $trip->update($fallbackDetails);
+                }
+                // Merge into extractedDetails so frontend gets updated values
+                if (!isset($extractedDetails)) $extractedDetails = [];
+                $extractedDetails = array_merge($extractedDetails, $fallbackDetails);
+                $detailsUpdated = true;
+            }
         }
 
         // Determine the current trip region (single-region constraint)
@@ -2024,6 +2055,7 @@ class AjaxController extends Controller
                 "title" => $dayTypeLabels[$dayType] ?? null,
                 "description" => $dayNote,
                 "day_type" => $dayType,
+                "added_by" => "traveller",
             ]);
         } else {
             $maxDay = $trip->tripDays()->max("day_number") ?? 0;
@@ -2035,17 +2067,20 @@ class AjaxController extends Controller
                 "title" => $dayTypeLabels[$dayType] ?? null,
                 "description" => $dayNote,
                 "day_type" => $dayType,
+                "added_by" => "traveller",
             ]);
         }
 
-        // Auto-update day date and trip end_date
+        // Recalculate dates for ALL days and update trip end_date
         if ($trip->start_date) {
-            $day->update(['date' => $trip->start_date->addDays($day->day_number - 1)]);
+            $trip->tripDays()->orderBy('day_number')->each(function ($d) use ($trip) {
+                $d->update(['date' => $trip->start_date->copy()->addDays($d->day_number - 1)]);
+            });
             $maxDay = $trip->tripDays()->max('day_number');
-            $trip->update(['end_date' => $trip->start_date->addDays($maxDay - 1)]);
+            $trip->update(['end_date' => $trip->start_date->copy()->addDays($maxDay - 1)]);
         }
 
-        return response()->json(["success" => true, "day" => $day]);
+        return response()->json(["success" => true, "day" => $day->fresh()]);
     }
 
     protected function removeDayFromTrip(Request $request): JsonResponse
@@ -2069,7 +2104,14 @@ class AjaxController extends Controller
 
         $days = $trip->tripDays()->orderBy("sort_order")->get();
         foreach ($days as $i => $day) {
-            $day->update(["day_number" => $i + 1, "sort_order" => $i]);
+            $newDate = $trip->start_date ? $trip->start_date->copy()->addDays($i) : null;
+            $day->update(["day_number" => $i + 1, "sort_order" => $i, "date" => $newDate]);
+        }
+
+        // Update trip end_date
+        if ($trip->start_date) {
+            $maxDay = $trip->tripDays()->max('day_number') ?: 0;
+            $trip->update(['end_date' => $maxDay > 0 ? $trip->start_date->copy()->addDays($maxDay - 1) : $trip->start_date]);
         }
 
         return response()->json(["success" => true]);
@@ -2383,6 +2425,20 @@ class AjaxController extends Controller
         // Build experience list from session or DB
         if ($isGuest) {
             $gt = $this->guestTrip();
+            // Sync group size from request if provided
+            if ($request->filled('adults')) {
+                $gt['adults'] = (int) $request->adults;
+                $gt['children'] = (int) ($request->children ?? $gt['children'] ?? 0);
+                $gt['infants'] = (int) ($request->infants ?? $gt['infants'] ?? 0);
+                $this->saveGuestTrip($gt);
+            }
+            // Start date and group size are required
+            if (empty($gt['start_date'])) {
+                return response()->json(["error" => "Please set a start date for your trip before generating the itinerary."], 422);
+            }
+            if (empty($gt['adults']) || $gt['adults'] < 1) {
+                return response()->json(["error" => "Please set the group size (adults) before generating the itinerary."], 422);
+            }
             $expIds = $gt['experience_ids'] ?? [];
             if (empty($expIds)) {
                 return response()->json(["error" => "Add experiences to your trip first"], 422);
@@ -2397,6 +2453,21 @@ class AjaxController extends Controller
             $trip = $this->resolveTrip($request);
             if (!$trip) {
                 return response()->json(["error" => "No trip found. Add experiences first."], 422);
+            }
+            // Start date and group size are required
+            if (!$trip->start_date) {
+                return response()->json(["error" => "Please set a start date for your trip before generating the itinerary."], 422);
+            }
+            if (!$trip->adults || $trip->adults < 1) {
+                return response()->json(["error" => "Please set the group size (adults) before generating the itinerary."], 422);
+            }
+            // Sync group size from request if provided
+            if ($request->filled('adults')) {
+                $trip->update([
+                    'adults' => (int) $request->adults,
+                    'children' => (int) ($request->children ?? $trip->children),
+                    'infants' => (int) ($request->infants ?? $trip->infants),
+                ]);
             }
             $trip->load(["selectedExperiences" => function ($q) { $q->orderBy('sort_order'); }, "selectedExperiences.experience.region"]);
             $expModels = $trip->selectedExperiences->pluck('experience')->filter();
@@ -2427,54 +2498,6 @@ class AjaxController extends Controller
             return response()->json(["error" => "Add experiences to your trip first"], 422);
         }
 
-        // Calculate duration and build day-to-experience mapping
-        // Day 1 = arrival day (flexible), then experiences, then departure day
-        $dayMapping = [];
-        $dayNum = 1;
-
-        // Arrival day
-        $dayMapping[] = [
-            "day" => $dayNum,
-            "day_type" => "arrival",
-            "experience_id" => null,
-            "experience_name" => null,
-            "note" => "Arrival & acclimatization day — traveller can rest, explore nearby, or do light activities",
-        ];
-        $dayNum++;
-
-        // Experience days
-        foreach ($experiences as $exp) {
-            $expDays = ($exp["duration_type"] === "multi_day") ? ($exp["duration_days"] ?? 1) : 1;
-            for ($d = 1; $d <= $expDays; $d++) {
-                $dayMapping[] = [
-                    "day" => $dayNum,
-                    "day_type" => "activity",
-                    "experience_id" => $exp["experience_id"],
-                    "experience_name" => $exp["name"],
-                    "day_of_experience" => $d,
-                    "total_experience_days" => $expDays,
-                ];
-                $dayNum++;
-            }
-        }
-
-        // Departure day
-        $dayMapping[] = [
-            "day" => $dayNum,
-            "day_type" => "departure",
-            "experience_id" => null,
-            "experience_name" => null,
-            "note" => "Departure day — check out, travel back to starting location",
-        ];
-        $dayNum++;
-
-        $totalDays = $dayNum - 1;
-        $duration = max($totalDays, $request->get("duration", $totalDays));
-
-        // Build regions list from experiences
-        $regions = collect($experiences)->pluck("region")->unique()->implode(", ");
-        $children = $isGuest ? ($gt['children'] ?? 0) : ($trip->children ?? 0);
-
         // Gather trip details (start/end location, dates, anchor point)
         if ($isGuest) {
             $startLocation = $gt['start_location'] ?? '';
@@ -2491,6 +2514,33 @@ class AjaxController extends Controller
             $anchorPoint = $trip->anchor_point ?? '';
             $pickupPref = $trip->pickup_preference ?? '';
         }
+
+        // Calculate duration and build day-to-experience mapping
+        $dayMapping = [];
+        $dayNum = 1;
+
+        // Experience days only (no separate arrival/departure days)
+        foreach ($experiences as $exp) {
+            $expDays = ($exp["duration_type"] === "multi_day") ? ($exp["duration_days"] ?? 1) : 1;
+            for ($d = 1; $d <= $expDays; $d++) {
+                $dayMapping[] = [
+                    "day" => $dayNum,
+                    "day_type" => "activity",
+                    "experience_id" => $exp["experience_id"],
+                    "experience_name" => $exp["name"],
+                    "day_of_experience" => $d,
+                    "total_experience_days" => $expDays,
+                ];
+                $dayNum++;
+            }
+        }
+
+        $totalDays = $dayNum - 1;
+        $duration = max($totalDays, $request->get("duration", $totalDays));
+
+        // Build regions list from experiences
+        $regions = collect($experiences)->pluck("region")->unique()->implode(", ");
+        $children = $isGuest ? ($gt['children'] ?? 0) : ($trip->children ?? 0);
 
         // Build prompt
         $promptBuilder = app(PromptBuilderService::class);
@@ -2509,7 +2559,7 @@ class AjaxController extends Controller
             "pickup_preference" => $pickupPref ?: 'Not specified',
         ]);
 
-        $dayMappingInstruction = "\n\nDAY-TO-EXPERIENCE MAPPING (follow this EXACTLY — do NOT add, remove, or reorder days):\n" . json_encode($dayMapping) . "\n\nYou MUST create exactly " . $totalDays . " days. Rules:\n- Day 1 is ARRIVAL day (day_type=arrival): title should be 'Arrival & Acclimatization', no experiences, suggest rest/explore options in notes.\n- Last day is DEPARTURE day (day_type=departure): title should be 'Departure Day', no experiences, include checkout/travel notes.\n- Activity days: MUST include the experience_id from the mapping. For multi-day experiences, write unique title/notes per day.\n- Include 'day_type' field in each day's JSON output (arrival/activity/departure).";
+        $dayMappingInstruction = "\n\nDAY-TO-EXPERIENCE MAPPING (follow this EXACTLY — do NOT add, remove, or reorder days):\n" . json_encode($dayMapping) . "\n\nYou MUST create exactly " . $totalDays . " days. Rules:\n- Activity days: MUST include the experience_id from the mapping. For multi-day experiences, write unique title/notes per day.\n- Include 'day_type' field in each day's JSON output (activity).";
 
         $messages = [];
         if ($promptData) {
@@ -2556,19 +2606,6 @@ class AjaxController extends Controller
             $aiDay = $aiDays[$idx] ?? [];
             $dayType = $dm["day_type"] ?? "activity";
 
-            // Arrival/departure days have no experiences
-            if (in_array($dayType, ['arrival', 'departure'])) {
-                $defaultTitle = $dayType === 'arrival' ? 'Arrival & Acclimatization' : 'Departure Day';
-                $parsed["days"][] = [
-                    "title" => $aiDay["title"] ?? $defaultTitle,
-                    "description" => $aiDay["description"] ?? $aiDay["notes"] ?? ($dm["note"] ?? null),
-                    "day_type" => $dayType,
-                    "experiences" => [],
-                    "services" => [],
-                ];
-                continue;
-            }
-
             $expName = $dm["experience_name"];
             $dayOfExp = $dm["day_of_experience"] ?? 1;
             $totalExpDays = $dm["total_experience_days"] ?? 1;
@@ -2605,9 +2642,10 @@ class AjaxController extends Controller
                     }));
                 }
                 unset($day);
-                // Remove days with no experiences left
+                // Remove activity days with no experiences left (keep arrival/departure/rest/travel/free days)
                 $parsed['days'] = array_values(array_filter($parsed['days'], function ($day) {
-                    return !empty($day['experiences']);
+                    $dayType = $day['day_type'] ?? 'activity';
+                    return !empty($day['experiences']) || in_array($dayType, ['arrival', 'departure', 'rest', 'travel', 'free']);
                 }));
             }
 
@@ -3441,11 +3479,11 @@ class AjaxController extends Controller
     {
         $trip = Trip::findOrFail($request->trip_id);
         $data = $request->only([
-            "trip_name", "traveller_origin", "adults", "children", "infants",
+            "trip_name", "status", "stage", "traveller_origin", "adults", "children", "infants",
             "start_date", "end_date", "start_location", "end_location",
             "pickup_location", "pickup_time", "drop_location", "drop_time",
             "operations_notes", "accommodation_comfort", "vehicle_comfort",
-            "guide_preference", "travel_pace", "budget_sensitivity",
+            "guide_preference", "travel_pace", "budget_sensitivity", "other_preferences",
             "margin_rp_percent", "margin_hrp_percent", "commission_hct_percent",
             "general_notes",
         ]);
@@ -3484,6 +3522,7 @@ class AjaxController extends Controller
             "mode" => $request->mode,
             "notes" => $request->notes,
             "recorded_by" => Auth::id(),
+            "payment_status" => "paid",
         ]);
 
         app(LeadService::class)->checkPaymentAndTransition($trip);
@@ -3533,8 +3572,9 @@ class AjaxController extends Controller
                 'amount'   => (int) round($amountInRupees * 100),
                 'currency' => 'INR',
                 'key_id'   => config('services.razorpay.key_id'),
-                'name'     => Auth::user()->name,
+                'name'     => Auth::user()->full_name,
                 'email'    => Auth::user()->email,
+                'contact'  => Auth::user()->mobile ?: '',
             ]);
         } catch (\Exception $e) {
             \Log::error('Razorpay order creation failed: ' . $e->getMessage());

@@ -140,7 +140,7 @@ function loadTravelerDetail(userId) {
                 else if (t.status === 'cancelled') statusClass = 'danger';
                 else if (t.status === 'ongoing') statusClass = 'info';
                 th += '<tr>';
-                th += '<td><a href="/trip-manager/' + (t.trip_id || t.id) + '" target="_blank">' + (t.trip_id || t.id || '-') + '</a></td>';
+                th += '<td><a href="/trip-manager/' + t.id + '" target="_blank">' + (t.trip_id || t.id || '-') + '</a></td>';
                 th += '<td><small>' + (t.start_date ? t.start_date.substring(0, 10) : '-') + '</small></td>';
                 th += '<td><small>' + (t.end_date ? t.end_date.substring(0, 10) : '-') + '</small></td>';
                 th += '<td><span class="badge bg-' + statusClass + '">' + (t.status || '-') + '</span></td>';
@@ -166,7 +166,7 @@ function loadTravelerDetail(userId) {
                 var amount = parseFloat(pay.amount) || 0;
                 totalPaid += amount;
                 ph += '<tr>';
-                ph += '<td><a href="/trip-manager/' + (pay.trip_id || '-') + '" target="_blank">' + (pay.trip_id || '-') + '</a></td>';
+                ph += '<td><a href="/trip-manager/' + (pay.trip ? pay.trip.id : pay.trip_id) + '" target="_blank">' + (pay.trip ? pay.trip.trip_id : pay.trip_id || '-') + '</a></td>';
                 ph += '<td class="text-end">' + amount.toLocaleString('en-IN') + '</td>';
                 ph += '<td><small>' + (pay.date ? pay.date.substring(0, 10) : (pay.created_at ? pay.created_at.substring(0, 10) : '-')) + '</small></td>';
                 ph += '<td>' + (pay.mode || pay.payment_mode || '-') + '</td>';

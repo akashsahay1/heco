@@ -293,7 +293,7 @@
                                         <th class="small">Date</th>
                                         <th class="small text-end">Amount</th>
                                         <th class="small">Mode</th>
-                                        <th class="small">Notes</th>
+                                        <th class="small">Status</th>
                                         <th class="small">Recorded By</th>
                                     </tr>
                                 </thead>

@@ -938,7 +938,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                     </button>
                 </div>
                 <label style="font-size: 13px; font-weight: 600; color: var(--heco-neutral-700); margin-bottom: 8px; display: block;">
-                    Description <span style="font-weight: 400; color: var(--heco-neutral-400);">(optional)</span>
+                    Description <span style="font-weight: 400; color: #dc3545;">*</span>
                 </label>
                 <textarea id="addDayDescription" class="form-control" rows="2"
                     placeholder="e.g. A rest day with lakeside walk and local food tasting..."
@@ -1376,6 +1376,20 @@ jQuery(function() {
 
     function autoGenerateItinerary() {
         if (!tripId || selectedExpIds.length === 0) return;
+        var startDate = jQuery('#tripStartDateInput').val();
+        var adults = parseInt(jQuery('#grpAdults').val()) || 0;
+        var missing = [];
+        if (!startDate) missing.push('<strong>start date</strong>');
+        if (!adults || adults < 1) missing.push('<strong>group size</strong> (adults)');
+        if (missing.length) {
+            jQuery('#timelineContainer').html(
+                '<div class="text-center py-4">' +
+                '<i class="bi bi-exclamation-circle" style="font-size:1.5rem; color:var(--heco-primary-500);"></i>' +
+                '<p style="font-size:0.875rem; color:#6c757d; margin-top:8px;">Please set ' + missing.join(' and ') + ' to generate the itinerary.</p>' +
+                '</div>'
+            );
+            return;
+        }
 
         // Abort any in-flight generation
         if (aiGenerateXhr) {
@@ -1394,7 +1408,13 @@ jQuery(function() {
         aiGenerateXhr = jQuery.ajax({
             url: '/ajax',
             method: 'POST',
-            data: { generate_itinerary: 1, trip_id: tripId },
+            data: {
+                generate_itinerary: 1,
+                trip_id: tripId,
+                adults: parseInt(jQuery('#grpAdults').val()) || 2,
+                children: parseInt(jQuery('#grpChildren').val()) || 0,
+                infants: parseInt(jQuery('#grpInfants').val()) || 0
+            },
             timeout: 120000,
             skipGlobalError: true,
             success: function(resp) {
@@ -1450,6 +1470,15 @@ jQuery(function() {
         if (aiGenerating) return;
         if (!tripId || selectedExpIds.length === 0) {
             showAlert('Add at least one experience to regenerate the itinerary.', 'warning');
+            return;
+        }
+        var startDate = jQuery('#tripStartDateInput').val();
+        var adults = parseInt(jQuery('#grpAdults').val()) || 0;
+        if (!startDate || !adults || adults < 1) {
+            var msg = [];
+            if (!startDate) msg.push('start date');
+            if (!adults || adults < 1) msg.push('group size (adults)');
+            showAlert('Please set ' + msg.join(' and ') + ' before generating the itinerary.', 'warning');
             return;
         }
         aiRetryCount = 0;
@@ -2212,7 +2241,6 @@ jQuery(function() {
                     shownExpNames.push(eName);
 
                     html += '<div class="timeline-exp-item">';
-                    html += '<i class="bi ' + expIcon + '"></i>';
                     html += '<div class="timeline-exp-details">';
                     // Experience name shown as group header above first day, so skip here if already shown as group
                     if (!alreadyShown && !shownExpGroupNames[eName]) html += '<span class="timeline-exp-name">' + eName + '</span>';
@@ -2221,7 +2249,7 @@ jQuery(function() {
                         var edNum = de._expDayNum || 1;
                         var ed = exp.days.length === 1 ? exp.days[0] : exp.days.find(function(d) { return d.day_number === edNum; }) || exp.days[0];
                         if (ed && ed.short_description) {
-                            html += '<div style="font-size:0.7rem; color:var(--heco-neutral-600, #475569);">' + ed.short_description + '</div>';
+                            html += '<div style="font-size:0.7rem; color:var(--heco-neutral-600, #475569);">' + toBulletHtml(ed.short_description) + '</div>';
                         }
                     } else if (de.notes) {
                         html += '<div class="timeline-exp-notes">' + toBulletHtml(de.notes) + '</div>';
@@ -2422,6 +2450,12 @@ jQuery(function() {
     jQuery('#addDayConfirmBtn').on('click', function() {
         if (pendingInsertAfterDay === null) return;
         var desc = jQuery('#addDayDescription').val().trim();
+        if (!desc) {
+            jQuery('#addDayDescription').css('border-color', '#dc3545').focus();
+            showAlert('Please add a description for the day.', 'warning');
+            return;
+        }
+        jQuery('#addDayDescription').css('border-color', '');
         var dayType = jQuery('.day-type-btn.active').data('type') || 'rest';
         var btn = jQuery(this);
         var insertAfter = pendingInsertAfterDay;
@@ -2495,7 +2529,7 @@ jQuery(function() {
         }, 1200);
     });
 
-    // Group details — debounced, send to AI for confirmation
+    // Group details — save directly + inform AI
     var groupTimer = null;
     jQuery('.group-input').on('change', function() {
         clearTimeout(groupTimer);
@@ -2503,6 +2537,8 @@ jQuery(function() {
             var adults = parseInt(jQuery('#grpAdults').val()) || 1;
             var children = parseInt(jQuery('#grpChildren').val()) || 0;
             var infants = parseInt(jQuery('#grpInfants').val()) || 0;
+            // Save group size directly so it's always persisted
+            ajaxPost({ update_group_details: 1, trip_id: window.tripId, adults: adults, children: children, infants: infants });
             sendAiMessage('I want to update my group to ' + adults + ' adults, ' + children + ' children, and ' + infants + ' infants.');
         }, 600);
     });
@@ -2980,7 +3016,8 @@ jQuery(document).on('click', '#btnPayNow', function() {
                 order_id: resp.order_id,
                 prefill: {
                     name: resp.name || '',
-                    email: resp.email || ''
+                    email: resp.email || '',
+                    contact: resp.contact || ''
                 },
                 theme: { color: '#16a34a' },
                 handler: function(response) {

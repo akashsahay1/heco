@@ -137,13 +137,16 @@ function loadTravellerPayments() {
         var totalPaid = 0;
         if (resp.payments && resp.payments.length) {
             resp.payments.forEach(function(p) {
-                totalPaid += parseFloat(p.amount) || 0;
+                var statusClass = 'secondary';
+                if (p.payment_status === 'paid') { statusClass = 'success'; totalPaid += parseFloat(p.amount) || 0; }
+                else if (p.payment_status === 'pending') statusClass = 'warning';
+                else if (p.payment_status === 'failed') statusClass = 'danger';
                 html += '<tr>';
-                html += '<td>' + p.payment_date + '</td>';
-                html += '<td class="text-end text-success fw-bold">&#8377;' + Number(p.amount).toLocaleString('en-IN') + '</td>';
-                html += '<td>' + (p.mode || '-') + '</td>';
-                html += '<td>' + (p.notes || '') + '</td>';
-                html += '<td>' + (p.recorder ? p.recorder.full_name : '-') + '</td>';
+                html += '<td class="small">' + (p.payment_date || '-') + '</td>';
+                html += '<td class="text-end fw-bold small">\u20B9' + Number(p.amount).toLocaleString('en-IN') + '</td>';
+                html += '<td class="small">' + (p.mode || '-') + '</td>';
+                html += '<td class="small"><span class="badge bg-' + statusClass + '">' + (p.payment_status || '-') + '</span></td>';
+                html += '<td class="small">' + (p.recorder ? p.recorder.full_name : '-') + '</td>';
                 html += '</tr>';
             });
         }
@@ -153,9 +156,9 @@ function loadTravellerPayments() {
         $('#paymentHistory').html(html);
         var finalPrice = parseFloat(tripData.final_price) || 0;
         var balance = finalPrice - totalPaid;
-        $('#totalPaidDisplay').text('&#8377;' + totalPaid.toLocaleString('en-IN'));
+        $('#totalPaidDisplay').html('\u20B9' + totalPaid.toLocaleString('en-IN'));
         $('#balanceDueDisplay')
-            .text('&#8377;' + balance.toLocaleString('en-IN'))
+            .html('\u20B9' + balance.toLocaleString('en-IN'))
             .toggleClass('text-danger', balance > 0)
             .toggleClass('text-success', balance <= 0);
     });
@@ -199,6 +202,8 @@ function loadItinerary() {
                 if (day.date) html += ' <span class="text-muted fw-normal">(' + day.date + ')</span>';
                 html += '</strong>';
                 if (day.title) html += '<span class="text-muted small ms-1">- ' + day.title + '</span>';
+                if (day.day_type && day.day_type !== 'activity') html += '<span class="badge bg-secondary ms-2" style="font-size:10px;">' + day.day_type + '</span>';
+                if (day.added_by === 'traveller') html += '<span class="badge bg-info text-white ms-2" style="font-size:10px;">Added by Traveller</span>';
                 html += '</div>';
                 html += '<div class="d-flex gap-1">';
                 html += '<button class="btn btn-sm btn-outline-secondary btn-move-day-up" data-id="' + day.id + '" title="Move up"><i class="bi bi-arrow-up"></i></button>';
@@ -232,11 +237,17 @@ function loadItinerary() {
                 }
 
                 if ((!day.experiences || !day.experiences.length) && (!day.services || !day.services.length)) {
-                    html += '<p class="text-muted small text-center mb-0">Empty day - click to add services</p>';
+                    var dtMap = { arrival: 'bi-airplane', departure: 'bi-airplane', rest: 'bi-moon', travel: 'bi-signpost-split', free: 'bi-compass', activity: 'bi-lightning' };
+                    var dtIcon = dtMap[day.day_type] || 'bi-calendar';
+                    if (day.day_type && day.day_type !== 'activity') {
+                        html += '<div class="small text-center mb-1"><i class="bi ' + dtIcon + ' text-success me-1"></i><strong>' + (day.title || day.day_type) + '</strong></div>';
+                    } else {
+                        html += '<p class="text-muted small text-center mb-0">Empty day - click to add services</p>';
+                    }
                 }
 
                 if (day.description) {
-                    html += '<div class="small text-muted mt-1 border-top pt-1"><i class="bi bi-chat-left-text me-1"></i>' + day.description + '</div>';
+                    html += '<div class="small text-muted mt-1 pt-1"><i class="bi bi-chat-left-text me-1"></i>' + day.description + '</div>';
                 }
 
                 html += '</div></div>';
@@ -282,7 +293,7 @@ function selectDay(dayId) {
 }
 
 function loadDayServices(dayId) {
-    ajaxPost({ get_day_services: 1, trip_day_id: dayId }, function(resp) {
+    ajaxPost({ get_day_services: 1, day_id: dayId }, function(resp) {
         var html = '';
         if (resp.services && resp.services.length) {
             resp.services.forEach(function(s) {
@@ -346,7 +357,7 @@ $(document).on('click', '.add-exp-to-day', function() {
     var expId = $(this).data('id');
     var dayId = $('#targetDaySelect').val();
     if (!dayId) { showAlert('Select a target day first', 'warning'); return; }
-    ajaxPost({ add_experience_to_day: 1, trip_id: tripId, trip_day_id: dayId, experience_id: expId }, function() {
+    ajaxPost({ add_experience_to_day: 1, trip_id: tripId, day_id: dayId, experience_id: expId }, function() {
         loadItinerary();
         showAlert('Experience added to day!');
     });
@@ -363,7 +374,7 @@ jQuery(document).on('click', '.btn-remove-day', function(e) {
     e.stopPropagation();
     var dayId = jQuery(this).data('id');
     confirmAction('Remove this day and all its experiences/services?', function() {
-        ajaxPost({ remove_trip_day: 1, trip_day_id: dayId }, function() {
+        ajaxPost({ remove_trip_day: 1, day_id: dayId }, function() {
             selectedDayId = null;
             jQuery('#dayServicesPanel').hide();
             loadItinerary();
@@ -373,7 +384,7 @@ jQuery(document).on('click', '.btn-remove-day', function(e) {
 
 $(document).on('click', '.btn-rm-day-exp', function(e) {
     e.stopPropagation();
-    ajaxPost({ remove_experience_from_day: 1, trip_day_experience_id: $(this).data('id') }, function() {
+    ajaxPost({ remove_experience_from_day: 1, day_experience_id: $(this).data('id') }, function() {
         loadItinerary();
     });
 });
@@ -405,7 +416,7 @@ $('#addServiceForm').on('submit', function(e) {
     e.preventDefault();
     var dayId = $('#serviceDayId').val();
     if (!dayId) { showAlert('Select a day first by clicking on it', 'warning'); return; }
-    var data = { add_day_service: 1, trip_day_id: dayId };
+    var data = { add_day_service: 1, day_id: dayId };
     $(this).find('[name]').each(function() { data[$(this).attr('name')] = $(this).val(); });
     ajaxPost(data, function() {
         loadDayServices($('#serviceDayId').val());
