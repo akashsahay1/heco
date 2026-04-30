@@ -79,6 +79,13 @@
             <a href="{{ url('/regenerative-projects') }}" class="hct-nav-link {{ request()->routeIs('hct.rp*') ? 'active' : '' }}">
                 <i class="bi bi-tree"></i> Regenerative Projects
             </a>
+
+            @if(auth()->user()->isHctAdmin())
+            <div class="hct-nav-section">SETTINGS</div>
+            <a href="{{ url('/travel-preferences') }}" class="hct-nav-link {{ request()->routeIs('hct.travel-preferences') ? 'active' : '' }}">
+                <i class="bi bi-sliders2"></i> Travel Preferences
+            </a>
+            @endif
         </nav>
     </aside>
 

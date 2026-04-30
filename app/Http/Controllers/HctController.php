@@ -22,6 +22,11 @@ class HctController extends Controller
         return view("admin.admin", compact("hctUsers"));
     }
 
+    public function travelPreferences()
+    {
+        return view("admin.travel-preferences");
+    }
+
     public function controlPanel()
     {
         return view("admin.control-panel");
