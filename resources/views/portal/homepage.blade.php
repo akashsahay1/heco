@@ -1,396 +1,8 @@
-@extends('portal.layout')
+﻿@extends('portal.layout')
 @section('title', 'Explore Experiences - HECO Portal')
 
 @section('css')
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-<style>
-    /* Custom dropdown styles */
-    .custom-select-wrap {
-        position: relative;
-    }
-    .custom-select-wrap select {
-        display: none;
-    }
-    .custom-select-trigger {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 10px 16px;
-        font-size: 1rem;
-        border: 1px solid var(--color-border, #dee2e6);
-        border-radius: 6px;
-        background: #fff;
-        cursor: pointer;
-        user-select: none;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        min-height: 42px;
-    }
-    .custom-select-trigger:hover {
-        border-color: var(--heco-primary-500, #22c55e);
-    }
-    .custom-select-trigger .caret {
-        margin-left: 8px;
-        font-size: 0.7rem;
-        color: var(--heco-neutral-400, #999);
-        flex-shrink: 0;
-    }
-    .custom-select-options {
-        display: none;
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        z-index: 1080;
-        background: #fff;
-        border: 1px solid var(--color-border, #dee2e6);
-        border-radius: 6px;
-        margin-top: 2px;
-        max-height: 220px;
-        overflow-y: auto;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-        scrollbar-width: thin;
-    }
-    .custom-select-wrap.open .custom-select-options {
-        display: block;
-    }
-    .custom-select-option {
-        padding: 10px 16px;
-        font-size: 1rem;
-        cursor: pointer;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .custom-select-option:hover {
-        background: var(--heco-neutral-50, #f8f9fa);
-        color: var(--heco-primary-700, #15803d);
-    }
-    .custom-select-option.selected {
-        background: var(--heco-primary-50, #f0fdf4);
-        color: var(--heco-primary-700, #15803d);
-        font-weight: 600;
-    }
-    .experience-grid-split {
-        max-height: calc(100vh - 260px);
-        overflow-y: auto;
-        grid-template-columns: repeat(2, 1fr) !important;
-        gap: 18px !important;
-        padding: 4px;
-    }
-    .experience-grid-split .exp-card {
-        margin-bottom: 0;
-        position: relative;
-        border-radius: 12px;
-    }
-    .experience-grid-split .exp-card-image {
-        height: 170px;
-    }
-    .experience-grid-split .exp-card-body {
-        padding: 14px 16px 14px;
-    }
-    .experience-grid-split .exp-card-title {
-        font-size: 0.95rem;
-        font-weight: 700;
-        margin-bottom: 4px;
-        line-height: 1.35;
-    }
-    /* Card host line */
-    .exp-card-host {
-        font-size: 0.82rem;
-        color: var(--color-text-muted, #6c757d);
-        margin: 0 0 3px;
-        line-height: 1.35;
-    }
-    /* Card duration line */
-    .exp-card-duration {
-        font-size: 0.82rem;
-        color: var(--color-text-muted, #6c757d);
-        margin: 0 0 8px;
-        line-height: 1.35;
-    }
-    .exp-card-duration i {
-        font-size: 0.72rem;
-        color: var(--heco-primary-500, #22c55e);
-        margin-right: 2px;
-    }
-    /* Inline heart/fav button in bottom row */
-    .exp-card-fav {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 32px;
-        margin-left: auto;
-        flex-shrink: 0;
-        background: none;
-        border: none;
-        padding: 0;
-        cursor: pointer;
-    }
-    .exp-card-fav i {
-        font-size: 1.5rem;
-        color: #6b7280;
-        transition: color 0.2s;
-    }
-    .exp-card-fav:hover i {
-        color: #ef4444;
-    }
-    .exp-card-fav.preferred i {
-        color: #ef4444;
-    }
-    /* Price + stars bottom row */
-    .exp-card-bottom {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: nowrap;
-        padding: 10px 0;
-        margin-top: auto;
-        border-top: 1px solid var(--color-border, #e5e7eb);
-    }
-    .exp-card-price {
-        font-size: 0.88rem;
-        font-weight: 700;
-        color: var(--color-text, #1a1a1a);
-        position: relative;
-        top: -2px;
-    }
-    .exp-card-stars {
-        display: inline-flex;
-        align-items: center;
-        gap: 1px;
-        font-size: 1rem;
-    }
-    .exp-card-stars .bi-star-fill {
-        color: #f5a623;
-    }
-    .exp-card-stars .bi-star {
-        color: #ccc;
-    }
-    /* Small add/remove button on card */
-    .exp-card-add-btn {
-        flex-shrink: 0;
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        border: 1.5px solid var(--heco-primary-500, #22c55e);
-        background: #fff;
-        color: var(--heco-primary-600, #16a34a);
-        font-size: 0.95rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s;
-        padding: 0;
-    }
-    .exp-card-add-btn:hover {
-        background: var(--heco-primary-500, #22c55e);
-        color: #fff;
-    }
-    .exp-card-add-btn.added {
-        background: var(--heco-primary-500, #22c55e);
-        color: #fff;
-        border-color: var(--heco-primary-500, #22c55e);
-    }
-    /* Collapsible Chat Panel */
-    .chat-collapse {
-        margin-bottom: var(--space-4, 16px);
-    }
-    .chat-collapse-outer {
-        height: auto;
-        margin-bottom: 25px;
-        position: relative;
-        z-index: 40;
-    }
-    .chat-collapse-panel {
-        background: var(--color-bg-white, #fff);
-        border: 1px solid var(--color-border, #e5e7eb);
-        border-radius: 12px;
-        overflow: hidden;
-    }
-    .chat-collapse-panel.expanded {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-    }
-    .chat-collapse-messages {
-        max-height: 85px;
-        overflow-y: auto;
-        padding: 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        transition: max-height 0.3s ease;
-    }
-    .chat-collapse-panel.expanded .chat-collapse-messages {
-        max-height: 500px;
-    }
-    .chat-collapse-input-area {
-        display: flex;
-        align-items: center;
-        padding: 10px 16px;
-        border-top: 1px solid var(--color-border, #e5e7eb);
-        gap: 8px;
-    }
-    .chat-collapse-input-area .inline-chat-input {
-        flex: 1;
-        border: 1px solid var(--color-border, #e5e7eb);
-        border-radius: 2rem;
-        padding: 8px 16px;
-        font-size: 0.85rem;
-        outline: none;
-    }
-    .chat-collapse-input-area .inline-chat-input:focus {
-        border-color: var(--heco-primary-500, #22c55e);
-        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15);
-    }
-    .chat-collapse-input-area .inline-chat-send {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        border: none;
-        background: var(--heco-primary-500, #22c55e);
-        color: #fff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        flex-shrink: 0;
-    }
-    .chat-collapse-input-area .inline-chat-send:hover {
-        background: var(--heco-primary-600, #16a34a);
-    }
-
-    .experience-grid-split .exp-card.map-highlight .exp-card-body {
-        background: var(--heco-primary-600, #16a34a);
-    }
-    .experience-grid-split .exp-card.map-highlight .exp-card-body,
-    .experience-grid-split .exp-card.map-highlight .exp-card-title a,
-    .experience-grid-split .exp-card.map-highlight .exp-card-host,
-    .experience-grid-split .exp-card.map-highlight .exp-card-duration,
-    .experience-grid-split .exp-card.map-highlight .exp-card-duration i,
-    .experience-grid-split .exp-card.map-highlight .exp-card-price,
-    .experience-grid-split .exp-card.map-highlight .exp-card-stars .bi-star-fill,
-    .experience-grid-split .exp-card.map-highlight .exp-card-stars .bi-star,
-    .experience-grid-split .exp-card.map-highlight .exp-card-fav i,
-    .experience-grid-split .exp-card.map-highlight .exp-card-add-btn {
-        color: #fff;
-    }
-    .experience-grid-split .exp-card.map-highlight .exp-card-bottom {
-        border-top-color: rgba(255,255,255,0.3);
-    }
-    .experience-grid-split .exp-card.map-highlight .exp-card-add-btn {
-        border-color: #fff;
-        background: transparent;
-    }
-    .leaflet-popup-content-wrapper {
-        border-radius: 10px;
-    }
-    .leaflet-popup-content {
-        margin: 8px 12px;
-        font-size: 13px;
-        line-height: 1.4;
-    }
-    .map-exp-popup .leaflet-popup-content-wrapper {
-        padding: 0;
-        border-radius: 12px;
-        overflow: hidden;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    }
-    .map-exp-popup .leaflet-popup-content {
-        margin: 0;
-        width: 100% !important;
-    }
-    .map-popup-card {
-        width: 320px;
-        cursor: pointer;
-    }
-    .map-popup-card > img {
-        width: 100%;
-        height: 130px;
-        object-fit: cover;
-        border-radius: 12px 12px 0 0;
-    }
-    .map-popup-body {
-        padding: 10px 12px 12px;
-    }
-    .map-popup-title {
-        font-weight: 700;
-        font-size: 14px;
-        margin-bottom: 4px;
-        color: var(--color-text, #1a1a1a);
-    }
-    .map-popup-meta {
-        color: #6c757d;
-        font-size: 11px;
-        margin-bottom: 6px;
-    }
-    .map-popup-meta i {
-        color: var(--heco-primary-500, #22c55e);
-    }
-    .map-popup-desc {
-        font-size: 12px;
-        color: #555;
-        line-height: 1.4;
-        margin-bottom: 8px;
-    }
-    .map-popup-footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-    }
-    .map-popup-price {
-        color: var(--heco-primary-700, #15803d);
-        font-weight: 700;
-        font-size: 13px;
-    }
-    .map-popup-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 5px 12px;
-        font-size: 11px;
-        font-weight: 600;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        background: var(--heco-primary-500, #22c55e);
-        color: #fff;
-        transition: all 0.2s;
-        white-space: nowrap;
-    }
-    .map-popup-btn:hover {
-        background: var(--heco-primary-600, #16a34a);
-    }
-    .map-popup-btn.added {
-        background: var(--heco-neutral-200, #e5e7eb);
-        color: var(--heco-neutral-500, #6b7280);
-        cursor: default;
-    }
-    #mapViewPanel #discoverMap {
-        height: 100%;
-        min-height: 400px;
-        border-radius: 12px;
-    }
-    @media (max-width: 991px) {
-        .experience-grid-split {
-            max-height: none;
-            overflow-y: visible;
-            grid-template-columns: repeat(2, 1fr) !important;
-        }
-    }
-    @media (max-width: 576px) {
-        .experience-grid-split {
-            grid-template-columns: 1fr !important;
-        }
-    }
-</style>
 @endsection
 
 @section('content')
@@ -783,15 +395,33 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-header"><i class="bi bi-receipt"></i> Pricing Summary</div>
                                 <div class="detail-card-body" id="pricingSummary">
-                                    <div class="pricing-row"><span>Transport</span><span id="prTransport"></span></div>
-                                    <div class="pricing-row"><span>Accommodation</span><span id="prAccommodation"></span></div>
-                                    <div class="pricing-row"><span>Guide</span><span id="prGuide"></span></div>
-                                    <div class="pricing-row"><span>Activities</span><span id="prActivities"></span></div>
-                                    <div class="pricing-row"><span>Extra Days</span><span id="prExtraDays"></span></div>
+                                    <div class="pricing-row">
+                                        <span>Transport <small class="text-muted price-detail" id="prTransportNote"></small></span>
+                                        <span id="prTransport"></span>
+                                    </div>
+                                    <div class="pricing-row">
+                                        <span>Accommodation <small class="text-muted price-detail" id="prAccommodationNote"></small></span>
+                                        <span id="prAccommodation"></span>
+                                    </div>
+                                    <div class="pricing-row">
+                                        <span>Guide <small class="text-muted price-detail" id="prGuideNote"></small></span>
+                                        <span id="prGuide"></span>
+                                    </div>
+                                    <div class="pricing-row">
+                                        <span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span>
+                                        <span id="prActivities"></span>
+                                    </div>
+                                    <div class="pricing-row">
+                                        <span>Extra Days <small class="text-muted price-detail" id="prExtraDaysNote"></small></span>
+                                        <span id="prExtraDays"></span>
+                                    </div>
                                     <div class="pricing-row"><span>Other</span><span id="prOther"></span></div>
-                                    <div class="pricing-row"><span>Subtotal</span><span id="prSubtotal"></span></div>
-                                    <div class="pricing-row"><span>RP Contribution</span><span id="prRP" class="rp-contribution"></span></div>
-                                    <div class="pricing-row"><span>GST</span><span id="prGST"></span></div>
+                                    <div class="pricing-row pricing-subtotal"><span><strong>Trip Cost</strong></span><span id="prTripCost"></span></div>
+                                    <div class="pricing-row"><span>RP Contribution <small class="text-muted price-detail" id="prRPNote"></small></span><span id="prRP" class="rp-contribution"></span></div>
+                                    <div class="pricing-row"><span>HRP Margin <small class="text-muted price-detail" id="prHRPNote"></small></span><span id="prHRP"></span></div>
+                                    <div class="pricing-row"><span>HCT Service <small class="text-muted price-detail" id="prHCTNote"></small></span><span id="prHCT"></span></div>
+                                    <div class="pricing-row pricing-subtotal"><span><strong>Pre-tax Total</strong></span><span id="prSubtotal"></span></div>
+                                    <div class="pricing-row"><span>GST <small class="text-muted price-detail" id="prGSTNote"></small></span><span id="prGST"></span></div>
                                     <div class="pricing-row total"><span>Final Price</span><span id="prFinal"></span></div>
                                 </div>
                             </div>
@@ -1065,7 +695,7 @@ jQuery(function() {
         if (cSel.find('option[value="Asia"]').length) cSel.val('Asia');
     })();
 
-    // Cascade: Continent → Country → Region
+    // Cascade: Continent â†’ Country â†’ Region
     function updateCountryOptions() {
         var continent = jQuery('#filterContinent').val();
         var cSel = jQuery('#filterCountry');
@@ -1482,7 +1112,7 @@ jQuery(function() {
     // DISCOVER TAB
     // ===================================
 
-    // Continent cascade → update Country & Region dropdowns
+    // Continent cascade â†’ update Country & Region dropdowns
     var filterSetByAi = false;
 
     jQuery('#filterContinent').on('change', function() {
@@ -1493,7 +1123,7 @@ jQuery(function() {
         loadExperiences(false);
     });
 
-    // Country cascade → update Region dropdown
+    // Country cascade â†’ update Region dropdown
     jQuery('#filterCountry').on('change', function() {
         updateRegionOptions();
         discoverPage = 1;
@@ -2334,18 +1964,53 @@ jQuery(function() {
     }
 
     function loadPricing() {
+        // Pricing breakdown should always show a number — including ₹0 — so the
+        // traveller can see the full cost composition. fmtCurrency hides zeros
+        // globally as '--', so we wrap it here to force a numeric output.
+        function fmtPriceRow(v) {
+            v = parseFloat(v) || 0;
+            if (v > 0) return fmtCurrency(v);
+            try {
+                var code = (typeof getCurrentCurrency === 'function') ? getCurrentCurrency() : 'INR';
+                return (0).toLocaleString(undefined, { style: 'currency', currency: code, minimumFractionDigits: 0, maximumFractionDigits: 0 });
+            } catch (e) { return '₹0'; }
+        }
+        function fmtMul(m) {
+            m = parseFloat(m);
+            if (!isFinite(m) || m === 1) return '';
+            return ' (×' + m.toFixed(m < 1 ? 2 : 1).replace(/\.0+$/, '') + ')';
+        }
+        function fmtPct(p) {
+            p = parseFloat(p) || 0;
+            return p > 0 ? '(' + (Math.round(p * 100) / 100) + '%)' : '';
+        }
         ajaxPost({ get_trip_pricing: 1, trip_id: tripId }, function(resp) {
             var p = resp.pricing || resp;
-            jQuery('#prTransport').text(fmtCurrency(p.transport_cost));
-            jQuery('#prAccommodation').text(fmtCurrency(p.accommodation_cost));
-            jQuery('#prGuide').text(fmtCurrency(p.guide_cost));
-            jQuery('#prActivities').text(fmtCurrency(p.activity_cost));
-            jQuery('#prExtraDays').text(fmtCurrency(p.extra_day_cost));
-            jQuery('#prOther').text(fmtCurrency(p.other_cost));
-            jQuery('#prSubtotal').text(fmtCurrency(p.subtotal));
-            jQuery('#prRP').text(fmtCurrency(p.margin_rp_amount));
-            jQuery('#prGST').text(fmtCurrency(p.gst_amount));
-            jQuery('#prFinal').text(fmtCurrency(p.final_price));
+            jQuery('#prTransport').text(fmtPriceRow(p.transport_cost));
+            jQuery('#prAccommodation').text(fmtPriceRow(p.accommodation_cost));
+            jQuery('#prGuide').text(fmtPriceRow(p.guide_cost));
+            jQuery('#prActivities').text(fmtPriceRow(p.activity_cost));
+            jQuery('#prExtraDays').text(fmtPriceRow(p.extra_day_cost));
+            jQuery('#prOther').text(fmtPriceRow(p.other_cost));
+            jQuery('#prTripCost').text(fmtPriceRow(p.total_cost));
+            jQuery('#prRP').text(fmtPriceRow(p.margin_rp_amount));
+            jQuery('#prHRP').text(fmtPriceRow(p.margin_hrp_amount));
+            jQuery('#prHCT').text(fmtPriceRow(p.commission_hct_amount));
+            jQuery('#prSubtotal').text(fmtPriceRow(p.subtotal));
+            jQuery('#prGST').text(fmtPriceRow(p.gst_amount));
+            jQuery('#prFinal').text(fmtPriceRow(p.final_price));
+
+            // Detail captions
+            jQuery('#prTransportNote').text(fmtMul(p.vehicle_multiplier));
+            jQuery('#prAccommodationNote').text(fmtMul(p.accommodation_multiplier));
+            jQuery('#prGuideNote').text(fmtMul(p.guide_multiplier));
+            var paxLabel = (p.adults || 1) + (p.children > 0 ? ' adults +' + p.children + ' kids @ 50%' : ' adults');
+            jQuery('#prActivitiesNote').text(' (' + paxLabel + ')');
+            jQuery('#prExtraDaysNote').text(parseFloat(p.extra_day_cost) > 0 ? ' (' + paxLabel + ')' : '');
+            jQuery('#prRPNote').text(fmtPct(p.margin_rp_percent));
+            jQuery('#prHRPNote').text(fmtPct(p.margin_hrp_percent));
+            jQuery('#prHCTNote').text(fmtPct(p.commission_hct_percent));
+            jQuery('#prGSTNote').text(fmtPct(p.gst_percent));
 
             // Show payment card if balance due. Pre-fill the full balance — Razorpay
             // enforces its own per-account limit and returns a clear error if exceeded.
@@ -3106,9 +2771,9 @@ jQuery(document).on('click', '#btnPayNow', function() {
                 // Friendlier UX based on common failure modes
                 var userMsg = desc;
                 if (/exceeds maximum amount/i.test(desc)) {
-                    userMsg = 'Your Razorpay account has a per-transaction cap below ₹' +
+                    userMsg = 'Your Razorpay account has a per-transaction cap below â‚¹' +
                               amount.toLocaleString('en-IN') + '. ' +
-                              'Raise it in Razorpay Dashboard → Account & Settings → Configuration → ' +
+                              'Raise it in Razorpay Dashboard â†’ Account & Settings â†’ Configuration â†’ ' +
                               'Maximum Payment Amount, or pay this trip in smaller installments.';
                 } else if (/international/i.test(desc)) {
                     userMsg = 'This card is detected as international and your account does not accept them. ' +

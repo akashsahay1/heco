@@ -59,6 +59,7 @@ Route::domain(config('app.admin_domain'))->group(function () {
         Route::middleware('hct_admin')->group(function () {
             Route::get('/admin', [HctController::class, 'admin'])->name('hct.admin');
             Route::get('/travel-preferences', [HctController::class, 'travelPreferences'])->name('hct.travel-preferences');
+            Route::get('/travel-preferences/{id}/edit', [HctController::class, 'editTravelPreference'])->name('hct.travel-preferences.edit');
         });
 
         // Trip Manager

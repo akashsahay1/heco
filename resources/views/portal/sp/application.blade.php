@@ -1,4 +1,4 @@
-@extends('portal.layout')
+﻿@extends('portal.layout')
 @section('title', 'Become a Partner - HECO Portal')
 
 @section('content')
@@ -102,35 +102,6 @@
     </div>
 </div>
 @endsection
-
-@section('css')
-<style>
-.sp-form-section {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-}
-.sp-form-section h5 {
-    color: var(--heco-green);
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 2px solid #e5e7eb;
-}
-.form-check.card {
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.form-check.card:hover {
-    border-color: var(--heco-green);
-}
-.form-check-input:checked + .form-check-label {
-    color: var(--heco-green);
-}
-</style>
-@endsection
-
 @section('js')
 <script>
 $(function() {

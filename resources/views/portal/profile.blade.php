@@ -1,21 +1,5 @@
-@extends('portal.layout')
+﻿@extends('portal.layout')
 @section('title', 'Profile - HECO Portal')
-
-@section('css')
-<style>
-    .profile-avatar {
-        width: 80px; height: 80px; border-radius: 50%;
-        object-fit: cover; border: 3px solid var(--heco-success);
-    }
-    .profile-avatar-placeholder {
-        width: 80px; height: 80px; border-radius: 50%;
-        background: var(--heco-success); color: #fff;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 2rem; font-weight: 600;
-    }
-    .auth-badge { font-size: 0.75rem; }
-</style>
-@endsection
 
 @section('content')
 <div class="container py-4">

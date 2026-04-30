@@ -95,28 +95,38 @@
                 <div class="card">
                     <div class="card-body">
                         <h6 class="border-bottom pb-2"><i class="bi bi-gear"></i> Capabilities</h6>
-                        <div class="mb-2">
-                            <label class="form-label small text-muted">Services Offered (comma-separated)</label>
-                            <input type="text" id="servicesOffered" class="form-control form-control-sm" value="{{ is_array($provider->services_offered) ? implode(', ', $provider->services_offered) : '' }}">
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label small text-muted">Accommodation Categories (comma-separated)</label>
-                            <input type="text" id="accommCategories" class="form-control form-control-sm" value="{{ is_array($provider->accommodation_categories) ? implode(', ', $provider->accommodation_categories) : '' }}">
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label small text-muted">Vehicle Types (comma-separated)</label>
-                            <input type="text" id="vehicleTypes" class="form-control form-control-sm" value="{{ is_array($provider->vehicle_types) ? implode(', ', $provider->vehicle_types) : '' }}">
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label small text-muted">Guide Types (comma-separated)</label>
-                            <input type="text" id="guideTypes" class="form-control form-control-sm"
-                                   placeholder="e.g. Local Guide, English-speaking, Certified/Expert"
-                                   value="{{ is_array($provider->guide_types) ? implode(', ', $provider->guide_types) : '' }}">
-                        </div>
-                        <div class="mb-0">
-                            <label class="form-label small text-muted">Activity Types (comma-separated)</label>
-                            <input type="text" id="activityTypes" class="form-control form-control-sm" value="{{ is_array($provider->activity_types) ? implode(', ', $provider->activity_types) : '' }}">
-                        </div>
+
+                        @php
+                            $caps = [
+                                ['name' => 'services_offered',         'label' => 'Services Offered',         'options' => $serviceTypes,            'current' => $provider->services_offered ?? []],
+                                ['name' => 'accommodation_categories', 'label' => 'Accommodation Categories', 'options' => $accommodationCategories, 'current' => $provider->accommodation_categories ?? []],
+                                ['name' => 'vehicle_types',            'label' => 'Vehicle Types',            'options' => $vehicleTypes,            'current' => $provider->vehicle_types ?? []],
+                                ['name' => 'guide_types',              'label' => 'Guide Types',              'options' => $guideTypes,              'current' => $provider->guide_types ?? []],
+                                ['name' => 'activity_types',           'label' => 'Activity Types',           'options' => $activityTypes,           'current' => $provider->activity_types ?? []],
+                            ];
+                        @endphp
+
+                        @foreach($caps as $idx => $cap)
+                            <div class="{{ $idx === count($caps) - 1 ? 'mb-0' : 'mb-2' }}">
+                                <label class="form-label small text-muted">{{ $cap['label'] }}</label>
+                                <div class="ms-dropdown" data-name="{{ $cap['name'] }}">
+                                    <button type="button" class="form-select form-select-sm text-start ms-trigger">
+                                        <span class="ms-label text-muted">Select options...</span>
+                                    </button>
+                                    <div class="ms-panel d-none">
+                                        @forelse($cap['options'] as $opt)
+                                            <label class="ms-option">
+                                                <input type="checkbox" value="{{ $opt->name }}"
+                                                       {{ in_array($opt->name, $cap['current'] ?: [], true) ? 'checked' : '' }}>
+                                                <span>{{ $opt->name }}</span>
+                                            </label>
+                                        @empty
+                                            <div class="ms-empty">No options available — please contact HECO support.</div>
+                                        @endforelse
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
                     </div>
                 </div>
             </div>
@@ -134,9 +144,45 @@
 
 @section('js')
 <script>
-function csvToArray(s) {
-    return (s || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+// === Multi-select dropdown ===
+function updateMsLabel($dd) {
+    var checked = $dd.find('input[type=checkbox]:checked');
+    var $label = $dd.find('.ms-label');
+    if (checked.length === 0) {
+        $label.text('Select options...').addClass('text-muted');
+    } else if (checked.length <= 3) {
+        var names = checked.map(function() { return jQuery(this).val(); }).get();
+        $label.text(names.join(', ')).removeClass('text-muted');
+    } else {
+        $label.text(checked.length + ' selected').removeClass('text-muted');
+    }
 }
+
+function getDdValues(name) {
+    return jQuery('.ms-dropdown[data-name="' + name + '"] input[type=checkbox]:checked')
+        .map(function() { return jQuery(this).val(); }).get();
+}
+
+jQuery(function() {
+    jQuery('.ms-dropdown').each(function() { updateMsLabel(jQuery(this)); });
+
+    jQuery(document).on('click', '.ms-trigger', function(e) {
+        e.stopPropagation();
+        var $panel = jQuery(this).siblings('.ms-panel');
+        jQuery('.ms-panel').not($panel).addClass('d-none');
+        $panel.toggleClass('d-none');
+    });
+
+    jQuery(document).on('change', '.ms-panel input[type=checkbox]', function() {
+        updateMsLabel(jQuery(this).closest('.ms-dropdown'));
+    });
+
+    jQuery(document).on('click', function(e) {
+        if (!jQuery(e.target).closest('.ms-dropdown').length) {
+            jQuery('.ms-panel').addClass('d-none');
+        }
+    });
+});
 
 jQuery('#spProfileForm').on('submit', function(e) {
     e.preventDefault();
@@ -145,11 +191,11 @@ jQuery('#spProfileForm').on('submit', function(e) {
 
     var data = {
         update_sp_profile: 1,
-        services_offered: csvToArray(jQuery('#servicesOffered').val()),
-        accommodation_categories: csvToArray(jQuery('#accommCategories').val()),
-        vehicle_types: csvToArray(jQuery('#vehicleTypes').val()),
-        guide_types: csvToArray(jQuery('#guideTypes').val()),
-        activity_types: csvToArray(jQuery('#activityTypes').val())
+        services_offered:         getDdValues('services_offered'),
+        accommodation_categories: getDdValues('accommodation_categories'),
+        vehicle_types:            getDdValues('vehicle_types'),
+        guide_types:              getDdValues('guide_types'),
+        activity_types:           getDdValues('activity_types')
     };
     jQuery(this).find('input, textarea').each(function() {
         if (this.name) data[this.name] = jQuery(this).val();

@@ -2857,6 +2857,9 @@ class AjaxController extends Controller
     protected function saveSystemListItem(Request $request): JsonResponse
     {
         $data = $request->only(["list_type", "name", "sort_order"]);
+        if ($request->has("is_active")) {
+            $data["is_active"] = $request->boolean("is_active");
+        }
         if ($request->filled("id")) {
             $item = SystemList::findOrFail($request->id);
             $item->update($data);
@@ -3561,6 +3564,14 @@ class AjaxController extends Controller
             $data["slug"] = Str::slug($data["name"]);
         }
 
+        // Auto-sync base_cost_per_person from the breakdown so what HCT enters
+        // and what the trip is charged stay in lockstep.
+        $data["base_cost_per_person"] = (float) ($data["cost_accommodation"] ?? 0)
+            + (float) ($data["cost_logistics"] ?? 0)
+            + (float) ($data["cost_guide"] ?? 0)
+            + (float) ($data["cost_activities"] ?? 0)
+            + (float) ($data["cost_other"] ?? 0);
+
         if ($request->filled("id")) {
             $experience = Experience::findOrFail($request->id);
             $experience->update($data);
@@ -3882,23 +3893,29 @@ class AjaxController extends Controller
         $day = TripDay::findOrFail($request->day_id);
         $experience = Experience::findOrFail($request->experience_id);
 
-        $dayExp = app(ItineraryService::class)->addExperienceToDay($day, $experience, $request->all());
+        // The TripDayExperience charges only the activity portion. Other components
+        // (accommodation / transport / guide / other) become separate TripDayService
+        // entries so the trip's pricing breakdown stays accurate and nothing is
+        // double-counted under "activity_cost".
+        $dayExp = app(ItineraryService::class)->addExperienceToDay($day, $experience, array_merge(
+            $request->all(),
+            ["cost_per_person" => (float) $experience->cost_activities]
+        ));
 
-        if ($experience->includes_accommodation) {
+        $componentMap = [
+            "cost_accommodation" => ["accommodation", $experience->accommodation_category ?? "Accommodation"],
+            "cost_logistics"     => ["transport",     "Logistics / Transport"],
+            "cost_guide"         => ["guide",         "Guide service"],
+            "cost_other"         => ["other",         "Other"],
+        ];
+        foreach ($componentMap as $field => [$serviceType, $description]) {
+            $cost = (float) $experience->{$field};
+            if ($cost <= 0) continue;
             TripDayService::create([
                 "trip_day_id" => $day->id,
-                "service_type" => "accommodation",
-                "description" => $experience->accommodation_category ?? "Accommodation",
-                "cost" => $experience->cost_accommodation,
-                "is_included" => true,
-            ]);
-        }
-        if ($experience->includes_guide) {
-            TripDayService::create([
-                "trip_day_id" => $day->id,
-                "service_type" => "guide",
-                "description" => "Guide service",
-                "cost" => $experience->cost_guide,
+                "service_type" => $serviceType,
+                "description" => $description,
+                "cost" => $cost,
                 "is_included" => true,
             ]);
         }

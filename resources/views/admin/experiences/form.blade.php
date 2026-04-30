@@ -431,46 +431,47 @@
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Base Cost Per Person <span class="text-danger">*</span></label>
-                            <div class="input-group">
-                                <span class="input-group-text cost-symbol">{{ isset($e) && $e->price_currency ? \App\Models\Currency::where('code', $e->price_currency)->value('symbol') ?? '₹' : '₹' }}</span>
-                                <input type="number" class="form-control" name="base_cost_per_person" value="{{ $e->base_cost_per_person ?? '' }}" step="0.01" min="0" required>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
                             <label class="form-label">Cost Accommodation</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
-                                <input type="number" class="form-control" name="cost_accommodation" value="{{ $e->cost_accommodation ?? '' }}" step="0.01" min="0">
+                                <input type="number" class="form-control cost-component" name="cost_accommodation" value="{{ $e->cost_accommodation ?? '' }}" step="0.01" min="0">
                             </div>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Cost Logistics</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
-                                <input type="number" class="form-control" name="cost_logistics" value="{{ $e->cost_logistics ?? '' }}" step="0.01" min="0">
+                                <input type="number" class="form-control cost-component" name="cost_logistics" value="{{ $e->cost_logistics ?? '' }}" step="0.01" min="0">
                             </div>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Cost Guide</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
-                                <input type="number" class="form-control" name="cost_guide" value="{{ $e->cost_guide ?? '' }}" step="0.01" min="0">
+                                <input type="number" class="form-control cost-component" name="cost_guide" value="{{ $e->cost_guide ?? '' }}" step="0.01" min="0">
                             </div>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Cost Activities</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
-                                <input type="number" class="form-control" name="cost_activities" value="{{ $e->cost_activities ?? '' }}" step="0.01" min="0">
+                                <input type="number" class="form-control cost-component" name="cost_activities" value="{{ $e->cost_activities ?? '' }}" step="0.01" min="0">
                             </div>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Cost Other</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
-                                <input type="number" class="form-control" name="cost_other" value="{{ $e->cost_other ?? '' }}" step="0.01" min="0">
+                                <input type="number" class="form-control cost-component" name="cost_other" value="{{ $e->cost_other ?? '' }}" step="0.01" min="0">
                             </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Total Cost Per Person <span class="text-muted small">(auto)</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text cost-symbol">{{ isset($e) && $e->price_currency ? \App\Models\Currency::where('code', $e->price_currency)->value('symbol') ?? '₹' : '₹' }}</span>
+                                <input type="number" class="form-control bg-light" id="baseCostPreview" name="base_cost_per_person" value="{{ $e->base_cost_per_person ?? '0.00' }}" step="0.01" min="0" readonly tabindex="-1">
+                            </div>
+                            <small class="text-muted">Sum of the 5 cost components above. This is the headline price travellers see.</small>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Single Supplement</label>
@@ -650,6 +651,18 @@ jQuery(function() {
         var symbol = selected.data('symbol') || '₹';
         jQuery('#sectionCosting .cost-symbol').text(symbol);
     });
+
+    // Live-recompute Total Cost Per Person from the 5 component fields
+    function recomputeBaseCost() {
+        var sum = 0;
+        jQuery('.cost-component').each(function() {
+            var v = parseFloat(jQuery(this).val()) || 0;
+            sum += v;
+        });
+        jQuery('#baseCostPreview').val(sum.toFixed(2));
+    }
+    jQuery(document).on('input change', '.cost-component', recomputeBaseCost);
+    recomputeBaseCost();
 
     // Add day button (multi-day only)
     jQuery('#btnAddDay').on('click', function() {

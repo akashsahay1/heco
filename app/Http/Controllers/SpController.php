@@ -28,7 +28,14 @@ class SpController extends Controller
         $user = auth()->user();
         $provider = ServiceProvider::where("user_id", $user->id)->with(["region", "lastUpdatedBy"])->firstOrFail();
         $regions = Region::where("is_active", true)->orderBy("name")->get();
-        $serviceTypes = SystemList::ofType("service_type")->get();
-        return view("portal.sp.edit-profile", compact("provider", "regions", "serviceTypes"));
+        $serviceTypes            = SystemList::ofType("service_type")->get();
+        $accommodationCategories = SystemList::ofType("accommodation_category")->get();
+        $vehicleTypes            = SystemList::ofType("vehicle_type")->get();
+        $guideTypes              = SystemList::ofType("guide_preference")->get();
+        $activityTypes           = SystemList::ofType("activity_type")->get();
+        return view("portal.sp.edit-profile", compact(
+            "provider", "regions",
+            "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes"
+        ));
     }
 }

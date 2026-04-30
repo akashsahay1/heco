@@ -8,6 +8,7 @@ use App\Models\Region;
 use App\Models\ServiceProvider;
 use App\Models\Experience;
 use App\Models\RegenerativeProject;
+use App\Models\SystemList;
 
 class HctController extends Controller
 {
@@ -25,6 +26,32 @@ class HctController extends Controller
     public function travelPreferences()
     {
         return view("admin.travel-preferences");
+    }
+
+    public function editTravelPreference($id)
+    {
+        $allowedTypes = [
+            "accommodation_comfort",
+            "vehicle_comfort",
+            "guide_preference",
+            "travel_pace",
+            "budget_sensitivity",
+        ];
+        $item = SystemList::findOrFail($id);
+        if (!in_array($item->list_type, $allowedTypes, true)) {
+            abort(404);
+        }
+        $labels = [
+            "accommodation_comfort" => "Accommodation Comfort",
+            "vehicle_comfort"       => "Vehicle Comfort",
+            "guide_preference"      => "Guide Preference",
+            "travel_pace"           => "Travel Pace",
+            "budget_sensitivity"    => "Budget Sensitivity",
+        ];
+        return view("admin.travel-preferences-edit", [
+            "item"      => $item,
+            "typeLabel" => $labels[$item->list_type] ?? $item->list_type,
+        ]);
     }
 
     public function controlPanel()
@@ -74,7 +101,15 @@ class HctController extends Controller
     {
         $provider = ServiceProvider::with(["region", "lastUpdatedBy"])->findOrFail($id);
         $regions = Region::where("is_active", true)->orderBy("name")->get();
-        return view("admin.providers.edit", compact("provider", "regions"));
+        $serviceTypes            = SystemList::ofType("service_type")->get();
+        $accommodationCategories = SystemList::ofType("accommodation_category")->get();
+        $vehicleTypes            = SystemList::ofType("vehicle_type")->get();
+        $guideTypes              = SystemList::ofType("guide_preference")->get();
+        $activityTypes           = SystemList::ofType("activity_type")->get();
+        return view("admin.providers.edit", compact(
+            "provider", "regions",
+            "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes"
+        ));
     }
 
     public function travelers()

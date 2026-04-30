@@ -1,120 +1,66 @@
 @extends('admin.layout')
-@section('title', 'Travel Preferences')
-
-@section('css')
-<style>
-.tp-page .accordion-button {
-    background: #fff;
-    color: #15803d;
-    font-weight: 600;
-    box-shadow: none;
-}
-.tp-page .accordion-button:not(.collapsed) {
-    background: #f0fdf4;
-    color: #14532d;
-}
-.tp-page .accordion-button:focus {
-    border-color: #22c55e;
-    box-shadow: 0 0 0 0.2rem rgba(34, 197, 94, 0.15);
-}
-.tp-page .accordion-item {
-    border: 1px solid #e5e7eb;
-    margin-bottom: 8px;
-    border-radius: 8px !important;
-    overflow: hidden;
-}
-.tp-page .accordion-item .accordion-button .tp-section-desc {
-    color: #6b7280;
-    font-weight: 400;
-    font-size: 0.82rem;
-    margin-left: 8px;
-}
-.tp-page .pref-add-form {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 12px;
-}
-.tp-page .pref-table th {
-    font-size: 0.78rem;
-    color: #6b7280;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-.tp-page .pref-table td {
-    vertical-align: middle;
-}
-.tp-page .badge-inactive {
-    background: #fef3c7;
-    color: #92400e;
-}
-.tp-page .empty-state {
-    color: #9ca3af;
-    text-align: center;
-    padding: 20px 0;
-    font-size: 0.9rem;
-}
-</style>
-@endsection
+@section('title', 'Travel Preferences - HCT')
 
 @section('content')
-<div class="container-fluid p-4 tp-page">
-    <div class="d-flex align-items-center mb-2">
-        <i class="bi bi-sliders2 me-2 fs-4 text-success"></i>
-        <h4 class="mb-0">Travel Preferences</h4>
-    </div>
-    <p class="text-muted mb-4">
-        Manage the dropdown options shown to travellers in the Travel Preferences sidebar
-        on the homepage and in Trip Manager. Changes here take effect immediately.
-        Deactivated items are hidden from new selections but kept on existing trips for historical accuracy.
-    </p>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0"><i class="bi bi-sliders2"></i> Travel Preferences</h5>
+</div>
 
-    @php
-        $sections = [
-            ['type' => 'accommodation_comfort', 'icon' => 'bi-house-door', 'label' => 'Accommodation Comfort', 'desc' => 'Stay categories — Cat A, Cat B, etc.'],
-            ['type' => 'vehicle_comfort',       'icon' => 'bi-car-front',  'label' => 'Vehicle Comfort',       'desc' => 'Vehicle classes for ground transport'],
-            ['type' => 'guide_preference',      'icon' => 'bi-person-badge','label' => 'Guide Preference',     'desc' => 'Types of guides offered (no guide / local / specialist…)'],
-            ['type' => 'travel_pace',           'icon' => 'bi-speedometer','label' => 'Travel Pace',           'desc' => 'Slow / balanced / packed signals for the AI'],
-            ['type' => 'budget_sensitivity',    'icon' => 'bi-cash-coin',  'label' => 'Budget Sensitivity',    'desc' => 'Lean / standard / premium / no-limit'],
-        ];
-    @endphp
+@php
+    $sections = [
+        ['type' => 'accommodation_comfort', 'icon' => 'bi-house-door',   'label' => 'Accommodation Comfort'],
+        ['type' => 'vehicle_comfort',       'icon' => 'bi-car-front',    'label' => 'Vehicle Comfort'],
+        ['type' => 'guide_preference',      'icon' => 'bi-person-badge', 'label' => 'Guide Preference'],
+        ['type' => 'travel_pace',           'icon' => 'bi-speedometer',  'label' => 'Travel Pace'],
+        ['type' => 'budget_sensitivity',    'icon' => 'bi-cash-coin',    'label' => 'Budget Sensitivity'],
+    ];
+@endphp
 
-    <div class="accordion" id="prefAccordion">
-        @foreach($sections as $i => $s)
-        <div class="accordion-item">
-            <h2 class="accordion-header">
-                <button class="accordion-button {{ $i === 0 ? '' : 'collapsed' }}" type="button"
-                        data-bs-toggle="collapse" data-bs-target="#sec_{{ $s['type'] }}">
-                    <i class="bi {{ $s['icon'] }} me-2"></i>
-                    {{ $s['label'] }}
-                    <span class="tp-section-desc">— {{ $s['desc'] }}</span>
-                </button>
-            </h2>
-            <div id="sec_{{ $s['type'] }}" class="accordion-collapse collapse {{ $i === 0 ? 'show' : '' }}" data-bs-parent="#prefAccordion">
-                <div class="accordion-body">
-                    <div class="pref-list" data-type="{{ $s['type'] }}">
-                        <div class="pref-items"><p class="empty-state">Loading...</p></div>
-
-                        <form class="pref-add-form mt-3 d-flex flex-wrap gap-2 align-items-end" data-type="{{ $s['type'] }}">
-                            <div class="flex-grow-1" style="min-width: 220px;">
-                                <label class="form-label small text-muted mb-1">Option name</label>
-                                <input type="text" class="form-control form-control-sm pref-new-name" placeholder="e.g. Cat A - Premium/Luxury" required>
-                            </div>
-                            <div style="width: 110px;">
-                                <label class="form-label small text-muted mb-1">Sort order</label>
-                                <input type="number" class="form-control form-control-sm pref-new-sort" value="0" min="0">
-                            </div>
-                            <button type="submit" class="btn btn-sm btn-success">
-                                <i class="bi bi-plus-lg me-1"></i> Add Option
-                            </button>
-                        </form>
-                    </div>
+<div class="accordion tp-accordion" id="prefAccordion">
+    @foreach($sections as $i => $s)
+    <div class="accordion-item pref-list" data-type="{{ $s['type'] }}">
+        <h2 class="accordion-header">
+            <button class="accordion-button {{ $i === 0 ? '' : 'collapsed' }}" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#sec_{{ $s['type'] }}">
+                <i class="bi {{ $s['icon'] }} me-2"></i>
+                {{ $s['label'] }}
+            </button>
+        </h2>
+        <div id="sec_{{ $s['type'] }}" class="accordion-collapse collapse {{ $i === 0 ? 'show' : '' }}" data-bs-parent="#prefAccordion">
+            <div class="accordion-body">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 40px;">#</th>
+                                <th>Option name</th>
+                                <th style="width: 90px;">Sort</th>
+                                <th style="width: 90px;">Status</th>
+                                <th style="width: 130px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="pref-items">
+                            <tr><td colspan="5" class="text-center text-muted small">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pref-add-row">
+                    <form class="pref-add-form d-flex flex-wrap gap-2 align-items-end mb-0" data-type="{{ $s['type'] }}">
+                        <div class="flex-grow-1" style="min-width: 220px;">
+                            <input type="text" class="form-control form-control-sm pref-new-name" placeholder="Add new option..." required>
+                        </div>
+                        <div style="width: 90px;">
+                            <input type="number" class="form-control form-control-sm pref-new-sort" value="0" min="0" placeholder="Sort">
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-success">
+                            <i class="bi bi-plus-lg me-1"></i> Add
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
-        @endforeach
     </div>
+    @endforeach
 </div>
 @endsection
 
@@ -128,44 +74,39 @@
     }
 
     function loadList(type) {
-        var $section = jQuery('.pref-list[data-type="' + type + '"] .pref-items');
-        $section.html('<p class="empty-state">Loading...</p>');
+        var $tbody = jQuery('.pref-list[data-type="' + type + '"] .pref-items');
+        $tbody.html('<tr><td colspan="5" class="text-center text-muted small">Loading...</td></tr>');
         ajaxPost({ get_system_lists: 1, list_type: type }, function(resp) {
             var items = resp.items || [];
             if (!items.length) {
-                $section.html('<p class="empty-state">No options yet. Add the first one below.</p>');
+                $tbody.html('<tr><td colspan="5" class="text-center text-muted small">No options yet. Add the first one below.</td></tr>');
                 return;
             }
-            var html = '<table class="table table-sm pref-table align-middle mb-0">';
-            html += '<thead><tr>';
-            html += '<th style="width:40px;">#</th>';
-            html += '<th>Option name</th>';
-            html += '<th style="width:100px;">Sort</th>';
-            html += '<th style="width:90px;">Status</th>';
-            html += '<th style="width:170px;text-align:right;">Actions</th>';
-            html += '</tr></thead><tbody>';
+            var html = '';
             items.forEach(function(item, idx) {
                 var nameClass = item.is_active ? '' : ' text-muted text-decoration-line-through';
                 html += '<tr data-id="' + item.id + '" data-name="' + escapeHtml(item.name) + '" data-sort="' + (item.sort_order || 0) + '">';
                 html += '<td class="text-muted">' + (idx + 1) + '</td>';
-                html += '<td><span class="pref-name fw-medium' + nameClass + '">' + escapeHtml(item.name) + '</span></td>';
-                html += '<td><span class="pref-sort">' + (item.sort_order || 0) + '</span></td>';
+                html += '<td><strong class="' + nameClass + '">' + escapeHtml(item.name) + '</strong></td>';
+                html += '<td><small>' + (item.sort_order || 0) + '</small></td>';
                 html += '<td>';
                 if (item.is_active) {
-                    html += '<span class="badge bg-success bg-opacity-25 text-success">Active</span>';
+                    html += '<span class="badge bg-success">Active</span>';
                 } else {
-                    html += '<span class="badge badge-inactive">Inactive</span>';
+                    html += '<span class="badge bg-secondary">Inactive</span>';
                 }
                 html += '</td>';
-                html += '<td class="text-end">';
-                html += '<button class="btn btn-sm btn-outline-secondary me-1 btn-edit" title="Rename / reorder"><i class="bi bi-pencil"></i></button>';
+                html += '<td>';
+                html += '<a href="/travel-preferences/' + item.id + '/edit" class="btn btn-sm btn-outline-primary me-1" title="Edit"><i class="bi bi-pencil"></i></a>';
                 if (item.is_active) {
-                    html += '<button class="btn btn-sm btn-outline-danger btn-deactivate" title="Deactivate"><i class="bi bi-x-circle"></i></button>';
+                    html += '<button class="btn btn-sm btn-outline-warning btn-toggle-pref" title="Deactivate"><i class="bi bi-eye-slash"></i></button>';
+                } else {
+                    html += '<button class="btn btn-sm btn-outline-success btn-toggle-pref" title="Reactivate"><i class="bi bi-eye"></i></button>';
                 }
-                html += '</td></tr>';
+                html += '</td>';
+                html += '</tr>';
             });
-            html += '</tbody></table>';
-            $section.html(html);
+            $tbody.html(html);
         });
     }
 
@@ -194,46 +135,36 @@
         });
     });
 
-    // Edit (rename + reorder)
-    jQuery(document).on('click', '.btn-edit', function() {
+    // Toggle active/inactive
+    jQuery(document).on('click', '.btn-toggle-pref', function() {
         var $row = jQuery(this).closest('tr');
         var id = $row.data('id');
         var type = $row.closest('.pref-list').data('type');
-        var current = $row.data('name');
-        var currentSort = $row.data('sort');
+        var name = $row.data('name');
+        var sort = $row.data('sort');
+        var $btn = jQuery(this);
+        var goingActive = $btn.hasClass('btn-outline-success');
 
-        var newName = prompt('Rename option:', current);
-        if (newName === null) return;
-        newName = newName.trim();
-        if (!newName) {
-            showAlert('Name cannot be empty.', 'warning');
-            return;
+        if (!goingActive && !confirm('Deactivate this option? It will be hidden from new dropdowns but kept on existing trips.')) return;
+
+        if (goingActive) {
+            ajaxPost({
+                save_system_list_item: 1,
+                id: id,
+                list_type: type,
+                name: name,
+                sort_order: parseInt(sort, 10) || 0,
+                is_active: 1
+            }, function() {
+                loadList(type);
+                showAlert('Option reactivated.', 'success');
+            });
+        } else {
+            ajaxPost({ deactivate_system_list_item: 1, id: id }, function() {
+                loadList(type);
+                showAlert('Option deactivated.', 'success');
+            });
         }
-        var newSort = prompt('Sort order:', currentSort);
-        if (newSort === null) newSort = currentSort;
-
-        ajaxPost({
-            save_system_list_item: 1,
-            id: id,
-            list_type: type,
-            name: newName,
-            sort_order: parseInt(newSort, 10) || 0
-        }, function() {
-            loadList(type);
-            showAlert('Option updated.', 'success');
-        });
-    });
-
-    // Deactivate
-    jQuery(document).on('click', '.btn-deactivate', function() {
-        var $row = jQuery(this).closest('tr');
-        var id = $row.data('id');
-        var type = $row.closest('.pref-list').data('type');
-        if (!confirm('Deactivate this option? It will be hidden from new dropdowns but kept on existing trips.')) return;
-        ajaxPost({ deactivate_system_list_item: 1, id: id }, function() {
-            loadList(type);
-            showAlert('Option deactivated.', 'success');
-        });
     });
 })();
 </script>

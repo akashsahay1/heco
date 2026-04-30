@@ -1,18 +1,6 @@
 @extends('admin.layout')
 @section('title', 'Trip Manager - ' . $trip->trip_id)
 
-@section('css')
-<style>
-.trip-manager-col { height: calc(100vh - 140px); overflow-y: auto; padding: 10px; }
-.tm-sidebar { background: #f8f9fa; }
-.day-block { border: 1px solid #dee2e6; border-radius: 8px; padding: 12px; margin-bottom: 10px; background: #fff; cursor: pointer; transition: border-color 0.15s; }
-.day-block:hover { border-color: #0d6efd; }
-.day-block.locked { background: #f0f8f0; border-color: #198754; }
-.day-block.selected { border-color: #0d6efd; border-width: 2px; }
-.service-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #f0f0f0; }
-</style>
-@endsection
-
 @section('content')
 <div class="container-fluid px-0">
     {{-- Top bar with trip info --}}

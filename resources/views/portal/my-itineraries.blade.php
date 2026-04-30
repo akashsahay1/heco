@@ -1,20 +1,5 @@
-@extends('portal.layout')
+﻿@extends('portal.layout')
 @section('title', 'My Itineraries - HECO Portal')
-
-@section('css')
-<style>
-    .trip-card { transition: transform 0.2s, box-shadow 0.2s; border: none; border-left: 4px solid var(--heco-green); }
-    .trip-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
-    .trip-status { font-size: 0.75rem; }
-    .trip-status.badge-open { background-color: #0d6efd; }
-    .trip-status.badge-confirmed { background-color: var(--heco-green); }
-    .trip-status.badge-completed { background-color: #6c757d; }
-    .trip-status.badge-cancelled { background-color: #dc3545; }
-    .trip-regions .badge { font-size: 0.7rem; }
-    .empty-state { padding: 80px 20px; }
-    .empty-state i { font-size: 5rem; color: #dee2e6; }
-</style>
-@endsection
 
 @section('content')
 <div class="container py-4">

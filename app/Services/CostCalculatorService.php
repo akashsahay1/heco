@@ -111,9 +111,11 @@ class CostCalculatorService
 
         $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
 
-        $rpPercent = $trip->margin_rp_percent ?: (float) Setting::getValue('default_rp_margin_percent', 5);
-        $hrpPercent = $trip->margin_hrp_percent ?: (float) Setting::getValue('default_hrp_margin_percent', 10);
-        $hctPercent = $trip->commission_hct_percent ?: (float) Setting::getValue('default_hct_commission_percent', 15);
+        // Cast to float first — DB returns DECIMAL columns as strings (e.g. "0.00"),
+        // and any non-empty string is truthy in PHP, so `?:` would skip the default.
+        $rpPercent  = (float) $trip->margin_rp_percent       ?: (float) Setting::getValue('default_rp_margin_percent', 5);
+        $hrpPercent = (float) $trip->margin_hrp_percent      ?: (float) Setting::getValue('default_hrp_margin_percent', 10);
+        $hctPercent = (float) $trip->commission_hct_percent  ?: (float) Setting::getValue('default_hct_commission_percent', 15);
 
         $rpAmount = round($totalCost * $rpPercent / 100, 2);
         $hrpAmount = round($totalCost * $hrpPercent / 100, 2);
@@ -144,6 +146,14 @@ class CostCalculatorService
         ];
 
         $trip->update($data);
+
+        // Add display-only details for the pricing summary captions (not persisted)
+        $data['vehicle_multiplier']       = $vehicleMultiplier;
+        $data['accommodation_multiplier'] = $accomMultiplier;
+        $data['guide_multiplier']         = $guideMultiplier;
+        $data['gst_percent']              = (float) Setting::getValue('gst_percent', 5);
+        $data['adults']                   = $adults;
+        $data['children']                 = $children;
 
         return $data;
     }

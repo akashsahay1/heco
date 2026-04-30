@@ -11,45 +11,8 @@
     <link href="{{ url('css/bootstrap.min.css') }}?v={{ time() }}" rel="stylesheet">
     <link href="{{ url('css/bootstrap-icons.min.css') }}?v={{ time() }}" rel="stylesheet">
     <link href="{{ url('css/admin.css') }}?v={{ time() }}" rel="stylesheet">
-    <style>
-        body {
-            background: linear-gradient(135deg, #1a1e2e 0%, #2d3748 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Inter', sans-serif;
-        }
-        .admin-login-card {
-            background: #fff;
-            border-radius: 12px;
-            padding: 40px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        .admin-login-brand {
-            text-align: center;
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: #2d6a4f;
-            margin-bottom: 8px;
-        }
-        .admin-login-subtitle {
-            text-align: center;
-            color: #6c757d;
-            margin-bottom: 24px;
-        }
-        .admin-login-error {
-            background: #f8d7da;
-            color: #842029;
-            padding: 10px 15px;
-            border-radius: 6px;
-            font-size: 0.875rem;
-        }
-    </style>
 </head>
-<body>
+<body class="admin-login-page">
     <div class="admin-login-card">
         <div class="admin-login-brand">
             <i class="bi bi-mountain"></i> HECO Admin
