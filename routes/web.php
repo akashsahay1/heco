@@ -34,6 +34,8 @@ Route::domain(config('app.admin_domain'))->group(function () {
         Route::get('/payments', [HctController::class, 'payments'])->name('hct.payments');
         Route::get('/gst', [HctController::class, 'gst'])->name('hct.gst');
         Route::get('/providers', [HctController::class, 'providers'])->name('hct.providers');
+        Route::get('/providers/{id}', [HctController::class, 'providerShow'])->name('hct.providers.show');
+        Route::get('/providers/{id}/edit', [HctController::class, 'providerEdit'])->name('hct.providers.edit');
         Route::get('/travelers', [HctController::class, 'travelers'])->name('hct.travelers');
         Route::get('/provider-applications', [HctController::class, 'providerApplications'])->name('hct.provider-applications');
 
@@ -82,6 +84,41 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::get('/csrf-token', fn() => response()->json(['token' => csrf_token()]));
     Route::get('/opcache-reset', fn() => (function_exists('opcache_reset') && opcache_reset()) ? 'cleared' : 'no opcache');
 
+    Route::get('/testapi', function(){
+
+        $apiKey = 'AIzaSyBBCNGLn18wRYsgpqEtbP68PTVAn097-zQ';  // Use the NEW key after revoking the old one
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={$apiKey}";
+
+        $data = [
+            'contents' => [
+                ['parts' => [['text' => 'Reply with just OK']]]
+            ]
+        ];
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);  // For local dev only
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        echo "<pre>";
+        echo "HTTP Status: {$httpCode}\n\n";
+        if ($error) echo "cURL Error: {$error}\n\n";
+        echo "Response:\n";
+        echo json_encode(json_decode($response), JSON_PRETTY_PRINT);
+        echo "</pre>";
+
+        echo "Hi";
+
+
+    });
+
     // Static Pages
     Route::get('/about', fn() => view('portal.pages.about'))->name('about');
     Route::get('/privacy', fn() => view('portal.pages.privacy'))->name('privacy');
@@ -109,6 +146,7 @@ Route::domain(config('app.portal_domain'))->group(function () {
         Route::get('/my-itineraries', [TravellerController::class, 'myItineraries'])->name('my-itineraries');
         Route::get('/my-itineraries/{trip_id}', [TravellerController::class, 'resumeTrip'])->name('trip.resume');
         Route::get('/trip/{trip}', [TravellerController::class, 'tripDetail'])->name('trip.detail');
+        Route::get('/trip/{trip}/thank-you', [TravellerController::class, 'paymentThankYou'])->name('trip.thank-you');
         Route::get('/wishlist', [TravellerController::class, 'wishlist'])->name('wishlist');
         Route::get('/profile', [TravellerController::class, 'profile'])->name('profile');
     });
@@ -116,6 +154,7 @@ Route::domain(config('app.portal_domain'))->group(function () {
     // SP Dashboard (auth + sp middleware)
     Route::middleware(['auth', 'sp'])->group(function () {
         Route::get('/sp/dashboard', [SpController::class, 'dashboard'])->name('sp.dashboard');
+        Route::get('/sp/profile/edit', [SpController::class, 'editProfile'])->name('sp.profile.edit');
     });
 
     // AJAX

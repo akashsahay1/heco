@@ -18,6 +18,9 @@ class SocialAuthController extends Controller
         if (!in_array($provider, ["google", "facebook"])) {
             abort(404);
         }
+        if (!$this->providerConfigured($provider)) {
+            return redirect("/?auth=login")->with("error", ucfirst($provider) . " login is not configured yet. Please use email login or contact the administrator.");
+        }
         return Socialite::driver($provider)->redirect();
     }
 
@@ -26,11 +29,14 @@ class SocialAuthController extends Controller
         if (!in_array($provider, ["google", "facebook"])) {
             abort(404);
         }
+        if (!$this->providerConfigured($provider)) {
+            return redirect("/?auth=login")->with("error", ucfirst($provider) . " login is not configured yet.");
+        }
 
         try {
             $socialUser = Socialite::driver($provider)->user();
         } catch (\Exception $e) {
-            return redirect("/login")->with("error", "Social login failed. Please try again.");
+            return redirect("/?auth=login")->with("error", "Social login failed. Please try again.");
         }
 
         $idField = $provider . "_id";
@@ -139,5 +145,11 @@ class SocialAuthController extends Controller
             $user->isServiceProvider() => redirect("/sp/dashboard"),
             default => redirect("/home"),
         };
+    }
+
+    private function providerConfigured(string $provider): bool
+    {
+        return !empty(config("services.{$provider}.client_id"))
+            && !empty(config("services.{$provider}.client_secret"));
     }
 }

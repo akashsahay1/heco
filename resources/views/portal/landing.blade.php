@@ -124,7 +124,7 @@
             @endphp
             @foreach($regions->take(6) as $idx => $region)
                 <div class="col-md-4 col-6">
-                    <a href="/home" class="text-decoration-none">
+                    <a href="/home?region_id={{ $region->id }}" class="text-decoration-none">
                         <div class="landing-region-card">
                             <div class="landing-region-image" style="background-image: url('{{ $regionImages[$idx % count($regionImages)] }}');">
                                 <div class="landing-region-overlay"></div>
@@ -150,19 +150,19 @@
         <div class="row g-3">
             @php
                 $categories = [
-                    ['icon' => 'fa-solid fa-mountain', 'name' => 'Trekking', 'desc' => 'Alpine trails & mountain passes'],
-                    ['icon' => 'fa-solid fa-landmark', 'name' => 'Cultural', 'desc' => 'Traditions & heritage'],
-                    ['icon' => 'fa-solid fa-om', 'name' => 'Spiritual', 'desc' => 'Meditation & sacred sites'],
-                    ['icon' => 'fa-solid fa-leaf', 'name' => 'Nature', 'desc' => 'Wildlife & landscapes'],
-                    ['icon' => 'fa-solid fa-person-hiking', 'name' => 'Adventure', 'desc' => 'Thrills & challenges'],
-                    ['icon' => 'fa-solid fa-spa', 'name' => 'Wellness', 'desc' => 'Healing & rejuvenation'],
-                    ['icon' => 'fa-solid fa-utensils', 'name' => 'Culinary', 'desc' => 'Local cuisine & cooking'],
-                    ['icon' => 'fa-solid fa-hand-holding-heart', 'name' => 'Volunteering', 'desc' => 'Give back to communities'],
+                    ['icon' => 'fa-solid fa-mountain', 'name' => 'Trekking', 'desc' => 'Alpine trails & mountain passes', 'type' => 'trek'],
+                    ['icon' => 'fa-solid fa-landmark', 'name' => 'Cultural', 'desc' => 'Traditions & heritage', 'type' => 'cultural'],
+                    ['icon' => 'fa-solid fa-om', 'name' => 'Spiritual', 'desc' => 'Meditation & sacred sites', 'type' => 'spiritual'],
+                    ['icon' => 'fa-solid fa-leaf', 'name' => 'Nature', 'desc' => 'Wildlife & landscapes', 'type' => 'nature'],
+                    ['icon' => 'fa-solid fa-person-hiking', 'name' => 'Adventure', 'desc' => 'Thrills & challenges', 'type' => 'adventure'],
+                    ['icon' => 'fa-solid fa-spa', 'name' => 'Wellness', 'desc' => 'Healing & rejuvenation', 'type' => 'wellness'],
+                    ['icon' => 'fa-solid fa-utensils', 'name' => 'Culinary', 'desc' => 'Local cuisine & cooking', 'type' => 'culinary'],
+                    ['icon' => 'fa-solid fa-hand-holding-heart', 'name' => 'Volunteering', 'desc' => 'Give back to communities', 'type' => 'volunteering'],
                 ];
             @endphp
             @foreach($categories as $cat)
                 <div class="col-6 col-md-3">
-                    <a href="/home" class="text-decoration-none">
+                    <a href="/home?type={{ $cat['type'] }}" class="text-decoration-none">
                         <div class="landing-category-card">
                             <div class="landing-category-icon"><i class="{{ $cat['icon'] }}"></i></div>
                             <h6 class="fw-bold text-dark mb-1">{{ $cat['name'] }}</h6>

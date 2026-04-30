@@ -21,11 +21,7 @@
         <div class="header-container">
             <!-- Logo -->
             <a href="/" class="header-logo">
-                <span class="logo-icon"><i class="bi bi-mountains"></i></span>
-                <span class="logo-text">
-                    <span class="logo-primary">HECO</span>
-                    <span class="logo-secondary">Portal</span>
-                </span>
+                <img src="/images/logo/heco-logo-dark.png" alt="HECO" class="logo-img">
             </a>
 
             <!-- Desktop Nav -->
@@ -38,15 +34,16 @@
 
             <!-- Header Actions -->
             <div class="header-actions">
-                <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1 d-flex align-items-center gap-1" id="btnCurrencySelector" title="Change currency" style="font-size: 0.8rem;">
-                    <img src="/images/flags/in.png" alt="" id="currentCurrencyFlag" style="width: 20px; height: 14px; object-fit: cover; border-radius: 2px;">
+                <button type="button" class="header-currency-btn" id="btnCurrencySelector" title="Change currency">
+                    <img src="/images/flags/in.png" alt="" id="currentCurrencyFlag" class="header-currency-flag">
                     <span id="currentCurrencyLabel">INR</span>
+                    <i class="bi bi-chevron-down header-currency-caret" id="currencyCaret"></i>
                 </button>
                 @guest
-                    <button type="button" class="btn btn-outline-dark btn-sm" id="btnOpenAuth">
+                    <button type="button" class="btn btn-outline-dark btn-sm header-auth-btn" id="btnOpenAuth">
                         Login
                     </button>
-                    <button type="button" class="btn btn-success btn-sm" id="btnOpenRegister">
+                    <button type="button" class="btn btn-success btn-sm header-auth-btn" id="btnOpenRegister">
                         Get Started
                     </button>
                 @else
@@ -120,147 +117,139 @@
 
     @guest
     <!-- Auth Modal (Bootstrap 5) -->
-    <div class="modal fade" id="authModal" tabindex="-1" aria-labelledby="authModalTitle" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
-            <div class="modal-content rounded-4 shadow-lg">
-                <div class="modal-header border-0 px-4 pt-3 pb-0">
-                    <h6 class="modal-title fw-bold" id="authModalTitle">Welcome Back</h6>
-                    <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal fade auth-modal" id="authModal" tabindex="-1" aria-labelledby="authModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content auth-modal-content">
+                <button type="button" class="btn-close auth-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+
+                <div class="auth-modal-hero">
+                    <h4 class="auth-modal-title" id="authModalTitle">Welcome Back</h4>
+                    <p class="auth-modal-subtitle">Plan regenerative journeys with HECO</p>
                 </div>
 
-                <!-- Tabs -->
-                <div class="px-4 py-2">
-                    <ul class="nav nav-pills nav-fill p-1 bg-light rounded-3" style="font-size: 0.8rem;">
+                <div class="auth-modal-body">
+                    <!-- Tabs -->
+                    <ul class="nav nav-pills nav-fill auth-tabs">
                         <li class="nav-item">
-                            <button class="nav-link active rounded-3 fw-medium py-1" data-auth-tab="login" type="button">Login</button>
+                            <button class="nav-link active" data-auth-tab="login" type="button">Login</button>
                         </li>
                         <li class="nav-item">
-                            <button class="nav-link rounded-3 fw-medium py-1" data-auth-tab="register" type="button">Sign Up</button>
+                            <button class="nav-link" data-auth-tab="register" type="button">Sign Up</button>
                         </li>
                     </ul>
-                </div>
 
-                <div class="modal-body pt-0 px-4 pb-3">
                     <!-- Login Form -->
                     <div class="auth-panel" id="loginPanel">
-                        <form id="loginForm">
-                            <div class="mb-3">
-                                <label class="form-label small mb-1">Email Address</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-                                    <input type="email" class="form-control" name="email" required>
+                        <form id="loginForm" class="auth-form">
+                            <div class="auth-field">
+                                <label class="auth-label">Email Address</label>
+                                <div class="input-group auth-input-group">
+                                    <input type="email" class="form-control" name="email" placeholder="you@example.com" required>
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <label class="form-label small mb-0">Password</label>
-                                    <a href="/forgot-password" class="text-decoration-none text-success" style="font-size: 0.75rem;">Forgot password?</a>
+                            <div class="auth-field">
+                                <div class="auth-label-row">
+                                    <label class="auth-label mb-0">Password</label>
+                                    <a href="/forgot-password" class="auth-link-muted">Forgot?</a>
                                 </div>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                                    <input type="password" class="form-control" name="password" required>
+                                <div class="input-group auth-input-group">
+                                    <input type="password" class="form-control" name="password" placeholder="Enter your password" required>
                                     <button type="button" class="btn btn-outline-secondary password-toggle" tabindex="-1">
                                         <i class="bi bi-eye"></i>
                                     </button>
                                 </div>
                             </div>
-                            <button type="submit" class="btn btn-success w-100 mt-2" id="btnLogin">
-                                Login
+                            <button type="submit" class="btn btn-success w-100 auth-submit-btn" id="btnLogin">
+                                <i class="bi bi-box-arrow-in-right me-2"></i>Login
                             </button>
                         </form>
 
-                        <div class="d-flex align-items-center gap-3 my-3">
-                            <hr class="flex-grow-1">
-                            <span class="text-muted" style="font-size: 0.7rem;">or continue with</span>
-                            <hr class="flex-grow-1">
+                        <div class="auth-divider">
+                            <span>or continue with</span>
                         </div>
 
-                        <div class="d-flex justify-content-center gap-3">
-                            <a href="/auth/google/redirect" class="social-icon-btn" title="Continue with Google">
-                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                        <div class="auth-social-row">
+                            <a href="/auth/google/redirect" class="social-icon-btn" title="Continue with Google" aria-label="Continue with Google">
+                                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
                             </a>
-                            <a href="/auth/facebook/redirect" class="social-icon-btn" title="Continue with Facebook">
-                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                            </a>
-                            <a href="/auth/apple/redirect" class="social-icon-btn" title="Continue with Apple">
-                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#000000" d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+                            <a href="/auth/facebook/redirect" class="social-icon-btn" title="Continue with Facebook" aria-label="Continue with Facebook">
+                                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                             </a>
                         </div>
                     </div>
 
                     <!-- Register Form -->
                     <div class="auth-panel" id="registerPanel" style="display: none;">
-                        <form id="registerForm">
-                            <div class="row g-2 mb-3">
+                        <form id="registerForm" class="auth-form">
+                            <div class="row g-2">
                                 <div class="col-6">
-                                    <label class="form-label small mb-1">First Name</label>
-                                    <input type="text" class="form-control" name="first_name" required>
+                                    <div class="auth-field">
+                                        <label class="auth-label">First Name</label>
+                                        <div class="input-group auth-input-group">
+                                            <input type="text" class="form-control" name="first_name" placeholder="Jane" required>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-6">
-                                    <label class="form-label small mb-1">Last Name</label>
-                                    <input type="text" class="form-control" name="last_name" required>
+                                    <div class="auth-field">
+                                        <label class="auth-label">Last Name</label>
+                                        <div class="input-group auth-input-group">
+                                            <input type="text" class="form-control" name="last_name" placeholder="Doe" required>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label small mb-1">Email Address</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-                                    <input type="email" class="form-control" name="email" required>
+                            <div class="auth-field">
+                                <label class="auth-label">Email Address</label>
+                                <div class="input-group auth-input-group">
+                                    <input type="email" class="form-control" name="email" placeholder="you@example.com" required>
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label small mb-1">Phone Number</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-phone"></i></span>
-                                    <input type="tel" class="form-control" name="phone">
+                            <div class="auth-field">
+                                <label class="auth-label">Phone Number</label>
+                                <div class="input-group auth-input-group">
+                                    <input type="tel" class="form-control" name="phone" placeholder="+91 98765 43210">
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label small mb-1">Password</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                                    <input type="password" class="form-control" name="password" required minlength="8">
+                            <div class="auth-field">
+                                <label class="auth-label">Password</label>
+                                <div class="input-group auth-input-group">
+                                    <input type="password" class="form-control" name="password" placeholder="Min. 8 characters" required minlength="8">
                                     <button type="button" class="btn btn-outline-secondary password-toggle" tabindex="-1">
                                         <i class="bi bi-eye"></i>
                                     </button>
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label small mb-1">Confirm Password</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
-                                    <input type="password" class="form-control" name="password_confirmation" required>
+                            <div class="auth-field">
+                                <label class="auth-label">Confirm Password</label>
+                                <div class="input-group auth-input-group">
+                                    <input type="password" class="form-control" name="password_confirmation" placeholder="Repeat password" required>
                                     <button type="button" class="btn btn-outline-secondary password-toggle" tabindex="-1">
                                         <i class="bi bi-eye"></i>
                                     </button>
                                 </div>
                             </div>
-                            <div class="form-check mb-3">
+                            <div class="form-check auth-terms">
                                 <input type="checkbox" class="form-check-input" id="termsCheck" required>
-                                <label class="form-check-label text-muted" style="font-size: 0.7rem;" for="termsCheck">
+                                <label class="form-check-label" for="termsCheck">
                                     I agree to the <a href="/terms" class="text-success text-decoration-none">Terms</a> and <a href="/privacy" class="text-success text-decoration-none">Privacy Policy</a>
                                 </label>
                             </div>
-                            <button type="submit" class="btn btn-success w-100" id="btnRegister">
-                                Create Account
+                            <button type="submit" class="btn btn-success w-100 auth-submit-btn" id="btnRegister">
+                                <i class="bi bi-person-plus me-2"></i>Create Account
                             </button>
                         </form>
 
-                        <div class="d-flex align-items-center gap-3 my-3">
-                            <hr class="flex-grow-1">
-                            <span class="text-muted" style="font-size: 0.7rem;">or sign up with</span>
-                            <hr class="flex-grow-1">
+                        <div class="auth-divider">
+                            <span>or sign up with</span>
                         </div>
 
-                        <div class="d-flex justify-content-center gap-3">
-                            <a href="/auth/google/redirect" class="social-icon-btn" title="Sign up with Google">
-                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                        <div class="auth-social-row">
+                            <a href="/auth/google/redirect" class="social-icon-btn" title="Sign up with Google" aria-label="Sign up with Google">
+                                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
                             </a>
-                            <a href="/auth/facebook/redirect" class="social-icon-btn" title="Sign up with Facebook">
-                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                            </a>
-                            <a href="/auth/apple/redirect" class="social-icon-btn" title="Sign up with Apple">
-                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="#000000" d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+                            <a href="/auth/facebook/redirect" class="social-icon-btn" title="Sign up with Facebook" aria-label="Sign up with Facebook">
+                                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                             </a>
                         </div>
                     </div>
@@ -316,8 +305,7 @@
                     <!-- Brand Column -->
                     <div class="footer-brand">
                         <a href="/" class="footer-logo">
-                            <span class="logo-icon"><i class="bi bi-mountains"></i></span>
-                            <span class="logo-text">HECO Portal</span>
+                            <img src="/images/logo/heco-logo-light.png" alt="HECO" class="logo-img">
                         </a>
                         <p class="footer-tagline">
                             HECO — Regenerative travel experiences that connect you with nature, culture, and local communities across the world.
@@ -328,17 +316,6 @@
                             <a href="#" class="social-link" title="Twitter"><i class="bi bi-twitter-x"></i></a>
                             <a href="#" class="social-link" title="YouTube"><i class="bi bi-youtube"></i></a>
                         </div>
-                    </div>
-
-                    <!-- Explore Column -->
-                    <div class="footer-links">
-                        <h4 class="footer-heading">Explore</h4>
-                        <ul class="footer-nav">
-                            <li><a href="/home">All Experiences</a></li>
-                            <li><a href="/home#regions">Destinations</a></li>
-                            <li><a href="/home#categories">Categories</a></li>
-                            <li><a href="/home#impact">Our Impact</a></li>
-                        </ul>
                     </div>
 
                     <!-- Company Column -->
@@ -678,6 +655,13 @@
                 jQuery('#currencySearchInput').val('');
                 renderCurrencyModal('');
                 bsCurrencyModal.show();
+            });
+
+            // Flip currency caret when modal opens/closes
+            currencyModalEl.on('show.bs.modal', function() {
+                jQuery('#currencyCaret').removeClass('bi-chevron-down').addClass('bi-chevron-up');
+            }).on('hide.bs.modal', function() {
+                jQuery('#currencyCaret').removeClass('bi-chevron-up').addClass('bi-chevron-down');
             });
 
             jQuery('#currencySearchInput').on('input', function() {

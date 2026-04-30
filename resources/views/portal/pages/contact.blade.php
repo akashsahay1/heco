@@ -84,10 +84,52 @@
     margin: 0 0 var(--space-6);
 }
 
+.contact-form .form-group {
+    margin-bottom: var(--space-4);
+}
+
 .contact-form .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.contact-form .form-row .form-group {
+    margin-bottom: 0;
+}
+
+.contact-form .form-label {
+    display: block;
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary, #111827);
+    margin-bottom: var(--space-2);
+    letter-spacing: 0.01em;
+}
+
+.contact-form .form-input {
+    display: block;
+    width: 100%;
+    padding: 10px 14px;
+    font-size: var(--text-base);
+    line-height: 1.4;
+    color: var(--color-text-primary, #111827);
+    background: #fff;
+    border: 1.5px solid var(--color-border, #e5e7eb);
+    border-radius: var(--radius-md, 10px);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    font-family: inherit;
+}
+
+.contact-form .form-input::placeholder {
+    color: var(--color-text-muted, #9ca3af);
+}
+
+.contact-form .form-input:focus {
+    outline: none;
+    border-color: var(--heco-primary-500, #22c55e);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
 }
 
 .contact-form .form-select {
@@ -96,11 +138,16 @@
     background-repeat: no-repeat;
     background-position: right var(--space-4) center;
     padding-right: var(--space-10);
+    cursor: pointer;
 }
 
 .contact-form .form-textarea {
     resize: vertical;
     min-height: 120px;
+}
+
+.contact-form button[type="submit"] {
+    margin-top: var(--space-2);
 }
 
 /* Contact Info */
@@ -403,18 +450,12 @@
 
                     <div class="form-group">
                         <label class="form-label">Email Address *</label>
-                        <div class="input-with-icon">
-                            <i class="bi bi-envelope input-icon"></i>
-                            <input type="email" class="form-input" name="email" placeholder="you@example.com" required>
-                        </div>
+                        <input type="email" class="form-input" name="email" placeholder="you@example.com" required>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Phone Number</label>
-                        <div class="input-with-icon">
-                            <i class="bi bi-phone input-icon"></i>
-                            <input type="tel" class="form-input" name="phone" placeholder="+91 98765 43210">
-                        </div>
+                        <input type="tel" class="form-input" name="phone" placeholder="+91 98765 43210">
                     </div>
 
                     <div class="form-group">
@@ -437,8 +478,8 @@
                             placeholder="Tell us how we can help you..." required></textarea>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-lg w-100" id="btnSubmitContact">
-                        <i class="bi bi-send"></i>
+                    <button type="submit" class="btn btn-success btn-lg w-100" id="btnSubmitContact">
+                        <i class="bi bi-send me-2"></i>
                         Send Message
                     </button>
                 </form>

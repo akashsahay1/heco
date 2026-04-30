@@ -33,6 +33,15 @@ class TravellerController extends Controller
         return view('portal.trip-detail', compact('trip'));
     }
 
+    public function paymentThankYou(int $trip)
+    {
+        $trip = Trip::where('id', $trip)
+            ->where('user_id', auth()->id())
+            ->with(['tripRegions.region'])
+            ->firstOrFail();
+        return view('portal.payment-thank-you', compact('trip'));
+    }
+
     public function wishlist()
     {
         return view("portal.wishlist");

@@ -19,7 +19,16 @@ class SpController extends Controller
     public function dashboard()
     {
         $user = auth()->user();
-        $provider = ServiceProvider::where("user_id", $user->id)->with(["region", "pricing"])->first();
+        $provider = ServiceProvider::where("user_id", $user->id)->with(["region", "pricing", "lastUpdatedBy"])->first();
         return view("portal.sp.dashboard", compact("provider"));
+    }
+
+    public function editProfile()
+    {
+        $user = auth()->user();
+        $provider = ServiceProvider::where("user_id", $user->id)->with(["region", "lastUpdatedBy"])->firstOrFail();
+        $regions = Region::where("is_active", true)->orderBy("name")->get();
+        $serviceTypes = SystemList::ofType("service_type")->get();
+        return view("portal.sp.edit-profile", compact("provider", "regions", "serviceTypes"));
     }
 }

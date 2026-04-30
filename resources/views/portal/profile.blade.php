@@ -5,11 +5,11 @@
 <style>
     .profile-avatar {
         width: 80px; height: 80px; border-radius: 50%;
-        object-fit: cover; border: 3px solid var(--heco-green);
+        object-fit: cover; border: 3px solid var(--heco-success);
     }
     .profile-avatar-placeholder {
         width: 80px; height: 80px; border-radius: 50%;
-        background: var(--heco-green); color: #fff;
+        background: var(--heco-success); color: #fff;
         display: flex; align-items: center; justify-content: center;
         font-size: 2rem; font-weight: 600;
     }

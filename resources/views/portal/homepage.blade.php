@@ -739,48 +739,41 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     <div class="mb-3">
                                         <label class="form-label">Accommodation Comfort</label>
                                         <select class="form-select pref-input" id="prefAccommodation">
-                                            <option value="Cat E - Camping/Tents" {{ $pAccom == 'Cat E - Camping/Tents' ? 'selected' : '' }}>Cat E - Camping/Tents</option>
-                                            <option value="Cat D - Basic/Homestay" {{ $pAccom == 'Cat D - Basic/Homestay' ? 'selected' : '' }}>Cat D - Basic/Homestay</option>
-                                            <option value="Cat C - Standard" {{ $pAccom == 'Cat C - Standard' ? 'selected' : '' }}>Cat C - Standard</option>
-                                            <option value="Cat B - Comfort" {{ $pAccom == 'Cat B - Comfort' ? 'selected' : '' }}>Cat B - Comfort</option>
-                                            <option value="Cat A - Premium/Luxury" {{ $pAccom == 'Cat A - Premium/Luxury' ? 'selected' : '' }}>Cat A - Premium/Luxury</option>
+                                            @foreach($prefLists['accommodation_comfort'] ?? [] as $item)
+                                                <option value="{{ $item->name }}" @selected($pAccom == $item->name)>{{ $item->name }}</option>
+                                            @endforeach
                                         </select>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Vehicle Comfort</label>
                                         <select class="form-select pref-input" id="prefVehicle">
-                                            <option value="Local Transport" {{ $pVehicle == 'Local Transport' ? 'selected' : '' }}>Local Transport</option>
-                                            <option value="SUV (Bolero/Scorpio)" {{ $pVehicle == 'SUV (Bolero/Scorpio)' ? 'selected' : '' }}>SUV (Bolero/Scorpio)</option>
-                                            <option value="SUV (Innova/Crysta)" {{ $pVehicle == 'SUV (Innova/Crysta)' ? 'selected' : '' }}>SUV (Innova/Crysta)</option>
-                                            <option value="Premium (Fortuner/Similar)" {{ $pVehicle == 'Premium (Fortuner/Similar)' ? 'selected' : '' }}>Premium (Fortuner/Similar)</option>
-                                            <option value="Tempo Traveller" {{ $pVehicle == 'Tempo Traveller' ? 'selected' : '' }}>Tempo Traveller</option>
+                                            @foreach($prefLists['vehicle_comfort'] ?? [] as $item)
+                                                <option value="{{ $item->name }}" @selected($pVehicle == $item->name)>{{ $item->name }}</option>
+                                            @endforeach
                                         </select>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Guide Preference</label>
                                         <select class="form-select pref-input" id="prefGuide">
-                                            <option value="No Guide" {{ $pGuide == 'No Guide' ? 'selected' : '' }}>No Guide</option>
-                                            <option value="Local Guide" {{ $pGuide == 'Local Guide' ? 'selected' : '' }}>Local Guide</option>
-                                            <option value="English-speaking" {{ $pGuide == 'English-speaking' ? 'selected' : '' }}>English-speaking</option>
-                                            <option value="Certified/Expert" {{ $pGuide == 'Certified/Expert' ? 'selected' : '' }}>Certified/Expert</option>
+                                            @foreach($prefLists['guide_preference'] ?? [] as $item)
+                                                <option value="{{ $item->name }}" @selected($pGuide == $item->name)>{{ $item->name }}</option>
+                                            @endforeach
                                         </select>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Travel Pace</label>
                                         <select class="form-select pref-input" id="prefPace">
-                                            <option value="Relaxed" {{ $pPace == 'Relaxed' ? 'selected' : '' }}>Relaxed</option>
-                                            <option value="Moderate" {{ $pPace == 'Moderate' ? 'selected' : '' }}>Moderate</option>
-                                            <option value="Active" {{ $pPace == 'Active' ? 'selected' : '' }}>Active</option>
-                                            <option value="Intensive" {{ $pPace == 'Intensive' ? 'selected' : '' }}>Intensive</option>
+                                            @foreach($prefLists['travel_pace'] ?? [] as $item)
+                                                <option value="{{ $item->name }}" @selected($pPace == $item->name)>{{ $item->name }}</option>
+                                            @endforeach
                                         </select>
                                     </div>
                                     <div class="mb-0">
                                         <label class="form-label">Budget Sensitivity</label>
                                         <select class="form-select pref-input" id="prefBudget">
-                                            <option value="Budget-friendly" {{ $pBudget == 'Budget-friendly' ? 'selected' : '' }}>Budget-friendly</option>
-                                            <option value="Mid-range" {{ $pBudget == 'Mid-range' ? 'selected' : '' }}>Mid-range</option>
-                                            <option value="Premium" {{ $pBudget == 'Premium' ? 'selected' : '' }}>Premium</option>
-                                            <option value="No Limit" {{ $pBudget == 'No Limit' ? 'selected' : '' }}>No Limit</option>
+                                            @foreach($prefLists['budget_sensitivity'] ?? [] as $item)
+                                                <option value="{{ $item->name }}" @selected($pBudget == $item->name)>{{ $item->name }}</option>
+                                            @endforeach
                                         </select>
                                     </div>
                                 </div>
@@ -1705,6 +1698,45 @@ jQuery(function() {
         });
     }
 
+    // Apply deep-link params from landing (?region_id=X / ?type=Y) BEFORE first load
+    (function() {
+        var p = new URLSearchParams(window.location.search);
+        var regionParam = p.get('region_id');
+        var typeParam = p.get('type');
+        var changed = false;
+
+        if (regionParam) {
+            var matchedRegion = null;
+            for (var i = 0; i < allRegions.length; i++) {
+                if (String(allRegions[i].id) === String(regionParam)) { matchedRegion = allRegions[i]; break; }
+            }
+            if (matchedRegion) {
+                if (matchedRegion.continent) jQuery('#filterContinent').val(matchedRegion.continent);
+                updateCountryOptions();
+                if (matchedRegion.country) jQuery('#filterCountry').val(matchedRegion.country);
+                updateRegionOptions();
+                jQuery('#filterRegion').val(matchedRegion.id);
+                buildCustomDropdown(jQuery('#filterContinent')[0]);
+                buildCustomDropdown(jQuery('#filterCountry')[0]);
+                buildCustomDropdown(jQuery('#filterRegion')[0]);
+                changed = true;
+            }
+        }
+
+        if (typeParam) {
+            jQuery('#filterType').val(typeParam);
+            buildCustomDropdown(jQuery('#filterType')[0]);
+            changed = true;
+        }
+
+        if (changed && window.history.replaceState) {
+            p.delete('region_id');
+            p.delete('type');
+            var clean = window.location.pathname + (p.toString() ? '?' + p.toString() : '') + window.location.hash;
+            window.history.replaceState({}, '', clean);
+        }
+    })();
+
     // Initial load
     loadExperiences(false);
     initMap();
@@ -2315,7 +2347,8 @@ jQuery(function() {
             jQuery('#prGST').text(fmtCurrency(p.gst_amount));
             jQuery('#prFinal').text(fmtCurrency(p.final_price));
 
-            // Show payment card if balance due
+            // Show payment card if balance due. Pre-fill the full balance — Razorpay
+            // enforces its own per-account limit and returns a clear error if exceeded.
             var balanceDue = parseFloat(p.balance_due) || parseFloat(p.final_price) || 0;
             if (balanceDue > 0 && tripId && tripId !== 'guest') {
                 jQuery('#payAmountDue').text(fmtCurrency(balanceDue));
@@ -2770,6 +2803,8 @@ jQuery(function() {
                 if (d.accommodation_comfort) jQuery('#prefAccommodation').val(d.accommodation_comfort);
                 if (d.vehicle_comfort) jQuery('#prefVehicle').val(d.vehicle_comfort);
                 if (d.guide_preference) jQuery('#prefGuide').val(d.guide_preference);
+                if (d.travel_pace) jQuery('#prefPace').val(d.travel_pace);
+                if (d.budget_sensitivity) jQuery('#prefBudget').val(d.budget_sensitivity);
                 if (d.start_date) {
                     jQuery('#tripStartDateInput').val(d.start_date);
                     var sd = new Date(d.start_date);
@@ -3028,9 +3063,8 @@ jQuery(document).on('click', '#btnPayNow', function() {
                         razorpay_payment_id: response.razorpay_payment_id,
                         razorpay_signature: response.razorpay_signature
                     }, function(vResp) {
-                        btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
-                        alert('Payment successful! ' + (vResp.message || ''));
-                        if (typeof loadPricing === 'function') loadPricing();
+                        // Redirect to dedicated thank-you page (View Itinerary lives there)
+                        window.location.href = '/trip/' + window.tripId + '/thank-you';
                     }, function(err) {
                         btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
                         alert('Payment verification failed. Please contact support.');
@@ -3046,7 +3080,44 @@ jQuery(document).on('click', '#btnPayNow', function() {
             var rzp = new Razorpay(options);
             rzp.on('payment.failed', function(response) {
                 btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
-                alert('Payment failed: ' + (response.error.description || 'Unknown error'));
+
+                var err = response.error || {};
+                var desc = err.description || 'Unknown error';
+                var code = err.code || '';
+                var reason = err.reason || '';
+
+                // Mirror the failure to the server log so it shows up in laravel.log
+                jQuery.ajax({
+                    url: '/ajax',
+                    method: 'POST',
+                    data: {
+                        log_razorpay_failure: 1,
+                        order_id: resp.order_id,
+                        amount_inr: amount,
+                        code: code,
+                        reason: reason,
+                        description: desc,
+                        source: err.source || '',
+                        step: err.step || ''
+                    },
+                    skipGlobalError: true
+                });
+
+                // Friendlier UX based on common failure modes
+                var userMsg = desc;
+                if (/exceeds maximum amount/i.test(desc)) {
+                    userMsg = 'Your Razorpay account has a per-transaction cap below ₹' +
+                              amount.toLocaleString('en-IN') + '. ' +
+                              'Raise it in Razorpay Dashboard → Account & Settings → Configuration → ' +
+                              'Maximum Payment Amount, or pay this trip in smaller installments.';
+                } else if (/international/i.test(desc)) {
+                    userMsg = 'This card is detected as international and your account does not accept them. ' +
+                              'Use a domestic test card (Visa 4100 2800 0000 1007), or pay via UPI / Netbanking.';
+                } else if (/insufficient/i.test(desc)) {
+                    userMsg = 'Insufficient funds on the test card. Try a different test method.';
+                }
+
+                alert('Payment failed: ' + userMsg);
             });
             rzp.open();
         }, function(err) {

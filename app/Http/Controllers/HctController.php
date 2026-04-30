@@ -58,6 +58,20 @@ class HctController extends Controller
         return view("admin.providers", compact("regions"));
     }
 
+    public function providerShow($id)
+    {
+        $provider = ServiceProvider::with(["region", "user", "lastUpdatedBy", "approvedBy"])
+            ->findOrFail($id);
+        return view("admin.providers.show", compact("provider"));
+    }
+
+    public function providerEdit($id)
+    {
+        $provider = ServiceProvider::with(["region", "lastUpdatedBy"])->findOrFail($id);
+        $regions = Region::where("is_active", true)->orderBy("name")->get();
+        return view("admin.providers.edit", compact("provider", "regions"));
+    }
+
     public function travelers()
     {
         return view("admin.travelers");

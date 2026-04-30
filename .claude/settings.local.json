@@ -101,7 +101,12 @@
       "Read(//c/Users/akash/.config/herd/bin/**)",
       "Bash(\"C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\composer.bat\" require:*)",
       "Bash(C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat artisan:*)",
-      "Bash(C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat:*)"
+      "Bash(C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat:*)",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" -r \"echo php_sapi_name\\(\\);\")",
+      "Bash(\"C:/Users/akash/.config/herd/bin/php.bat\" -l resources/views/portal/layout.blade.php)",
+      "Read(//c/Users/Akash/.claude/projects/E--heco/**)",
+      "Read(//c/Users/Akash/.claude/projects//**)",
+      "Bash(C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat *)"
     ]
   }
 }

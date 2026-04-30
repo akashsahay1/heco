@@ -11,7 +11,8 @@
             <span class="badge bg-{{ $provider->provider_type === 'HLH' ? 'success' : ($provider->provider_type === 'HRP' ? 'primary' : 'info') }} ms-2">{{ $provider->provider_type }}</span>
             <span class="badge bg-{{ $provider->status === 'approved' ? 'success' : ($provider->status === 'pending' ? 'warning text-dark' : 'secondary') }} ms-1">{{ ucfirst($provider->status ?? 'pending') }}</span>
         </div>
-        <div>
+        <div class="d-flex gap-2">
+            <a href="{{ route('sp.profile.edit') }}" class="btn btn-sm btn-success"><i class="bi bi-pencil-square"></i> Edit Profile</a>
             <a href="/home" class="btn btn-sm btn-outline-secondary"><i class="bi bi-house"></i> Home</a>
         </div>
     </div>

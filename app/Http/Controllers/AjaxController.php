@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use App\Models\User;
 use App\Models\Region;
@@ -356,12 +357,13 @@ class AjaxController extends Controller
     {
         // Allow callers to override timeout for faster fallback (e.g. itinerary generation)
         $fastTimeout = $options['fast_timeout'] ?? null;
-        $maxRetries = $options['max_retries'] ?? 2;
+        // Default timeout of 20s for faster failure instead of hanging
+        $defaultTimeout = 20;
 
         $gemini = app(GeminiService::class);
         if ($gemini->isAvailable()) {
             $geminiOpts = $options;
-            if ($fastTimeout) $geminiOpts['timeout'] = $fastTimeout;
+            $geminiOpts['timeout'] = $fastTimeout ?: ($options['timeout'] ?? $defaultTimeout);
             $response = $gemini->chat($messages, $geminiOpts);
             if ($response) return $response;
         }
@@ -499,6 +501,9 @@ class AjaxController extends Controller
             }
             if ($request->has('create_razorpay_order')) {
                 return $this->createRazorpayOrder($request);
+            }
+            if ($request->has('log_razorpay_failure')) {
+                return $this->logRazorpayFailure($request);
             }
             if ($request->has('verify_razorpay_payment')) {
                 return $this->verifyRazorpayPayment($request);
@@ -753,6 +758,9 @@ class AjaxController extends Controller
             }
             if ($request->has('sp_sync_ical_now')) {
                 return $this->spSyncIcalNow($request);
+            }
+            if ($request->has('update_sp_profile')) {
+                return $this->updateSpProfile($request);
             }
 
             // ===== SP AVAILABILITY (Admin) =====
@@ -1161,19 +1169,21 @@ class AjaxController extends Controller
         $user = Auth::user();
         $isGuest = !$user;
 
-        // Build conversation history
+        // Build conversation history. Keep only the last few turns — Groq's free tier
+        // is capped at 6000 tokens/minute and chat history is the biggest variable cost.
         if ($isGuest) {
             $guestChat = session("guest_chat", []);
             $guestChat[] = ["role" => "user", "content" => $request->message];
-            if (count($guestChat) > 20) {
-                $guestChat = array_slice($guestChat, -20);
+            if (count($guestChat) > 8) {
+                $guestChat = array_slice($guestChat, -8);
             }
             $history = $guestChat;
             $gt = $this->guestTrip();
+            $selectedExpIds = $gt['experience_ids'] ?? [];
             // Build region anchor points from selected experiences
             $regionAnchors = [];
-            if (!empty($gt['experience_ids'])) {
-                $regionAnchors = Region::whereHas('experiences', fn($q) => $q->whereIn('id', $gt['experience_ids']))
+            if (!empty($selectedExpIds)) {
+                $regionAnchors = Region::whereHas('experiences', fn($q) => $q->whereIn('id', $selectedExpIds))
                     ->whereNotNull('anchor_points')
                     ->get()
                     ->mapWithKeys(fn($r) => [$r->name => $r->anchor_points])
@@ -1191,6 +1201,7 @@ class AjaxController extends Controller
                 "pickup_preference" => $gt["pickup_preference"] ?? null,
                 "region_anchor_points" => $regionAnchors,
                 "preferences" => session("landing_preferences", []),
+                "selected_count" => count($selectedExpIds),
             ]);
             $userName = $gt["traveller_name"] ?? "Traveller";
             $trip = null;
@@ -1218,8 +1229,11 @@ class AjaxController extends Controller
             ]);
             $history = AiConversation::where("trip_id", $trip->id)
                 ->where("context_type", "traveller_chat")
-                ->orderBy("created_at")
+                ->orderByDesc("created_at")
+                ->limit(8)
                 ->get()
+                ->reverse()
+                ->values()
                 ->map(fn($m) => ["role" => $m->role, "content" => $m->content])
                 ->toArray();
             // Build region anchor points from selected experiences
@@ -1232,19 +1246,6 @@ class AjaxController extends Controller
                     ->mapWithKeys(fn($r) => [$r->name => $r->anchor_points])
                     ->toArray();
             }
-            // Build trip days summary for AI context
-            $tripDays = $trip->tripDays()
-                ->with('experiences.experience:id,name')
-                ->orderBy('day_number')
-                ->get()
-                ->map(fn($d) => [
-                    'day' => $d->day_number,
-                    'type' => $d->day_type ?: 'activity',
-                    'title' => $d->title ?: null,
-                    'date' => $d->date?->toDateString(),
-                    'experiences' => $d->experiences->map(fn($e) => $e->experience?->name)->filter()->values(),
-                ]);
-
             $tripContext = json_encode([
                 "trip_id" => $trip->id,
                 "adults" => $trip->adults,
@@ -1257,67 +1258,39 @@ class AjaxController extends Controller
                 "pickup_preference" => $trip->pickup_preference,
                 "region_anchor_points" => $regionAnchors,
                 "preferences" => session("landing_preferences", []),
-                "total_days" => $tripDays->count(),
-                "itinerary" => $tripDays,
+                "selected_count" => count($selectedExpIds),
             ]);
             $userName = $user->full_name ?? "Traveller";
         }
 
-        // Experience catalog for AI context (compact — no short_description to reduce token usage)
-        $experiences = Experience::where("is_active", true)
-            ->select("id", "name", "type", "region_id", "duration_type", "duration_days", "difficulty_level", "base_cost_per_person", "available_months")
-            ->with("region:id,name,continent,country")
-            ->limit(50)
-            ->get();
-
-        // Build available destinations hierarchy for AI context
-        $activeRegions = Region::where('is_active', true)->orderBy('sort_order')->get(['id', 'name', 'continent', 'country']);
-        $destinationHierarchy = [];
-        foreach ($activeRegions as $r) {
-            $continent = $r->continent ?: 'Other';
-            $country = $r->country ?: 'Other';
-            $destinationHierarchy[$continent][$country][] = ['id' => $r->id, 'name' => $r->name];
-        }
-
-        // Build compact region summary: types, difficulty levels, best months per region
-        $regionSummary = [];
-        foreach ($experiences as $exp) {
-            $rId = $exp->region_id;
-            if (!isset($regionSummary[$rId])) {
-                $regionSummary[$rId] = [
-                    'name' => $exp->region->name ?? 'Unknown',
-                    'types' => [],
-                    'difficulties' => [],
-                    'best_months' => [],
-                    'count' => 0,
-                ];
-            }
-            $rs = &$regionSummary[$rId];
-            $rs['count']++;
-            if ($exp->type && !in_array($exp->type, $rs['types'])) $rs['types'][] = $exp->type;
-            if ($exp->difficulty_level && !in_array($exp->difficulty_level, $rs['difficulties'])) $rs['difficulties'][] = $exp->difficulty_level;
-            if (is_array($exp->available_months)) {
-                foreach ($exp->available_months as $m) {
-                    if (!in_array($m, $rs['best_months'])) $rs['best_months'][] = $m;
-                }
-            }
-            unset($rs);
-        }
-        $regionSummaryJson = json_encode($regionSummary);
-
-        $promptBuilder = app(PromptBuilderService::class);
-        $promptData = $promptBuilder->build("traveller_chat", [
-            "user_name" => $userName,
-            "experiences_json" => $experiences->map(function ($e) {
-                return [
-                    'id' => $e->id, 'name' => $e->name, 'type' => $e->type,
-                    'region' => $e->region->name ?? '', 'region_id' => $e->region_id,
+        // Send only the experiences the traveller has selected — 1 plan per selection.
+        // No full catalog / no destination hierarchy / no region summary — keeps the
+        // prompt size proportional to selection count instead of bundling all data.
+        if (!empty($selectedExpIds)) {
+            $experiencesJson = Experience::whereIn('id', $selectedExpIds)
+                ->select('id', 'name', 'type', 'region_id', 'duration_type', 'duration_days', 'difficulty_level', 'base_cost_per_person', 'available_months')
+                ->with('region:id,name,continent,country')
+                ->get()
+                ->map(fn($e) => [
+                    'id' => $e->id,
+                    'name' => $e->name,
+                    'type' => $e->type,
+                    'region' => $e->region->name ?? '',
+                    'region_id' => $e->region_id,
                     'duration' => $e->duration_type === 'multi_day' ? ($e->duration_days ?? 1) . 'd' : '1d',
                     'difficulty' => $e->difficulty_level,
                     'price' => $e->base_cost_per_person,
                     'months' => $e->available_months,
-                ];
-            })->toJson(),
+                ])
+                ->toJson();
+        } else {
+            $experiencesJson = '[]';
+        }
+
+        $promptBuilder = app(PromptBuilderService::class);
+        $promptData = $promptBuilder->build("traveller_chat", [
+            "user_name" => $userName,
+            "experiences_json" => $experiencesJson,
             "trip_context" => $tripContext,
         ]);
 
@@ -1327,7 +1300,7 @@ class AjaxController extends Controller
 
         $recommendIdInstruction = "\n\nRECOMMEND: When recommending experiences, append [RECOMMEND_IDS:1,5,12] at end (hidden from user).";
 
-        $tripDetailsInstruction = "\n\nTRIP DETAILS: When traveller provides details, summarize & confirm first. After confirmation, append [TRIP_DETAILS:{\"key\":\"value\"}] (hidden). Keys: traveller_name (no confirm needed), start_location, end_location, start_date (YYYY-MM-DD), end_date, budget_notes, anchor_point, pickup_preference (private_taxi/local_transport), adults, children, infants (integers), accommodation_comfort (Cat A-E), vehicle_comfort, guide_preference.";
+        $tripDetailsInstruction = "\n\nTRIP DETAILS: When traveller provides details, summarize & confirm first. After confirmation, append [TRIP_DETAILS:{\"key\":\"value\"}] (hidden). Keys: traveller_name (no confirm needed), start_location, end_location, start_date (YYYY-MM-DD), end_date, budget_notes, anchor_point, pickup_preference (private_taxi/local_transport), adults, children, infants (integers), accommodation_comfort (Cat A/B/C/D/E), vehicle_comfort (Local Transport / SUV (Bolero/Scorpio) / SUV (Innova/Crysta) / Premium (Fortuner/Similar) / Tempo Traveller), guide_preference (No Guide / Local Guide / English-speaking / Certified/Expert), travel_pace (Relaxed / Moderate / Active / Intensive), budget_sensitivity (Budget-friendly / Mid-range / Premium / No Limit).";
 
         $addToTripInstruction = "\n\nADD/REMOVE: Confirm before adding/removing. After confirmation: [ADD_TO_TRIP:1,5] or [REMOVE_FROM_TRIP:5] (hidden). If traveller confirms details + experiences together, include BOTH [TRIP_DETAILS] and [ADD_TO_TRIP] in same response.";
 
@@ -1349,7 +1322,7 @@ class AjaxController extends Controller
             }
         }
 
-        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only)\n2. Destination: Continent → Country → Region. Show available options at each step. For regions, mention types & best months from REGION SUMMARY.\n3. Experience type & difficulty preference (show what's available in the region).\n4. Travel date (mention best months), group size, starting city — ask 2 at a time max.\n5. Recommend matching experiences with name, duration, difficulty, price.\n\nIf filters already selected (see CURRENT FILTERS), skip those steps. Only ask MISSING details. Single region per trip — don't suggest other regions.\n\nDESTINATIONS:" . json_encode($destinationHierarchy) . "\nREGION SUMMARY:" . $regionSummaryJson . "\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
+        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only)\n2. Destination: ask Continent → Country → Region step by step. Use the SET_FILTERS tag when the traveller picks each one — do not invent destination lists.\n3. Experience type & difficulty preference.\n4. Travel date, group size, starting city — ask 2 at a time max.\n5. Recommend ONLY from the AVAILABLE EXPERIENCES list (the traveller's currently selected experiences). If that list is empty, ask the traveller to use the page filters to add experiences first — never invent experience names or IDs.\n\nIf filters already selected (see CURRENT FILTERS), skip those steps. Only ask MISSING details. Single region per trip — all selections must come from the same region.\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
 
         $allInstructions = $currentDateInstruction . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $confirmationRule . $conversationFlowInstruction;
 
@@ -1357,21 +1330,21 @@ class AjaxController extends Controller
         if ($promptData) {
             $messages[] = ["role" => "system", "content" => $promptData["system_prompt"] . $allInstructions];
         } else {
-            $messages[] = ["role" => "system", "content" => "You are a helpful travel assistant for HECO (Himalayan Ecotourism Collective). Help travellers plan regenerative trips. Suggest experiences, help with itinerary planning, and answer questions about destinations. Be warm, knowledgeable, and encourage sustainable travel.\n\nYou have access to the following experience catalog:\n" . $experiences->toJson() . $allInstructions];
+            $messages[] = ["role" => "system", "content" => "You are a helpful travel assistant for HECO (Himalayan Ecotourism Collective). Help travellers plan regenerative trips. Suggest experiences, help with itinerary planning, and answer questions about destinations. Be warm, knowledgeable, and encourage sustainable travel.\n\nThe traveller's currently selected experiences:\n" . $experiencesJson . $allInstructions];
         }
 
         $messages = array_merge($messages, $history);
 
         $aiResponse = $this->callAi($messages, [
             "temperature" => $promptData["temperature"] ?? 0.7,
-            "max_tokens" => $promptData["max_tokens"] ?? 4096,
+            "max_tokens" => $promptData["max_tokens"] ?? 1500,
         ]);
 
         if (!$aiResponse || empty($aiResponse["content"])) {
             \Log::warning('AI chat: all providers failed', ['is_guest' => $isGuest, 'trip_id' => $trip?->id]);
         }
 
-        $responseText = $aiResponse["content"] ?? "I apologize, I am having trouble connecting right now. Please try again or contact our team for assistance.";
+        $responseText = $aiResponse["content"] ?? "Our AI assistant is busy right now (rate limit). Please wait about a minute and try again — or use the controls on the right to update your trip directly.";
 
         // Parse SET_FILTERS tag
         $setFilters = null;
@@ -1396,7 +1369,7 @@ class AjaxController extends Controller
             $travellerName = $extractedDetails['traveller_name'] ?? null;
             unset($extractedDetails['traveller_name']);
 
-            $allowedKeys = ['start_location', 'end_location', 'start_date', 'end_date', 'budget_notes', 'anchor_point', 'pickup_preference', 'adults', 'children', 'infants', 'accommodation_comfort', 'vehicle_comfort', 'guide_preference'];
+            $allowedKeys = ['start_location', 'end_location', 'start_date', 'end_date', 'budget_notes', 'anchor_point', 'pickup_preference', 'adults', 'children', 'infants', 'accommodation_comfort', 'vehicle_comfort', 'guide_preference', 'travel_pace', 'budget_sensitivity'];
             $extractedDetails = array_intersect_key($extractedDetails, array_flip($allowedKeys));
 
             // Convert empty date strings to null to avoid MySQL date format errors
@@ -2210,6 +2183,14 @@ class AjaxController extends Controller
         if (!$trip) {
             return response()->json(["error" => "Trip not found"], 404);
         }
+        // Only draft (unpaid) trips can be erased by the traveller. Once a payment
+        // has been received the trip is a real booking — cancellation must go
+        // through HCT (refund, SP coordination, etc.) per MVP rules.
+        if ($trip->status !== 'not_confirmed') {
+            return response()->json([
+                "error" => "This trip can no longer be erased. Confirmed trips must be cancelled by our team — please use Request Support.",
+            ], 422);
+        }
         $trip->update(["status" => "cancelled", "stage" => "closed"]);
         return response()->json(["success" => true]);
     }
@@ -2443,7 +2424,7 @@ class AjaxController extends Controller
             if (empty($expIds)) {
                 return response()->json(["error" => "Add experiences to your trip first"], 422);
             }
-            $expModels = Experience::whereIn('id', $expIds)->with('region')->get()
+            $expModels = Experience::whereIn('id', $expIds)->with(['region', 'days'])->get()
                 ->sortBy(function ($exp) use ($expIds) {
                     return array_search($exp->id, $expIds);
                 })->values();
@@ -2469,7 +2450,7 @@ class AjaxController extends Controller
                     'infants' => (int) ($request->infants ?? $trip->infants),
                 ]);
             }
-            $trip->load(["selectedExperiences" => function ($q) { $q->orderBy('sort_order'); }, "selectedExperiences.experience.region"]);
+            $trip->load(["selectedExperiences" => function ($q) { $q->orderBy('sort_order'); }, "selectedExperiences.experience.region", "selectedExperiences.experience.days"]);
             $expModels = $trip->selectedExperiences->pluck('experience')->filter();
             $adults = $trip->adults ?: 1;
             $preferences = ($trip->accommodation_comfort ?? "standard") . " comfort, " . ($trip->travel_pace ?? "moderate") . " pace";
@@ -2600,32 +2581,141 @@ class AjaxController extends Controller
             }
         }
 
-        // Build deterministic itinerary from day mapping — AI only provides titles/notes
+        // Index experiences by ID for fast lookup while filling day details.
+        $expById = $expModels->keyBy('id');
+
+        // Trip-level service preferences seed the per-day services.
+        if ($isGuest) {
+            $accomComfort = $gt['accommodation_comfort'] ?? null;
+            $vehicleComfort = $gt['vehicle_comfort'] ?? null;
+            $guidePref = $gt['guide_preference'] ?? null;
+        } else {
+            $accomComfort = $trip->accommodation_comfort;
+            $vehicleComfort = $trip->vehicle_comfort;
+            $guidePref = $trip->guide_preference;
+        }
+
+        // Maps inclusion labels (from the Experience editor) to TripDayService rows.
+        $inclusionToService = [
+            'breakfast'      => ['type' => 'meal',          'desc' => 'Breakfast'],
+            'lunch'          => ['type' => 'meal',          'desc' => 'Lunch'],
+            'dinner'         => ['type' => 'meal',          'desc' => 'Dinner'],
+            'snacks'         => ['type' => 'meal',          'desc' => 'Snacks'],
+            'accommodation'  => ['type' => 'accommodation', 'desc' => 'Accommodation'],
+            'guide'          => ['type' => 'guide',         'desc' => 'Guide'],
+            'transport'      => ['type' => 'transport',     'desc' => 'Transport'],
+        ];
+
+        // Build deterministic itinerary from day mapping. Each day pulls its
+        // title/description/inclusions from the matching ExperienceDay row
+        // (filled in the Experience editor), falling back to phase-aware
+        // defaults if no per-day data exists. AI is purely additive.
         $parsed = ["days" => []];
         foreach ($dayMapping as $idx => $dm) {
             $aiDay = $aiDays[$idx] ?? [];
-            $dayType = $dm["day_type"] ?? "activity";
-
+            $expId = $dm["experience_id"];
+            $exp = $expById->get($expId);
             $expName = $dm["experience_name"];
             $dayOfExp = $dm["day_of_experience"] ?? 1;
             $totalExpDays = $dm["total_experience_days"] ?? 1;
-            $defaultTitle = $totalExpDays > 1
+            $regionName = $exp?->region?->name;
+
+            // Pull the matching ExperienceDay (Day N of the experience).
+            $expDay = $exp?->days?->firstWhere('day_number', $dayOfExp);
+
+            // Title — prefer the editor's day title, then generic.
+            $genericTitle = $totalExpDays > 1
                 ? $expName . " — Day " . $dayOfExp . " of " . $totalExpDays
                 : $expName;
+            $editorTitle = $expDay?->title ? ($expName . ' — ' . $expDay->title) : null;
+
+            // Description — prefer the editor's per-day short description,
+            // then phase phrasing built from experience.short_description.
+            if ($totalExpDays > 1) {
+                if ($dayOfExp === 1) {
+                    $phase = "Begin your " . $expName . " journey";
+                } elseif ($dayOfExp === $totalExpDays) {
+                    $phase = "Conclude your " . $expName . " journey";
+                } else {
+                    $phase = "Continue your " . $expName . " journey";
+                }
+            } else {
+                $phase = "Spend the day exploring " . $expName;
+            }
+            $genericDescription = $regionName ? ($phase . " in " . $regionName . ".") : ($phase . ".");
+            if ($exp?->short_description) {
+                $genericDescription .= " " . $exp->short_description;
+            }
+            $editorDescription = $expDay?->short_description ?: null;
+
+            // Times — prefer the editor's per-day times, else 09:00–17:00.
+            $startTime = $expDay?->start_time ?: "09:00";
+            $endTime   = $expDay?->end_time   ?: "17:00";
+
+            // Services — first from the day's inclusions list (these are
+            // bundled into the experience price → cost 0, is_included true).
+            $services = [];
+            $coveredTypes = [];
+            $inclusions = is_array($expDay?->inclusions) ? $expDay->inclusions : [];
+            foreach ($inclusions as $inc) {
+                $key = strtolower(trim((string) $inc));
+                if (!isset($inclusionToService[$key])) continue;
+                $map = $inclusionToService[$key];
+                $services[] = [
+                    "service_type" => $map['type'],
+                    "description"  => $map['desc'],
+                    "is_included"  => true,
+                    "cost"         => 0,
+                ];
+                $coveredTypes[$map['type']] = true;
+            }
+
+            // Trip-preference services fill any gaps the inclusions don't cover
+            // and that the experience itself doesn't bundle.
+            if ($accomComfort && empty($coveredTypes['accommodation']) && empty($exp?->includes_accommodation)) {
+                $services[] = [
+                    "service_type" => "accommodation",
+                    "description"  => $accomComfort . ($regionName ? " accommodation in " . $regionName : " accommodation"),
+                    "is_included"  => true,
+                    "cost"         => 0,
+                ];
+            }
+            if ($vehicleComfort && $vehicleComfort !== 'Local Transport' && empty($coveredTypes['transport']) && empty($exp?->includes_transport)) {
+                $services[] = [
+                    "service_type" => "transport",
+                    "description"  => $vehicleComfort,
+                    "is_included"  => true,
+                    "cost"         => 0,
+                ];
+            }
+            if ($guidePref && $guidePref !== 'No Guide' && empty($coveredTypes['guide']) && empty($exp?->includes_guide)) {
+                $services[] = [
+                    "service_type" => "guide",
+                    "description"  => $guidePref . " guide for " . $expName,
+                    "is_included"  => true,
+                    "cost"         => 0,
+                ];
+            }
+            // AI-suggested services last (additive only).
+            if (!empty($aiDay["services"]) && is_array($aiDay["services"])) {
+                foreach ($aiDay["services"] as $aiSvc) {
+                    $services[] = $aiSvc;
+                }
+            }
 
             $parsed["days"][] = [
-                "title" => $aiDay["title"] ?? $defaultTitle,
-                "description" => $aiDay["description"] ?? $aiDay["notes"] ?? null,
-                "notes" => $aiDay["notes"] ?? null,
-                "day_type" => "activity",
+                "title"       => $aiDay["title"] ?? $editorTitle ?? $genericTitle,
+                "description" => $aiDay["description"] ?? $aiDay["notes"] ?? $editorDescription ?? $genericDescription,
+                "notes"       => $aiDay["notes"] ?? null,
+                "day_type"    => "activity",
                 "experiences" => [[
-                    "experience_id" => $dm["experience_id"],
-                    "name" => $expName,
-                    "start_time" => $aiDay["experiences"][0]["start_time"] ?? "09:00",
-                    "end_time" => $aiDay["experiences"][0]["end_time"] ?? "17:00",
-                    "notes" => $aiDay["experiences"][0]["notes"] ?? null,
+                    "experience_id" => $expId,
+                    "name"          => $expName,
+                    "start_time"    => $aiDay["experiences"][0]["start_time"] ?? $startTime,
+                    "end_time"      => $aiDay["experiences"][0]["end_time"]   ?? $endTime,
+                    "notes"         => $aiDay["experiences"][0]["notes"]      ?? null,
                 ]],
-                "services" => $aiDay["services"] ?? [],
+                "services" => $services,
             ];
         }
 
@@ -2817,16 +2907,61 @@ class AjaxController extends Controller
 
         $history = AiConversation::where("trip_id", $trip->id)
             ->where("context_type", "hct_chat")
-            ->orderBy("created_at")
+            ->orderByDesc("created_at")
+            ->limit(20)
             ->get()
+            ->reverse()
+            ->values()
             ->map(fn($m) => ["role" => $m->role, "content" => $m->content])
             ->toArray();
 
-        $trip->load(["tripDays.experiences.experience", "tripDays.services", "tripRegions.region", "user"]);
+        // Slim trip summary — avoid $trip->toJson() with deep relations (was ~20k chars per call).
+        $trip->load([
+            'selectedExperiences:id,trip_id,experience_id,sort_order',
+            'selectedExperiences.experience:id,name,type,region_id,duration_type,duration_days,difficulty_level,base_cost_per_person',
+            'selectedExperiences.experience.region:id,name',
+            'tripRegions.region:id,name',
+            'user:id,full_name,email',
+        ]);
+
+        $tripSummary = [
+            'trip_id' => $trip->trip_id,
+            'status' => $trip->status,
+            'stage' => $trip->stage,
+            'adults' => $trip->adults,
+            'children' => $trip->children,
+            'infants' => $trip->infants,
+            'start_date' => optional($trip->start_date)->toDateString(),
+            'end_date' => optional($trip->end_date)->toDateString(),
+            'start_location' => $trip->start_location,
+            'end_location' => $trip->end_location,
+            'anchor_point' => $trip->anchor_point,
+            'pickup_preference' => $trip->pickup_preference,
+            'accommodation_comfort' => $trip->accommodation_comfort,
+            'vehicle_comfort' => $trip->vehicle_comfort,
+            'guide_preference' => $trip->guide_preference,
+            'total_days' => $trip->tripDays()->count(),
+            'traveller' => [
+                'name' => $trip->user->full_name ?? null,
+                'email' => $trip->user->email ?? null,
+            ],
+            'regions' => $trip->tripRegions->pluck('region.name')->filter()->values(),
+            'selected_experiences' => $trip->selectedExperiences->map(fn($se) => [
+                'id' => $se->experience->id ?? null,
+                'name' => $se->experience->name ?? null,
+                'type' => $se->experience->type ?? null,
+                'region' => $se->experience->region->name ?? null,
+                'duration' => ($se->experience->duration_type ?? '') === 'multi_day'
+                    ? ($se->experience->duration_days ?? 1) . 'd'
+                    : '1d',
+                'difficulty' => $se->experience->difficulty_level ?? null,
+                'base_cost' => $se->experience->base_cost_per_person ?? null,
+            ])->values(),
+        ];
 
         $promptBuilder = app(PromptBuilderService::class);
         $promptData = $promptBuilder->build("hct_chat", [
-            "trip_json" => $trip->toJson(),
+            "trip_json" => json_encode($tripSummary),
         ]);
 
         $messages = [];
@@ -2838,7 +2973,10 @@ class AjaxController extends Controller
         }
         $messages = array_merge($messages, $history);
 
-        $aiResponse = $this->callAi($messages);
+        $aiResponse = $this->callAi($messages, [
+            "temperature" => $promptData["temperature"] ?? 0.7,
+            "max_tokens" => $promptData["max_tokens"] ?? 1500,
+        ]);
         $responseText = $aiResponse["content"] ?? "AI is currently unavailable. Please try again.";
 
         AiConversation::create([
@@ -3059,7 +3197,8 @@ class AjaxController extends Controller
 
     protected function getProviders(Request $request): JsonResponse
     {
-        $query = ServiceProvider::where("status", "approved")->with("region");
+        $query = ServiceProvider::where("status", "approved")
+            ->with(["region", "lastUpdatedBy:id,full_name,email"]);
         if ($request->filled("provider_type")) {
             $query->where("provider_type", $request->provider_type);
         }
@@ -3078,13 +3217,45 @@ class AjaxController extends Controller
 
     protected function editProvider(Request $request): JsonResponse
     {
+        // Hard gate — status (and every other admin-controlled field) can only be
+        // changed by an HCT user, even if the request comes through portal /ajax.
+        if (!Auth::user()?->isHct()) {
+            return response()->json(["error" => "Unauthorized"], 403);
+        }
         $provider = ServiceProvider::findOrFail($request->provider_id);
-        $provider->update($request->only([
+        $data = $request->only([
+            "name", "contact_person", "email", "phone_1", "phone_2",
+            "address", "region_id", "provider_type",
+            "bank_name", "bank_ifsc", "bank_account_name",
+            "bank_account_number", "upi", "services_offered",
+            "accommodation_categories", "vehicle_types", "guide_types", "activity_types",
+            "notes", "status",
+        ]);
+        // Track approval timestamp when status flips to approved for the first time
+        if (($data['status'] ?? null) === 'approved' && $provider->status !== 'approved') {
+            $data['approved_at'] = now();
+            $data['approved_by'] = Auth::id();
+        }
+        $data['last_updated_by'] = Auth::id();
+        $data['last_updated_by_role'] = 'admin';
+        $provider->update($data);
+        return response()->json(["success" => true]);
+    }
+
+    protected function updateSpProfile(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        $provider = ServiceProvider::where('user_id', $user->id)->firstOrFail();
+        // SP cannot change own status, approval, or audit fields
+        $data = $request->only([
             "name", "contact_person", "email", "phone_1", "phone_2",
             "address", "bank_name", "bank_ifsc", "bank_account_name",
             "bank_account_number", "upi", "services_offered",
-            "accommodation_categories", "vehicle_types", "activity_types", "notes",
-        ]));
+            "accommodation_categories", "vehicle_types", "guide_types", "activity_types",
+        ]);
+        $data['last_updated_by'] = $user->id;
+        $data['last_updated_by_role'] = 'provider';
+        $provider->update($data);
         return response()->json(["success" => true]);
     }
 
@@ -3547,9 +3718,16 @@ class AjaxController extends Controller
                 return response()->json(["error" => "Invalid payment amount."], 422);
             }
 
+            $amountInPaise = (int) round($amountInRupees * 100);
+            \Log::info('Razorpay createOrder', [
+                'trip_id' => $trip->id,
+                'inr' => $amountInRupees,
+                'paise' => $amountInPaise,
+            ]);
+
             $razorpay = app(RazorpayService::class);
             $order = $razorpay->createOrder(
-                (int) round($amountInRupees * 100),
+                $amountInPaise,
                 'INR',
                 'trip_' . $trip->id . '_' . time(),
                 ['trip_id' => (string) $trip->id, 'user_id' => (string) Auth::id()]
@@ -3569,7 +3747,7 @@ class AjaxController extends Controller
             return response()->json([
                 'success'  => true,
                 'order_id' => $order['id'],
-                'amount'   => (int) round($amountInRupees * 100),
+                'amount'   => $amountInPaise,
                 'currency' => 'INR',
                 'key_id'   => config('services.razorpay.key_id'),
                 'name'     => Auth::user()->full_name,
@@ -3580,6 +3758,33 @@ class AjaxController extends Controller
             \Log::error('Razorpay order creation failed: ' . $e->getMessage());
             return response()->json(["error" => "Payment order failed: " . $e->getMessage()], 500);
         }
+    }
+
+    protected function logRazorpayFailure(Request $request): JsonResponse
+    {
+        \Log::warning('Razorpay payment failed', [
+            'user_id'      => Auth::id(),
+            'order_id'     => $request->order_id,
+            'amount_inr'   => $request->amount_inr,
+            'code'         => $request->code,
+            'reason'       => $request->reason,
+            'description'  => $request->description,
+            'source'       => $request->source,
+            'step'         => $request->step,
+        ]);
+
+        // Mark the pending TravellerPayment record as failed so the trip's
+        // balance_due isn't permanently inflated by abandoned attempts.
+        if ($request->order_id) {
+            TravellerPayment::where('razorpay_order_id', $request->order_id)
+                ->where('payment_status', 'pending')
+                ->update([
+                    'payment_status' => 'failed',
+                    'notes' => trim(($request->code ? '[' . $request->code . '] ' : '') . ($request->description ?: '')) ?: null,
+                ]);
+        }
+
+        return response()->json(['success' => true]);
     }
 
     protected function verifyRazorpayPayment(Request $request): JsonResponse

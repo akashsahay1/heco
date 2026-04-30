@@ -11,8 +11,9 @@ class ServiceProvider extends Model
         'phone_1', 'phone_2', 'region_id', 'address', 'bank_name',
         'bank_ifsc', 'bank_account_name', 'bank_account_number', 'upi',
         'services_offered', 'accommodation_categories', 'vehicle_types',
-        'activity_types', 'notes', 'ical_url', 'ical_last_synced_at',
+        'guide_types', 'activity_types', 'notes', 'ical_url', 'ical_last_synced_at',
         'status', 'approved_at', 'approved_by',
+        'last_updated_by', 'last_updated_by_role',
     ];
 
     protected function casts(): array
@@ -21,6 +22,7 @@ class ServiceProvider extends Model
             'services_offered' => 'array',
             'accommodation_categories' => 'array',
             'vehicle_types' => 'array',
+            'guide_types' => 'array',
             'activity_types' => 'array',
             'approved_at' => 'datetime',
             'ical_last_synced_at' => 'datetime',
@@ -40,6 +42,11 @@ class ServiceProvider extends Model
     public function approvedBy()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function lastUpdatedBy()
+    {
+        return $this->belongsTo(User::class, 'last_updated_by');
     }
 
     public function pricing()

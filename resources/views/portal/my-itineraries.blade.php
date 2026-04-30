@@ -124,10 +124,15 @@ $(function() {
                 html += '<p class="mb-0"><strong class="text-success">' + fmtCurrency(trip.final_price) + '</strong></p>';
             }
             html += '</div>';
+            // Resume + Erase are draft-only. Once a trip is confirmed/running/completed/cancelled
+            // it's a real booking — only View remains; cancellation must go through HCT support.
+            var isDraft = trip.status === 'not_confirmed';
             html += '<div class="card-footer bg-transparent d-flex gap-2">';
-            html += '<a href="/trip/' + trip.id + '" class="btn btn-sm btn-outline-success"><i class="bi bi-eye"></i> View</a>';
-            html += '<a href="/home?trip_id=' + trip.id + '" class="btn btn-sm btn-success flex-fill"><i class="bi bi-play-fill"></i> Resume</a>';
-            html += '<button class="btn btn-sm btn-outline-danger btn-erase-trip" data-trip-id="' + trip.id + '" data-trip-name="' + tripName + '"><i class="bi bi-trash"></i> Erase</button>';
+            html += '<a href="/trip/' + trip.id + '" class="btn btn-sm btn-outline-success' + (isDraft ? '' : ' flex-fill') + '"><i class="bi bi-eye"></i> View</a>';
+            if (isDraft) {
+                html += '<a href="/home?trip_id=' + trip.id + '" class="btn btn-sm btn-success flex-fill"><i class="bi bi-play-fill"></i> Resume</a>';
+                html += '<button class="btn btn-sm btn-outline-danger btn-erase-trip" data-trip-id="' + trip.id + '" data-trip-name="' + tripName + '"><i class="bi bi-trash"></i> Erase</button>';
+            }
             html += '</div></div></div>';
         });
         html += '</div>';
