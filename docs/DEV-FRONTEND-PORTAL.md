@@ -247,7 +247,7 @@ Legend: `[x]` complete · `[~]` partial · `[ ]` not started
 - [x] Help (`/help`)
 - [x] Careers (`/careers`)
 - [x] Guidelines (`/guidelines`)
-- [x] Privacy (`/privacy`)
+- [x] Privacy (`/privacy-policy`)
 - [x] Terms (`/terms`)
 - [x] Wishlist page (`/wishlist`)
 

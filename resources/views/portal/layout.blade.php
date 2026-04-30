@@ -232,7 +232,7 @@
                             <div class="form-check auth-terms">
                                 <input type="checkbox" class="form-check-input" id="termsCheck" required>
                                 <label class="form-check-label" for="termsCheck">
-                                    I agree to the <a href="/terms" class="text-success text-decoration-none">Terms</a> and <a href="/privacy" class="text-success text-decoration-none">Privacy Policy</a>
+                                    I agree to the <a href="/terms" class="text-success text-decoration-none">Terms</a> and <a href="/privacy-policy" class="text-success text-decoration-none">Privacy Policy</a>
                                 </label>
                             </div>
                             <button type="submit" class="btn btn-success w-100 auth-submit-btn" id="btnRegister">
@@ -368,9 +368,9 @@
                 <div class="footer-bottom-content">
                     <p class="copyright">&copy; {{ date('Y') }} HECO. All rights reserved.</p>
                     <nav class="footer-legal">
-                        <a href="/privacy">Privacy Policy</a>
+                        <a href="/privacy-policy">Privacy Policy</a>
                         <a href="/terms">Terms of Service</a>
-                        <a href="/privacy#cookies">Cookie Policy</a>
+                        <a href="/privacy-policy#cookies">Cookie Policy</a>
                     </nav>
                 </div>
             </div>

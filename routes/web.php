@@ -121,7 +121,7 @@ Route::domain(config('app.portal_domain'))->group(function () {
 
     // Static Pages
     Route::get('/about', fn() => view('portal.pages.about'))->name('about');
-    Route::get('/privacy', fn() => view('portal.pages.privacy'))->name('privacy');
+    Route::get('/privacy-policy', fn() => view('portal.pages.privacy'))->name('privacy');
     Route::get('/terms', fn() => view('portal.pages.terms'))->name('terms');
     Route::get('/contact', fn() => view('portal.pages.contact'))->name('contact');
     Route::get('/help', fn() => view('portal.pages.help'))->name('help');
