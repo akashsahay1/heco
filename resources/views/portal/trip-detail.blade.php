@@ -21,9 +21,11 @@
                     <span><i class="bi bi-people"></i>{{ $trip->adults }} Adults{{ $trip->children ? ', ' . $trip->children . ' Children' : '' }}{{ $trip->infants ? ', ' . $trip->infants . ' Infants' : '' }}</span>
                 </div>
                 @if($trip->tripRegions && $trip->tripRegions->count())
-                    <div class="mt-2">
+                    <div class="mt-2 d-flex flex-wrap gap-1">
                         @foreach($trip->tripRegions as $tr)
-                            <span class="badge bg-success bg-opacity-25 text-success">{{ $tr->region->name ?? '' }}</span>
+                            @if($tr->region)
+                                <span class="td-region-badge">{{ $tr->region->name }}</span>
+                            @endif
                         @endforeach
                     </div>
                 @endif

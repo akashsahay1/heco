@@ -122,6 +122,179 @@ class ItineraryService
         }
     }
 
+    /**
+     * Rebuild the trip's day-by-day timeline deterministically from its
+     * selected experiences. Each experience contributes its full
+     * duration_days so the resulting day count always matches what the
+     * traveller has actually picked. AI-generated titles/notes (if any)
+     * are layered on top via $aiDays — pass an empty array to skip AI
+     * enrichment (fast path used when experiences are added/removed).
+     */
+    public function rebuildFromExperiences(Trip $trip, array $aiDays = []): bool
+    {
+        $trip->load([
+            'selectedExperiences' => fn ($q) => $q->orderBy('sort_order'),
+            'selectedExperiences.experience.region',
+            'selectedExperiences.experience.days',
+        ]);
+
+        $expModels = $trip->selectedExperiences->pluck('experience')->filter()->values();
+
+        if ($expModels->isEmpty()) {
+            // No experiences — clear any existing days so the timeline reflects reality.
+            $trip->tripDays()->each(function ($day) {
+                $day->experiences()->delete();
+                $day->services()->delete();
+                $day->delete();
+            });
+            return true;
+        }
+
+        $parsed = ['days' => $this->buildDeterministicDays($trip, $expModels, $aiDays)];
+
+        return $this->parseAndCreateFromAi($trip, $parsed);
+    }
+
+    /**
+     * Compose the day-by-day array consumed by parseAndCreateFromAi.
+     * Pulls per-day titles/descriptions/inclusions from the Experience
+     * editor when available, falling back to phase-aware generic copy.
+     * AI suggestions in $aiDays are merged on top (additive only).
+     */
+    public function buildDeterministicDays(Trip $trip, $expModels, array $aiDays = []): array
+    {
+        $accomComfort = $trip->accommodation_comfort;
+        $vehicleComfort = $trip->vehicle_comfort;
+        $guidePref = $trip->guide_preference;
+
+        $inclusionToService = [
+            'breakfast'      => ['type' => 'meal',          'desc' => 'Breakfast'],
+            'lunch'          => ['type' => 'meal',          'desc' => 'Lunch'],
+            'dinner'         => ['type' => 'meal',          'desc' => 'Dinner'],
+            'snacks'         => ['type' => 'meal',          'desc' => 'Snacks'],
+            'accommodation'  => ['type' => 'accommodation', 'desc' => 'Accommodation'],
+            'guide'          => ['type' => 'guide',         'desc' => 'Guide'],
+            'transport'      => ['type' => 'transport',     'desc' => 'Transport'],
+        ];
+
+        $expById = $expModels->keyBy('id');
+
+        // Fan out each experience across its full duration so a 5-day plan
+        // produces exactly 5 day entries.
+        $dayMapping = [];
+        foreach ($expModels as $exp) {
+            $expDays = ($exp->duration_type === 'multi_day') ? ($exp->duration_days ?? 1) : 1;
+            for ($d = 1; $d <= $expDays; $d++) {
+                $dayMapping[] = [
+                    'experience_id' => $exp->id,
+                    'experience_name' => $exp->name,
+                    'day_of_experience' => $d,
+                    'total_experience_days' => $expDays,
+                ];
+            }
+        }
+
+        $days = [];
+        foreach ($dayMapping as $idx => $dm) {
+            $aiDay = $aiDays[$idx] ?? [];
+            $exp = $expById->get($dm['experience_id']);
+            $expName = $dm['experience_name'];
+            $dayOfExp = $dm['day_of_experience'];
+            $totalExpDays = $dm['total_experience_days'];
+            $regionName = $exp?->region?->name;
+
+            $expDay = $exp?->days?->firstWhere('day_number', $dayOfExp);
+
+            $genericTitle = $totalExpDays > 1
+                ? $expName . ' — Day ' . $dayOfExp . ' of ' . $totalExpDays
+                : $expName;
+            $editorTitle = $expDay?->title ? ($expName . ' — ' . $expDay->title) : null;
+
+            if ($totalExpDays > 1) {
+                if ($dayOfExp === 1) {
+                    $phase = 'Begin your ' . $expName . ' journey';
+                } elseif ($dayOfExp === $totalExpDays) {
+                    $phase = 'Conclude your ' . $expName . ' journey';
+                } else {
+                    $phase = 'Continue your ' . $expName . ' journey';
+                }
+            } else {
+                $phase = 'Spend the day exploring ' . $expName;
+            }
+            $genericDescription = $regionName ? ($phase . ' in ' . $regionName . '.') : ($phase . '.');
+            if ($exp?->short_description) {
+                $genericDescription .= ' ' . $exp->short_description;
+            }
+            $editorDescription = $expDay?->short_description ?: null;
+
+            $startTime = $expDay?->start_time ?: '09:00';
+            $endTime   = $expDay?->end_time   ?: '17:00';
+
+            $services = [];
+            $coveredTypes = [];
+            $inclusions = is_array($expDay?->inclusions) ? $expDay->inclusions : [];
+            foreach ($inclusions as $inc) {
+                $key = strtolower(trim((string) $inc));
+                if (!isset($inclusionToService[$key])) continue;
+                $map = $inclusionToService[$key];
+                $services[] = [
+                    'service_type' => $map['type'],
+                    'description'  => $map['desc'],
+                    'is_included'  => true,
+                    'cost'         => 0,
+                ];
+                $coveredTypes[$map['type']] = true;
+            }
+
+            if ($accomComfort && empty($coveredTypes['accommodation']) && empty($exp?->includes_accommodation)) {
+                $services[] = [
+                    'service_type' => 'accommodation',
+                    'description'  => $accomComfort . ($regionName ? ' accommodation in ' . $regionName : ' accommodation'),
+                    'is_included'  => true,
+                    'cost'         => 0,
+                ];
+            }
+            if ($vehicleComfort && $vehicleComfort !== 'Local Transport' && empty($coveredTypes['transport']) && empty($exp?->includes_transport)) {
+                $services[] = [
+                    'service_type' => 'transport',
+                    'description'  => $vehicleComfort,
+                    'is_included'  => true,
+                    'cost'         => 0,
+                ];
+            }
+            if ($guidePref && $guidePref !== 'No Guide' && empty($coveredTypes['guide']) && empty($exp?->includes_guide)) {
+                $services[] = [
+                    'service_type' => 'guide',
+                    'description'  => $guidePref . ' guide for ' . $expName,
+                    'is_included'  => true,
+                    'cost'         => 0,
+                ];
+            }
+            if (!empty($aiDay['services']) && is_array($aiDay['services'])) {
+                foreach ($aiDay['services'] as $aiSvc) {
+                    $services[] = $aiSvc;
+                }
+            }
+
+            $days[] = [
+                'title'       => $aiDay['title'] ?? $editorTitle ?? $genericTitle,
+                'description' => $aiDay['description'] ?? $aiDay['notes'] ?? $editorDescription ?? $genericDescription,
+                'notes'       => $aiDay['notes'] ?? null,
+                'day_type'    => 'activity',
+                'experiences' => [[
+                    'experience_id' => $exp?->id,
+                    'name'          => $expName,
+                    'start_time'    => $aiDay['experiences'][0]['start_time'] ?? $startTime,
+                    'end_time'      => $aiDay['experiences'][0]['end_time']   ?? $endTime,
+                    'notes'         => $aiDay['experiences'][0]['notes']      ?? null,
+                ]],
+                'services' => $services,
+            ];
+        }
+
+        return $days;
+    }
+
     public function addExperienceToDay(TripDay $day, Experience $experience, array $data = []): TripDayExperience
     {
         $experience->loadMissing('days');

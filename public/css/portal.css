@@ -6418,6 +6418,7 @@
 .td-badge-confirmed { background: #dcfce7; color: #166534; }
 .td-badge-completed { background: #f3f4f6; color: #374151; }
 .td-badge-running { background: #fef3c7; color: #92400e; }
+.td-region-badge { display: inline-block; font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; background: var(--heco-primary-100, #dcfce7); color: var(--heco-primary-700, #15803d); }
 
 .td-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
 @media (max-width: 768px) { .td-grid { grid-template-columns: 1fr; } }

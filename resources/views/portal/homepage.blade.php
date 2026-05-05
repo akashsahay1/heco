@@ -3,6 +3,10 @@
 
 @section('css')
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-datepicker@1.10.0/dist/css/bootstrap-datepicker3.min.css">
+<style>
+    .start-date-input { width: 130px; font-size: 13px; padding: 4px 8px; }
+</style>
 @endsection
 
 @section('content')
@@ -309,13 +313,18 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-header"><i class="bi bi-info-circle"></i> Trip Summary</div>
                                 <div class="detail-card-body">
+                                    @php
+                                        $startDateRaw = ($trip->start_date ?? null) ? $trip->start_date->format('Y-m-d') : ($guestTripData['start_date'] ?? '');
+                                        $startDateDisplay = $startDateRaw ? \Carbon\Carbon::parse($startDateRaw)->format('d M Y') : '';
+                                    @endphp
                                     <div class="pricing-row">
                                         <span><i class="bi bi-calendar-event"></i> Start Date</span>
-                                        <span id="tripStartDateDisplay" class="editable-date" title="Click to change">
-                                            {{ ($trip->start_date ?? null) ? $trip->start_date->format('d M Y') : ($guestTripData['start_date'] ?? '--') }}
+                                        <span>
+                                            <input type="text" id="tripStartDateDisplay" class="form-control form-control-sm start-date-input"
+                                                placeholder="DD MMM YYYY" readonly autocomplete="off"
+                                                value="{{ $startDateDisplay }}">
+                                            <input type="hidden" id="tripStartDateInput" value="{{ $startDateRaw }}">
                                         </span>
-                                        <input type="date" id="tripStartDateInput" class="start-date-input d-none"
-                                            value="{{ ($trip->start_date ?? null) ? $trip->start_date->format('Y-m-d') : ($guestTripData['start_date'] ?? '') }}">
                                     </div>
                                     <div class="pricing-row"><span><i class="bi bi-clock"></i> Duration</span><span id="tripDuration"></span></div>
                                     <div class="pricing-row"><span><i class="bi bi-geo-alt"></i> Regions</span><span id="tripRegions"></span></div>
@@ -349,26 +358,26 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 <div class="detail-card-header"><i class="bi bi-sliders"></i> Travel Preferences</div>
                                 <div class="detail-card-body">
                                     <div class="mb-3">
-                                        <label class="form-label">Accommodation Comfort</label>
-                                        <select class="form-select pref-input" id="prefAccommodation">
+                                        <label class="form-label">Accommodation</label>
+                                        <select class="form-select pref-input pref-priced" id="prefAccommodation" data-pricing-key="accommodation">
                                             @foreach($prefLists['accommodation_comfort'] ?? [] as $item)
-                                                <option value="{{ $item->name }}" @selected($pAccom == $item->name)>{{ $item->name }}</option>
+                                                <option value="{{ $item->name }}" data-name="{{ $item->name }}" data-multiplier="{{ $multiplierMap['accommodation_comfort'][$item->name] ?? 1 }}" @selected($pAccom == $item->name)>{{ $item->name }}</option>
                                             @endforeach
                                         </select>
                                     </div>
                                     <div class="mb-3">
-                                        <label class="form-label">Vehicle Comfort</label>
-                                        <select class="form-select pref-input" id="prefVehicle">
+                                        <label class="form-label">Vehicle</label>
+                                        <select class="form-select pref-input pref-priced" id="prefVehicle" data-pricing-key="transport">
                                             @foreach($prefLists['vehicle_comfort'] ?? [] as $item)
-                                                <option value="{{ $item->name }}" @selected($pVehicle == $item->name)>{{ $item->name }}</option>
+                                                <option value="{{ $item->name }}" data-name="{{ $item->name }}" data-multiplier="{{ $multiplierMap['vehicle_comfort'][$item->name] ?? 1 }}" @selected($pVehicle == $item->name)>{{ $item->name }}</option>
                                             @endforeach
                                         </select>
                                     </div>
                                     <div class="mb-3">
-                                        <label class="form-label">Guide Preference</label>
-                                        <select class="form-select pref-input" id="prefGuide">
+                                        <label class="form-label">Guide</label>
+                                        <select class="form-select pref-input pref-priced" id="prefGuide" data-pricing-key="guide">
                                             @foreach($prefLists['guide_preference'] ?? [] as $item)
-                                                <option value="{{ $item->name }}" @selected($pGuide == $item->name)>{{ $item->name }}</option>
+                                                <option value="{{ $item->name }}" data-name="{{ $item->name }}" data-multiplier="{{ $multiplierMap['guide_preference'][$item->name] ?? 1 }}" @selected($pGuide == $item->name)>{{ $item->name }}</option>
                                             @endforeach
                                         </select>
                                     </div>
@@ -395,18 +404,6 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-header"><i class="bi bi-receipt"></i> Pricing Summary</div>
                                 <div class="detail-card-body" id="pricingSummary">
-                                    <div class="pricing-row">
-                                        <span>Transport <small class="text-muted price-detail" id="prTransportNote"></small></span>
-                                        <span id="prTransport"></span>
-                                    </div>
-                                    <div class="pricing-row">
-                                        <span>Accommodation <small class="text-muted price-detail" id="prAccommodationNote"></small></span>
-                                        <span id="prAccommodation"></span>
-                                    </div>
-                                    <div class="pricing-row">
-                                        <span>Guide <small class="text-muted price-detail" id="prGuideNote"></small></span>
-                                        <span id="prGuide"></span>
-                                    </div>
                                     <div class="pricing-row">
                                         <span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span>
                                         <span id="prActivities"></span>
@@ -660,6 +657,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 
 @section('js')
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap-datepicker@1.10.0/dist/js/bootstrap-datepicker.min.js"></script>
 <script>
 jQuery(function() {
     var isLoggedIn = {{ auth()->check() ? 'true' : 'false' }};
@@ -1754,12 +1752,10 @@ jQuery(function() {
             }
         });
 
-        // Sync start date display & input
+        // Sync start date — push to bootstrap-datepicker without re-firing changeDate.
         if (resp.start_date) {
-            var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            var sd = new Date(resp.start_date);
-            jQuery('#tripStartDateDisplay').text(sd.getDate() + ' ' + months[sd.getMonth()] + ' ' + sd.getFullYear());
             jQuery('#tripStartDateInput').val(resp.start_date);
+            jQuery('#tripStartDateDisplay').datepicker('update', new Date(resp.start_date));
         }
 
         // Trip ID header (only for logged-in users with real trip)
@@ -1984,11 +1980,28 @@ jQuery(function() {
             p = parseFloat(p) || 0;
             return p > 0 ? '(' + (Math.round(p * 100) / 100) + '%)' : '';
         }
+        function updatePricedOptions($select, base) {
+            base = parseFloat(base) || 0;
+            $select.find('option').each(function() {
+                var $opt = jQuery(this);
+                var name = $opt.attr('data-name');
+                if (!name) return; // not a priced option
+                var mul = parseFloat($opt.attr('data-multiplier'));
+                if (!isFinite(mul)) mul = 1;
+                if (base > 0 && mul >= 0) {
+                    var price = Math.round(base * mul);
+                    $opt.text(name + ' — ' + fmtPriceRow(price));
+                } else {
+                    $opt.text(name);
+                }
+            });
+        }
+
         ajaxPost({ get_trip_pricing: 1, trip_id: tripId }, function(resp) {
             var p = resp.pricing || resp;
-            jQuery('#prTransport').text(fmtPriceRow(p.transport_cost));
-            jQuery('#prAccommodation').text(fmtPriceRow(p.accommodation_cost));
-            jQuery('#prGuide').text(fmtPriceRow(p.guide_cost));
+            updatePricedOptions(jQuery('#prefAccommodation'), p.accommodation_base);
+            updatePricedOptions(jQuery('#prefVehicle'),       p.transport_base);
+            updatePricedOptions(jQuery('#prefGuide'),         p.guide_base);
             jQuery('#prActivities').text(fmtPriceRow(p.activity_cost));
             jQuery('#prExtraDays').text(fmtPriceRow(p.extra_day_cost));
             jQuery('#prOther').text(fmtPriceRow(p.other_cost));
@@ -2000,13 +2013,12 @@ jQuery(function() {
             jQuery('#prGST').text(fmtPriceRow(p.gst_amount));
             jQuery('#prFinal').text(fmtPriceRow(p.final_price));
 
-            // Detail captions
-            jQuery('#prTransportNote').text(fmtMul(p.vehicle_multiplier));
-            jQuery('#prAccommodationNote').text(fmtMul(p.accommodation_multiplier));
-            jQuery('#prGuideNote').text(fmtMul(p.guide_multiplier));
+            // Detail captions — pace/budget multipliers still apply to the activities/extra-days lines.
+            var paceMul = parseFloat(p.pace_multiplier) || 1;
+            var budgetMul = parseFloat(p.budget_multiplier) || 1;
             var paxLabel = (p.adults || 1) + (p.children > 0 ? ' adults +' + p.children + ' kids @ 50%' : ' adults');
-            jQuery('#prActivitiesNote').text(' (' + paxLabel + ')');
-            jQuery('#prExtraDaysNote').text(parseFloat(p.extra_day_cost) > 0 ? ' (' + paxLabel + ')' : '');
+            jQuery('#prActivitiesNote').text(' (' + paxLabel + ')' + fmtMul(paceMul * budgetMul));
+            jQuery('#prExtraDaysNote').text(parseFloat(p.extra_day_cost) > 0 ? ' (' + paxLabel + ')' + fmtMul(paceMul * budgetMul) : '');
             jQuery('#prRPNote').text(fmtPct(p.margin_rp_percent));
             jQuery('#prHRPNote').text(fmtPct(p.margin_hrp_percent));
             jQuery('#prHCTNote').text(fmtPct(p.commission_hct_percent));
@@ -2241,41 +2253,43 @@ jQuery(function() {
         }, 600);
     });
 
-    // Preferences — send to AI for confirmation
+    // Preferences — save directly, refresh pricing, then notify AI
     jQuery('.pref-input').on('change', function() {
         var label = jQuery(this).closest('.mb-3, .mb-2').find('label').text().trim();
         var val = jQuery(this).val();
+        var payload = {
+            update_travel_preferences: 1,
+            trip_id: window.tripId,
+            accommodation_comfort: jQuery('#prefAccommodation').val(),
+            vehicle_comfort: jQuery('#prefVehicle').val(),
+            guide_preference: jQuery('#prefGuide').val(),
+            travel_pace: jQuery('#prefPace').val(),
+            budget_sensitivity: jQuery('#prefBudget').val()
+        };
+        ajaxPost(payload, function() {
+            if (typeof loadPricing === 'function') loadPricing();
+        });
         sendAiMessage('I want to change my ' + label + ' preference to "' + val + '".');
     });
 
-    // Start Date — click to edit
-    jQuery('#tripStartDateDisplay').on('click', function() {
-        jQuery(this).addClass('d-none');
-        jQuery('#tripStartDateInput').removeClass('d-none').focus();
-    });
-
-    jQuery('#tripStartDateInput').on('change', function() {
-        var val = jQuery(this).val();
-        // Revert display and hide input — AI will update after confirmation
-        jQuery('#tripStartDateDisplay').removeClass('d-none');
-        jQuery(this).addClass('d-none');
-
-        if (val) {
-            var d = new Date(val);
-            var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            var formatted = d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
-            sendAiMessage('I want to change my trip start date to ' + formatted + '.');
-        }
-    });
-
-    jQuery('#tripStartDateInput').on('blur', function() {
-        var self = jQuery(this);
-        setTimeout(function() {
-            if (!self.is(':focus')) {
-                self.addClass('d-none');
-                jQuery('#tripStartDateDisplay').removeClass('d-none');
-            }
-        }, 200);
+    // Start Date — Bootstrap Datepicker on a readonly text input.
+    jQuery('#tripStartDateDisplay').datepicker({
+        format: 'dd M yyyy',
+        startDate: 'today',
+        autoclose: true,
+        todayHighlight: true,
+        weekStart: 1,
+        orientation: 'bottom auto'
+    }).on('changeDate', function(e) {
+        if (!e.date) return;
+        var d = e.date;
+        var pad = function(n) { return String(n).padStart(2, '0'); };
+        var iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+        if (jQuery('#tripStartDateInput').val() === iso) return;
+        jQuery('#tripStartDateInput').val(iso);
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var formatted = d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+        sendAiMessage('I want to change my trip start date to ' + formatted + '.');
     });
 
     // Request Support
@@ -2472,9 +2486,7 @@ jQuery(function() {
                 if (d.budget_sensitivity) jQuery('#prefBudget').val(d.budget_sensitivity);
                 if (d.start_date) {
                     jQuery('#tripStartDateInput').val(d.start_date);
-                    var sd = new Date(d.start_date);
-                    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                    jQuery('#tripStartDateDisplay').text(sd.getDate() + ' ' + months[sd.getMonth()] + ' ' + sd.getFullYear());
+                    jQuery('#tripStartDateDisplay').datepicker('update', new Date(d.start_date));
                 }
             }
 

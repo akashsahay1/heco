@@ -42,8 +42,31 @@ class LeadService
 
     public function checkPaymentAndTransition(Trip $trip): void
     {
-        $totalPaid = TravellerPayment::where('trip_id', $trip->id)->sum('amount');
-        if ($totalPaid > 0 && $trip->lead && $trip->lead->stage === 'follow_up') {
+        // Only successful payments count. Pending/failed rows from abandoned
+        // Razorpay attempts must not transition the trip.
+        $totalPaid = (float) TravellerPayment::where('trip_id', $trip->id)
+            ->where('payment_status', 'paid')
+            ->sum('amount');
+        if ($totalPaid <= 0) return;
+
+        $finalPrice = (float) $trip->final_price;
+        $updates = [];
+        if ($trip->status === 'not_confirmed') {
+            $updates['status'] = 'confirmed';
+        }
+        // Lock the trip from further edits when the traveller has paid in full.
+        // Tiny epsilon absorbs decimal rounding (e.g. 8585.99 vs 8586.00).
+        if ($finalPrice > 0 && ($totalPaid + 0.01) >= $finalPrice && $trip->stage === 'open') {
+            $updates['stage'] = 'closed';
+        }
+        if (!empty($updates)) {
+            $trip->update($updates);
+        }
+
+        // Lead workflow runs as a side-effect — never a precondition for the
+        // status/stage transitions above (self-service paid trips often have
+        // no lead in follow_up).
+        if ($trip->lead && $trip->lead->stage === 'follow_up') {
             $this->markWon($trip->lead);
         }
     }

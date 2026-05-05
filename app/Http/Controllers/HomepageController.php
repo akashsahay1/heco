@@ -8,6 +8,7 @@ use App\Models\Region;
 use App\Models\ServiceProvider;
 use App\Models\SystemList;
 use App\Models\Trip;
+use App\Services\CostCalculatorService;
 
 class HomepageController extends Controller
 {
@@ -98,7 +99,9 @@ class HomepageController extends Controller
             }
         }
 
-        return view("portal.homepage", compact("regions", "experiences", "trip", "guestTripData", "prefLists"));
+        $multiplierMap = CostCalculatorService::getMultiplierMap();
+
+        return view("portal.homepage", compact("regions", "experiences", "trip", "guestTripData", "prefLists", "multiplierMap"));
     }
 
     /**

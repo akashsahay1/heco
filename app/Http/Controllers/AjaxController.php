@@ -182,11 +182,34 @@ class AjaxController extends Controller
             'Certified/Expert' => 1.5,
             default => 1.0,
         };
+        $paceMultiplier = match ($guestData['travel_pace'] ?? '') {
+            'Relaxed' => 0.9,
+            'Moderate' => 1.0,
+            'Active' => 1.15,
+            'Intensive' => 1.3,
+            default => 1.0,
+        };
+        $budgetMultiplier = match ($guestData['budget_sensitivity'] ?? '') {
+            'Budget-friendly' => 0.85,
+            'Mid-range' => 1.0,
+            'Premium' => 1.25,
+            'No Limit' => 1.5,
+            default => 1.0,
+        };
 
         $numNights = max($numDays - 1, 0);
         $transportCost = round($baseTransport * $numDays * $vehicleMultiplier);
         $accommodationCost = round($baseAccommodation * $numNights * $adults * $accomMultiplier);
         $guideCost = round($baseGuide * $numDays * $guideMultiplier);
+
+        // Pace scales activity-driven costs; budget scales overall trip base cost
+        $activityCost = (int) round($activityCost * $paceMultiplier);
+        $guideCost = (int) round($guideCost * $paceMultiplier);
+
+        $transportCost = (int) round($transportCost * $budgetMultiplier);
+        $accommodationCost = (int) round($accommodationCost * $budgetMultiplier);
+        $guideCost = (int) round($guideCost * $budgetMultiplier);
+        $activityCost = (int) round($activityCost * $budgetMultiplier);
 
         $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost;
         $rpPercent = (float) Setting::getValue('default_rp_margin_percent', 5);
@@ -218,6 +241,14 @@ class AjaxController extends Controller
             'subtotal' => $subtotal,
             'gst_amount' => $gstAmount,
             'final_price' => $finalPrice,
+            'vehicle_multiplier' => $vehicleMultiplier,
+            'accommodation_multiplier' => $accomMultiplier,
+            'guide_multiplier' => $guideMultiplier,
+            'pace_multiplier' => $paceMultiplier,
+            'budget_multiplier' => $budgetMultiplier,
+            'gst_percent' => $gstPercent,
+            'adults' => $adults,
+            'children' => $guestData['children'] ?? 0,
         ];
     }
 
@@ -1749,6 +1780,10 @@ class AjaxController extends Controller
             ]);
         }
 
+        // Keep the timeline in sync with the selected experiences so a 5-day
+        // selection always renders 5 days (no stale state from a prior generate).
+        app(ItineraryService::class)->rebuildFromExperiences($trip);
+
         return response()->json(["success" => true, "trip_id" => $trip->id, "message" => "Experience added to trip"]);
     }
 
@@ -1779,20 +1814,13 @@ class AjaxController extends Controller
             ->where("experience_id", $request->experience_id)
             ->delete();
 
-        // Also remove from timeline days
-        TripDayExperience::where("experience_id", $request->experience_id)
-            ->whereHas("tripDay", function ($q) use ($trip) {
-                $q->where("trip_id", $trip->id);
-            })
-            ->delete();
-
-        // Remove empty days (no experiences left)
-        $trip->tripDays()->whereDoesntHave('experiences')->delete();
-
         // Reset group size if no experiences left
         if ($trip->selectedExperiences()->count() === 0) {
             $trip->update(['adults' => 0, 'children' => 0, 'infants' => 0]);
         }
+
+        // Rebuild the timeline so day count tracks the remaining experiences.
+        app(ItineraryService::class)->rebuildFromExperiences($trip);
 
         return response()->json(["success" => true, "trip_id" => $trip->id]);
     }
@@ -1884,6 +1912,9 @@ class AjaxController extends Controller
                 ->where('experience_id', $expId)
                 ->update(['sort_order' => $index]);
         }
+
+        // Rebuild so the day order on the timeline matches the new experience order.
+        app(ItineraryService::class)->rebuildFromExperiences($trip);
 
         return response()->json(["success" => true]);
     }
