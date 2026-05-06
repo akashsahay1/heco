@@ -7,17 +7,17 @@
    CSS VARIABLES
    ============================================ */
 :root {
-    /* Primary Brand Colors - Forest Green */
-    --heco-primary-50: #f0fdf4;
-    --heco-primary-100: #dcfce7;
-    --heco-primary-200: #bbf7d0;
-    --heco-primary-300: #86efac;
-    --heco-primary-400: #4ade80;
-    --heco-primary-500: #22c55e;
-    --heco-primary-600: #16a34a;
-    --heco-primary-700: #15803d;
-    --heco-primary-800: #166534;
-    --heco-primary-900: #14532d;
+    /* Primary Brand Colors - Turquoise (#79a09f at 700) */
+    --heco-primary-50:  #f1f7f7;
+    --heco-primary-100: #dceae9;
+    --heco-primary-200: #b9d2d1;
+    --heco-primary-300: #97bbb9;
+    --heco-primary-400: #82a9a8;
+    --heco-primary-500: #7ca4a3;
+    --heco-primary-600: #7aa1a0;
+    --heco-primary-700: #79a09f;
+    --heco-primary-800: #5f8484;
+    --heco-primary-900: #496767;
 
     /* Neutral Colors */
     --heco-neutral-50: #f8fafc;
