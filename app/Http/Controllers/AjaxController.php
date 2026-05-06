@@ -1379,9 +1379,9 @@ class AjaxController extends Controller
 
         // Parse SET_FILTERS tag
         $setFilters = null;
-        if (preg_match('/\[SET_FILTERS:(\{[^]]+\})\]/', $responseText, $filterMatch)) {
+        if (preg_match('/\[SET_FILTERS:(\{.+?\})\]/s', $responseText, $filterMatch)) {
             $setFilters = json_decode($filterMatch[1], true) ?: null;
-            $responseText = trim(preg_replace('/\s*\[SET_FILTERS:\{[^]]+\}\]/', '', $responseText));
+            $responseText = trim(preg_replace('/\s*\[SET_FILTERS:\{.+?\}\]/s', '', $responseText));
         }
 
         // Parse recommended experience IDs
@@ -1392,9 +1392,9 @@ class AjaxController extends Controller
         }
 
         // Parse trip details from AI response
-        if (preg_match('/\[TRIP_DETAILS:(\{[^]]+\})\]/', $responseText, $tdMatch)) {
+        if (preg_match('/\[TRIP_DETAILS:(\{.+?\})\]/s', $responseText, $tdMatch)) {
             $extractedDetails = json_decode($tdMatch[1], true) ?: [];
-            $responseText = trim(preg_replace('/\s*\[TRIP_DETAILS:\{[^]]+\}\]/', '', $responseText));
+            $responseText = trim(preg_replace('/\s*\[TRIP_DETAILS:\{.+?\}\]/s', '', $responseText));
 
             // Handle traveller name separately
             $travellerName = $extractedDetails['traveller_name'] ?? null;
@@ -1603,6 +1603,13 @@ class AjaxController extends Controller
 
         $tripUpdated = !empty($addedExperienceIds) || !empty($removedExperienceIds) || $detailsUpdated;
         $updatedDetails = $detailsUpdated ? ($extractedDetails ?? []) : [];
+
+        // Final safety net: strip any leftover control markers that slipped past
+        // primary parsing (e.g. malformed JSON inside [TRIP_DETAILS:] would
+        // otherwise leak the raw tag to the user).
+        $responseText = preg_replace('/\[(?:TRIP_DETAILS|SET_FILTERS):\{.+?\}\]/s', '', $responseText);
+        $responseText = preg_replace('/\[(?:RECOMMEND_IDS|ADD_TO_TRIP|REMOVE_FROM_TRIP):[\d,\s]*\]/', '', $responseText);
+        $responseText = trim($responseText);
 
         // Save assistant response
         if ($isGuest) {
