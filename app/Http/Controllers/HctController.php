@@ -112,9 +112,36 @@ class HctController extends Controller
         ));
     }
 
-    public function travelers()
+    public function travelers(Request $request)
     {
-        return view("admin.travelers");
+        $segment = $request->get('segment', 'all');
+        if (!in_array($segment, ['all', 'with_bookings', 'without_bookings'], true)) {
+            $segment = 'all';
+        }
+        $search = trim((string) $request->get('search', ''));
+
+        // A "booking" is a trip that has progressed past exploration.
+        $bookingStatuses = ['confirmed', 'running', 'completed'];
+
+        $query = User::where('user_role', 'traveller')->withCount('trips');
+
+        if ($segment === 'with_bookings') {
+            $query->whereHas('trips', fn($q) => $q->whereIn('status', $bookingStatuses));
+        } elseif ($segment === 'without_bookings') {
+            $query->whereDoesntHave('trips', fn($q) => $q->whereIn('status', $bookingStatuses));
+        }
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('full_name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('mobile', 'like', "%{$search}%");
+            });
+        }
+
+        $travelers = $query->orderBy('created_at', 'desc')->paginate(30)->withQueryString();
+
+        return view('admin.travelers', compact('travelers', 'segment', 'search'));
     }
 
     public function providerApplications()

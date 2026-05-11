@@ -25,7 +25,7 @@
             <option value="pending">Pending</option>
             <option value="rejected">Rejected</option>
         </select>
-        <input type="text" class="form-control form-control-sm" id="providerSearch" placeholder="Search..." style="width: 200px;">
+        <input type="text" class="form-control form-control-sm" id="providerSearch" style="width: 200px;">
     </div>
 </div>
 

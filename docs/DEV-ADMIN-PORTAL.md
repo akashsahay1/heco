@@ -159,7 +159,7 @@ Legend: `[x]` complete · `[~]` partial · `[ ]` not started
 
 ## 10. Travelers Tab
 
-- [x] List of travellers — `get_travelers_list` (`travelers.blade.php`)
+- [x] List of travellers — server-rendered via `HctController::travelers()` (`travelers.blade.php`); paginated 30/page with segment + search filter
 - [x] Sorted by end date of last trip
 - [x] Columns: name, ID, status
 - [x] Filter by region + date range

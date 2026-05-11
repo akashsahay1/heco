@@ -87,7 +87,7 @@
                     <div class="row g-3">
                         <div class="col-12">
                             <label class="form-label">Describe your services and experience *</label>
-                            <textarea class="form-control" name="description" rows="4" required placeholder="Tell us about your background, experience, and the services you can offer..."></textarea>
+                            <textarea class="form-control" name="description" rows="4" required></textarea>
                         </div>
                     </div>
                 </div>
@@ -104,28 +104,32 @@
 @endsection
 @section('js')
 <script>
-$(function() {
-    $('#spApplicationForm').on('submit', function(e) {
+jQuery(function() {
+    jQuery('#spApplicationForm').on('submit', function(e) {
         e.preventDefault();
-        var btn = $(this).find('button[type="submit"]');
+        var form = jQuery(this);
+        var btn = form.find('button[type="submit"]');
+        var original_html = btn.html();
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Submitting...');
 
         var formData = {};
-        $(this).serializeArray().forEach(function(item) {
+        form.serializeArray().forEach(function(item) {
             formData[item.name] = item.value;
         });
-        formData.sp_application = 1;
+        // Dispatch key MUST match AjaxController::index() — it checks
+        // `submit_sp_application`, not `sp_application`.
+        formData.submit_sp_application = 1;
 
         ajaxPost(formData, function(resp) {
-            btn.prop('disabled', false).html('<i class="bi bi-send"></i> Submit Application');
+            btn.prop('disabled', false).html(original_html);
             if (resp.success) {
-                $('#sp-alert').html('<div class="alert alert-success"><i class="bi bi-check-circle"></i> Application submitted successfully! We will review and get back to you soon.</div>');
-                $('#spApplicationForm')[0].reset();
+                jQuery('#sp-alert').html('<div class="alert alert-success"><i class="bi bi-check-circle"></i> Application submitted successfully! We will review and get back to you soon.</div>');
+                form[0].reset();
             }
         }, function(xhr) {
-            btn.prop('disabled', false).html('<i class="bi bi-send"></i> Submit Application');
+            btn.prop('disabled', false).html(original_html);
             var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Failed to submit application.') : 'Failed to submit application.';
-            $('#sp-alert').html('<div class="alert alert-danger">' + msg + '</div>');
+            jQuery('#sp-alert').html('<div class="alert alert-danger">' + msg + '</div>');
         });
     });
 });

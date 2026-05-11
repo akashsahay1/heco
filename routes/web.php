@@ -11,6 +11,7 @@ use App\Http\Controllers\TripManagerController;
 use App\Http\Controllers\SpController;
 use App\Http\Controllers\PdfController;
 use App\Http\Controllers\AjaxController;
+use App\Http\Controllers\EmailTestController;
 
 // ============================================
 // ADMIN DOMAIN (hecoadmin.test)
@@ -67,6 +68,10 @@ Route::domain(config('app.admin_domain'))->group(function () {
 
         // PDF
         Route::get('/pdf/trip/{trip_id}', [PdfController::class, 'tripPdf'])->name('pdf.trip');
+
+        // Email Test (developer tool)
+        Route::get('/email-test', [EmailTestController::class, 'show'])->name('email-test');
+        Route::post('/email-test/send', [EmailTestController::class, 'send'])->name('email-test.send');
     });
 
     // AJAX
@@ -131,14 +136,14 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::get('/careers', fn() => view('portal.pages.careers'))->name('careers');
     Route::get('/guidelines', fn() => view('portal.pages.guidelines'))->name('guidelines');
 
-    // Auth (redirect to homepage with modal trigger)
-    Route::get('/login', fn() => redirect('/home?auth=login'))->name('login');
-    Route::get('/register', fn() => redirect('/home?auth=register'))->name('register');
+    // Auth (dedicated pages — modal removed)
+    Route::get('/login', [AuthController::class, 'show_login'])->name('login');
+    Route::get('/sign-up', [AuthController::class, 'show_signup'])->name('signup');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-    Route::get('/forgot-password', [AuthController::class, 'showForgotPassword'])->name('password.request');
-    Route::post('/forgot-password', [AuthController::class, 'sendResetLink'])->name('password.email');
-    Route::get('/reset-password/{token}', [AuthController::class, 'showResetPassword'])->name('password.reset');
-    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.update');
+    Route::get('/forgot-password', [AuthController::class, 'show_forgot_password'])->name('password.request');
+    Route::post('/forgot-password', [AuthController::class, 'send_reset_link'])->name('password.email');
+    Route::get('/reset-password/{token}', [AuthController::class, 'show_reset_password'])->name('password.reset');
+    Route::post('/reset-password', [AuthController::class, 'reset_password'])->name('password.update');
 
     // Social Auth
     Route::get('/auth/{provider}/redirect', [SocialAuthController::class, 'redirect'])->name('social.redirect');

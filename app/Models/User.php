@@ -5,6 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\PasswordResetEmail;
 
 class User extends Authenticatable
 {
@@ -12,7 +15,9 @@ class User extends Authenticatable
 
     protected $fillable = [
         'full_name', 'email', 'password', 'auth_type', 'user_role',
-        'mobile', 'address', 'google_id', 'facebook_id', 'avatar', 'photo',
+        'mobile', 'address1', 'address2', 'city', 'state', 'country', 'postal_code',
+        'gender', 'date_of_birth',
+        'google_id', 'facebook_id', 'avatar', 'photo',
         'newsletter_optin', 'portal_notify_optin', 'status',
     ];
 
@@ -25,7 +30,17 @@ class User extends Authenticatable
             'password' => 'hashed',
             'newsletter_optin' => 'boolean',
             'portal_notify_optin' => 'boolean',
+            'date_of_birth' => 'date',
         ];
+    }
+
+    /**
+     * Age in completed years, or null if DOB unknown.
+     * Used for trek age-eligibility checks.
+     */
+    public function getAgeAttribute(): ?int
+    {
+        return $this->date_of_birth ? $this->date_of_birth->age : null;
     }
 
     public function isHctAdmin(): bool
@@ -76,5 +91,23 @@ class User extends Authenticatable
     public function reviews()
     {
         return $this->hasMany(Review::class);
+    }
+
+    /**
+     * Override the framework's default plaintext reset email with our branded
+     * Mailable. The token comes from Laravel's password broker.
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $resetUrl = route('password.reset', [
+            'token' => $token,
+            'email' => $this->email,
+        ]);
+
+        try {
+            Mail::to($this->email)->send(new PasswordResetEmail($this->full_name ?: 'there', $resetUrl));
+        } catch (\Throwable $e) {
+            Log::error('Password reset email failed [' . $this->id . ']: ' . $e->getMessage());
+        }
     }
 }

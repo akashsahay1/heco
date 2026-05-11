@@ -34,7 +34,7 @@
             </div>
             <div class="col-md-4">
                 <label class="form-label small mb-1">Search</label>
-                <input type="text" class="form-control form-control-sm" id="filterSearch" placeholder="Search by name, country...">
+                <input type="text" class="form-control form-control-sm" id="filterSearch">
             </div>
             <div class="col-md-2">
                 <button class="btn btn-outline-secondary btn-sm w-100" id="btnReset" title="Reset filters">
@@ -116,7 +116,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label small">External URL</label>
-                    <input type="url" class="form-control form-control-sm" id="regionUrl" placeholder="https://...">
+                    <input type="url" class="form-control form-control-sm" id="regionUrl">
                 </div>
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="regionActive" checked>

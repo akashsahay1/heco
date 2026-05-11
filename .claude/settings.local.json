@@ -110,7 +110,10 @@
       "Bash(C:/Users/akash/.config/herd/bin/php.bat artisan *)",
       "Bash(C:/Users/akash/.config/herd/bin/php.bat *)",
       "Bash(C:/Users/akash/.config/herd/bin/herd.bat restart *)",
-      "Bash(awk NR<=5 {print} *)"
+      "Bash(awk NR<=5 {print} *)",
+      "Bash('C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat' 'E:\\\\heco\\\\artisan' tinker --no-interaction '--execute= *)",
+      "Bash(C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat E:\\\\heco\\\\artisan *)",
+      "Bash('C:\\\\Users\\\\akash\\\\.config\\\\herd\\\\bin\\\\php.bat' 'E:\\\\heco\\\\artisan' tinker '--execute=echo '\\\\''admin user: '\\\\''; $u = App\\\\Models\\\\User::where\\('\\\\''email'\\\\'','\\\\''admin@hecoapp.com'\\\\''\\)->first\\(\\); echo $u ? $u->email.'\\\\'' role='\\\\''.$u->user_role : '\\\\''NOT FOUND'\\\\''; echo PHP_EOL; echo '\\\\''trips: '\\\\''.App\\\\Models\\\\Trip::count\\(\\).'\\\\'' trip ids: '\\\\''.App\\\\Models\\\\Trip::pluck\\('\\\\''id'\\\\''\\)->implode\\('\\\\'','\\\\''\\); echo PHP_EOL; echo '\\\\''leads: '\\\\''.App\\\\Models\\\\Lead::count\\(\\); echo PHP_EOL; echo '\\\\''experiences: '\\\\''.App\\\\Models\\\\Experience::count\\(\\);')"
     ]
   }
 }

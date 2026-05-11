@@ -13,9 +13,10 @@
     <link href="{{ url('css/fontawesome.min.css') }}" rel="stylesheet">
     <link href="{{ url('style.css') }}?v={{ time() }}" rel="stylesheet">
     <link href="{{ url('css/portal.css') }}?v={{ time() }}" rel="stylesheet">
+    <link href="{{ url('css/air-datepicker.min.css') }}" rel="stylesheet">
     @yield('css')
 </head>
-<body>
+<body class="heco-portal">
     <!-- Header -->
     <header class="site-header">
         <div class="header-container">
@@ -40,12 +41,12 @@
                     <i class="bi bi-chevron-down header-currency-caret" id="currencyCaret"></i>
                 </button>
                 @guest
-                    <button type="button" class="btn btn-outline-dark btn-sm header-auth-btn" id="btnOpenAuth">
+                    <a href="/login" class="btn btn-outline-dark btn-sm header-auth-btn">
                         Login
-                    </button>
-                    <button type="button" class="btn btn-success btn-sm header-auth-btn" id="btnOpenRegister">
+                    </a>
+                    <a href="/sign-up" class="btn btn-success btn-sm header-auth-btn">
                         Get Started
-                    </button>
+                    </a>
                 @else
                     @if(auth()->user()->isServiceProvider())
                         <a href="/sp/dashboard" class="btn btn-outline-dark btn-sm">
@@ -109,155 +110,12 @@
             @endauth
             @guest
                 <div class="mobile-nav-divider"></div>
-                <button type="button" class="mobile-nav-link" data-open-auth="login">Login</button>
-                <button type="button" class="mobile-nav-link text-primary" data-open-auth="register">Get Started</button>
+                <a href="/login" class="mobile-nav-link">Login</a>
+                <a href="/sign-up" class="mobile-nav-link text-primary">Get Started</a>
             @endguest
         </nav>
     </header>
 
-    @guest
-    <!-- Auth Modal (Bootstrap 5) -->
-    <div class="modal fade auth-modal" id="authModal" tabindex="-1" aria-labelledby="authModalTitle" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content auth-modal-content">
-                <button type="button" class="btn-close auth-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
-
-                <div class="auth-modal-hero">
-                    <h4 class="auth-modal-title" id="authModalTitle">Welcome Back</h4>
-                    <p class="auth-modal-subtitle">Plan regenerative journeys with HECO</p>
-                </div>
-
-                <div class="auth-modal-body">
-                    <!-- Tabs -->
-                    <ul class="nav nav-pills nav-fill auth-tabs">
-                        <li class="nav-item">
-                            <button class="nav-link active" data-auth-tab="login" type="button">Login</button>
-                        </li>
-                        <li class="nav-item">
-                            <button class="nav-link" data-auth-tab="register" type="button">Sign Up</button>
-                        </li>
-                    </ul>
-
-                    <!-- Login Form -->
-                    <div class="auth-panel" id="loginPanel">
-                        <form id="loginForm" class="auth-form">
-                            <div class="auth-field">
-                                <label class="auth-label">Email Address</label>
-                                <div class="input-group auth-input-group">
-                                    <input type="email" class="form-control" name="email" placeholder="you@example.com" required>
-                                </div>
-                            </div>
-                            <div class="auth-field">
-                                <div class="auth-label-row">
-                                    <label class="auth-label mb-0">Password</label>
-                                    <a href="/forgot-password" class="auth-link-muted">Forgot?</a>
-                                </div>
-                                <div class="input-group auth-input-group">
-                                    <input type="password" class="form-control" name="password" placeholder="Enter your password" required>
-                                    <button type="button" class="btn btn-outline-secondary password-toggle" tabindex="-1">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-success w-100 auth-submit-btn" id="btnLogin">
-                                <i class="bi bi-box-arrow-in-right me-2"></i>Login
-                            </button>
-                        </form>
-
-                        <div class="auth-divider">
-                            <span>or continue with</span>
-                        </div>
-
-                        <div class="auth-social-row">
-                            <a href="/auth/google/redirect" class="social-icon-btn" title="Continue with Google" aria-label="Continue with Google">
-                                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                            </a>
-                            <a href="/auth/facebook/redirect" class="social-icon-btn" title="Continue with Facebook" aria-label="Continue with Facebook">
-                                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                            </a>
-                        </div>
-                    </div>
-
-                    <!-- Register Form -->
-                    <div class="auth-panel" id="registerPanel" style="display: none;">
-                        <form id="registerForm" class="auth-form">
-                            <div class="row g-2">
-                                <div class="col-6">
-                                    <div class="auth-field">
-                                        <label class="auth-label">First Name</label>
-                                        <div class="input-group auth-input-group">
-                                            <input type="text" class="form-control" name="first_name" placeholder="Jane" required>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="auth-field">
-                                        <label class="auth-label">Last Name</label>
-                                        <div class="input-group auth-input-group">
-                                            <input type="text" class="form-control" name="last_name" placeholder="Doe" required>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="auth-field">
-                                <label class="auth-label">Email Address</label>
-                                <div class="input-group auth-input-group">
-                                    <input type="email" class="form-control" name="email" placeholder="you@example.com" required>
-                                </div>
-                            </div>
-                            <div class="auth-field">
-                                <label class="auth-label">Phone Number</label>
-                                <div class="input-group auth-input-group">
-                                    <input type="tel" class="form-control" name="phone" placeholder="+91 98765 43210">
-                                </div>
-                            </div>
-                            <div class="auth-field">
-                                <label class="auth-label">Password</label>
-                                <div class="input-group auth-input-group">
-                                    <input type="password" class="form-control" name="password" placeholder="Min. 8 characters" required minlength="8">
-                                    <button type="button" class="btn btn-outline-secondary password-toggle" tabindex="-1">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="auth-field">
-                                <label class="auth-label">Confirm Password</label>
-                                <div class="input-group auth-input-group">
-                                    <input type="password" class="form-control" name="password_confirmation" placeholder="Repeat password" required>
-                                    <button type="button" class="btn btn-outline-secondary password-toggle" tabindex="-1">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="form-check auth-terms">
-                                <input type="checkbox" class="form-check-input" id="termsCheck" required>
-                                <label class="form-check-label" for="termsCheck">
-                                    I agree to the <a href="/terms" class="text-success text-decoration-none">Terms</a> and <a href="/privacy-policy" class="text-success text-decoration-none">Privacy Policy</a>
-                                </label>
-                            </div>
-                            <button type="submit" class="btn btn-success w-100 auth-submit-btn" id="btnRegister">
-                                <i class="bi bi-person-plus me-2"></i>Create Account
-                            </button>
-                        </form>
-
-                        <div class="auth-divider">
-                            <span>or sign up with</span>
-                        </div>
-
-                        <div class="auth-social-row">
-                            <a href="/auth/google/redirect" class="social-icon-btn" title="Sign up with Google" aria-label="Sign up with Google">
-                                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                            </a>
-                            <a href="/auth/facebook/redirect" class="social-icon-btn" title="Sign up with Facebook" aria-label="Sign up with Facebook">
-                                <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    @endguest
 
     <!-- Currency Selector Modal -->
     <div class="modal fade" id="currencyModal" tabindex="-1" aria-labelledby="currencyModalTitle" aria-hidden="true">
@@ -272,7 +130,7 @@
                 <div class="px-4 py-3 border-bottom bg-light">
                     <div class="input-group input-group-lg">
                         <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-                        <input type="text" class="form-control" id="currencySearchInput" placeholder="Search by currency name or code..." autocomplete="off">
+                        <input type="text" class="form-control" id="currencySearchInput" autocomplete="off">
                     </div>
                 </div>
                 <div class="modal-body px-4 pb-4" style="max-height: 500px; overflow-y: auto;">
@@ -380,6 +238,9 @@
     <script src="{{ url('js/jquery-3.7.1.min.js') }}"></script>
     <script src="{{ url('js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ url('js/sweetalert2.all.min.js') }}"></script>
+    <script src="{{ url('js/air-datepicker.min.js') }}"></script>
+    <script src="{{ url('js/air-datepicker-en.js') }}"></script>
+    <script src="{{ url('js/custom-select.js') }}?v={{ time() }}"></script>
     <script>
     jQuery(function() {
         // CSRF Setup
@@ -419,7 +280,7 @@
                 // Handled by ajaxPrefilter retry above
                 return;
             } else if (jqXHR.status === 401) {
-                if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
+                window.location.href = '/login';
             } else if (jqXHR.status === 422) {
                 var resp = jqXHR.responseJSON;
                 if (resp && resp.error) {
@@ -676,107 +537,7 @@
             });
         })();
 
-        // Auth Modal (Bootstrap 5)
-        var authModalEl = jQuery('#authModal');
-        var bsAuthModal = authModalEl.length ? new bootstrap.Modal(authModalEl[0]) : null;
-
-        window.openAuthModal = function(tab) {
-            if (!bsAuthModal) return;
-            switchAuthTab(tab || 'login');
-            bsAuthModal.show();
-        };
-
-        function switchAuthTab(tab) {
-            jQuery('[data-auth-tab]').each(function() {
-                jQuery(this).toggleClass('active', jQuery(this).data('auth-tab') === tab);
-            });
-
-            if (tab === 'login') {
-                jQuery('#loginPanel').show();
-                jQuery('#registerPanel').hide();
-                jQuery('#authModalTitle').text('Welcome Back');
-            } else {
-                jQuery('#loginPanel').hide();
-                jQuery('#registerPanel').show();
-                jQuery('#authModalTitle').text('Create Account');
-            }
-        }
-
-        // Open Modal Buttons
-        jQuery('#btnOpenAuth').on('click', function() {
-            openAuthModal('login');
-        });
-
-        jQuery('#btnOpenRegister').on('click', function() {
-            openAuthModal('register');
-        });
-
-        // Mobile auth buttons
-        jQuery(document).on('click', '[data-open-auth]', function() {
-            jQuery('#mobileNav').removeClass('show');
-            openAuthModal(jQuery(this).data('open-auth'));
-        });
-
-        // Tab switching
-        jQuery(document).on('click', '[data-auth-tab]', function() {
-            switchAuthTab(jQuery(this).data('auth-tab'));
-        });
-
-        // Login Form
-        jQuery('#loginForm').on('submit', function(e) {
-            e.preventDefault();
-            var btn = jQuery('#btnLogin');
-            var originalText = btn.html();
-            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Logging in...');
-
-            jQuery.ajax({
-                url: '/ajax',
-                method: 'POST',
-                data: jQuery(this).serialize() + '&login=1',
-                success: function(resp) {
-                    if (resp.success) {
-                        showAlert('Login successful!', 'success');
-                        if (bsAuthModal) bsAuthModal.hide();
-                        setTimeout(function() {
-                            window.location.href = resp.redirect || '/home';
-                        }, 500);
-                    }
-                },
-                error: function(xhr) {
-                    btn.prop('disabled', false).html(originalText);
-                    var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Login failed') : 'Request failed';
-                    showAlert(msg, 'danger');
-                }
-            });
-        });
-
-        // Register Form
-        jQuery('#registerForm').on('submit', function(e) {
-            e.preventDefault();
-            var btn = jQuery('#btnRegister');
-            var originalText = btn.html();
-            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Creating account...');
-
-            jQuery.ajax({
-                url: '/ajax',
-                method: 'POST',
-                data: jQuery(this).serialize() + '&register=1',
-                success: function(resp) {
-                    if (resp.success) {
-                        showAlert('Account created successfully!', 'success');
-                        if (bsAuthModal) bsAuthModal.hide();
-                        setTimeout(function() {
-                            window.location.href = resp.redirect || '/home';
-                        }, 500);
-                    }
-                },
-                error: function(xhr) {
-                    btn.prop('disabled', false).html(originalText);
-                    var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Registration failed') : 'Request failed';
-                    showAlert(msg, 'danger');
-                }
-            });
-        });
+        // Auth modal removed — /login and /sign-up are now dedicated pages.
 
         // Smooth Scroll for anchor links
         jQuery(document).on('click', 'a[href^="#"]', function(e) {
@@ -823,17 +584,13 @@
             });
         };
 
-        // Auto-open auth modal from URL param (?auth=login or ?auth=register)
-        var urlParams = new URLSearchParams(window.location.search);
-        var authParam = urlParams.get('auth');
-        if (authParam && (authParam === 'login' || authParam === 'register')) {
-            openAuthModal(authParam);
-            // Clean URL without reload
-            if (window.history.replaceState) {
-                urlParams.delete('auth');
-                var cleanUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
-                window.history.replaceState({}, '', cleanUrl);
-            }
+        // Backwards-compat: legacy ?auth=login and ?auth=register URLs redirect
+        // to the dedicated pages.
+        var legacyAuth = new URLSearchParams(window.location.search).get('auth');
+        if (legacyAuth === 'login') {
+            window.location.replace('/login');
+        } else if (legacyAuth === 'register') {
+            window.location.replace('/sign-up');
         }
     });
     </script>

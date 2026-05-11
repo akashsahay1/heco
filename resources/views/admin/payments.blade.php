@@ -19,7 +19,7 @@
     {{-- SP Payments Tab --}}
     <div class="tab-pane fade show active" id="spPayments">
         <div class="d-flex gap-2 mb-3">
-            <input type="text" class="form-control form-control-sm" id="spTripSearch" placeholder="Search by Trip ID..." style="width: 250px;">
+            <input type="text" class="form-control form-control-sm" id="spTripSearch" style="width: 250px;">
             <button class="btn btn-sm btn-outline-primary" id="spSearchBtn"><i class="bi bi-search"></i> Search</button>
         </div>
 
@@ -132,7 +132,7 @@ function loadSpPayments() {
             html += '<hr>';
             html += '<h6 class="small fw-bold">Add Payment</h6>';
             html += '<div class="row g-2">';
-            html += '<div class="col-md-3"><input type="number" class="form-control form-control-sm sp-amount" data-id="' + sp.id + '" placeholder="Amount" step="0.01"></div>';
+            html += '<div class="col-md-3"><input type="number" class="form-control form-control-sm sp-amount" data-id="' + sp.id + '" step="0.01"></div>';
             html += '<div class="col-md-3"><input type="date" class="form-control form-control-sm sp-date" data-id="' + sp.id + '"></div>';
             html += '<div class="col-md-3">';
             html += '<select class="form-select form-select-sm sp-mode" data-id="' + sp.id + '">';
@@ -142,7 +142,7 @@ function loadSpPayments() {
             html += '<option value="remitly">Remitly</option>';
             html += '</select>';
             html += '</div>';
-            html += '<div class="col-md-3"><input type="text" class="form-control form-control-sm sp-notes" data-id="' + sp.id + '" placeholder="Notes"></div>';
+            html += '<div class="col-md-3"><input type="text" class="form-control form-control-sm sp-notes" data-id="' + sp.id + '"></div>';
             html += '</div>';
             html += '<button class="btn btn-sm btn-success mt-2 add-sp-payment" data-id="' + sp.id + '"><i class="bi bi-plus-circle"></i> Add Payment</button>';
 

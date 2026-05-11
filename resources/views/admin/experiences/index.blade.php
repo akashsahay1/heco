@@ -59,7 +59,7 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label small mb-1">Search</label>
-                <input type="text" class="form-control form-control-sm" id="filterSearch" placeholder="Search by name...">
+                <input type="text" class="form-control form-control-sm" id="filterSearch">
             </div>
             <div class="col-md-1">
                 <button class="btn btn-outline-secondary btn-sm w-100" id="btnReset" title="Reset filters">

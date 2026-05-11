@@ -13,8 +13,8 @@
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
         </select>
-        <input type="date" class="form-control form-control-sm" id="dateFrom" style="width: 150px;" placeholder="From">
-        <input type="date" class="form-control form-control-sm" id="dateTo" style="width: 150px;" placeholder="To">
+        <input type="date" class="form-control form-control-sm" id="dateFrom" style="width: 150px;">
+        <input type="date" class="form-control form-control-sm" id="dateTo" style="width: 150px;">
     </div>
 </div>
 

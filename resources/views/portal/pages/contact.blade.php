@@ -29,22 +29,22 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">First Name *</label>
-                            <input type="text" class="form-input" name="first_name" placeholder="John" required>
+                            <input type="text" class="form-input" name="first_name" required>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Last Name *</label>
-                            <input type="text" class="form-input" name="last_name" placeholder="Doe" required>
+                            <input type="text" class="form-input" name="last_name" required>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Email Address *</label>
-                        <input type="email" class="form-input" name="email" placeholder="you@example.com" required>
+                        <input type="email" class="form-input" name="email" required>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Phone Number</label>
-                        <input type="tel" class="form-input" name="phone" placeholder="+91 98765 43210">
+                        <input type="tel" class="form-input" name="phone">
                     </div>
 
                     <div class="form-group">
@@ -64,7 +64,7 @@
                     <div class="form-group">
                         <label class="form-label">Message *</label>
                         <textarea class="form-input form-textarea" name="message" rows="5"
-                            placeholder="Tell us how we can help you..." required></textarea>
+ required></textarea>
                     </div>
 
                     <button type="submit" class="btn btn-success btn-lg w-100" id="btnSubmitContact">

@@ -9,7 +9,10 @@ use App\Models\Trip;
 use App\Models\TripRegion;
 use App\Models\TripSelectedExperience;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
+use App\Mail\WelcomeEmail;
 
 class SocialAuthController extends Controller
 {
@@ -19,7 +22,7 @@ class SocialAuthController extends Controller
             abort(404);
         }
         if (!$this->providerConfigured($provider)) {
-            return redirect("/?auth=login")->with("error", ucfirst($provider) . " login is not configured yet. Please use email login or contact the administrator.");
+            return redirect("/login")->with("error", ucfirst($provider) . " login is not configured yet. Please use email login or contact the administrator.");
         }
         return Socialite::driver($provider)->redirect();
     }
@@ -30,13 +33,13 @@ class SocialAuthController extends Controller
             abort(404);
         }
         if (!$this->providerConfigured($provider)) {
-            return redirect("/?auth=login")->with("error", ucfirst($provider) . " login is not configured yet.");
+            return redirect("/login")->with("error", ucfirst($provider) . " login is not configured yet.");
         }
 
         try {
             $socialUser = Socialite::driver($provider)->user();
         } catch (\Exception $e) {
-            return redirect("/?auth=login")->with("error", "Social login failed. Please try again.");
+            return redirect("/login")->with("error", "Social login failed. Please try again.");
         }
 
         $idField = $provider . "_id";
@@ -55,6 +58,12 @@ class SocialAuthController extends Controller
                     "avatar" => $socialUser->getAvatar(),
                     "user_role" => "traveller",
                 ]);
+
+                try {
+                    Mail::to($user->email)->send(new WelcomeEmail($user->full_name ?: 'Traveller', url('/home')));
+                } catch (\Throwable $e) {
+                    Log::error('Welcome email failed for social signup [' . $user->id . ']: ' . $e->getMessage());
+                }
             }
         }
 
@@ -66,7 +75,7 @@ class SocialAuthController extends Controller
 
         // Clear previous trip data so traveller starts fresh each login
         if ($user->isTraveller()) {
-            $trips = $user->trips()->whereIn('status', ['draft', 'not_confirmed'])->get();
+            $trips = $user->trips()->whereIn('status', ['not_confirmed'])->get();
             foreach ($trips as $t) {
                 $t->aiConversations()->where('context_type', 'traveller_chat')->delete();
                 $t->tripDays()->each(function ($day) {
@@ -96,7 +105,7 @@ class SocialAuthController extends Controller
 
             // Sync guest journey to DB immediately (social login redirects, no AJAX sync call)
             $trip = Trip::where("user_id", $user->id)
-                ->whereIn("status", ["draft", "not_confirmed"])
+                ->whereIn("status", ["not_confirmed"])
                 ->orderBy("updated_at", "desc")
                 ->first();
             if (!$trip) {
@@ -104,8 +113,8 @@ class SocialAuthController extends Controller
                     "trip_id" => Trip::generateTripId(),
                     "user_id" => $user->id,
                     "trip_name" => $guestTrip['trip_name'] ?? "My Trip",
-                    "status" => "draft",
-                    "stage" => "traveller_exploring",
+                    "status" => "not_confirmed",
+                    "stage" => "open",
                     "adults" => $guestTrip['adults'] ?? 1,
                     "children" => $guestTrip['children'] ?? 0,
                     "infants" => $guestTrip['infants'] ?? 0,

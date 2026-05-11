@@ -46,6 +46,16 @@ use App\Services\LeadService;
 use App\Services\ImpactCalculatorService;
 use App\Services\SpAvailabilityService;
 use App\Services\RazorpayService;
+use App\Mail\WelcomeEmail;
+use App\Mail\BookingConfirmationEmail;
+use App\Mail\PaymentReceivedEmail;
+use App\Mail\SpApplicationReceivedEmail;
+use App\Mail\SpApplicationApprovedEmail;
+use App\Mail\ProfileUpdatedEmail;
+use App\Mail\PasswordChangedEmail;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Password;
 
 class AjaxController extends Controller
 {
@@ -643,9 +653,6 @@ class AjaxController extends Controller
             if ($request->has('get_provider_payment_history')) {
                 return $this->getProviderPaymentHistory($request);
             }
-            if ($request->has('get_travelers_list')) {
-                return $this->getTravelersList($request);
-            }
             if ($request->has('get_traveler_trips')) {
                 return $this->getTravelerTrips($request);
             }
@@ -934,6 +941,15 @@ class AjaxController extends Controller
             "full_name" => "required|string|max:255",
             "email" => "required|email|unique:users,email",
             "password" => "required|min:8|confirmed",
+            "phone" => "nullable|string|max:20",
+            "address1" => "nullable|string|max:500",
+            "address2" => "nullable|string|max:500",
+            "city" => "nullable|string|max:100",
+            "state" => "nullable|string|max:100",
+            "country" => "nullable|string|in:" . implode(',', config('countries.list')),
+            "postal_code" => "nullable|string|max:20",
+            "gender" => "nullable|in:male,female,other,prefer_not_to_say",
+            "date_of_birth" => "nullable|date|before:today",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -949,7 +965,18 @@ class AjaxController extends Controller
             "password" => $request->password,
             "auth_type" => "email",
             "user_role" => "traveller",
+            "mobile" => $request->phone,
+            "address1" => $request->address1,
+            "address2" => $request->address2,
+            "city" => $request->city,
+            "state" => $request->state,
+            "country" => $request->country,
+            "postal_code" => $request->postal_code,
+            "gender" => $request->gender,
+            "date_of_birth" => $request->date_of_birth,
         ]);
+
+        $this->sendMail($user->email, new WelcomeEmail($user->full_name, url('/home')), 'welcome:' . $user->id);
 
         Auth::login($user);
 
@@ -970,13 +997,53 @@ class AjaxController extends Controller
         $validator = Validator::make($request->all(), [
             "full_name" => "nullable|string|max:255",
             "mobile" => "nullable|string|max:20",
-            "address" => "nullable|string",
+            "address1" => "nullable|string|max:500",
+            "address2" => "nullable|string|max:500",
+            "city" => "nullable|string|max:100",
+            "state" => "nullable|string|max:100",
+            "country" => "nullable|string|in:" . implode(',', config('countries.list')),
+            "postal_code" => "nullable|string|max:20",
+            "gender" => "nullable|in:male,female,other,prefer_not_to_say",
+            "date_of_birth" => "nullable|date|before:today",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
-        $user->update($request->only(["full_name", "mobile", "address"]));
+        $fieldLabels = [
+            'full_name' => 'Full name',
+            'mobile' => 'Mobile',
+            'address1' => 'Address line 1',
+            'address2' => 'Address line 2',
+            'city' => 'City',
+            'state' => 'State',
+            'country' => 'Country',
+            'postal_code' => 'Postal code',
+            'gender' => 'Gender',
+            'date_of_birth' => 'Date of birth',
+        ];
+        $incoming = $request->only(array_keys($fieldLabels));
+        $changes = [];
+        foreach ($incoming as $field => $newValue) {
+            $current = $user->{$field};
+            if ($field === 'date_of_birth' && $current) {
+                $current = $current->format('Y-m-d');
+            }
+            if ((string) ($current ?? '') !== (string) ($newValue ?? '')) {
+                $changes[$fieldLabels[$field]] = $newValue;
+            }
+        }
+
+        $user->update($incoming);
+
+        if (!empty($changes) && $user->email) {
+            $this->sendMail(
+                $user->email,
+                new ProfileUpdatedEmail($user->full_name ?: 'there', $changes, now()->format('d M Y, h:i A')),
+                'profile_updated:' . $user->id
+            );
+        }
+
         return response()->json(["success" => true, "message" => "Profile updated"]);
     }
 
@@ -996,6 +1063,15 @@ class AjaxController extends Controller
         }
 
         $user->update(["password" => $request->new_password]);
+
+        if ($user->email) {
+            $this->sendMail(
+                $user->email,
+                new PasswordChangedEmail($user->full_name ?: 'there', now()->format('d M Y, h:i A')),
+                'password_changed:' . $user->id
+            );
+        }
+
         return response()->json(["success" => true, "message" => "Password changed"]);
     }
 
@@ -3101,8 +3177,26 @@ class AjaxController extends Controller
     protected function updateTripStatus(Request $request): JsonResponse
     {
         $trip = Trip::findOrFail($request->trip_id);
-        $trip->update(["status" => $request->status]);
-        if (in_array($request->status, ["completed", "cancelled"])) {
+        $newStatus = $request->status;
+
+        $allowed = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
+        if (!in_array($newStatus, $allowed, true)) {
+            return response()->json(["error" => "Invalid trip status."], 422);
+        }
+
+        // Guard: don't allow downgrading a trip that has already progressed
+        // (confirmed / running / completed) back to 'not_confirmed' — that would
+        // re-open a locked trip and orphan any payments against it. Cancelling a
+        // progressed trip is still allowed.
+        $progressed = ['confirmed', 'running', 'completed'];
+        if ($newStatus === 'not_confirmed' && in_array($trip->status, $progressed, true)) {
+            return response()->json([
+                "error" => "Can't move a '{$trip->status}' trip back to 'not confirmed'. Cancel it instead if it shouldn't proceed.",
+            ], 422);
+        }
+
+        $trip->update(["status" => $newStatus]);
+        if (in_array($newStatus, ["completed", "cancelled"], true)) {
             $trip->update(["stage" => "closed"]);
         }
         return response()->json(["success" => true]);
@@ -3318,15 +3412,6 @@ class AjaxController extends Controller
         return response()->json(["payments" => $payments]);
     }
 
-    protected function getTravelersList(Request $request): JsonResponse
-    {
-        $travelers = User::where("user_role", "traveller")
-            ->whereHas("trips", fn($q) => $q->where("status", "confirmed"))
-            ->withCount("trips")
-            ->paginate(20);
-        return response()->json($travelers);
-    }
-
     protected function getTravelerTrips(Request $request): JsonResponse
     {
         $trips = Trip::where("user_id", $request->user_id)
@@ -3364,7 +3449,7 @@ class AjaxController extends Controller
                 $user = User::create([
                     "full_name" => $provider->name,
                     "email" => $provider->email,
-                    "password" => Str::random(12),
+                    "password" => Str::random(40),
                     "auth_type" => "email",
                     "user_role" => $provider->provider_type,
                 ]);
@@ -3380,6 +3465,34 @@ class AjaxController extends Controller
             "approved_by" => Auth::id(),
             "user_id" => $provider->user_id,
         ]);
+
+        // Email the SP an approval notice with a set-password link so they can
+        // actually log in (the account was created with a random password they
+        // were never told). Failure here is logged, not fatal.
+        $user = User::find($provider->user_id);
+        if ($user && $user->email) {
+            $providerLabel = match ($provider->provider_type) {
+                'hrp' => 'Himalayan Regenerative Partner (HRP)',
+                'hlh' => 'Homestay Local Host (HLH)',
+                'osp' => 'Other Service Provider (OSP)',
+                default => 'Partner',
+            };
+            try {
+                $token = Password::createToken($user);
+                $setPasswordUrl = route('password.reset', [
+                    'token' => $token,
+                    'email' => $user->email,
+                ]);
+                $contactName = $provider->contact_person ?: $provider->name;
+                $this->sendMail(
+                    $user->email,
+                    new SpApplicationApprovedEmail($contactName, $providerLabel, $setPasswordUrl),
+                    'sp_approved:' . $provider->id
+                );
+            } catch (\Throwable $e) {
+                Log::error('SP approval email failed [' . $provider->id . ']: ' . $e->getMessage());
+            }
+        }
 
         return response()->json(["success" => true]);
     }
@@ -3868,6 +3981,34 @@ class AjaxController extends Controller
 
             app(LeadService::class)->checkPaymentAndTransition($payment->trip);
 
+            $trip = $payment->trip()->with('user')->first();
+            if ($trip && $trip->user && $trip->user->email) {
+                $travellerName = $trip->user->full_name ?: 'Traveller';
+                $tripData = [
+                    'traveller_name' => $travellerName,
+                    'trip_id' => $trip->trip_id,
+                    'trip_name' => $trip->trip_name,
+                    'start_date' => $trip->start_date ? \Carbon\Carbon::parse($trip->start_date)->format('d M Y') : 'TBD',
+                    'end_date' => $trip->end_date ? \Carbon\Carbon::parse($trip->end_date)->format('d M Y') : 'TBD',
+                    'adults' => $trip->adults,
+                    'children' => $trip->children,
+                    'total_cost' => $trip->final_price ?: $trip->total_cost,
+                ];
+                $paymentData = [
+                    'traveller_name' => $travellerName,
+                    'amount' => $payment->amount,
+                    'payment_date' => $payment->payment_date ? \Carbon\Carbon::parse($payment->payment_date)->format('d M Y') : now()->format('d M Y'),
+                    'trip_id' => $trip->trip_id,
+                    'reference' => $payment->razorpay_payment_id,
+                ];
+
+                $this->sendMail($trip->user->email, new PaymentReceivedEmail($paymentData), 'payment:' . $payment->id);
+
+                if ($trip->status === 'confirmed') {
+                    $this->sendMail($trip->user->email, new BookingConfirmationEmail($tripData), 'booking:' . $trip->id);
+                }
+            }
+
             return response()->json(['success' => true, 'message' => 'Payment verified successfully!']);
         }
 
@@ -4113,6 +4254,19 @@ class AjaxController extends Controller
     protected function recalculateTripCost(Request $request): JsonResponse
     {
         $trip = Trip::findOrFail($request->trip_id);
+
+        // Guard: CostCalculatorService::calculate() PERSISTS the result (it calls
+        // $trip->update($data) at the end), so calling it on a trip with no
+        // itinerary produces an all-zero breakdown and wipes any existing
+        // (seeded or manually-entered) cost columns. Refuse rather than destroy.
+        $hasItinerary = $trip->tripDays()->exists()
+            || $trip->selectedExperiences()->exists();
+        if (!$hasItinerary) {
+            return response()->json([
+                "error" => "This trip has no itinerary yet — add experiences or days before recalculating, otherwise the existing costs would be wiped.",
+            ], 422);
+        }
+
         $pricing = app(CostCalculatorService::class)->calculate($trip);
         return response()->json(["success" => true, "pricing" => $pricing]);
     }
@@ -4147,11 +4301,36 @@ class AjaxController extends Controller
             "accommodation_categories" => $request->accommodation_categories,
             "vehicle_types" => $request->vehicle_types,
             "activity_types" => $request->activity_types,
-            "notes" => $request->notes,
+            "notes" => $request->input('description', $request->input('notes')),
             "status" => "pending",
         ]);
 
+        $providerLabel = match ($provider->provider_type) {
+            'hrp' => 'Himalayan Regenerative Partner (HRP)',
+            'hlh' => 'Homestay Local Host (HLH)',
+            'osp' => 'Other Service Provider (OSP)',
+            default => 'Partner',
+        };
+        $contactName = $provider->contact_person ?: $provider->name;
+        $this->sendMail($provider->email, new SpApplicationReceivedEmail($contactName, $providerLabel), 'sp_application:' . $provider->id);
+
         return response()->json(["success" => true, "message" => "Application submitted successfully"]);
+    }
+
+    /**
+     * Send a mail without letting failures break the calling action.
+     * Errors are logged with the supplied tag for traceability.
+     */
+    protected function sendMail(string $to, $mailable, string $tag = ''): void
+    {
+        try {
+            Mail::to($to)->send($mailable);
+        } catch (\Throwable $e) {
+            Log::error('Mail send failed [' . $tag . ']: ' . $e->getMessage(), [
+                'to' => $to,
+                'mailable' => get_class($mailable),
+            ]);
+        }
     }
 
     // ===========================

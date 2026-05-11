@@ -43,7 +43,7 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Action Type <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="action_type" value="{{ $p->action_type ?? '' }}" placeholder="e.g. reforestation, clean energy" required>
+                    <input type="text" class="form-control" name="action_type" value="{{ $p->action_type ?? '' }}" required>
                 </div>
                 <div class="col-md-12">
                     <label class="form-label">Short Description</label>
@@ -63,7 +63,7 @@
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">Impact Unit <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="impact_unit" value="{{ $p->impact_unit ?? '' }}" placeholder="e.g. trees planted, kg CO2 offset" required>
+                    <input type="text" class="form-control" name="impact_unit" value="{{ $p->impact_unit ?? '' }}" required>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Measurement Frequency</label>
@@ -76,7 +76,7 @@
                 </div>
                 <div class="col-md-12">
                     <label class="form-label">Conversion Rules</label>
-                    <textarea class="form-control" name="conversion_rules" rows="3" placeholder="Describe how traveller contributions convert to impact units...">{{ $p->conversion_rules ?? '' }}</textarea>
+                    <textarea class="form-control" name="conversion_rules" rows="3">{{ $p->conversion_rules ?? '' }}</textarea>
                 </div>
             </div>
         </div>
@@ -110,17 +110,17 @@
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">Active Periods</label>
-                    <textarea class="form-control" name="active_periods" rows="3" placeholder='e.g. [{"from": "2024-03", "to": "2024-06"}]'>{{ $p && $p->active_periods ? json_encode($p->active_periods, JSON_PRETTY_PRINT) : '' }}</textarea>
+                    <textarea class="form-control" name="active_periods" rows="3">{{ $p && $p->active_periods ? json_encode($p->active_periods, JSON_PRETTY_PRINT) : '' }}</textarea>
                     <small class="text-muted">JSON array of active period objects</small>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Paused Periods</label>
-                    <textarea class="form-control" name="paused_periods" rows="3" placeholder='e.g. [{"from": "2024-07", "to": "2024-08", "reason": "monsoon"}]'>{{ $p && $p->paused_periods ? json_encode($p->paused_periods, JSON_PRETTY_PRINT) : '' }}</textarea>
+                    <textarea class="form-control" name="paused_periods" rows="3">{{ $p && $p->paused_periods ? json_encode($p->paused_periods, JSON_PRETTY_PRINT) : '' }}</textarea>
                     <small class="text-muted">JSON array of paused period objects</small>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Operational Constraints</label>
-                    <textarea class="form-control" name="operational_constraints" rows="3" placeholder="Describe any constraints...">{{ $p->operational_constraints ?? '' }}</textarea>
+                    <textarea class="form-control" name="operational_constraints" rows="3">{{ $p->operational_constraints ?? '' }}</textarea>
                 </div>
             </div>
         </div>

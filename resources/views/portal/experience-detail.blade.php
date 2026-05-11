@@ -426,11 +426,11 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label small text-muted">Title (optional)</label>
-                            <input type="text" class="form-control" id="reviewTitle" maxlength="100" placeholder="Summarise your experience">
+                            <input type="text" class="form-control" id="reviewTitle" maxlength="100">
                         </div>
                         <div class="mb-3">
                             <label class="form-label small text-muted">Your Review</label>
-                            <textarea class="form-control" id="reviewBody" rows="3" maxlength="1000" placeholder="Share your thoughts about this experience..."></textarea>
+                            <textarea class="form-control" id="reviewBody" rows="3" maxlength="1000"></textarea>
                             <div class="form-text text-end"><span id="reviewCharCount">0</span>/1000</div>
                         </div>
                         <button class="btn btn-success" id="btnSubmitReview">
@@ -443,9 +443,9 @@
                 @else
                     <div class="text-center py-3">
                         <p class="text-muted mb-2">Log in to write a review</p>
-                        <button class="btn btn-outline-success btn-sm" onclick="if(window.openAuthModal) window.openAuthModal('login'); else window.location.href='/home?auth=login';">
+                        <a href="/login" class="btn btn-outline-success btn-sm">
                             <i class="bi bi-box-arrow-in-right"></i> Log In
-                        </button>
+                        </a>
                     </div>
                 @endauth
             </div>
@@ -631,11 +631,7 @@ jQuery(function() {
 
     // Guest: Wishlist requires login
     jQuery('#btnGuestWishlist').on('click', function() {
-        if (window.openAuthModal) {
-            window.openAuthModal('login');
-        } else {
-            window.location.href = '/home?auth=login';
-        }
+        window.location.href = '/login';
     });
 
     // ===== Reviews =====

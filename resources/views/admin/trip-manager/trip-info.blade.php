@@ -101,7 +101,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Pickup Time</label>
-                                <input type="text" class="form-control form-control-sm" name="pickup_time" value="{{ $trip->pickup_time }}" placeholder="e.g. 9:00 AM">
+                                <input type="text" class="form-control form-control-sm" name="pickup_time" value="{{ $trip->pickup_time }}">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Drop Location</label>
@@ -109,7 +109,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Drop Time</label>
-                                <input type="text" class="form-control form-control-sm" name="drop_time" value="{{ $trip->drop_time }}" placeholder="e.g. 5:00 PM">
+                                <input type="text" class="form-control form-control-sm" name="drop_time" value="{{ $trip->drop_time }}">
                             </div>
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Operations Notes</label>
@@ -125,13 +125,31 @@
                         <h6 class="mb-0"><i class="bi bi-sliders"></i> Travel Preferences</h6>
                     </div>
                     <div class="card-body">
+                        @php
+                            // Canonical option sets — must match the strings the traveller portal stores
+                            // (system_lists table, seeded by PreferenceListsSeeder) and the multiplier keys
+                            // in App\Services\CostCalculatorService::getMultiplierMap(). Changing these will
+                            // break pricing, so keep them in sync with that service.
+                            $prefOptions = \App\Services\CostCalculatorService::getMultiplierMap();
+
+                            // Build the option list for a given field, preserving the trip's stored value
+                            // even if it's a legacy/off-list string (so submitting the form doesn't wipe it).
+                            $prefOptsFor = function (string $field) use ($prefOptions, $trip) {
+                                $opts = array_keys($prefOptions[$field] ?? []);
+                                $current = $trip->{$field};
+                                if ($current !== null && $current !== '' && !in_array($current, $opts, true)) {
+                                    array_unshift($opts, $current);
+                                }
+                                return $opts;
+                            };
+                        @endphp
                         <div class="row g-2">
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Accommodation Comfort</label>
                                 <select class="form-select form-select-sm" name="accommodation_comfort">
                                     <option value="">-- Select --</option>
-                                    @foreach(['basic', 'standard', 'comfortable', 'luxury'] as $opt)
-                                        <option value="{{ $opt }}" {{ $trip->accommodation_comfort === $opt ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
+                                    @foreach($prefOptsFor('accommodation_comfort') as $opt)
+                                        <option value="{{ $opt }}" @selected($trip->accommodation_comfort === $opt)>{{ $opt }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -139,8 +157,8 @@
                                 <label class="form-label small fw-bold">Vehicle Comfort</label>
                                 <select class="form-select form-select-sm" name="vehicle_comfort">
                                     <option value="">-- Select --</option>
-                                    @foreach(['basic', 'standard', 'comfortable', 'luxury'] as $opt)
-                                        <option value="{{ $opt }}" {{ $trip->vehicle_comfort === $opt ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
+                                    @foreach($prefOptsFor('vehicle_comfort') as $opt)
+                                        <option value="{{ $opt }}" @selected($trip->vehicle_comfort === $opt)>{{ $opt }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -148,8 +166,8 @@
                                 <label class="form-label small fw-bold">Guide Preference</label>
                                 <select class="form-select form-select-sm" name="guide_preference">
                                     <option value="">-- Select --</option>
-                                    @foreach(['no_guide', 'local_guide', 'professional_guide', 'expert_guide'] as $opt)
-                                        <option value="{{ $opt }}" {{ $trip->guide_preference === $opt ? 'selected' : '' }}>{{ ucfirst(str_replace('_', ' ', $opt)) }}</option>
+                                    @foreach($prefOptsFor('guide_preference') as $opt)
+                                        <option value="{{ $opt }}" @selected($trip->guide_preference === $opt)>{{ $opt }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -157,8 +175,8 @@
                                 <label class="form-label small fw-bold">Travel Pace</label>
                                 <select class="form-select form-select-sm" name="travel_pace">
                                     <option value="">-- Select --</option>
-                                    @foreach(['relaxed', 'moderate', 'active', 'intensive'] as $opt)
-                                        <option value="{{ $opt }}" {{ $trip->travel_pace === $opt ? 'selected' : '' }}>{{ ucfirst($opt) }}</option>
+                                    @foreach($prefOptsFor('travel_pace') as $opt)
+                                        <option value="{{ $opt }}" @selected($trip->travel_pace === $opt)>{{ $opt }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -166,14 +184,14 @@
                                 <label class="form-label small fw-bold">Budget Sensitivity</label>
                                 <select class="form-select form-select-sm" name="budget_sensitivity">
                                     <option value="">-- Select --</option>
-                                    @foreach(['budget', 'value', 'moderate', 'premium', 'no_constraint'] as $opt)
-                                        <option value="{{ $opt }}" {{ $trip->budget_sensitivity === $opt ? 'selected' : '' }}>{{ ucfirst(str_replace('_', ' ', $opt)) }}</option>
+                                    @foreach($prefOptsFor('budget_sensitivity') as $opt)
+                                        <option value="{{ $opt }}" @selected($trip->budget_sensitivity === $opt)>{{ $opt }}</option>
                                     @endforeach
                                 </select>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Other Preferences</label>
-                                <input type="text" class="form-control form-control-sm" name="other_preferences" value="{{ is_array($trip->other_preferences) ? implode(', ', $trip->other_preferences) : $trip->other_preferences }}" placeholder="Comma separated">
+                                <input type="text" class="form-control form-control-sm" name="other_preferences" value="{{ is_array($trip->other_preferences) ? implode(', ', $trip->other_preferences) : $trip->other_preferences }}">
                             </div>
                         </div>
                     </div>
@@ -259,7 +277,7 @@
                                 <form id="addPaymentForm">
                                     <div class="row g-2">
                                         <div class="col-md-4">
-                                            <input type="number" class="form-control form-control-sm" name="amount" placeholder="Amount" step="0.01" required>
+                                            <input type="number" class="form-control form-control-sm" name="amount" step="0.01" required>
                                         </div>
                                         <div class="col-md-4">
                                             <input type="date" class="form-control form-control-sm" name="payment_date" value="{{ date('Y-m-d') }}" required>
@@ -275,7 +293,7 @@
                                             </select>
                                         </div>
                                         <div class="col-md-8">
-                                            <input type="text" class="form-control form-control-sm" name="notes" placeholder="Notes (optional)">
+                                            <input type="text" class="form-control form-control-sm" name="notes">
                                         </div>
                                         <div class="col-md-4">
                                             <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-check"></i> Record</button>
@@ -380,7 +398,7 @@
                         <button type="button" class="btn btn-sm btn-outline-success" id="btnSaveNotes"><i class="bi bi-check"></i> Save Notes</button>
                     </div>
                     <div class="card-body">
-                        <textarea class="form-control form-control-sm" id="generalNotes" rows="5" placeholder="Free-text notes about this trip...">{{ $trip->general_notes }}</textarea>
+                        <textarea class="form-control form-control-sm" id="generalNotes" rows="5">{{ $trip->general_notes }}</textarea>
                     </div>
                 </div>
 

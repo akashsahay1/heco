@@ -16,7 +16,14 @@ return new class extends Migration {
             $table->enum('auth_type', ['email', 'google', 'facebook'])->default('email');
             $table->enum('user_role', ['hct_admin', 'hct_collaborator', 'traveller', 'hrp', 'hlh', 'osp'])->default('traveller');
             $table->string('mobile', 20)->nullable();
-            $table->text('address')->nullable();
+            $table->string('address1', 500)->nullable();
+            $table->string('address2', 500)->nullable();
+            $table->string('city', 100)->nullable();
+            $table->string('state', 100)->nullable();
+            $table->string('country', 100)->nullable();
+            $table->string('postal_code', 20)->nullable();
+            $table->string('gender', 30)->nullable();
+            $table->date('date_of_birth')->nullable();
             $table->string('google_id')->nullable();
             $table->string('facebook_id')->nullable();
             $table->string('avatar')->nullable();

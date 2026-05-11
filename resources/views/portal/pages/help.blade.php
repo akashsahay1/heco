@@ -13,7 +13,7 @@
             <div class="help-search-wrapper">
                 <i class="bi bi-search"></i>
                 <input type="text" class="help-search-input" id="helpSearch"
-                    placeholder="Search for answers...">
+>
             </div>
         </div>
     </div>

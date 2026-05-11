@@ -48,7 +48,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Slug</label>
-                            <input type="text" class="form-control" name="slug" id="expSlug" value="{{ $e->slug ?? '' }}" placeholder="Auto-generated from name">
+                            <input type="text" class="form-control" name="slug" id="expSlug" value="{{ $e->slug ?? '' }}">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Type <span class="text-danger">*</span></label>
@@ -243,11 +243,11 @@
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label">Start Latitude</label>
-                            <input type="number" class="form-control" name="start_latitude" value="{{ $e->start_latitude ?? '' }}" step="any" placeholder="e.g. 31.1048">
+                            <input type="number" class="form-control" name="start_latitude" value="{{ $e->start_latitude ?? '' }}" step="any">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Start Longitude</label>
-                            <input type="number" class="form-control" name="start_longitude" value="{{ $e->start_longitude ?? '' }}" step="any" placeholder="e.g. 77.1734">
+                            <input type="number" class="form-control" name="start_longitude" value="{{ $e->start_longitude ?? '' }}" step="any">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">End Latitude</label>
@@ -259,7 +259,7 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Area</label>
-                            <input type="text" class="form-control" name="area" value="{{ $e->area ?? '' }}" placeholder="e.g. Tirthan Valley">
+                            <input type="text" class="form-control" name="area" value="{{ $e->area ?? '' }}">
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Altitude Min (m)</label>
@@ -482,7 +482,7 @@
                         </div>
                         <div class="col-md-12">
                             <label class="form-label">Seasonal Price Variation</label>
-                            <textarea class="form-control" name="seasonal_price_variation" rows="3" placeholder='e.g. [{"season":"winter","multiplier":1.2},{"season":"monsoon","multiplier":0.8}]'>{{ $e && $e->seasonal_price_variation ? json_encode($e->seasonal_price_variation, JSON_PRETTY_PRINT) : '' }}</textarea>
+                            <textarea class="form-control" name="seasonal_price_variation" rows="3">{{ $e && $e->seasonal_price_variation ? json_encode($e->seasonal_price_variation, JSON_PRETTY_PRINT) : '' }}</textarea>
                             <small class="text-muted">JSON array of seasonal price adjustments</small>
                         </div>
                     </div>
@@ -508,28 +508,28 @@
                         </div>
                         <div class="col-md-12">
                             <label class="form-label">OSP Services</label>
-                            <textarea class="form-control" name="osp_services" rows="3" placeholder='e.g. [{"name":"Local guide","provider":"Village Association"}]'>{{ $e && $e->osp_services ? json_encode($e->osp_services, JSON_PRETTY_PRINT) : '' }}</textarea>
+                            <textarea class="form-control" name="osp_services" rows="3">{{ $e && $e->osp_services ? json_encode($e->osp_services, JSON_PRETTY_PRINT) : '' }}</textarea>
                             <small class="text-muted">JSON array of OSP service details</small>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Traveller Bring List</label>
-                            <textarea class="form-control" name="traveller_bring_list" rows="3" placeholder="List of things travellers should bring...">{{ $e->traveller_bring_list ?? '' }}</textarea>
+                            <textarea class="form-control" name="traveller_bring_list" rows="3">{{ $e->traveller_bring_list ?? '' }}</textarea>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Clothing Recommendations</label>
-                            <textarea class="form-control" name="clothing_recommendations" rows="3" placeholder="Recommended clothing and gear...">{{ $e->clothing_recommendations ?? '' }}</textarea>
+                            <textarea class="form-control" name="clothing_recommendations" rows="3">{{ $e->clothing_recommendations ?? '' }}</textarea>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Health Notes</label>
-                            <textarea class="form-control" name="health_notes" rows="3" placeholder="Health advisories, vaccinations, altitude sickness...">{{ $e->health_notes ?? '' }}</textarea>
+                            <textarea class="form-control" name="health_notes" rows="3">{{ $e->health_notes ?? '' }}</textarea>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Connectivity Notes</label>
-                            <textarea class="form-control" name="connectivity_notes" rows="3" placeholder="Mobile/internet connectivity info...">{{ $e->connectivity_notes ?? '' }}</textarea>
+                            <textarea class="form-control" name="connectivity_notes" rows="3">{{ $e->connectivity_notes ?? '' }}</textarea>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Cultural Etiquette</label>
-                            <textarea class="form-control" name="cultural_etiquette" rows="3" placeholder="Do's and don'ts, local customs...">{{ $e->cultural_etiquette ?? '' }}</textarea>
+                            <textarea class="form-control" name="cultural_etiquette" rows="3">{{ $e->cultural_etiquette ?? '' }}</textarea>
                         </div>
                     </div>
                 </div>
@@ -551,19 +551,19 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Operational Risks</label>
-                            <textarea class="form-control" name="operational_risks" rows="3" placeholder="Known risks and mitigation strategies...">{{ $e->operational_risks ?? '' }}</textarea>
+                            <textarea class="form-control" name="operational_risks" rows="3">{{ $e->operational_risks ?? '' }}</textarea>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Past Issues</label>
-                            <textarea class="form-control" name="past_issues" rows="3" placeholder="Historical issues, complaints, incidents...">{{ $e->past_issues ?? '' }}</textarea>
+                            <textarea class="form-control" name="past_issues" rows="3">{{ $e->past_issues ?? '' }}</textarea>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Backup Options</label>
-                            <textarea class="form-control" name="backup_options" rows="3" placeholder="Alternative plans if experience cannot run...">{{ $e->backup_options ?? '' }}</textarea>
+                            <textarea class="form-control" name="backup_options" rows="3">{{ $e->backup_options ?? '' }}</textarea>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Emergency Notes</label>
-                            <textarea class="form-control" name="emergency_notes" rows="3" placeholder="Emergency contacts, nearest hospital, evacuation routes...">{{ $e->emergency_notes ?? '' }}</textarea>
+                            <textarea class="form-control" name="emergency_notes" rows="3">{{ $e->emergency_notes ?? '' }}</textarea>
                         </div>
                     </div>
                 </div>
@@ -745,7 +745,7 @@ function addDayCard(data, removable) {
     card += '<div class="card-header py-2 d-flex align-items-center gap-2" style="background: rgba(255,255,255,0.6); border-bottom: 1px solid var(--admin-border);">';
     card += '<span class="badge day-number-badge" style="background: var(--admin-primary);">Day ' + dayNum + '</span>';
     card += '<input type="hidden" class="day-number-input" name="experience_days[' + i + '][day_number]" value="' + dayNum + '">';
-    card += '<input type="text" class="form-control form-control-sm flex-grow-1" name="experience_days[' + i + '][title]" value="' + escAttr(title) + '" placeholder="Title (e.g. Acclimatization Day)">';
+    card += '<input type="text" class="form-control form-control-sm flex-grow-1" name="experience_days[' + i + '][title]" value="' + escAttr(title) + '">';
     if (removable) {
         card += '<button type="button" class="btn btn-outline-danger btn-sm btn-remove-day" title="Remove"><i class="bi bi-x-lg"></i></button>';
     }
@@ -755,7 +755,7 @@ function addDayCard(data, removable) {
 
     // Short description
     card += '<div class="col-12">';
-    card += '<textarea class="form-control form-control-sm" name="experience_days[' + i + '][short_description]" rows="2" placeholder="What happens on this day..." style="background:rgba(255,255,255,0.7);">' + escHtml(desc) + '</textarea>';
+    card += '<textarea class="form-control form-control-sm" name="experience_days[' + i + '][short_description]" rows="2" style="background:rgba(255,255,255,0.7);">' + escHtml(desc) + '</textarea>';
     card += '</div>';
 
     // Inclusion checkboxes

@@ -15,7 +15,7 @@
     <link href="{{ url('css/admin.css') }}?v={{ time() }}" rel="stylesheet">
     @yield('css')
 </head>
-<body class="hct-body">
+<body class="hct-body heco-admin">
 
     <!-- Sidebar -->
     <aside class="hct-sidebar" id="hctSidebar">

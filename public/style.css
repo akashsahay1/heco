@@ -161,6 +161,52 @@ body {
     border-color: var(--heco-primary-700);
 }
 
+/* Active / focused button state matches the hover state.
+   Scoped under .heco-portal / .heco-admin (set on <body>) so we don't
+   override Bootstrap classes globally. */
+.heco-portal .btn-success:active,
+.heco-portal .btn-success.active,
+.heco-portal .btn-success:focus,
+.heco-portal .btn-success:focus-visible,
+.heco-portal .btn-success.show,
+.heco-admin .btn-success:active,
+.heco-admin .btn-success.active,
+.heco-admin .btn-success:focus,
+.heco-admin .btn-success:focus-visible,
+.heco-admin .btn-success.show {
+    background-color: var(--heco-primary-800);
+    border-color: var(--heco-primary-800);
+    color: #fff;
+    box-shadow: 0 0 0 0.2rem rgba(121, 160, 159, 0.25);
+}
+
+.heco-portal .btn-outline-success:active,
+.heco-portal .btn-outline-success.active,
+.heco-portal .btn-outline-success:focus,
+.heco-portal .btn-outline-success:focus-visible,
+.heco-portal .btn-outline-success.show,
+.heco-admin .btn-outline-success:active,
+.heco-admin .btn-outline-success.active,
+.heco-admin .btn-outline-success:focus,
+.heco-admin .btn-outline-success:focus-visible,
+.heco-admin .btn-outline-success.show {
+    background-color: var(--heco-primary-700);
+    border-color: var(--heco-primary-700);
+    color: #fff;
+    box-shadow: 0 0 0 0.2rem rgba(121, 160, 159, 0.25);
+}
+
+.heco-portal .btn-outline-secondary:hover,
+.heco-admin .btn-outline-secondary:hover,
+.heco-portal .btn-outline-secondary:active,
+.heco-admin .btn-outline-secondary:active,
+.heco-portal .btn-outline-secondary:focus-visible,
+.heco-admin .btn-outline-secondary:focus-visible {
+    background-color: var(--heco-neutral-100, #f1f5f9);
+    color: var(--heco-neutral-700, #334155);
+    border-color: var(--heco-neutral-300, #cbd5e1);
+}
+
 .text-success {
     color: var(--heco-primary-700) !important;
 }

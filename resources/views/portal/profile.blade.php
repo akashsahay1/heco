@@ -55,13 +55,60 @@
                             <input type="email" class="form-control" id="emailDisplay" value="{{ $user->email }}" readonly disabled>
                             <div class="form-text">Email cannot be changed.</div>
                         </div>
-                        <div class="mb-3">
-                            <label for="mobile" class="form-label">Mobile Number</label>
-                            <input type="text" class="form-control" id="mobile" value="{{ $user->mobile ?? '' }}" placeholder="+91 9876543210">
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label for="mobile" class="form-label">Mobile Number</label>
+                                <input type="text" class="form-control" id="mobile" value="{{ $user->mobile ?? '' }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="dateOfBirth" class="form-label">Date of Birth</label>
+                                <input type="date" class="form-control" id="dateOfBirth" value="{{ optional($user->date_of_birth)->format('Y-m-d') }}">
+                            </div>
                         </div>
                         <div class="mb-3">
-                            <label for="address" class="form-label">Address</label>
-                            <textarea class="form-control" id="address" rows="3" placeholder="Your city, state, country...">{{ $user->address ?? '' }}</textarea>
+                            <label for="gender" class="form-label">Gender</label>
+                            <select class="form-select" id="gender">
+                                <option value="" {{ empty($user->gender) ? 'selected' : '' }}>—</option>
+                                <option value="male" {{ $user->gender === 'male' ? 'selected' : '' }}>Male</option>
+                                <option value="female" {{ $user->gender === 'female' ? 'selected' : '' }}>Female</option>
+                                <option value="other" {{ $user->gender === 'other' ? 'selected' : '' }}>Other</option>
+                                <option value="prefer_not_to_say" {{ $user->gender === 'prefer_not_to_say' ? 'selected' : '' }}>Prefer not to say</option>
+                            </select>
+                        </div>
+
+                        <h6 class="text-muted small text-uppercase mt-4 mb-2"><i class="bi bi-geo-alt"></i> Address</h6>
+                        <div class="mb-3">
+                            <label for="address1" class="form-label">Address Line 1</label>
+                            <input type="text" class="form-control" id="address1" value="{{ $user->address1 ?? '' }}">
+                        </div>
+                        <div class="mb-3">
+                            <label for="address2" class="form-label">Address Line 2 <span class="text-muted small">(optional)</span></label>
+                            <input type="text" class="form-control" id="address2" value="{{ $user->address2 ?? '' }}">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label for="city" class="form-label">City</label>
+                                <input type="text" class="form-control" id="city" value="{{ $user->city ?? '' }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="state" class="form-label">State / Province</label>
+                                <input type="text" class="form-control" id="state" value="{{ $user->state ?? '' }}">
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
+                                <label for="country" class="form-label">Country</label>
+                                <select class="form-select" id="country">
+                                    <option value="">Select country</option>
+                                    @foreach(config('countries.list') as $country)
+                                        <option value="{{ $country }}" {{ ($user->country ?? '') === $country ? 'selected' : '' }}>{{ $country }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="postalCode" class="form-label">Postal Code</label>
+                                <input type="text" class="form-control" id="postalCode" value="{{ $user->postal_code ?? '' }}">
+                            </div>
                         </div>
 
                         <hr>
@@ -143,7 +190,14 @@ $(function() {
             update_profile: 1,
             full_name: $('#fullName').val(),
             mobile: $('#mobile').val(),
-            address: $('#address').val(),
+            date_of_birth: $('#dateOfBirth').val(),
+            gender: $('#gender').val(),
+            address1: $('#address1').val(),
+            address2: $('#address2').val(),
+            city: $('#city').val(),
+            state: $('#state').val(),
+            country: $('#country').val(),
+            postal_code: $('#postalCode').val(),
             newsletter_optin: $('#newsletterOptin').is(':checked') ? 1 : 0,
             portal_notify_optin: $('#portalNotifyOptin').is(':checked') ? 1 : 0
         }, function(resp) {

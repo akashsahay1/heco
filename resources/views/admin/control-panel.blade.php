@@ -34,7 +34,7 @@
                 <h6 class="small">AI Chat Interface</h6>
                 <div class="border rounded p-2" style="max-height: 200px; overflow-y: auto;" id="hctAiChat"></div>
                 <div class="input-group mt-2">
-                    <input type="text" class="form-control form-control-sm" id="hctAiInput" placeholder="Ask AI about operations...">
+                    <input type="text" class="form-control form-control-sm" id="hctAiInput">
                     <button class="btn btn-sm btn-success" id="hctAiSend"><i class="bi bi-send"></i></button>
                 </div>
             </div>

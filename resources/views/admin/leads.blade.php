@@ -11,7 +11,7 @@
             <option value="won">Won</option>
             <option value="lost">Lost</option>
         </select>
-        <input type="text" class="form-control form-control-sm" id="leadSearch" placeholder="Search..." style="width: 200px;">
+        <input type="text" class="form-control form-control-sm" id="leadSearch" style="width: 200px;">
     </div>
 </div>
 
@@ -94,7 +94,7 @@ $(document).on('click', '.view-lead', function() {
         html += '</div><div class="col-md-6">';
         html += '<h6>Update Lead</h6>';
         html += '<div class="mb-2"><select class="form-select form-select-sm" id="leadInteraction"><option value="">Log Interaction...</option><option value="call">Call</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></div>';
-        html += '<div class="mb-2"><textarea class="form-control form-control-sm" id="leadNotes" rows="2" placeholder="Notes...">' + (l.notes || '') + '</textarea></div>';
+        html += '<div class="mb-2"><textarea class="form-control form-control-sm" id="leadNotes" rows="2">' + (l.notes || '') + '</textarea></div>';
         html += '<button class="btn btn-sm btn-success" onclick="updateLead(' + l.id + ')">Save</button>';
         html += '</div></div>';
         $('#leadModalBody').html(html);

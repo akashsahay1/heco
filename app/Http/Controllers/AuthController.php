@@ -5,22 +5,28 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use App\Models\User;
 
 class AuthController extends Controller
 {
-    public function showLogin()
+    public function show_login()
     {
         if (Auth::check()) {
-            return $this->redirectByRole(Auth::user());
+            return $this->redirect_by_role(Auth::user());
         }
         return view("portal.auth.login");
     }
 
-    public function showRegister()
+    public function show_signup()
     {
-        return view("portal.auth.register");
+        if (Auth::check()) {
+            return $this->redirect_by_role(Auth::user());
+        }
+        return view("portal.auth.signup", [
+            "countries" => config("countries.list", []),
+        ]);
     }
 
     public function logout(Request $request)
@@ -31,31 +37,67 @@ class AuthController extends Controller
         return redirect("/");
     }
 
-    public function showForgotPassword()
+    public function show_forgot_password()
     {
         return view("portal.auth.forgot-password");
     }
 
-    public function sendResetLink(Request $request)
+    public function send_reset_link(Request $request)
     {
-        $request->validate(["email" => "required|email"]);
+        $validator = Validator::make($request->all(), [
+            "email" => "required|email",
+        ]);
+
+        if ($request->expectsJson()) {
+            if ($validator->fails()) {
+                return response()->json(["success" => false, "error" => $validator->errors()->first()], 422);
+            }
+            $status = Password::sendResetLink($request->only("email"));
+            $ok = $status === Password::RESET_LINK_SENT;
+            return response()->json([
+                "success" => $ok,
+                "message" => __($status),
+            ], $ok ? 200 : 422);
+        }
+
+        $validator->validate();
         $status = Password::sendResetLink($request->only("email"));
         return back()->with("status", __($status));
     }
 
-    public function showResetPassword(string $token)
+    public function show_reset_password(string $token)
     {
         return view("portal.auth.reset-password", ["token" => $token]);
     }
 
-    public function resetPassword(Request $request)
+    public function reset_password(Request $request)
     {
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             "token" => "required",
             "email" => "required|email",
             "password" => "required|min:8|confirmed",
         ]);
 
+        if ($request->expectsJson()) {
+            if ($validator->fails()) {
+                return response()->json(["success" => false, "error" => $validator->errors()->first()], 422);
+            }
+            $status = Password::reset(
+                $request->only("email", "password", "password_confirmation", "token"),
+                function (User $user, string $password) {
+                    $user->forceFill(["password" => $password])->setRememberToken(Str::random(60));
+                    $user->save();
+                }
+            );
+            $ok = $status === Password::PASSWORD_RESET;
+            return response()->json([
+                "success" => $ok,
+                "message" => __($status),
+                "redirect" => $ok ? "/login" : null,
+            ], $ok ? 200 : 422);
+        }
+
+        $validator->validate();
         $status = Password::reset(
             $request->only("email", "password", "password_confirmation", "token"),
             function (User $user, string $password) {
@@ -69,7 +111,7 @@ class AuthController extends Controller
             : back()->withErrors(["email" => [__($status)]]);
     }
 
-    protected function redirectByRole(User $user)
+    protected function redirect_by_role(User $user)
     {
         return match(true) {
             $user->isHct() => redirect('//' . config('app.admin_domain') . '/dashboard'),

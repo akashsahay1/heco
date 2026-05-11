@@ -158,7 +158,7 @@
                     <hr>
                     <h6 class="small fw-bold mb-2"><i class="bi bi-link-45deg"></i> iCal Sync (Booking.com / Airbnb)</h6>
                     <div class="input-group input-group-sm mb-2">
-                        <input type="text" class="form-control" id="icalUrlInput" placeholder="Paste iCal URL here..." value="{{ $provider->ical_url ?? '' }}">
+                        <input type="text" class="form-control" id="icalUrlInput" value="{{ $provider->ical_url ?? '' }}">
                         <button class="btn btn-outline-primary" id="btnSaveIcal">Save</button>
                     </div>
                     @if($provider->ical_url)

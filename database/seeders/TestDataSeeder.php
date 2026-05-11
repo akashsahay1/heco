@@ -1147,6 +1147,30 @@ class TestDataSeeder extends Seeder
             'inca-trail-to-machu-picchu',
         ];
 
+        // Boilerplate defaults applied to every experience so no admin field
+        // renders blank. Per-experience overrides win where the experience
+        // array already specifies the field.
+        $experience_defaults = [
+            'unique_description'        => "What sets this experience apart is the genuine connection with local hosts and the chance to step into the daily rhythm of a Himalayan community. You travel light, leave a small footprint, and gain memories that last a lifetime.",
+            'cultural_context'          => "The region's heritage is shaped by centuries of Buddhist tradition, mountain-pastoral life, and an unbroken connection to the surrounding landscape. Local communities maintain ancestral customs while adapting thoughtfully to modern realities — and travellers are invited to share in that quiet continuity.",
+            'fitness_requirements'      => "Basic-to-moderate fitness sufficient. Be comfortable walking 4–6 hours on uneven mountain terrain. Prior trekking experience is helpful for moderate-to-challenging routes but not mandatory.",
+            'age_min'                   => 12,
+            'age_max'                   => 65,
+            'weather_dependency'        => "Mountain weather can shift quickly. Snowfall, heavy rain, or landslides may lead to rerouting or rest days. Your trip designer builds in flexibility to keep the experience safe and enjoyable.",
+            'cultural_sensitivities'    => "Dress modestly when visiting monasteries and homes. Walk clockwise around stupas and prayer wheels. Always ask before photographing people. Remove shoes inside dwellings and place religious objects on raised surfaces only.",
+            'environmental_constraints' => "Carry out all non-biodegradable waste. Use a refillable water bottle — single-use plastics are discouraged across HECO trips. Stay on marked trails to protect fragile alpine vegetation, and respect wildlife by keeping distance.",
+            'seasonality_notes'         => "The optimal window for this experience is governed by mountain weather and road accessibility. We recommend booking 30 days in advance during peak months to secure homestays and permits.",
+            'traveller_bring_list'      => "Sturdy trekking shoes, layered clothing for cold mornings and warm afternoons, sunglasses, high-SPF sunscreen, lip balm, a refillable water bottle (1 L+), a personal first-aid kit with your regular medications, a headlamp with spare batteries, and a small daypack.",
+            'clothing_recommendations'  => "Layering is essential. Pack thermal base layers, a fleece mid-layer, a windproof/waterproof outer shell, and a warm down jacket for evenings. Add a sun hat for daytime and a warm beanie plus gloves for early mornings.",
+            'health_notes'              => "Consult your doctor before travelling at altitude. Carry Diamox if prescribed for AMS. Inform your trip designer of any pre-existing conditions, food allergies, or recent surgeries. Travel insurance covering high-altitude evacuation is strongly recommended.",
+            'connectivity_notes'        => "Cellular signal is patchy or absent across remote sections. WiFi is generally only available in base towns. Inform family of your full itinerary before departure and carry an offline map.",
+            'cultural_etiquette'        => "Greet locals with a smile and a slight bow. Accept tea or food offered by hosts — refusing is considered impolite. Don't point your feet at sacred images. Speak softly inside monasteries and prayer halls.",
+            'operational_risks'         => "Altitude sickness, sudden weather changes, road blockages, and limited medical facilities are inherent risks in remote Himalayan travel. HECO carries emergency oxygen and maintains evacuation contacts; travellers should carry adequate travel insurance.",
+            'past_issues'               => "No serious incidents reported on this route. Occasional minor delays due to seasonal road closures or short snowfall windows.",
+            'backup_options'            => "If the primary route is blocked, the trip designer arranges alternative day-walks, cultural visits, and accommodation in nearby villages so the experience continues with minimal disruption.",
+            'emergency_notes'           => "HECO 24×7 emergency line: +91 98765 43210. Nearest hospital, police station, and Indian embassy contacts (for international travellers) are shared with you on arrival.",
+        ];
+
         foreach ($experiences as $expData) {
             // Skip if region not found
             if (empty($expData['region_id'])) {
@@ -1162,11 +1186,16 @@ class TestDataSeeder extends Seeder
                 'type' => $expData['type'],
                 'short_description' => $expData['short_description'],
                 'long_description' => $expData['long_description'] ?? null,
+                'unique_description' => $expData['unique_description'] ?? $experience_defaults['unique_description'],
+                'cultural_context' => $expData['cultural_context'] ?? $experience_defaults['cultural_context'],
                 'duration_type' => $expData['duration_type'],
                 'duration_hours' => $expData['duration_hours'] ?? null,
                 'duration_days' => $expData['duration_days'] ?? null,
                 'duration_nights' => $expData['duration_nights'] ?? null,
                 'difficulty_level' => $expData['difficulty_level'],
+                'fitness_requirements' => $expData['fitness_requirements'] ?? $experience_defaults['fitness_requirements'],
+                'age_min' => $expData['age_min'] ?? $experience_defaults['age_min'],
+                'age_max' => $expData['age_max'] ?? $experience_defaults['age_max'],
                 'base_cost_per_person' => $expData['base_cost_per_person'],
                 'cost_accommodation' => $expData['cost_accommodation'] ?? 0,
                 'cost_logistics' => $expData['cost_logistics'] ?? 0,
@@ -1183,6 +1212,19 @@ class TestDataSeeder extends Seeder
                 'best_seasons' => $expData['best_seasons'] ?? null,
                 'available_months' => $expData['available_months'] ?? null,
                 'restricted_months' => $expData['restricted_months'] ?? null,
+                'weather_dependency' => $expData['weather_dependency'] ?? $experience_defaults['weather_dependency'],
+                'cultural_sensitivities' => $expData['cultural_sensitivities'] ?? $experience_defaults['cultural_sensitivities'],
+                'environmental_constraints' => $expData['environmental_constraints'] ?? $experience_defaults['environmental_constraints'],
+                'seasonality_notes' => $expData['seasonality_notes'] ?? $experience_defaults['seasonality_notes'],
+                'traveller_bring_list' => $expData['traveller_bring_list'] ?? $experience_defaults['traveller_bring_list'],
+                'clothing_recommendations' => $expData['clothing_recommendations'] ?? $experience_defaults['clothing_recommendations'],
+                'health_notes' => $expData['health_notes'] ?? $experience_defaults['health_notes'],
+                'connectivity_notes' => $expData['connectivity_notes'] ?? $experience_defaults['connectivity_notes'],
+                'cultural_etiquette' => $expData['cultural_etiquette'] ?? $experience_defaults['cultural_etiquette'],
+                'operational_risks' => $expData['operational_risks'] ?? $experience_defaults['operational_risks'],
+                'past_issues' => $expData['past_issues'] ?? $experience_defaults['past_issues'],
+                'backup_options' => $expData['backup_options'] ?? $experience_defaults['backup_options'],
+                'emergency_notes' => $expData['emergency_notes'] ?? $experience_defaults['emergency_notes'],
                 'includes_accommodation' => $expData['includes_accommodation'] ?? false,
                 'accommodation_category' => $expData['accommodation_category'] ?? null,
                 'includes_meals_breakfast' => $expData['includes_meals_breakfast'] ?? false,
@@ -1200,6 +1242,153 @@ class TestDataSeeder extends Seeder
                 ['slug' => $expData['slug']],
                 array_merge(['name' => $expData['name']], $createData)
             );
+        }
+
+        // ─────────────────────────────────────────────────────────
+        // 2b. EXPERIENCE DAYS — day-wise itinerary for each experience
+        // ─────────────────────────────────────────────────────────
+
+        // Standard inclusion combinations
+        $incl_full       = ['Breakfast', 'Lunch', 'Dinner', 'Guide', 'Accommodation'];
+        $incl_no_dinner  = ['Breakfast', 'Lunch', 'Guide', 'Accommodation'];
+        $incl_bl_only    = ['Breakfast', 'Lunch', 'Guide'];
+        $incl_single_day = ['Breakfast', 'Lunch', 'Guide', 'Transport'];
+
+        $experience_days_data = [
+            'village-experience-in-tar' => [
+                [1, 'Arrival in Leh & Transfer to Tar', "Met at Leh airport and transferred to the village of Tar (45 min drive). Welcome tea with your host family, gentle walk through the village to acclimatise, and a traditional Ladakhi dinner.", '11:00', '20:00', $incl_no_dinner],
+                [2, 'Gompa Mornings & Apricot Orchards', "Walk to the local gompa for morning prayers and butter-tea with the lama. Hands-on cooking class — make momos and thukpa with your host. Afternoon walk through apricot orchards toward sunset over the Stok range.", '06:30', '20:00', $incl_full],
+                [3, 'Farewell Breakfast & Return', "Sunrise meditation on the rooftop. Hearty farewell breakfast and exchange of traditional gifts. Transfer back to Leh by mid-morning.", '06:00', '12:00', ['Breakfast', 'Guide']],
+            ],
+            'pangong-lake-expedition' => [
+                [1, 'Pangong Lake Day Expedition', "Early start from Leh at 05:30. Drive over Chang La pass (5,360 m) with photo stops. Reach Pangong Lake by mid-morning. Packed lunch by the shoreline. Time to absorb the colour shifts before returning to Leh via Karu by evening.", '05:30', '20:00', $incl_single_day],
+            ],
+            'tirthan-valley-homestay' => [
+                [1, 'Arrival & Tirthan River Walk', "Arrive at the homestay by lunchtime. Welcome meal of traditional Himachali cuisine. Afternoon walk along the Tirthan riverbank with a trout-fishing introduction. Campfire dinner and Himalayan stargazing.", '12:00', '22:00', $incl_no_dinner],
+                [2, 'GHNP Buffer Zone & Farewell', "Early morning bird-watching walk in the buffer zone of Great Himalayan National Park. Hearty breakfast, then a short forest trek to a waterfall. Farewell lunch and return drive.", '06:00', '15:00', $incl_bl_only],
+            ],
+            'great-himalayan-national-park-trek' => [
+                [1, 'Drive to Trailhead & Camp at Nada Thach', "Drive from Aut to the GHNP trailhead at Gushaini. Register at the park entry. Trek 3 hours through cedar forest to Nada Thach campsite (2,400 m).", '08:00', '18:00', $incl_full],
+                [2, 'Ascend to Rolla Campsite', "Long but gentle trek through alpine meadows to Rolla (3,100 m). Spot Himalayan tahr and monal pheasant. Camp at Rolla.", '07:00', '17:00', $incl_full],
+                [3, 'Upper Meadows Wildlife Day', "Day exploration around the upper meadows. Picnic lunch with sweeping views. Return to Rolla camp for one more night.", '07:30', '17:30', $incl_full],
+                [4, 'Descent & Departure', "Pack camp and trek back down to Gushaini. Lunch at the park gate. Drive to your onward destination.", '07:00', '15:00', $incl_bl_only],
+            ],
+            'spiti-monastery-circuit' => [
+                [1, 'Shimla → Reckong Peo', "Begin the high-altitude journey from Shimla. Long but scenic drive through Kinnaur. Overnight at Reckong Peo (2,290 m) for gradual acclimatisation.", '07:00', '19:00', $incl_full],
+                [2, 'Reckong Peo → Tabo Monastery', "Drive into Spiti Valley along the Sutlej. Reach Tabo by afternoon. Visit the 996-year-old Tabo monastery — ancient murals and meditation caves.", '07:00', '19:00', $incl_full],
+                [3, 'Dhankar & Pin Valley', "Morning visit to dramatically perched Dhankar monastery. Drive into Pin Valley National Park. Overnight at a Pin Valley homestay.", '07:30', '18:30', $incl_full],
+                [4, 'Key Monastery & Kibber', "Visit iconic Key Gompa perched on a hilltop. Drive to Kibber (one of the world's highest villages with a road). Continue to Kaza.", '07:00', '18:00', $incl_full],
+                [5, 'Komic, Hikkim & Return', "Morning visits to Komic and Hikkim (the highest post office in the world). Begin the descent back toward Shimla.", '07:00', '20:00', $incl_full],
+            ],
+            'pin-valley-snow-leopard-trail' => [
+                [1, 'Drive to Mud Village', "Drive from Kaza into Pin Valley National Park. Settle into a homestay in Mud village (3,810 m). Evening briefing by your local naturalist on tracking ethics.", '08:00', '19:00', $incl_full],
+                [2, 'Wildlife Spotting Day', "Full day with the naturalist at known snow-leopard sighting ridges. Patient observation from prayer-flag viewpoints. Hot lunch carried up to the vantage spot.", '06:30', '17:30', $incl_full],
+                [3, 'Final Morning & Return', "Last attempt at a morning sighting before breakfast. Pack out and drive back to Kaza by afternoon.", '06:00', '15:00', $incl_bl_only],
+            ],
+            'kinnaur-apple-orchard-stay' => [
+                [1, 'Sangla Apple Orchard Day', "Drive to Sangla in Baspa Valley. Guided orchard tour with the host family explaining grafting and harvest practices. Traditional Kinnauri lunch served outdoors. Cider tasting in the evening. Return drive.", '08:00', '20:00', $incl_single_day],
+            ],
+            'zanskar-frozen-river-trek-chadar' => [
+                [1, 'Arrive in Leh', "Arrive at Leh airport. Full day of rest to begin acclimatising to 3,500 m. Light walk in Old Leh in the afternoon.", '10:00', '20:00', $incl_no_dinner],
+                [2, 'Acclimatisation Day', "Mandatory rest day. Slow walk to Shanti Stupa for views. Pre-trek medical check-up and gear briefing.", '08:00', '19:00', $incl_full],
+                [3, 'Drive to Chilling, Trek to Tilad Do', "Drive from Leh to Chilling (3,200 m) where the road ends. Step onto the frozen river. Short trek to Tilad Do camp.", '07:00', '18:00', $incl_full],
+                [4, 'Chadar Trek to Shingra Koma', "Six hours of careful walking on the ice. Cross frozen waterfalls and narrow gorge sections. Camp on the river bank.", '08:00', '17:30', $incl_full],
+                [5, 'Trek to Tibb Cave', "Continue along the Chadar. Tibb cave shelters the team for the night — the cave has hosted Zanskari traders for centuries.", '08:00', '17:00', $incl_full],
+                [6, 'Reach Nyerak Village', "Final push to Nyerak village. Visit the frozen waterfall above the village — a Chadar trek highlight.", '08:00', '17:30', $incl_full],
+                [7, 'Return Trek & Drive Back', "Retrace the route in stages. The final day reaches Chilling and drives back to Leh by evening.", '07:00', '20:00', $incl_full],
+            ],
+            'sikkim-rhododendron-trail' => [
+                [1, 'Pelling to Yuksom', "Drive from Pelling to Yuksom (1,780 m), the trailhead. Visit Dubdi monastery in the afternoon. Settle into a Yuksom homestay.", '09:00', '18:00', $incl_full],
+                [2, 'Rhododendron Forest Trek to Bakhim', "Trek through dense rhododendron forest in full bloom (April–May). Lunch by the Prek river. Reach Bakhim camp (2,740 m) by evening.", '07:00', '17:30', $incl_full],
+                [3, 'Descent & Return', "Morning views of Kanchenjunga from a nearby viewpoint. Trek down to Yuksom. Drive back to Pelling.", '06:30', '17:00', $incl_full],
+            ],
+            'kumaon-village-walk' => [
+                [1, 'Village Walk near Almora', "A guided 4-hour walk through traditional Kumaoni villages around Almora. Visit a working pahari kitchen, meet local weavers, and end with a hot chai at a viewpoint overlooking the Trishul peaks.", '09:00', '13:30', ['Lunch', 'Guide']],
+            ],
+            'everest-base-camp-trek' => [
+                [1, 'Arrive Kathmandu', "Arrive in Kathmandu. Trip briefing and gear check at the hotel. Welcome dinner with the trek leader.", '14:00', '21:00', $incl_no_dinner],
+                [2, 'Fly to Lukla & Trek to Phakding', "Early morning flight to Lukla (2,840 m). Begin the trek with an easy 3-hour walk to Phakding (2,610 m).", '05:30', '15:00', $incl_full],
+                [3, 'Phakding to Namche Bazaar', "Trek alongside the Dudh Koshi river crossing several suspension bridges. Steep climb to Namche Bazaar (3,440 m).", '07:30', '17:00', $incl_full],
+                [4, 'Acclimatisation in Namche', "Rest and acclimatise. Optional hike up to Everest View Hotel for the first glimpse of Everest. Visit the Sherpa museum.", '08:00', '17:00', $incl_full],
+                [5, 'Namche to Tengboche', "Trek to Tengboche (3,860 m) home to the largest monastery in the Khumbu region. Attend evening prayers.", '07:30', '17:00', $incl_full],
+                [6, 'Tengboche to Dingboche', "Climb past Pangboche to Dingboche (4,410 m). Expansive views of Ama Dablam and Lhotse.", '07:30', '16:30', $incl_full],
+                [7, 'Acclimatisation in Dingboche', "Second mandatory rest day. Optional walk to Nangkartshang viewpoint (5,083 m) for acclimatisation.", '08:00', '16:00', $incl_full],
+                [8, 'Dingboche to Lobuche', "Cross the Khumbu glacier moraine to Lobuche (4,940 m). Pass memorial stones for Everest climbers along the Thukla pass.", '07:00', '16:30', $incl_full],
+                [9, 'Lobuche to EBC via Gorak Shep', "Trek to Gorak Shep (5,164 m) then continue to Everest Base Camp (5,364 m). Return to Gorak Shep for the night.", '06:30', '18:00', $incl_full],
+                [10, 'Kala Patthar Sunrise & Descent', "Pre-dawn climb to Kala Patthar (5,545 m) for sunrise over Everest. Descend all the way to Pheriche.", '04:00', '17:00', $incl_full],
+                [11, 'Pheriche to Namche', "Long descent back to Namche Bazaar. Celebrate at one of Namche's bakeries.", '07:30', '17:30', $incl_full],
+                [12, 'Namche to Lukla', "Final trek day back to Lukla. Farewell dinner with the trekking crew.", '07:30', '17:00', $incl_full],
+                [13, 'Fly Lukla → Kathmandu', "Early flight back to Kathmandu. Rest of the day at leisure.", '06:00', '12:00', $incl_no_dinner],
+                [14, 'Departure', "Transfer to Kathmandu airport for your onward flight.", '06:00', '12:00', ['Breakfast']],
+            ],
+            'annapurna-sunrise-trek' => [
+                [1, 'Kathmandu → Pokhara', "Drive or fly to Pokhara (820 m). Lakeside evening at Phewa Lake.", '08:00', '18:00', $incl_no_dinner],
+                [2, 'Trek to Tikhedhunga', "Drive to Nayapul and start trekking. 4-hour trek to Tikhedhunga (1,540 m).", '08:00', '16:30', $incl_full],
+                [3, 'Tikhedhunga to Ghorepani', "Long climb up the famous 3,200 stone steps to Ulleri, then through rhododendron forest to Ghorepani (2,860 m).", '07:00', '17:30', $incl_full],
+                [4, 'Poon Hill Sunrise & Tadapani', "Pre-dawn ascent of Poon Hill (3,210 m) for sunrise over Dhaulagiri and Annapurna. Descend, breakfast, then trek to Tadapani.", '04:30', '17:00', $incl_full],
+                [5, 'Ghandruk → Pokhara → Return', "Descend through Ghandruk village. Drive back to Pokhara.", '07:00', '18:00', $incl_bl_only],
+            ],
+            'gurung-cultural-immersion' => [
+                [1, 'Pokhara to Gurung Village', "Drive from Pokhara to a traditional Gurung village. Welcome with marigold garlands. Evening cultural performance — folk dance and instruments. Traditional dhindo dinner with the family.", '09:00', '21:30', $incl_no_dinner],
+                [2, 'Village Walk & Craft Workshop', "Morning walk to the village viewpoint for Annapurna views. Bamboo basket weaving workshop with a local artisan. Farewell lunch, return to Pokhara.", '06:30', '15:00', $incl_bl_only],
+            ],
+            'langtang-valley-trail' => [
+                [1, 'Kathmandu → Syabrubesi', "Drive to Syabrubesi (1,550 m), the trailhead. Long but scenic journey along the Trishuli river.", '07:00', '17:00', $incl_full],
+                [2, 'Trek to Lama Hotel', "Begin the trek through bamboo and rhododendron forest. Cross the Langtang Khola. Overnight at Lama Hotel (2,470 m).", '08:00', '16:30', $incl_full],
+                [3, 'Trek to Langtang Village', "Steady climb to Langtang village (3,430 m). Walk through the village which was rebuilt after the 2015 earthquake.", '08:00', '16:30', $incl_full],
+                [4, 'Langtang to Kyanjin Gompa', "Short half-day trek to Kyanjin Gompa (3,870 m). Visit the cheese factory and the ancient gompa.", '08:30', '14:00', $incl_full],
+                [5, 'Acclimatisation & Kyanjin Ri', "Day hike up to Kyanjin Ri (4,773 m) for panoramic views of the Langtang range. Return for lunch.", '06:30', '15:30', $incl_full],
+                [6, 'Descend to Lama Hotel', "Retrace the trail back down to Lama Hotel.", '07:30', '17:00', $incl_full],
+                [7, 'Lama Hotel to Syabrubesi & Return', "Final descent to Syabrubesi. Drive back to Kathmandu.", '07:00', '20:00', $incl_full],
+            ],
+            'kathmandu-spiritual-walk' => [
+                [1, 'Three-Stupa Spiritual Walk', "A guided half-day walk linking the three great pilgrimage sites of Kathmandu Valley — Boudhanath (Buddhist stupa), Pashupatinath (Hindu shrine on the Bagmati), and Swayambhunath (the Monkey Temple). Lunch at a local Newari restaurant.", '08:00', '14:00', ['Lunch', 'Guide', 'Transport']],
+            ],
+            'tigers-nest-pilgrimage' => [
+                [1, "Tiger's Nest Day Pilgrimage", "Drive from Paro to the Taktsang trailhead. Steady 3-hour ascent to the Tiger's Nest monastery (3,120 m) clinging to a cliff face. Tour the inner shrines with a local guide. Picnic lunch at the cafeteria viewpoint. Descend back to Paro.", '07:30', '18:00', $incl_single_day],
+            ],
+            'bumthang-sacred-trail' => [
+                [1, 'Drive to Bumthang', "Drive from Paro to Bumthang valley (2,580 m) — one of the longest drives in Bhutan but past stunning passes. Settle into a heritage farmhouse.", '08:00', '19:00', $incl_full],
+                [2, 'Sacred Temples Tour', "Visit Jakar Dzong, Kurjey Lhakhang (with Guru Rinpoche's body imprint), and Jambay Lhakhang (one of Bhutan's oldest temples). Picnic lunch in the meadows.", '08:30', '18:00', $incl_full],
+                [3, 'Tang Valley & Departure', "Drive to Tang valley to visit Ogyen Choling — a 100-year-old noble household turned museum. Return to Paro late afternoon.", '08:00', '19:30', $incl_full],
+            ],
+            'bhutanese-farmhouse-stay' => [
+                [1, 'Arrive at the Farmhouse', "Drive from Paro to a traditional Paro-valley farmhouse. Tour the working farm — buckwheat fields, livestock, and chilli drying racks. Traditional ema-datshi dinner. Hot-stone bath under the stars.", '11:00', '21:30', $incl_no_dinner],
+                [2, 'Farm Activities & Farewell', "Help with morning chores — milking, grain milling, or vegetable harvesting. Bhutanese breakfast of suja and zow. Farewell ceremony with the family.", '06:30', '13:00', ['Breakfast', 'Guide']],
+            ],
+            'inca-trail-to-machu-picchu' => [
+                [1, 'KM 82 to Wayllabamba', "Briefing in Cusco at dawn. Drive to KM 82, the trailhead. Walk along the Urubamba river. First camp at Wayllabamba (3,000 m).", '05:00', '17:00', $incl_full],
+                [2, "Dead Woman's Pass to Pacaymayo", "The hardest day. Steady climb to Warmiwañusca (Dead Woman's Pass, 4,215 m). Descend to Pacaymayo camp.", '06:30', '17:30', $incl_full],
+                [3, 'Phuyupatamarca to Wiñay Wayna', "Pass three Inca ruins along the way — Runkurakay, Sayacmarca, and Phuyupatamarca. Final descent through cloud forest to Wiñay Wayna camp.", '06:30', '17:30', $incl_full],
+                [4, 'Sun Gate & Machu Picchu', "Pre-dawn start to reach the Sun Gate (Inti Punku) for sunrise over Machu Picchu. Guided tour of the citadel. Train and bus back to Cusco.", '03:30', '20:00', $incl_full],
+            ],
+            'andean-community-immersion' => [
+                [1, 'Cusco to Community & Weaving Workshop', "Drive from Cusco to a high-altitude Quechua community. Welcome with coca-leaf tea. Hands-on weaving workshop with the women's collective. Traditional pachamanca lunch cooked underground.", '08:30', '20:00', $incl_no_dinner],
+                [2, 'Farm Walk & Textile Market', "Morning farm walk through potato terraces and llama pastures. Visit the textile cooperative market. Farewell lunch and return drive to Cusco.", '06:30', '17:00', $incl_bl_only],
+            ],
+        ];
+
+        // Wipe any leftover empty ExperienceDay rows from prior test runs, then
+        // upsert a clean day-wise itinerary for each experience by slug.
+        \App\Models\ExperienceDay::whereNull('title')->orWhere('title', '')->delete();
+
+        foreach ($experience_days_data as $slug => $days) {
+            $exp = Experience::where('slug', $slug)->first();
+            if (!$exp) continue;
+            foreach ($days as $idx => $d) {
+                [$day_number, $title, $short_desc, $start, $end, $inclusions] = $d;
+                \App\Models\ExperienceDay::updateOrCreate(
+                    ['experience_id' => $exp->id, 'day_number' => $day_number],
+                    [
+                        'title' => $title,
+                        'short_description' => $short_desc,
+                        'start_time' => $start,
+                        'end_time' => $end,
+                        'inclusions' => $inclusions,
+                        'sort_order' => $idx,
+                    ]
+                );
+            }
         }
 
         // ─────────────────────────────────────────────────────────

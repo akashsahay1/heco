@@ -327,7 +327,7 @@
 /* Main Content */
 .main-content {
     padding-top: 72px;
-    min-height: 100vh;
+    min-height: 300px;
 }
 
 /* ============================================
@@ -5989,6 +5989,13 @@
 /* ============================================
    homepage (portal/homepage.blade.php)
    ============================================ */
+/* Inline date input on homepage trip drawer (was a <style> tag in homepage.blade.php) */
+.start-date-input {
+    width: 130px;
+    font-size: 13px;
+    padding: 4px 8px;
+}
+
 /* Custom dropdown styles */
 .custom-select-wrap {
     position: relative;
@@ -6654,3 +6661,577 @@
 /* Card containing multi-select dropdowns must let the panel escape */
 .card:has(.ms-dropdown),
 .card:has(.ms-dropdown) .card-body { overflow: visible; }
+
+/* ============================================
+   CUSTOM CHECKBOX — Font Awesome check icon.
+   Hides the native input and renders a styled icon next to the label.
+   Click anywhere on the label/icon/text toggles the input.
+   Reusable everywhere; turquoise when checked.
+   ============================================ */
+.check-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.92rem;
+    color: var(--color-text-primary, #111827);
+    margin: 0;
+}
+
+.check-control-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    width: 0;
+    height: 0;
+}
+
+.check-control-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid var(--color-border, #cbd5e1);
+    border-radius: 4px;
+    background: #fff;
+    color: transparent;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.check-control:hover .check-control-icon {
+    border-color: var(--heco-primary-500, #7ca4a3);
+}
+
+.check-control-input:focus-visible ~ .check-control-icon {
+    box-shadow: 0 0 0 3px rgba(121, 160, 159, 0.22);
+}
+
+.check-control-input:checked ~ .check-control-icon {
+    background: var(--heco-primary-50, #f1f7f7);
+    border-color: var(--heco-primary-700, #79a09f);
+    color: var(--heco-primary-700, #79a09f);
+}
+
+.check-control-icon i {
+    font-size: 11px;
+    line-height: 1;
+}
+
+.check-control-label {
+    flex: 1;
+}
+
+.check-control-label a {
+    color: var(--heco-primary-700, #79a09f);
+    text-decoration: none;
+    font-weight: 500;
+}
+.check-control-label a:hover { text-decoration: underline; }
+
+/* Disabled state */
+.check-control-input:disabled ~ .check-control-icon {
+    background: var(--heco-neutral-100, #f1f5f9);
+    border-color: var(--color-border, #cbd5e1);
+    cursor: not-allowed;
+}
+.check-control:has(.check-control-input:disabled) {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* ============================================
+   PORTAL-WIDE STYLE BUS — scoped under .heco-portal (set on <body>).
+   We never override Bootstrap classes directly; instead, all rules are
+   namespaced under the portal wrapper so the override is local, not global.
+   ============================================ */
+.heco-portal .form-control,
+.heco-portal .form-select,
+.heco-portal .input-group-text,
+.heco-portal .btn,
+.heco-portal .card,
+.heco-portal .modal-content,
+.heco-portal .dropdown-menu,
+.heco-portal .alert,
+.heco-portal .badge,
+.heco-portal .list-group,
+.heco-portal .list-group-item:first-child,
+.heco-portal .list-group-item:last-child,
+.heco-portal .pagination .page-link,
+.heco-portal .nav-pills .nav-link,
+.heco-portal .progress {
+    border-radius: 4px;
+}
+
+.heco-portal .rounded-pill { border-radius: 50rem; }
+.heco-portal .rounded-circle { border-radius: 50%; }
+
+/* Input-group corner cleanup so joined controls stay visually merged.
+   Scoped under .heco-portal so this isn't a Bootstrap-wide override. */
+.heco-portal .input-group > :first-child:not(:only-child) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.heco-portal .input-group > :not(:first-child):not(:last-child) {
+    border-radius: 0;
+}
+.heco-portal .input-group > :last-child:not(:only-child) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+.heco-portal .input-group > :only-child {
+    border-radius: 4px;
+}
+
+/* ============================================
+   AUTH PAGES — login (.loginwrap), sign-up (.signupwrap), forgot-password (.forgotwrap)
+   All rules are scoped under the wrapper class. We do not override
+   Bootstrap classes; we add custom prefixed classes alongside them
+   (user_email, user_password, submit_btn, etc.) and style those.
+   ============================================ */
+.loginwrap,
+.signupwrap,
+.forgotwrap,
+.resetwrap {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 80px 16px 80px;
+    background: linear-gradient(180deg, var(--heco-primary-50, #f1f7f7) 0%, #ffffff 60%);
+}
+
+.loginwrap-card,
+.signupwrap-card,
+.forgotwrap-card,
+.resetwrap-card {
+    width: 100%;
+    max-width: 480px;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.18), 0 10px 25px -10px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.signupwrap-card { max-width: 640px; }
+
+.loginwrap-hero,
+.signupwrap-hero,
+.forgotwrap-hero,
+.resetwrap-hero {
+    padding: 36px 32px 18px;
+    text-align: center;
+    border-bottom: 1px solid rgba(121, 160, 159, 0.18);
+}
+
+.loginwrap-heading,
+.signupwrap-heading,
+.forgotwrap-heading,
+.resetwrap-heading {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--heco-primary-800, #5f8484);
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+}
+
+.loginwrap-subheading,
+.signupwrap-subheading,
+.forgotwrap-subheading,
+.resetwrap-subheading {
+    font-size: 0.875rem;
+    color: var(--color-text-muted, #6b7280);
+    margin: 0;
+}
+
+.loginwrap-body,
+.signupwrap-body,
+.forgotwrap-body,
+.resetwrap-body {
+    padding: 26px 32px 30px;
+}
+
+.loginwrap-footer,
+.signupwrap-footer,
+.forgotwrap-footer,
+.resetwrap-footer {
+    padding: 18px 32px 26px;
+    text-align: center;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    font-size: 0.875rem;
+    color: var(--color-text-muted, #6b7280);
+}
+
+.loginwrap-footer a,
+.signupwrap-footer a,
+.forgotwrap-footer a,
+.resetwrap-footer a {
+    color: var(--heco-primary-700, #79a09f);
+    font-weight: 600;
+    text-decoration: none;
+}
+.loginwrap-footer a:hover,
+.signupwrap-footer a:hover,
+.forgotwrap-footer a:hover,
+.resetwrap-footer a:hover { text-decoration: underline; }
+
+/* Custom field classes — added alongside .form-control on every input */
+.loginwrap .user_email,
+.loginwrap .user_password,
+.signupwrap .user_firstname,
+.signupwrap .user_lastname,
+.signupwrap .user_email,
+.signupwrap .user_phone,
+.signupwrap .user_dob,
+.signupwrap .user_gender,
+.signupwrap .user_address1,
+.signupwrap .user_address2,
+.signupwrap .user_city,
+.signupwrap .user_state,
+.signupwrap .user_country,
+.signupwrap .user_postal,
+.signupwrap .user_password,
+.signupwrap .user_password_confirm,
+.forgotwrap .user_email,
+.resetwrap .user_email,
+.resetwrap .user_password,
+.resetwrap .user_password_confirm {
+    padding: 0.55rem 0.9rem;
+    font-size: 0.92rem;
+    border: 1.5px solid var(--color-border, #e5e7eb);
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    background: #fff;
+}
+
+.loginwrap .user_email:focus,
+.loginwrap .user_password:focus,
+.signupwrap .user_firstname:focus,
+.signupwrap .user_lastname:focus,
+.signupwrap .user_email:focus,
+.signupwrap .user_phone:focus,
+.signupwrap .user_dob:focus,
+.signupwrap .user_gender:focus,
+.signupwrap .user_address1:focus,
+.signupwrap .user_address2:focus,
+.signupwrap .user_city:focus,
+.signupwrap .user_state:focus,
+.signupwrap .user_country:focus,
+.signupwrap .user_postal:focus,
+.signupwrap .user_password:focus,
+.signupwrap .user_password_confirm:focus,
+.forgotwrap .user_email:focus,
+.resetwrap .user_email:focus,
+.resetwrap .user_password:focus,
+.resetwrap .user_password_confirm:focus {
+    border-color: var(--heco-primary-500, #7ca4a3);
+    box-shadow: 0 0 0 3px rgba(121, 160, 159, 0.18);
+    background: #fff;
+}
+
+/* Password field — input with an overlaid eye-toggle div (not a button,
+   so no bg/border boxing around the icon). */
+.loginwrap-password-field,
+.signupwrap-password-field,
+.resetwrap-password-field {
+    position: relative;
+}
+
+.loginwrap-password-field .user_password,
+.signupwrap-password-field .user_password,
+.signupwrap-password-field .user_password_confirm,
+.resetwrap-password-field .user_password,
+.resetwrap-password-field .user_password_confirm {
+    padding-right: 42px;        /* leave room for the eye icon overlay */
+}
+
+.loginwrap .password_toggle,
+.signupwrap .password_toggle,
+.resetwrap .password_toggle {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    color: var(--color-text-muted, #6b7280);
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+    transition: color 0.15s ease;
+    user-select: none;
+}
+.loginwrap .password_toggle:hover,
+.loginwrap .password_toggle:focus-visible,
+.signupwrap .password_toggle:hover,
+.signupwrap .password_toggle:focus-visible,
+.resetwrap .password_toggle:hover,
+.resetwrap .password_toggle:focus-visible {
+    color: var(--heco-primary-700, #79a09f);
+    outline: none;
+}
+.loginwrap .password_toggle i,
+.signupwrap .password_toggle i,
+.resetwrap .password_toggle i {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+/* DOB field — calendar icon overlay (decorative, click passes through to
+   the input below so Air Datepicker opens normally). */
+.signupwrap-dob-field {
+    position: relative;
+}
+.signupwrap-dob-field .user_dob {
+    padding-right: 38px;
+    cursor: pointer;
+}
+.signupwrap-dob-field .dob_icon {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    font-size: 1rem;
+    color: var(--color-text-muted, #6b7280);
+    pointer-events: none;
+}
+
+/* Custom searchable dropdown — auth-page sizing tweaks so the trigger
+   visually matches the form-control inputs (same font-size, padding,
+   border, radius). The base .custom-select-* component lives further
+   down with the homepage filter-bar defaults. */
+.signupwrap .custom-select-trigger,
+.loginwrap .custom-select-trigger,
+.forgotwrap .custom-select-trigger,
+.resetwrap .custom-select-trigger {
+    padding: 0.55rem 0.9rem;
+    font-size: 0.92rem;
+    border: 1.5px solid var(--color-border, #e5e7eb);
+    border-radius: 4px;
+    min-height: 0;
+    line-height: 1.5;
+}
+.signupwrap .custom-select-trigger:hover,
+.loginwrap .custom-select-trigger:hover,
+.forgotwrap .custom-select-trigger:hover,
+.resetwrap .custom-select-trigger:hover {
+    border-color: var(--heco-primary-500, #7ca4a3);
+}
+.signupwrap .custom-select-wrap.open .custom-select-trigger,
+.loginwrap .custom-select-wrap.open .custom-select-trigger,
+.forgotwrap .custom-select-wrap.open .custom-select-trigger,
+.resetwrap .custom-select-wrap.open .custom-select-trigger {
+    border-color: var(--heco-primary-500, #7ca4a3);
+    box-shadow: 0 0 0 3px rgba(121, 160, 159, 0.18);
+}
+.signupwrap .custom-select-option,
+.loginwrap .custom-select-option,
+.forgotwrap .custom-select-option,
+.resetwrap .custom-select-option {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.92rem;
+}
+.signupwrap .custom-select-body,
+.loginwrap .custom-select-body,
+.forgotwrap .custom-select-body,
+.resetwrap .custom-select-body {
+    border-radius: 4px;
+    border-width: 1.5px;
+}
+
+/* Field labels */
+.loginwrap-label,
+.signupwrap-label,
+.forgotwrap-label,
+.resetwrap-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-primary, #111827);
+    margin-bottom: 6px;
+    display: block;
+    letter-spacing: 0.01em;
+}
+
+.loginwrap-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.loginwrap-link-muted {
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--heco-primary-700, #79a09f);
+    text-decoration: none;
+    flex-shrink: 0;
+}
+.loginwrap-link-muted:hover { text-decoration: underline; }
+
+.signupwrap-help,
+.resetwrap-help {
+    font-size: 0.74rem;
+    color: var(--color-text-muted, #6b7280);
+    margin-top: 4px;
+    display: block;
+}
+
+.signupwrap-section-heading {
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted, #6b7280);
+    margin: 18px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+/* Submit button — the .submit_btn class added alongside .btn .btn-success */
+.loginwrap .submit_btn,
+.signupwrap .submit_btn,
+.forgotwrap .submit_btn,
+.resetwrap .submit_btn {
+    width: 100%;
+    padding: 0.7rem 1.2rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: 4px;
+    margin-top: 6px;
+}
+
+/* Divider between email auth and social auth */
+.loginwrap-divider,
+.signupwrap-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 22px 0 16px;
+    color: var(--color-text-muted, #9ca3af);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.loginwrap-divider::before, .loginwrap-divider::after,
+.signupwrap-divider::before, .signupwrap-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* Social-auth row — round icon buttons */
+.loginwrap-social-row,
+.signupwrap-social-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.social_icon_btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1.5px solid var(--color-border, #e5e7eb);
+    background: #fff;
+    transition: all 0.15s ease;
+}
+.social_icon_btn:hover {
+    border-color: var(--heco-primary-500, #7ca4a3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
+}
+
+/* Alerts inside auth — small custom override scoped to wrappers */
+.loginwrap-alert,
+.signupwrap-alert,
+.forgotwrap-alert,
+.resetwrap-alert {
+    margin-bottom: 14px;
+}
+
+@media (max-width: 575.98px) {
+    .loginwrap, .signupwrap, .forgotwrap, .resetwrap { padding: 28px 12px 60px; }
+    .loginwrap-hero, .signupwrap-hero, .forgotwrap-hero, .resetwrap-hero { padding: 28px 22px 14px; }
+    .loginwrap-body, .signupwrap-body, .forgotwrap-body, .resetwrap-body { padding: 20px 22px 24px; }
+    .loginwrap-footer, .signupwrap-footer, .forgotwrap-footer, .resetwrap-footer { padding: 14px 22px 22px; }
+}
+
+/* ============================================
+   CUSTOM SEARCHABLE SELECT (extends earlier rules ~5993)
+   The new component (public/js/custom-select.js) introduces a body
+   wrapper + search input + empty state on top of the existing markup.
+   ============================================ */
+.custom-select-body {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1080;
+    background: #fff;
+    border: 1px solid var(--color-border, #dee2e6);
+    border-radius: 6px;
+    margin-top: 2px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.custom-select-wrap.open .custom-select-body {
+    display: block;
+}
+
+.custom-select-wrap.has-search .custom-select-body {
+    padding-top: 0;
+}
+
+.custom-select-search {
+    padding: 8px;
+    border-bottom: 1px solid var(--color-border, #e5e7eb);
+    background: var(--heco-neutral-50, #f8fafc);
+}
+
+.custom-select-search-input {
+    width: 100%;
+    padding: 7px 12px;
+    font-size: 0.875rem;
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 6px;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+.custom-select-search-input:focus {
+    border-color: var(--heco-primary-500, #7ca4a3);
+}
+
+.custom-select-body .custom-select-options {
+    /* Override the absolute positioning from the earlier rule —
+       inside the body wrapper, this becomes a normal flow scroll list. */
+    position: static;
+    border: 0;
+    border-radius: 0;
+    margin-top: 0;
+    box-shadow: none;
+    max-height: 220px;
+    display: block;
+}
+
+.custom-select-option.hidden {
+    display: none;
+}
+
+.custom-select-empty {
+    padding: 14px 16px;
+    text-align: center;
+    color: var(--color-text-muted, #6b7280);
+    font-size: 0.85rem;
+}

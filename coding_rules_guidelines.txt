@@ -1,0 +1,14 @@
+RULES 
+
+1. No vanilla js throughout the app only jQuery. 
+2. No inline css and style tags in template files at all. 
+3. For the images uploaded in public/uploads folder upload it year/month wise and reduce all types (like experience) this should be follow for all types like users, experiences, trips, providers, travellers, applications and so on.
+4. In logs use daily log levels instead of single log file.
+5. In form elements like dates do not use default date field type but input field with datepicker in it with datepicker jquery. Also for select dropdown just dont use the default select tag instead use the searchable dropdown list and in the select dropdown there should be an indicator down arrow as well. 
+
+GUIDELINES
+
+1. Cross check all pages for dummy, non working components especially functionalities like filters not working, bulk crud oprations not implemented. 
+2. To implement the bulk delete option just add a font awesome check icon and add jQuery click to select it. Also in the same cloumn top add a check icon to select all rows. If any one row is selected then before the Add New button there should be a red (btn-danger) button should appear and on click it should delete the selected rows but after confirmation modal popup. 
+3. Do not take shortcuts while making any new feature or update any pre made components throughout the app.
+4. Always use ajax with jQuery.ajax or jQuery.post and try to not use the form action submission and page reload.

@@ -5,7 +5,7 @@
         <div class="col-md-3 trip-manager-col tm-sidebar">
             <h6 class="mb-2"><i class="bi bi-search"></i> Search Experiences</h6>
             <div class="mb-2">
-                <input type="text" class="form-control form-control-sm" id="searchExpInput" placeholder="Search by name...">
+                <input type="text" class="form-control form-control-sm" id="searchExpInput">
             </div>
             <div class="mb-2">
                 <select class="form-select form-select-sm" id="searchExpRegion">
@@ -103,19 +103,19 @@
                             </select>
                         </div>
                         <div class="mb-1">
-                            <input type="text" class="form-control form-control-sm" name="description" placeholder="Description">
+                            <input type="text" class="form-control form-control-sm" name="description">
                         </div>
                         <div class="row g-1 mb-1">
                             <div class="col-6">
-                                <input type="text" class="form-control form-control-sm" name="from_location" placeholder="From">
+                                <input type="text" class="form-control form-control-sm" name="from_location">
                             </div>
                             <div class="col-6">
-                                <input type="text" class="form-control form-control-sm" name="to_location" placeholder="To">
+                                <input type="text" class="form-control form-control-sm" name="to_location">
                             </div>
                         </div>
                         <div class="row g-1 mb-1">
                             <div class="col-6">
-                                <input type="number" class="form-control form-control-sm" name="cost" placeholder="Cost" step="0.01" min="0">
+                                <input type="number" class="form-control form-control-sm" name="cost" step="0.01" min="0">
                             </div>
                             <div class="col-6">
                                 <select class="form-select form-select-sm" name="service_provider_id">
@@ -129,7 +129,7 @@
                             </div>
                         </div>
                         <div class="mb-1">
-                            <input type="text" class="form-control form-control-sm" name="notes" placeholder="Notes (optional)">
+                            <input type="text" class="form-control form-control-sm" name="notes">
                         </div>
                         <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-plus"></i> Add Service</button>
                     </form>

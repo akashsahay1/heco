@@ -942,3 +942,116 @@ body.admin-login-page {
 /* Card containing multi-select dropdowns must let the panel escape */
 .hct-content .card:has(.ms-dropdown),
 .hct-content .card:has(.ms-dropdown) .card-body { overflow: visible; }
+
+/* ============================================
+   CUSTOM CHECKBOX — Font Awesome check icon (mirrors portal.css).
+   Used in row-select, bulk-delete patterns, terms checkboxes etc.
+   ============================================ */
+.check-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.92rem;
+    color: var(--color-text-primary, #111827);
+    margin: 0;
+}
+
+.check-control-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    width: 0;
+    height: 0;
+}
+
+.check-control-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid var(--color-border, #cbd5e1);
+    border-radius: 4px;
+    background: #fff;
+    color: transparent;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.check-control:hover .check-control-icon {
+    border-color: var(--heco-primary-500, #7ca4a3);
+}
+
+.check-control-input:focus-visible ~ .check-control-icon {
+    box-shadow: 0 0 0 3px rgba(121, 160, 159, 0.22);
+}
+
+.check-control-input:checked ~ .check-control-icon {
+    background: var(--heco-primary-50, #f1f7f7);
+    border-color: var(--heco-primary-700, #79a09f);
+    color: var(--heco-primary-700, #79a09f);
+}
+
+.check-control-icon i {
+    font-size: 11px;
+    line-height: 1;
+}
+
+.check-control-label { flex: 1; }
+.check-control-label a {
+    color: var(--heco-primary-700, #79a09f);
+    text-decoration: none;
+    font-weight: 500;
+}
+.check-control-label a:hover { text-decoration: underline; }
+
+.check-control-input:disabled ~ .check-control-icon {
+    background: var(--heco-neutral-100, #f1f5f9);
+    cursor: not-allowed;
+}
+.check-control:has(.check-control-input:disabled) {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* ============================================
+   ADMIN-WIDE STYLE BUS — scoped under .heco-admin (set on <body>).
+   Mirror of the portal scope; never overrides Bootstrap classes globally.
+   ============================================ */
+.heco-admin .form-control,
+.heco-admin .form-select,
+.heco-admin .input-group-text,
+.heco-admin .btn,
+.heco-admin .card,
+.heco-admin .modal-content,
+.heco-admin .dropdown-menu,
+.heco-admin .alert,
+.heco-admin .badge,
+.heco-admin .list-group,
+.heco-admin .list-group-item:first-child,
+.heco-admin .list-group-item:last-child,
+.heco-admin .pagination .page-link,
+.heco-admin .nav-pills .nav-link,
+.heco-admin .progress {
+    border-radius: 4px;
+}
+
+.heco-admin .rounded-pill { border-radius: 50rem; }
+.heco-admin .rounded-circle { border-radius: 50%; }
+
+.heco-admin .input-group > :first-child:not(:only-child) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.heco-admin .input-group > :not(:first-child):not(:last-child) {
+    border-radius: 0;
+}
+.heco-admin .input-group > :last-child:not(:only-child) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+.heco-admin .input-group > :only-child {
+    border-radius: 4px;
+}

@@ -41,7 +41,7 @@ class HomepageController extends Controller
                     ->first();
             } else {
                 $trip = Trip::where("user_id", auth()->id())
-                    ->whereIn("status", ["draft", "not_confirmed"])
+                    ->whereIn("status", ["not_confirmed"])
                     ->with(["selectedExperiences.experience", "tripDays.experiences.experience", "tripDays.services", "tripRegions.region"])
                     ->latest()
                     ->first();

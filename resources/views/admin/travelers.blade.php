@@ -3,11 +3,40 @@
 @section('content')
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h5 class="mb-0"><i class="bi bi-person-lines-fill"></i> Travelers</h5>
-    <div class="d-flex gap-2">
-        <input type="text" class="form-control form-control-sm" id="travelerSearch" placeholder="Search by name, email or phone..." style="width: 300px;">
-    </div>
+    <h5 class="mb-0">
+        <i class="bi bi-person-lines-fill"></i> Travelers
+        <span class="badge bg-secondary ms-2" title="Total in current view">{{ number_format($travelers->total()) }}</span>
+    </h5>
 </div>
+
+<form method="GET" action="{{ url('/travelers') }}" class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Segment</label>
+                <select class="form-select form-select-sm" name="segment">
+                    <option value="all" {{ $segment === 'all' ? 'selected' : '' }}>All travelers</option>
+                    <option value="with_bookings" {{ $segment === 'with_bookings' ? 'selected' : '' }}>With bookings</option>
+                    <option value="without_bookings" {{ $segment === 'without_bookings' ? 'selected' : '' }}>Signed up &mdash; no booking yet</option>
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label small text-muted mb-1">Search</label>
+                <input type="text" name="search" value="{{ $search }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-funnel"></i> Apply
+                </button>
+                @if($segment !== 'all' || $search !== '')
+                    <a href="{{ url('/travelers') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </a>
+                @endif
+            </div>
+        </div>
+    </div>
+</form>
 
 <div class="card">
     <div class="card-body p-0">
@@ -18,19 +47,73 @@
                         <th>Name</th>
                         <th>Email</th>
                         <th>Phone</th>
+                        <th>Joined</th>
                         <th class="text-center">Trips</th>
-                        <th class="text-end">Total Spent</th>
-                        <th>Last Trip</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody id="travelersTable">
-                    <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
+                <tbody>
+                    @forelse($travelers as $t)
+                        <tr>
+                            <td>{{ $t->full_name ?: '-' }}</td>
+                            <td><small>{{ $t->email ?: '-' }}</small></td>
+                            <td><small>{{ $t->mobile ?: '-' }}</small></td>
+                            <td><small>{{ $t->created_at ? $t->created_at->format('d-m-Y') : '-' }}</small></td>
+                            <td class="text-center">
+                                <span class="badge bg-{{ $t->trips_count > 0 ? 'primary' : 'secondary' }}">{{ $t->trips_count }}</span>
+                            </td>
+                            <td>
+                                @php
+                                    $addressLines = array_filter([
+                                        trim(($t->address1 ?? '') . (($t->address2 ?? '') ? ', ' . $t->address2 : '')),
+                                        trim(implode(', ', array_filter([$t->city, $t->state]))),
+                                        trim(implode(' ', array_filter([$t->country, $t->postal_code]))),
+                                    ]);
+                                    $combinedAddress = implode("\n", $addressLines);
+                                @endphp
+                                <button class="btn btn-sm btn-outline-primary view-traveler"
+                                        data-id="{{ $t->id }}"
+                                        data-name="{{ $t->full_name }}"
+                                        data-email="{{ $t->email }}"
+                                        data-mobile="{{ $t->mobile }}"
+                                        data-address="{{ $combinedAddress }}"
+                                        data-gender="{{ $t->gender }}"
+                                        data-dob="{{ optional($t->date_of_birth)->format('d-m-Y') }}"
+                                        data-age="{{ $t->age }}"
+                                        data-auth="{{ $t->auth_type }}"
+                                        data-joined="{{ $t->created_at ? $t->created_at->format('d-m-Y') : '' }}"
+                                        data-trips-count="{{ $t->trips_count }}">
+                                    <i class="bi bi-eye"></i> View
+                                </button>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                @if($segment === 'without_bookings')
+                                    Every traveler in this view has at least one booking.
+                                @elseif($segment === 'with_bookings')
+                                    No travelers with confirmed bookings yet.
+                                @else
+                                    No travelers found.
+                                @endif
+                            </td>
+                        </tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>
     </div>
 </div>
+
+@if($travelers->hasPages())
+    <div class="d-flex justify-content-between align-items-center mt-3">
+        <small class="text-muted">
+            Showing {{ $travelers->firstItem() }}&ndash;{{ $travelers->lastItem() }} of {{ number_format($travelers->total()) }}
+        </small>
+        {{ $travelers->links() }}
+    </div>
+@endif
 
 <!-- Traveler Detail Modal -->
 <div class="modal fade" id="travelerModal" tabindex="-1">
@@ -52,40 +135,18 @@
 @section('js')
 <script>
 var travelerModal;
-var travelersList = [];
 
-function loadTravelers() {
-    ajaxPost({
-        get_travelers_list: 1,
-        search: $('#travelerSearch').val()
-    }, function(resp) {
-        var html = '';
-        var items = resp.data || [];
-        travelersList = items;
-        if (!items.length) {
-            html = '<tr><td colspan="7" class="text-center text-muted">No travelers found</td></tr>';
-        }
-        items.forEach(function(t) {
-            html += '<tr>';
-            html += '<td>' + (t.full_name || '-') + '</td>';
-            html += '<td><small>' + (t.email || '-') + '</small></td>';
-            html += '<td><small>' + (t.mobile || '-') + '</small></td>';
-            html += '<td class="text-center"><span class="badge bg-primary">' + (t.trips_count || 0) + '</span></td>';
-            html += '<td class="text-end"><small>' + (t.total_spent ? Number(t.total_spent).toLocaleString('en-IN') : '0') + '</small></td>';
-            html += '<td><small>' + (t.last_trip_date ? t.last_trip_date.substring(0, 10) : '-') + '</small></td>';
-            html += '<td><button class="btn btn-sm btn-outline-primary view-traveler" data-id="' + t.id + '"><i class="bi bi-eye"></i> View</button></td>';
-            html += '</tr>';
-        });
-        $('#travelersTable').html(html);
-    });
+function fmtDate(s) {
+    if (!s) return '-';
+    var d = new Date(s);
+    if (isNaN(d.getTime())) return s.substring(0, 10);
+    var dd = String(d.getDate()).padStart(2, '0');
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var yy = d.getFullYear();
+    return dd + '-' + mm + '-' + yy;
 }
 
-function loadTravelerDetail(userId) {
-    var traveler = null;
-    travelersList.forEach(function(t) {
-        if (t.id == userId) traveler = t;
-    });
-
+function loadTravelerDetail(traveler) {
     var html = '';
 
     // Traveler Info
@@ -93,14 +154,15 @@ function loadTravelerDetail(userId) {
     html += '<div class="col-md-6">';
     html += '<h6 class="border-bottom pb-2"><i class="bi bi-person"></i> Traveler Information</h6>';
     html += '<table class="table table-sm table-borderless">';
-    if (traveler) {
-        html += '<tr><td class="text-muted" style="width:140px;">Name</td><td><strong>' + (traveler.full_name || '-') + '</strong></td></tr>';
-        html += '<tr><td class="text-muted">Email</td><td>' + (traveler.email || '-') + '</td></tr>';
-        html += '<tr><td class="text-muted">Phone</td><td>' + (traveler.mobile || '-') + '</td></tr>';
-        html += '<tr><td class="text-muted">Address</td><td>' + (traveler.address || '-') + '</td></tr>';
-        html += '<tr><td class="text-muted">Auth Type</td><td>' + (traveler.auth_type || '-') + '</td></tr>';
-        html += '<tr><td class="text-muted">Registered</td><td>' + (traveler.created_at ? traveler.created_at.substring(0, 10) : '-') + '</td></tr>';
-    }
+    html += '<tr><td class="text-muted" style="width:140px;">Name</td><td><strong>' + (traveler.name || '-') + '</strong></td></tr>';
+    html += '<tr><td class="text-muted">Email</td><td>' + (traveler.email || '-') + '</td></tr>';
+    html += '<tr><td class="text-muted">Phone</td><td>' + (traveler.mobile || '-') + '</td></tr>';
+    html += '<tr><td class="text-muted">Gender</td><td>' + (traveler.gender ? traveler.gender.replace(/_/g, ' ') : '-') + '</td></tr>';
+    html += '<tr><td class="text-muted">Date of Birth</td><td>' + (traveler.dob || '-') + (traveler.age ? ' <span class="text-muted">(age ' + traveler.age + ')</span>' : '') + '</td></tr>';
+    var addrHtml = traveler.address ? String(traveler.address).split('\n').filter(Boolean).join('<br>') : '-';
+    html += '<tr><td class="text-muted">Address</td><td>' + addrHtml + '</td></tr>';
+    html += '<tr><td class="text-muted">Auth Type</td><td>' + (traveler.auth || '-') + '</td></tr>';
+    html += '<tr><td class="text-muted">Registered</td><td>' + (traveler.joined || '-') + '</td></tr>';
     html += '</table>';
     html += '</div>';
 
@@ -108,8 +170,7 @@ function loadTravelerDetail(userId) {
     html += '<div class="col-md-6">';
     html += '<h6 class="border-bottom pb-2"><i class="bi bi-bar-chart"></i> Summary</h6>';
     html += '<div class="row g-2">';
-    html += '<div class="col-6"><div class="border rounded p-2 text-center"><div class="fs-4 fw-bold text-primary">' + (traveler ? traveler.trips_count || 0 : 0) + '</div><small class="text-muted">Total Trips</small></div></div>';
-    html += '<div class="col-6"><div class="border rounded p-2 text-center"><div class="fs-4 fw-bold text-success">' + (traveler && traveler.total_spent ? Number(traveler.total_spent).toLocaleString('en-IN') : '0') + '</div><small class="text-muted">Total Spent</small></div></div>';
+    html += '<div class="col-12"><div class="border rounded p-2 text-center"><div class="fs-4 fw-bold text-primary">' + (traveler.tripsCount || 0) + '</div><small class="text-muted">Total Trips</small></div></div>';
     html += '</div>';
     html += '</div>';
     html += '</div>';
@@ -125,7 +186,7 @@ function loadTravelerDetail(userId) {
     $('#travelerModalBody').html(html);
 
     // Load trip history
-    ajaxPost({ get_traveler_trips: 1, user_id: userId }, function(tripResp) {
+    ajaxPost({ get_traveler_trips: 1, user_id: traveler.id }, function(tripResp) {
         var trips = tripResp.trips || [];
         var th = '';
         if (!trips.length) {
@@ -138,11 +199,11 @@ function loadTravelerDetail(userId) {
                 if (t.status === 'confirmed') statusClass = 'success';
                 else if (t.status === 'completed') statusClass = 'primary';
                 else if (t.status === 'cancelled') statusClass = 'danger';
-                else if (t.status === 'ongoing') statusClass = 'info';
+                else if (t.status === 'running') statusClass = 'info';
                 th += '<tr>';
                 th += '<td><a href="/trip-manager/' + t.id + '" target="_blank">' + (t.trip_id || t.id || '-') + '</a></td>';
-                th += '<td><small>' + (t.start_date ? t.start_date.substring(0, 10) : '-') + '</small></td>';
-                th += '<td><small>' + (t.end_date ? t.end_date.substring(0, 10) : '-') + '</small></td>';
+                th += '<td><small>' + fmtDate(t.start_date) + '</small></td>';
+                th += '<td><small>' + fmtDate(t.end_date) + '</small></td>';
                 th += '<td><span class="badge bg-' + statusClass + '">' + (t.status || '-') + '</span></td>';
                 th += '<td class="text-end">' + (t.final_price ? Number(t.final_price).toLocaleString('en-IN') : '-') + '</td>';
                 th += '</tr>';
@@ -153,7 +214,7 @@ function loadTravelerDetail(userId) {
     });
 
     // Load payment history
-    ajaxPost({ get_traveler_payment_history: 1, user_id: userId }, function(payResp) {
+    ajaxPost({ get_traveler_payment_history: 1, user_id: traveler.id }, function(payResp) {
         var payments = payResp.payments || [];
         var ph = '';
         if (!payments.length) {
@@ -168,7 +229,7 @@ function loadTravelerDetail(userId) {
                 ph += '<tr>';
                 ph += '<td><a href="/trip-manager/' + (pay.trip ? pay.trip.id : pay.trip_id) + '" target="_blank">' + (pay.trip ? pay.trip.trip_id : pay.trip_id || '-') + '</a></td>';
                 ph += '<td class="text-end">' + amount.toLocaleString('en-IN') + '</td>';
-                ph += '<td><small>' + (pay.date ? pay.date.substring(0, 10) : (pay.created_at ? pay.created_at.substring(0, 10) : '-')) + '</small></td>';
+                ph += '<td><small>' + fmtDate(pay.date || pay.created_at) + '</small></td>';
                 ph += '<td>' + (pay.mode || pay.payment_mode || '-') + '</td>';
                 ph += '</tr>';
             });
@@ -185,16 +246,26 @@ function loadTravelerDetail(userId) {
 
 $(function() {
     travelerModal = new bootstrap.Modal('#travelerModal');
-    loadTravelers();
 });
 
-$('#travelerSearch').on('keyup', function() { loadTravelers(); });
-
 $(document).on('click', '.view-traveler', function() {
-    var userId = $(this).data('id');
+    var $b = $(this);
+    var traveler = {
+        id: $b.data('id'),
+        name: $b.data('name'),
+        email: $b.data('email'),
+        mobile: $b.data('mobile'),
+        address: $b.data('address'),
+        gender: $b.data('gender'),
+        dob: $b.data('dob'),
+        age: $b.data('age'),
+        auth: $b.data('auth'),
+        joined: $b.data('joined'),
+        tripsCount: $b.data('trips-count')
+    };
     $('#travelerModalBody').html('<div class="text-center text-muted py-4">Loading...</div>');
     travelerModal.show();
-    loadTravelerDetail(userId);
+    loadTravelerDetail(traveler);
 });
 </script>
 @endsection

@@ -2,11 +2,7 @@
 @section('title', 'Explore Experiences - HECO Portal')
 
 @section('css')
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-datepicker@1.10.0/dist/css/bootstrap-datepicker3.min.css">
-<style>
-    .start-date-input { width: 130px; font-size: 13px; padding: 4px 8px; }
-</style>
+<link href="{{ url('css/leaflet.css') }}" rel="stylesheet">
 @endsection
 
 @section('content')
@@ -122,7 +118,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 </div>
                             </div>
                             <div class="chat-collapse-input-area">
-                                <input type="search" class="inline-chat-input" id="collapseChatInput" placeholder="Ask anything about experiences..." autocomplete="new-password" role="presentation">
+                                <input type="search" class="inline-chat-input" id="collapseChatInput" autocomplete="new-password" role="presentation">
                                 <button class="inline-chat-send" id="collapseChatSend">
                                     <i class="bi bi-send-fill"></i>
                                 </button>
@@ -252,7 +248,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                         </div>
                         <div class="chat-collapse-input-area">
                             <input type="search" class="inline-chat-input" id="journeyChatInput"
-                                placeholder="Ask AI to change dates, add days, update preferences..."
+
                                 autocomplete="new-password" role="presentation">
                             <button class="inline-chat-send" id="journeyChatSend">
                                 <i class="bi bi-send-fill"></i>
@@ -305,7 +301,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-body">
                                     <label class="form-label">Trip Name</label>
-                                    <input type="text" class="form-control" id="tripName" placeholder="Name your trip..." value="{{ $trip->trip_name ?? ($guestTripData['trip_name'] ?? '') }}">
+                                    <input type="text" class="form-control" id="tripName" value="{{ $trip->trip_name ?? ($guestTripData['trip_name'] ?? '') }}">
                                 </div>
                             </div>
 
@@ -321,7 +317,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                         <span><i class="bi bi-calendar-event"></i> Start Date</span>
                                         <span>
                                             <input type="text" id="tripStartDateDisplay" class="form-control form-control-sm start-date-input"
-                                                placeholder="DD MMM YYYY" readonly autocomplete="off"
+ readonly autocomplete="off"
                                                 value="{{ $startDateDisplay }}">
                                             <input type="hidden" id="tripStartDateInput" value="{{ $startDateRaw }}">
                                         </span>
@@ -434,7 +430,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     </div>
                                     <div class="mb-3">
                                         <label style="font-size:12px; font-weight:600; color:var(--heco-neutral-600); margin-bottom:4px; display:block;">Pay Amount (INR)</label>
-                                        <input type="number" id="payAmountInput" class="form-control" min="1" step="0.01" placeholder="Enter amount"
+                                        <input type="number" id="payAmountInput" class="form-control" min="1" step="0.01"
                                             style="font-size:14px; border-radius:8px; border:1.5px solid var(--heco-primary-200);">
                                     </div>
                                     <button id="btnPayNow" class="w-100"
@@ -451,7 +447,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             {{-- Request Support --}}
                             <div class="detail-card">
                                 <div class="detail-card-body">
-                                    <textarea class="form-control mb-3" id="supportMessage" rows="2" placeholder="Need help? Describe your question..."></textarea>
+                                    <textarea class="form-control mb-3" id="supportMessage" rows="2"></textarea>
                                     <button class="btn-request-support" id="btnRequestSupport">
                                         <i class="bi bi-headset"></i> Request Support
                                     </button>
@@ -561,7 +557,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                     Description <span style="font-weight: 400; color: #dc3545;">*</span>
                 </label>
                 <textarea id="addDayDescription" class="form-control" rows="2"
-                    placeholder="e.g. A rest day with lakeside walk and local food tasting..."
+
                     style="font-size: 13px; border-radius: 10px; resize: none; border: 1.5px solid var(--heco-primary-200); transition: border-color 0.2s, box-shadow 0.2s;"
                     onfocus="this.style.borderColor='var(--heco-primary-400)';this.style.boxShadow='0 0 0 3px rgba(34,197,94,0.1)'"
                     onblur="this.style.borderColor='var(--heco-primary-200)';this.style.boxShadow='none'"></textarea>
@@ -656,8 +652,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 @endsection
 
 @section('js')
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap-datepicker@1.10.0/dist/js/bootstrap-datepicker.min.js"></script>
+<script src="{{ url('js/leaflet.js') }}"></script>
 <script>
 jQuery(function() {
     var isLoggedIn = {{ auth()->check() ? 'true' : 'false' }};
@@ -816,9 +811,9 @@ jQuery(function() {
     var pendingMapExperiences = [];
 
     var redIcon = L.icon({
-        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        iconUrl: '/images/leaflet/marker-icon.png',
+        iconRetinaUrl: '/images/leaflet/marker-icon-2x.png',
+        shadowUrl: '/images/leaflet/marker-shadow.png',
         iconSize: [25, 41],
         iconAnchor: [12, 41],
         popupAnchor: [1, -34],
@@ -1386,7 +1381,7 @@ jQuery(function() {
     jQuery(document).on('click', '.exp-card-fav', function(e) {
         e.stopPropagation();
         if (!isLoggedIn) {
-            if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
+            window.location.href = '/login';
             return;
         }
         var btn = jQuery(this);
@@ -1538,21 +1533,15 @@ jQuery(function() {
         if (mapInitialized && map) setTimeout(function() { map.invalidateSize(); }, 100);
     });
 
-    // Block journey tab for guests — show auth modal, redirect to Discover on cancel
-    var authFromJourney = false;
+    // Block journey tab for guests — redirect to /login
     jQuery('#tab-journey').on('click', function(e) {
         if (!isLoggedIn) {
             e.preventDefault();
             e.stopImmediatePropagation();
-            authFromJourney = true;
-            if (window.openAuthModal) { window.openAuthModal('login'); } else { window.location.href = '/home?auth=login'; }
+            // Send the user to the login page; after successful login they
+            // will land back on /home where they can re-open the journey tab.
+            window.location.href = '/login';
             return false;
-        }
-    });
-    jQuery('#authModal').on('hidden.bs.modal', function() {
-        if (authFromJourney) {
-            authFromJourney = false;
-            jQuery('#tab-discover').click();
         }
     });
 
@@ -1752,10 +1741,12 @@ jQuery(function() {
             }
         });
 
-        // Sync start date — push to bootstrap-datepicker without re-firing changeDate.
+        // Sync start date — push to Air Datepicker without re-firing onSelect.
         if (resp.start_date) {
             jQuery('#tripStartDateInput').val(resp.start_date);
-            jQuery('#tripStartDateDisplay').datepicker('update', new Date(resp.start_date));
+            if (window.tripStartDatepicker) {
+                window.tripStartDatepicker.selectDate(new Date(resp.start_date), { silent: true });
+            }
         }
 
         // Trip ID header (only for logged-in users with real trip)
@@ -2272,24 +2263,26 @@ jQuery(function() {
         sendAiMessage('I want to change my ' + label + ' preference to "' + val + '".');
     });
 
-    // Start Date — Bootstrap Datepicker on a readonly text input.
-    jQuery('#tripStartDateDisplay').datepicker({
-        format: 'dd M yyyy',
-        startDate: 'today',
-        autoclose: true,
-        todayHighlight: true,
-        weekStart: 1,
-        orientation: 'bottom auto'
-    }).on('changeDate', function(e) {
-        if (!e.date) return;
-        var d = e.date;
-        var pad = function(n) { return String(n).padStart(2, '0'); };
-        var iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-        if (jQuery('#tripStartDateInput').val() === iso) return;
-        jQuery('#tripStartDateInput').val(iso);
-        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        var formatted = d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
-        sendAiMessage('I want to change my trip start date to ' + formatted + '.');
+    // Start Date — Air Datepicker on a readonly text input.
+    // Stored on window so the AI sync handlers (further down) can call
+    // .selectDate() without re-querying.
+    window.tripStartDatepicker = new AirDatepicker('#tripStartDateDisplay', {
+        locale: window.airDatepickerEn,
+        dateFormat: 'dd MMM yyyy',
+        autoClose: true,
+        minDate: new Date(),
+        position: 'bottom left',
+        onSelect: function(o) {
+            var d = o.date;
+            if (!d) return;
+            var pad = function(n) { return String(n).padStart(2, '0'); };
+            var iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+            if (jQuery('#tripStartDateInput').val() === iso) return;
+            jQuery('#tripStartDateInput').val(iso);
+            var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            var formatted = d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+            sendAiMessage('I want to change my trip start date to ' + formatted + '.');
+        }
     });
 
     // Request Support
@@ -2486,7 +2479,9 @@ jQuery(function() {
                 if (d.budget_sensitivity) jQuery('#prefBudget').val(d.budget_sensitivity);
                 if (d.start_date) {
                     jQuery('#tripStartDateInput').val(d.start_date);
-                    jQuery('#tripStartDateDisplay').datepicker('update', new Date(d.start_date));
+                    if (window.tripStartDatepicker) {
+                        window.tripStartDatepicker.selectDate(new Date(d.start_date), { silent: true });
+                    }
                 }
             }
 
