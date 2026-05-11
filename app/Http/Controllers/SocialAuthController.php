@@ -50,12 +50,26 @@ class SocialAuthController extends Controller
             if ($user) {
                 $user->update([$idField => $socialUser->getId()]);
             } else {
+                // Mirror the OAuth avatar locally (no-CDN spirit). On any failure
+                // fall back to storing the remote URL so login never breaks.
+                $avatar = $socialUser->getAvatar();
+                if (!empty($avatar)) {
+                    try {
+                        $local = \App\Services\ImageUploadService::storeRemoteImage($avatar, 'users', 512);
+                        if ($local) {
+                            $avatar = $local;
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('Could not mirror OAuth avatar locally: ' . $e->getMessage());
+                    }
+                }
+
                 $user = User::create([
                     "full_name" => $socialUser->getName(),
                     "email" => $socialUser->getEmail(),
                     "auth_type" => $provider,
                     $idField => $socialUser->getId(),
-                    "avatar" => $socialUser->getAvatar(),
+                    "avatar" => $avatar,
                     "user_role" => "traveller",
                 ]);
 

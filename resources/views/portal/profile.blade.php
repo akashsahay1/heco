@@ -13,18 +13,29 @@
                 <div class="card-body p-4">
                     {{-- Avatar and auth type --}}
                     <div class="d-flex align-items-center mb-4">
-                        @if($user->avatar)
-                            <img src="{{ $user->avatar }}" alt="Avatar" class="profile-avatar me-3">
-                        @elseif($user->photo)
-                            <img src="/storage/{{ $user->photo }}" alt="Photo" class="profile-avatar me-3">
-                        @else
-                            <div class="profile-avatar-placeholder me-3">
-                                {{ strtoupper(substr($user->full_name ?? $user->email, 0, 1)) }}
-                            </div>
-                        @endif
+                        <div class="profile-avatar-wrap me-3">
+                            @if($user->avatar)
+                                <img src="{{ $user->avatar }}" alt="Avatar" class="profile-avatar" id="profileAvatarImg">
+                            @elseif($user->photo)
+                                <img src="/storage/{{ $user->photo }}" alt="Photo" class="profile-avatar" id="profileAvatarImg">
+                            @else
+                                <div class="profile-avatar-placeholder" id="profileAvatarPlaceholder">
+                                    {{ strtoupper(substr($user->full_name ?? $user->email, 0, 1)) }}
+                                </div>
+                                <img src="" alt="Avatar" class="profile-avatar profile-avatar-hidden" id="profileAvatarImg">
+                            @endif
+                            <button type="button" class="profile-avatar-edit-btn" id="profilePhotoBtn" aria-label="Change profile photo">
+                                <i class="bi bi-camera-fill"></i>
+                            </button>
+                            <input type="file" id="profilePhotoInput" accept="image/jpeg,image/png,image/webp" class="profile-photo-input">
+                        </div>
                         <div>
                             <h5 class="mb-1">{{ $user->full_name ?? 'Traveller' }}</h5>
                             <span class="text-muted small">{{ $user->email }}</span><br>
+                            <button type="button" class="btn btn-link btn-sm p-0 profile-photo-link" id="profilePhotoLink">
+                                <i class="bi bi-image"></i> Change photo
+                            </button><br>
+                            <span class="profile-photo-status" id="profilePhotoStatus"></span>
                             @php
                                 $authBadgeColor = match($user->auth_type ?? 'email') {
                                     'google' => 'bg-danger',
@@ -245,6 +256,69 @@ $(function() {
         });
     });
 
+});
+
+// Profile photo upload (AJAX, multipart/form-data).
+jQuery(function() {
+    var maxBytes = 4 * 1024 * 1024;
+
+    function pickPhoto() { jQuery('#profilePhotoInput').trigger('click'); }
+    jQuery('#profilePhotoBtn, #profilePhotoLink').on('click', pickPhoto);
+
+    function setPhotoStatus(text, isError) {
+        var el = jQuery('#profilePhotoStatus');
+        el.text(text || '').toggleClass('profile-photo-status-error', !!isError);
+    }
+
+    jQuery('#profilePhotoInput').on('change', function() {
+        var file = this.files && this.files[0];
+        if (!file) return;
+        if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+            setPhotoStatus('Please choose a JPG, PNG or WEBP image.', true);
+            this.value = '';
+            return;
+        }
+        if (file.size > maxBytes) {
+            setPhotoStatus('The image must be 4 MB or smaller.', true);
+            this.value = '';
+            return;
+        }
+
+        var fd = new FormData();
+        fd.append('upload_profile_photo', 1);
+        fd.append('profile_photo', file);
+
+        var input = this;
+        setPhotoStatus('Uploading...', false);
+        jQuery('#profilePhotoBtn').prop('disabled', true);
+
+        jQuery.ajax({
+            url: '/ajax',
+            method: 'POST',
+            data: fd,
+            processData: false,
+            contentType: false,
+            skipGlobalError: true,
+            success: function(resp) {
+                jQuery('#profilePhotoBtn').prop('disabled', false);
+                input.value = '';
+                if (resp && resp.avatar) {
+                    var bust = resp.avatar + '?t=' + Date.now();
+                    jQuery('#profileAvatarImg').attr('src', bust).removeClass('profile-avatar-hidden');
+                    jQuery('#profileAvatarPlaceholder').addClass('profile-avatar-hidden');
+                    jQuery('#headerUserAvatarImg').attr('src', bust).removeClass('profile-avatar-hidden');
+                    jQuery('#headerUserAvatarIcon').addClass('profile-avatar-hidden');
+                }
+                setPhotoStatus('Photo updated.', false);
+            },
+            error: function(xhr) {
+                jQuery('#profilePhotoBtn').prop('disabled', false);
+                input.value = '';
+                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Could not upload the photo. Please try again.';
+                setPhotoStatus(msg, true);
+            }
+        });
+    });
 });
 </script>
 @endsection

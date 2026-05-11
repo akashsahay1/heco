@@ -171,25 +171,18 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     <label class="form-label">Experience Type</label>
                                     <select class="form-select form-select-sm" id="filterType">
                                         <option value="">All Types</option>
-                                        <option value="trek">Trek</option>
-                                        <option value="cultural">Cultural</option>
-                                        <option value="spiritual">Spiritual</option>
-                                        <option value="nature">Nature & Wildlife</option>
-                                        <option value="adventure">Adventure</option>
-                                        <option value="wellness">Wellness</option>
-                                        <option value="culinary">Culinary</option>
-                                        <option value="volunteering">Volunteering</option>
+                                        @foreach($experienceTypes as $type)
+                                            <option value="{{ $type }}">{{ $type }}</option>
+                                        @endforeach
                                     </select>
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Difficulty</label>
                                     <select class="form-select form-select-sm" id="filterDifficulty">
                                         <option value="">All Levels</option>
-                                        <option value="easy">Easy</option>
-                                        <option value="moderate">Moderate</option>
-                                        <option value="challenging">Challenging</option>
-                                        <option value="difficult">Difficult</option>
-                                        <option value="expert">Expert</option>
+                                        @foreach($difficultyLevels as $level)
+                                            <option value="{{ $level }}">{{ ucfirst($level) }}</option>
+                                        @endforeach
                                     </select>
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
@@ -2310,31 +2303,40 @@ jQuery(function() {
         if (tripId) loadImpactData();
     });
 
+    function impactEmptyState(title, desc) {
+        return '<div class="journey-empty-state impact-empty-full">'
+            + '<div class="journey-empty-icon"><i class="bi bi-tree"></i></div>'
+            + '<h3 class="journey-empty-title">' + title + '</h3>'
+            + '<p class="journey-empty-desc">' + desc + '</p>'
+            + '</div>';
+    }
+
     function loadImpactData() {
         if (!tripId) return;
+        jQuery('#impactCards').html('<div class="loading-state impact-empty-full"><div class="loading-spinner"></div><p class="loading-text">Calculating your impact...</p></div>');
         ajaxPost({ get_trip_impact: 1, trip_id: tripId }, function(resp) {
-            var impacts = resp.impacts || [];
-            var totalContribution = 0;
+            var impacts = (resp && resp.impacts) || [];
             var regionSet = {};
-            var projectCount = 0;
+            var totalContribution = parseFloat((resp && resp.total_contribution) || 0);
+            var fallbackTotal = 0;
 
             impacts.forEach(function(imp) {
-                totalContribution += parseFloat(imp.contribution || 0);
+                fallbackTotal += parseFloat(imp.contribution || 0);
                 if (imp.region_name) regionSet[imp.region_name] = true;
-                projectCount++;
             });
+            if (!totalContribution && fallbackTotal) totalContribution = fallbackTotal;
 
             jQuery('#impactTotalRP').text(fmtCurrency(totalContribution));
             jQuery('#impactRegionCount').text(Object.keys(regionSet).length);
-            jQuery('#impactProjectCount').text(projectCount);
+            jQuery('#impactProjectCount').text(impacts.length);
 
             if (impacts.length === 0) {
-                var emptyHtml = '<div class="journey-empty-state" style="grid-column: 1 / -1;">';
-                emptyHtml += '<div class="journey-empty-icon"><i class="bi bi-tree"></i></div>';
-                emptyHtml += '<h3 class="journey-empty-title">No impact data yet</h3>';
-                emptyHtml += '<p class="journey-empty-desc">Complete your journey planning to see your contribution to regenerative projects.</p>';
-                emptyHtml += '</div>';
-                jQuery('#impactCards').html(emptyHtml);
+                jQuery('#impactCards').html(impactEmptyState(
+                    'No project breakdown yet',
+                    totalContribution
+                        ? 'Your trip contributes ' + fmtCurrency(totalContribution) + ' to regenerative projects. Project-level details will appear here once projects are assigned to your region.'
+                        : 'Complete your journey planning to see your contribution to regenerative projects.'
+                ));
                 return;
             }
 
@@ -2346,12 +2348,17 @@ jQuery(function() {
                 html += '<span class="impact-card-type">' + (imp.action_type || 'Conservation') + '</span>';
                 html += '<div class="impact-card-stats">';
                 html += '<div class="impact-card-stat-row"><span>Your Contribution</span><span class="value">' + fmtCurrency(imp.contribution) + '</span></div>';
-                if (imp.impact_value && imp.impact_units) {
-                    html += '<div class="impact-card-stat-row"><span>Impact</span><span class="value">' + imp.impact_value + ' ' + imp.impact_units + '</span></div>';
+                if (imp.impact_value && imp.impact_unit_label) {
+                    html += '<div class="impact-card-stat-row"><span>Impact</span><span class="value">' + imp.impact_value + ' ' + imp.impact_unit_label + '</span></div>';
                 }
                 html += '</div></div>';
             });
             jQuery('#impactCards').html(html);
+        }, function() {
+            jQuery('#impactTotalRP').text('--');
+            jQuery('#impactRegionCount').text('--');
+            jQuery('#impactProjectCount').text('--');
+            jQuery('#impactCards').html(impactEmptyState('Could not load impact data', 'Please try again in a moment.'));
         });
     }
 

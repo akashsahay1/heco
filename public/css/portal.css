@@ -2977,6 +2977,10 @@
         gap: var(--space-4);
     }
 
+    .impact-cards-grid .impact-empty-full {
+        grid-column: 1 / -1;
+    }
+
     .impact-card {
         background: var(--color-bg-white);
         border: 1px solid var(--color-border);
@@ -6411,6 +6415,54 @@
     font-size: 2rem; font-weight: 600;
 }
 .auth-badge { font-size: 0.75rem; }
+
+/* Profile photo upload affordance + live header avatar */
+.heco-portal .profile-avatar-hidden { display: none !important; }
+.heco-portal .profile-avatar-wrap {
+    position: relative;
+    width: 80px;
+    height: 80px;
+}
+.heco-portal .profile-photo-input { display: none; }
+.heco-portal .profile-avatar-edit-btn {
+    position: absolute;
+    right: -4px;
+    bottom: -4px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    background: var(--heco-primary-700);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0;
+}
+.heco-portal .profile-avatar-edit-btn:hover { background: var(--heco-primary-800, var(--heco-primary-700)); }
+.heco-portal .profile-avatar-edit-btn:disabled { opacity: 0.6; cursor: default; }
+.heco-portal .profile-photo-link {
+    color: var(--heco-primary-700);
+    text-decoration: none;
+    font-size: 0.85rem;
+}
+.heco-portal .profile-photo-link:hover { text-decoration: underline; }
+.heco-portal .profile-photo-status {
+    display: inline-block;
+    font-size: 0.78rem;
+    color: var(--color-text-muted, #6b7280);
+    margin-top: 2px;
+}
+.heco-portal .profile-photo-status-error { color: #dc3545; }
+.heco-portal .user-avatar-img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
 
 /* ============================================
    trip-detail page (portal/trip-detail.blade.php)

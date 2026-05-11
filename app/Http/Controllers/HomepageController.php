@@ -20,7 +20,16 @@ class HomepageController extends Controller
             if ($user->isServiceProvider()) return redirect("/sp/dashboard");
         }
         $regions = Region::where("is_active", true)->orderBy("sort_order")->get();
-        return view("portal.landing", compact("regions"));
+        // Category cards must link with the real experience-type strings so the
+        // /home filter actually matches them (audit H2).
+        $experienceTypes = Experience::where("is_active", true)
+            ->whereNotNull("type")
+            ->where("type", "!=", "")
+            ->distinct()
+            ->orderBy("type")
+            ->pluck("type")
+            ->values();
+        return view("portal.landing", compact("regions", "experienceTypes"));
     }
 
     public function home(Request $request)
@@ -101,7 +110,31 @@ class HomepageController extends Controller
 
         $multiplierMap = CostCalculatorService::getMultiplierMap();
 
-        return view("portal.homepage", compact("regions", "experiences", "trip", "guestTripData", "prefLists", "multiplierMap"));
+        // Filter dropdown options must mirror the actual DB strings so every option
+        // returns results (see audit H2). 'extreme' is forced in even if the seed
+        // data happens not to contain it yet.
+        $experienceTypes = Experience::where("is_active", true)
+            ->whereNotNull("type")
+            ->where("type", "!=", "")
+            ->distinct()
+            ->orderBy("type")
+            ->pluck("type")
+            ->values();
+        $difficultyLevels = Experience::where("is_active", true)
+            ->whereNotNull("difficulty_level")
+            ->where("difficulty_level", "!=", "")
+            ->distinct()
+            ->pluck("difficulty_level")
+            ->push("extreme")
+            ->unique()
+            ->values();
+        // Sort difficulty by intuitive order, unknown values last.
+        $difficultyOrder = ['easy', 'moderate', 'challenging', 'difficult', 'extreme', 'expert'];
+        $difficultyLevels = $difficultyLevels
+            ->sortBy(fn($d) => array_search(strtolower($d), $difficultyOrder) === false ? 99 : array_search(strtolower($d), $difficultyOrder))
+            ->values();
+
+        return view("portal.homepage", compact("regions", "experiences", "trip", "guestTripData", "prefLists", "multiplierMap", "experienceTypes", "difficultyLevels"));
     }
 
     /**

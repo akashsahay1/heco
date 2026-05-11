@@ -61,10 +61,14 @@
                             <i class="bi bi-heart"></i> Wishlist
                         </a>
                     @endif
+                    @php
+                        $headerAvatar = auth()->user()->avatar ?: (auth()->user()->photo ? '/storage/' . auth()->user()->photo : null);
+                    @endphp
                     <div class="user-dropdown">
                         <button type="button" class="user-dropdown-trigger" id="userDropdownTrigger">
                             <span class="user-avatar">
-                                <i class="bi bi-person"></i>
+                                <i class="bi bi-person {{ $headerAvatar ? 'profile-avatar-hidden' : '' }}" id="headerUserAvatarIcon"></i>
+                                <img src="{{ $headerAvatar ?: '' }}" alt="Avatar" class="user-avatar-img {{ $headerAvatar ? '' : 'profile-avatar-hidden' }}" id="headerUserAvatarImg">
                             </span>
                             <span class="user-name">{{ auth()->user()->full_name ?? auth()->user()->email }}</span>
                             <i class="bi bi-chevron-down"></i>

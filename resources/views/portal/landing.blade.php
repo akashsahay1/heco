@@ -149,24 +149,27 @@
         <p class="landing-section-subtitle">Choose from diverse experience categories</p>
         <div class="row g-3">
             @php
-                $categories = [
-                    ['icon' => 'fa-solid fa-mountain', 'name' => 'Trekking', 'desc' => 'Alpine trails & mountain passes', 'type' => 'trek'],
-                    ['icon' => 'fa-solid fa-landmark', 'name' => 'Cultural', 'desc' => 'Traditions & heritage', 'type' => 'cultural'],
-                    ['icon' => 'fa-solid fa-om', 'name' => 'Spiritual', 'desc' => 'Meditation & sacred sites', 'type' => 'spiritual'],
-                    ['icon' => 'fa-solid fa-leaf', 'name' => 'Nature', 'desc' => 'Wildlife & landscapes', 'type' => 'nature'],
-                    ['icon' => 'fa-solid fa-person-hiking', 'name' => 'Adventure', 'desc' => 'Thrills & challenges', 'type' => 'adventure'],
-                    ['icon' => 'fa-solid fa-spa', 'name' => 'Wellness', 'desc' => 'Healing & rejuvenation', 'type' => 'wellness'],
-                    ['icon' => 'fa-solid fa-utensils', 'name' => 'Culinary', 'desc' => 'Local cuisine & cooking', 'type' => 'culinary'],
-                    ['icon' => 'fa-solid fa-hand-holding-heart', 'name' => 'Volunteering', 'desc' => 'Give back to communities', 'type' => 'volunteering'],
+                // Icons + blurbs keyed by the real experience-type strings stored in
+                // the DB; any type without a mapping falls back to a generic icon.
+                $catMeta = [
+                    'Trek' => ['icon' => 'fa-solid fa-mountain', 'desc' => 'Alpine trails & mountain passes'],
+                    'Cultural Immersion' => ['icon' => 'fa-solid fa-landmark', 'desc' => 'Traditions & heritage'],
+                    'Nature' => ['icon' => 'fa-solid fa-leaf', 'desc' => 'Landscapes & ecology'],
+                    'Wildlife' => ['icon' => 'fa-solid fa-paw', 'desc' => 'Birds & wildlife encounters'],
+                    'Adventure' => ['icon' => 'fa-solid fa-person-hiking', 'desc' => 'Thrills & challenges'],
+                    'Wellness' => ['icon' => 'fa-solid fa-spa', 'desc' => 'Healing & rejuvenation'],
+                    'Culinary' => ['icon' => 'fa-solid fa-utensils', 'desc' => 'Local cuisine & cooking'],
+                    'Volunteering' => ['icon' => 'fa-solid fa-hand-holding-heart', 'desc' => 'Give back to communities'],
                 ];
             @endphp
-            @foreach($categories as $cat)
+            @foreach($experienceTypes as $type)
+                @php $meta = $catMeta[$type] ?? ['icon' => 'fa-solid fa-compass', 'desc' => 'Explore experiences']; @endphp
                 <div class="col-6 col-md-3">
-                    <a href="/home?type={{ $cat['type'] }}" class="text-decoration-none">
+                    <a href="/home?type={{ urlencode($type) }}" class="text-decoration-none">
                         <div class="landing-category-card">
-                            <div class="landing-category-icon"><i class="{{ $cat['icon'] }}"></i></div>
-                            <h6 class="fw-bold text-dark mb-1">{{ $cat['name'] }}</h6>
-                            <small class="text-muted">{{ $cat['desc'] }}</small>
+                            <div class="landing-category-icon"><i class="{{ $meta['icon'] }}"></i></div>
+                            <h6 class="fw-bold text-dark mb-1">{{ $type }}</h6>
+                            <small class="text-muted">{{ $meta['desc'] }}</small>
                         </div>
                     </a>
                 </div>

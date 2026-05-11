@@ -457,6 +457,9 @@ class AjaxController extends Controller
             if ($request->has('update_profile')) {
                 return $this->updateProfile($request);
             }
+            if ($request->has('upload_profile_photo')) {
+                return $this->uploadProfilePhoto($request);
+            }
             if ($request->has('change_password')) {
                 return $this->changePassword($request);
             }
@@ -1011,6 +1014,8 @@ class AjaxController extends Controller
             "postal_code" => "nullable|string|max:20",
             "gender" => "nullable|in:male,female,other,prefer_not_to_say",
             "date_of_birth" => "nullable|date|before:today",
+            "newsletter_optin" => "nullable|boolean",
+            "portal_notify_optin" => "nullable|boolean",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -1027,13 +1032,27 @@ class AjaxController extends Controller
             'postal_code' => 'Postal code',
             'gender' => 'Gender',
             'date_of_birth' => 'Date of birth',
+            'newsletter_optin' => 'Newsletter subscription',
+            'portal_notify_optin' => 'Portal notifications',
         ];
         $incoming = $request->only(array_keys($fieldLabels));
+        // Normalise the checkbox-style fields to real booleans before storing.
+        foreach (['newsletter_optin', 'portal_notify_optin'] as $boolField) {
+            if (array_key_exists($boolField, $incoming)) {
+                $incoming[$boolField] = $request->boolean($boolField);
+            }
+        }
         $changes = [];
         foreach ($incoming as $field => $newValue) {
             $current = $user->{$field};
             if ($field === 'date_of_birth' && $current) {
                 $current = $current->format('Y-m-d');
+            }
+            if (in_array($field, ['newsletter_optin', 'portal_notify_optin'], true)) {
+                if ((bool) $current !== (bool) $newValue) {
+                    $changes[$fieldLabels[$field]] = $newValue ? 'On' : 'Off';
+                }
+                continue;
             }
             if ((string) ($current ?? '') !== (string) ($newValue ?? '')) {
                 $changes[$fieldLabels[$field]] = $newValue;
@@ -1051,6 +1070,48 @@ class AjaxController extends Controller
         }
 
         return response()->json(["success" => true, "message" => "Profile updated"]);
+    }
+
+    protected function uploadProfilePhoto(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(["error" => "Please log in."], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            "profile_photo" => "required|file|mimes:jpg,jpeg,png,webp|max:4096",
+        ], [
+            "profile_photo.mimes" => "Please choose a JPG, PNG or WEBP image.",
+            "profile_photo.max"   => "The image must be 4 MB or smaller.",
+            "profile_photo.required" => "Please choose an image to upload.",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $file = $request->file("profile_photo");
+        if (!$file->isValid() || !str_starts_with((string) $file->getMimeType(), 'image/')) {
+            return response()->json(["error" => "That file does not look like a valid image."], 422);
+        }
+
+        $path = \App\Services\ImageUploadService::storeUploadedImage($file, 'users', 512);
+        if (!$path) {
+            return response()->json(["error" => "Could not process the image. Please try a different file."], 422);
+        }
+
+        // Remove the previous locally-stored photo (never touch remote OAuth URLs).
+        $previous = $user->avatar;
+        $user->update(["avatar" => $path]);
+        if ($previous && $previous !== $path) {
+            \App\Services\ImageUploadService::deleteLocal($previous);
+        }
+
+        return response()->json([
+            "success"  => true,
+            "message"  => "Profile photo updated",
+            "avatar"   => $path,
+        ]);
     }
 
     protected function changePassword(Request $request): JsonResponse
@@ -2236,12 +2297,38 @@ class AjaxController extends Controller
 
     protected function getTripImpact(Request $request): JsonResponse
     {
-        if (!Auth::check() || $request->trip_id === 'guest') {
-            return response()->json(["success" => true, "impacts" => []]);
+        if (!Auth::check() || $request->trip_id === 'guest' || !$request->filled('trip_id')) {
+            return response()->json(["success" => true, "impacts" => [], "total_contribution" => 0]);
         }
-        $trip = Trip::findOrFail($request->trip_id);
+        $trip = Trip::where("id", $request->trip_id)
+            ->where("user_id", Auth::id())
+            ->first();
+        if (!$trip) {
+            return response()->json(["success" => true, "impacts" => [], "total_contribution" => 0]);
+        }
+
         $impact = app(ImpactCalculatorService::class)->calculateForTrip($trip);
-        return response()->json(["success" => true, "impact" => $impact]);
+
+        // Normalise the service's per-project rows into the flat shape the
+        // homepage Impact tab expects (audit H1: key was `impact` not `impacts`,
+        // and the field names didn't match).
+        $impacts = [];
+        foreach (($impact['projects'] ?? []) as $p) {
+            $impacts[] = [
+                'region_name'       => $p['region'] ?? '',
+                'project_name'      => $p['project_name'] ?? 'Regenerative Project',
+                'action_type'       => $p['action_type'] ?? null,
+                'contribution'      => $p['contribution'] ?? 0,
+                'impact_value'      => $p['impact_units'] ?? null,
+                'impact_unit_label' => $p['impact_unit_label'] ?? null,
+            ];
+        }
+
+        return response()->json([
+            "success"            => true,
+            "impacts"            => $impacts,
+            "total_contribution" => $impact['total_contribution'] ?? 0,
+        ]);
     }
 
     protected function requestSupport(Request $request): JsonResponse
