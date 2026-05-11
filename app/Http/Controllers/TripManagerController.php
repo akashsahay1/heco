@@ -8,8 +8,11 @@ use App\Models\ServiceProvider;
 
 class TripManagerController extends Controller
 {
-    public function show(int $tripId)
+    public function show($tripId)
     {
+        // Accept either the numeric PK or the string trip code (HECO-T-0103).
+        // Several admin views build this link from $trip->trip_id (the code)
+        // rather than the numeric id, which would 500 a strict integer route.
         $trip = Trip::with([
             "user", "tripRegions.region", "tripRegions.hrp",
             "tripDays.experiences.experience.region",
@@ -17,7 +20,12 @@ class TripManagerController extends Controller
             "tripDays.services.serviceProvider",
             "selectedExperiences.experience",
             "lead", "travellerPayments", "spPayments.serviceProvider",
-        ])->findOrFail($tripId);
+        ])->where(function ($q) use ($tripId) {
+            if (is_numeric($tripId)) {
+                $q->where("id", (int) $tripId);
+            }
+            $q->orWhere("trip_id", $tripId);
+        })->firstOrFail();
 
         $regions = Region::where("is_active", true)->get();
         $providers = ServiceProvider::where("status", "approved")->with("region")->get();

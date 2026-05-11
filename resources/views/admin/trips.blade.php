@@ -5,7 +5,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-luggage"></i> Trips</h5>
     <div class="d-flex gap-2 flex-wrap">
-        <select class="form-select form-select-sm" id="statusFilter" style="width: 160px;">
+        <select class="form-select form-select-sm custom-select" id="statusFilter" style="width: 170px;">
             <option value="">All Statuses</option>
             <option value="not_confirmed">Not Confirmed</option>
             <option value="confirmed">Confirmed</option>
@@ -13,8 +13,11 @@
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
         </select>
-        <input type="date" class="form-control form-control-sm" id="dateFrom" style="width: 150px;">
-        <input type="date" class="form-control form-control-sm" id="dateTo" style="width: 150px;">
+        <input type="text" class="form-control form-control-sm" id="dateFromDisplay" readonly style="width: 150px;" autocomplete="off">
+        <input type="hidden" id="dateFrom">
+        <input type="text" class="form-control form-control-sm" id="dateToDisplay" readonly style="width: 150px;" autocomplete="off">
+        <input type="hidden" id="dateTo">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="clearTripFilters" title="Clear filters"><i class="bi bi-x-circle"></i></button>
     </div>
 </div>
 
@@ -45,7 +48,7 @@
 
 @section('js')
 <script>
-function statusBadgeClass(status) {
+function tripStatusBadgeClass(status) {
     switch (status) {
         case 'not_confirmed': return 'warning text-dark';
         case 'confirmed': return 'success';
@@ -56,15 +59,20 @@ function statusBadgeClass(status) {
     }
 }
 
-function formatStatus(status) {
+function formatTripStatus(status) {
     return status ? status.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : '';
+}
+
+function isoFromDate(d) {
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
 
 function loadTrips() {
     var params = { get_upcoming_trips: 1 };
-    var status = $('#statusFilter').val();
-    var dateFrom = $('#dateFrom').val();
-    var dateTo = $('#dateTo').val();
+    var status = jQuery('#statusFilter').val();
+    var dateFrom = jQuery('#dateFrom').val();
+    var dateTo = jQuery('#dateTo').val();
     if (status) params.status = status;
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
@@ -82,39 +90,84 @@ function loadTrips() {
             }
             html += '<tr>';
             html += '<td><a href="/trip-manager/' + t.id + '" target="_blank" class="fw-semibold">' + (t.trip_id || t.id) + '</a></td>';
-            html += '<td>' + (t.user ? t.user.full_name || t.user.email : '-') + '</td>';
+            html += '<td>' + (t.user ? (t.user.full_name || t.user.email) : '-') + '</td>';
             html += '<td>';
             html += '<select class="form-select form-select-sm d-inline-block status-change" data-trip-id="' + t.id + '" style="width: 140px; font-size: 0.75rem;">';
             ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'].forEach(function(s) {
-                html += '<option value="' + s + '"' + (t.status === s ? ' selected' : '') + '>' + formatStatus(s) + '</option>';
+                html += '<option value="' + s + '"' + (t.status === s ? ' selected' : '') + '>' + formatTripStatus(s) + '</option>';
             });
             html += '</select>';
             html += '</td>';
             html += '<td><small>' + (t.start_date ? t.start_date.substring(0, 10) : '-') + ' &mdash; ' + (t.end_date ? t.end_date.substring(0, 10) : '-') + '</small></td>';
             html += '<td><small>' + (regions || '-') + '</small></td>';
-            html += '<td>' + (t.final_price ? '₹' + Number(t.final_price).toLocaleString() : '-') + '</td>';
+            html += '<td>' + (t.final_price ? '₹' + Number(t.final_price).toLocaleString('en-IN') : '-') + '</td>';
             html += '<td><a href="/trip-manager/' + t.id + '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td>';
             html += '</tr>';
         });
-        $('#tripsTable').html(html);
+        jQuery('#tripsTable').html(html);
     });
 }
 
-$(function() { loadTrips(); });
+jQuery(function() {
+    if (window.buildCustomDropdown) {
+        buildCustomDropdown(jQuery('#statusFilter')[0]);
+    }
+    jQuery('#statusFilter').on('change', function() { loadTrips(); });
 
-$('#statusFilter').on('change', function() { loadTrips(); });
-$('#dateFrom, #dateTo').on('change', function() { loadTrips(); });
+    new AirDatepicker('#dateFromDisplay', {
+        locale: window.airDatepickerEn,
+        dateFormat: 'dd-MM-yyyy',
+        autoClose: true,
+        position: 'bottom left',
+        onSelect: function(o) {
+            jQuery('#dateFrom').val(o.date ? isoFromDate(o.date) : '');
+            loadTrips();
+        }
+    });
+    new AirDatepicker('#dateToDisplay', {
+        locale: window.airDatepickerEn,
+        dateFormat: 'dd-MM-yyyy',
+        autoClose: true,
+        position: 'bottom left',
+        onSelect: function(o) {
+            jQuery('#dateTo').val(o.date ? isoFromDate(o.date) : '');
+            loadTrips();
+        }
+    });
 
-$(document).on('change', '.status-change', function() {
-    var sel = $(this);
+    jQuery('#clearTripFilters').on('click', function() {
+        jQuery('#statusFilter').val('');
+        if (window.buildCustomDropdown) buildCustomDropdown(jQuery('#statusFilter')[0]);
+        jQuery('#dateFromDisplay').val('');
+        jQuery('#dateToDisplay').val('');
+        jQuery('#dateFrom').val('');
+        jQuery('#dateTo').val('');
+        loadTrips();
+    });
+
+    loadTrips();
+});
+
+jQuery(document).on('change', '.status-change', function() {
+    var sel = jQuery(this);
     var tripId = sel.data('trip-id');
     var newStatus = sel.val();
-    if (!confirm('Change trip status to "' + formatStatus(newStatus) + '"?')) {
-        loadTrips();
-        return;
-    }
-    ajaxPost({ update_trip_status: 1, trip_id: tripId, status: newStatus }, function() {
-        loadTrips();
+    Swal.fire({
+        text: 'Change trip status to "' + formatTripStatus(newStatus) + '"?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#2d6a4f',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, change it'
+    }).then(function(result) {
+        if (!result.isConfirmed) { loadTrips(); return; }
+        ajaxPost({ update_trip_status: 1, trip_id: tripId, status: newStatus }, function() {
+            loadTrips();
+        }, function(xhr) {
+            var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not update status') : 'Could not update status';
+            showAlert(msg, 'danger');
+            loadTrips();
+        });
     });
 });
 </script>

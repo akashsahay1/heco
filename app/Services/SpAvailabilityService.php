@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\SpAvailability;
 use App\Models\ServiceProvider;
+use App\Services\SpMatchingService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
@@ -51,7 +52,11 @@ class SpAvailabilityService
         }
 
         if ($serviceType) {
-            $query->whereJsonContains('services_offered', $serviceType);
+            // service_providers.services_offered stores Title-case labels (from the
+            // SystemList "service_type": "Transport", "Meals", ...), whereas trip
+            // service_type columns are lowercase singular. Normalize so the
+            // JSON-contains (case-sensitive) actually matches.
+            $query->whereJsonContains('services_offered', SpMatchingService::serviceOfferedLabel($serviceType));
         }
 
         return $query->get();

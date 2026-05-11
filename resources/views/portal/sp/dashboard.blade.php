@@ -1,6 +1,17 @@
 @extends('portal.layout')
 @section('title', 'Service Provider Dashboard - HECO Portal')
 
+@php
+    $providerTypeLabels = [
+        'hrp' => 'Himalayan Regenerative Partner (HRP)',
+        'hlh' => 'Homestay Local Host (HLH)',
+        'osp' => 'Other Service Provider (OSP)',
+    ];
+    $providerType = strtolower((string) $provider->provider_type);
+    $providerTypeLabel = $providerTypeLabels[$providerType] ?? ucfirst((string) $provider->provider_type);
+    $providerTypeBadgeClass = $providerType === 'hlh' ? 'success' : ($providerType === 'hrp' ? 'primary' : 'info');
+@endphp
+
 @section('content')
 <div class="container py-4">
     {{-- Header --}}
@@ -8,12 +19,37 @@
         <div>
             <h4 class="mb-1"><i class="bi bi-building"></i> Service Provider Dashboard</h4>
             <span class="text-muted">{{ $provider->name }}</span>
-            <span class="badge bg-{{ $provider->provider_type === 'HLH' ? 'success' : ($provider->provider_type === 'HRP' ? 'primary' : 'info') }} ms-2">{{ $provider->provider_type }}</span>
+            <span class="badge bg-{{ $providerTypeBadgeClass }} ms-2">{{ $providerTypeLabel }}</span>
             <span class="badge bg-{{ $provider->status === 'approved' ? 'success' : ($provider->status === 'pending' ? 'warning text-dark' : 'secondary') }} ms-1">{{ ucfirst($provider->status ?? 'pending') }}</span>
         </div>
         <div class="d-flex gap-2">
             <a href="{{ route('sp.profile.edit') }}" class="btn btn-sm btn-success"><i class="bi bi-pencil-square"></i> Edit Profile</a>
             <a href="/home" class="btn btn-sm btn-outline-secondary"><i class="bi bi-house"></i> Home</a>
+        </div>
+    </div>
+
+    {{-- My Assigned Trips --}}
+    <div class="card mb-3">
+        <div class="card-header py-2">
+            <h6 class="mb-0"><i class="bi bi-luggage"></i> My Assigned Trips</h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="small">Trip</th>
+                            <th class="small">Dates</th>
+                            <th class="small">Day(s)</th>
+                            <th class="small">Service(s)</th>
+                            <th class="small">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="spAssignedTrips">
+                        <tr><td colspan="5" class="text-muted text-center small py-3">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -36,15 +72,7 @@
                             <tr>
                                 <td class="text-muted small">Type</td>
                                 <td class="small">
-                                    @if($provider->provider_type === 'HLH')
-                                        <span class="badge bg-success">HLH</span> HECO Local Host
-                                    @elseif($provider->provider_type === 'HRP')
-                                        <span class="badge bg-primary">HRP</span> HECO Resource Person
-                                    @elseif($provider->provider_type === 'OSP')
-                                        <span class="badge bg-info">OSP</span> Operational Service Provider
-                                    @else
-                                        <span class="badge bg-secondary">{{ $provider->provider_type }}</span>
-                                    @endif
+                                    <span class="badge bg-{{ $providerTypeBadgeClass }}">{{ strtoupper($providerType) }}</span> {{ $providerTypeLabel }}
                                 </td>
                             </tr>
                             <tr>
@@ -261,7 +289,7 @@
             </div>
 
             {{-- HLH: My Experiences --}}
-            @if($provider->provider_type === 'HLH')
+            @if($providerType === 'hlh')
                 <div class="card mb-3">
                     <div class="card-header py-2">
                         <h6 class="mb-0"><i class="bi bi-star"></i> My Experiences</h6>
@@ -313,7 +341,7 @@
             @endif
 
             {{-- HRP: My Region --}}
-            @if($provider->provider_type === 'HRP' && $provider->region)
+            @if($providerType === 'hrp' && $provider->region)
                 <div class="card mb-3">
                     <div class="card-header py-2">
                         <h6 class="mb-0"><i class="bi bi-map"></i> My Region</h6>
@@ -439,6 +467,45 @@ jQuery(function() {
     var calendarData = {};
     var selectedDates = [];
     var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+    function statusBadge(status) {
+        var cls = 'secondary';
+        if (status === 'confirmed') cls = 'success';
+        else if (status === 'running') cls = 'primary';
+        else if (status === 'not_confirmed') cls = 'warning text-dark';
+        else if (status === 'cancelled') cls = 'danger';
+        var label = (status || '-').replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+        return '<span class="badge bg-' + cls + '">' + label + '</span>';
+    }
+
+    function loadAssignedTrips() {
+        ajaxPost({ get_sp_assigned_trips: 1 }, function(resp) {
+            var trips = resp.trips || [];
+            var html = '';
+            if (!trips.length) {
+                html = '<tr><td colspan="5" class="text-muted text-center small py-3">No trips assigned to you yet.</td></tr>';
+            } else {
+                trips.forEach(function(t) {
+                    var dates = '-';
+                    if (t.start_date) {
+                        dates = t.start_date.substring(0, 10);
+                        if (t.end_date) dates += ' &ndash; ' + t.end_date.substring(0, 10);
+                    }
+                    html += '<tr>';
+                    html += '<td class="small"><strong>' + (t.trip_id || '-') + '</strong>' + (t.trip_name ? '<br><span class="text-muted">' + t.trip_name + '</span>' : '') + '</td>';
+                    html += '<td class="small">' + dates + '</td>';
+                    html += '<td class="small">' + (t.days || '-') + '</td>';
+                    html += '<td class="small">' + (t.services || '-') + '</td>';
+                    html += '<td class="small">' + statusBadge(t.status) + '</td>';
+                    html += '</tr>';
+                });
+            }
+            jQuery('#spAssignedTrips').html(html);
+        }, function() {
+            jQuery('#spAssignedTrips').html('<tr><td colspan="5" class="text-muted text-center small py-3">Could not load assigned trips.</td></tr>');
+        });
+    }
+    loadAssignedTrips();
 
     function loadCalendar() {
         jQuery('#calMonthLabel').text(monthNames[calMonth - 1] + ' ' + calYear);

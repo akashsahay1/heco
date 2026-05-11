@@ -19,6 +19,30 @@ class SpMatchingService
     }
 
     /**
+     * Map an itinerary service_type (lowercase singular, e.g. "transport", "meal")
+     * to the Title-case label stored in service_providers.services_offered
+     * (seeded from the SystemList "service_type" — "Transport", "Meals", ...).
+     * JSON values are case-sensitive in MySQL, so an explicit map is required.
+     */
+    public static function serviceOfferedLabel(?string $serviceType): ?string
+    {
+        if ($serviceType === null || $serviceType === '') {
+            return null;
+        }
+        $map = [
+            'transport'     => 'Transport',
+            'accommodation' => 'Accommodation',
+            'meal'          => 'Meals',
+            'meals'         => 'Meals',
+            'guide'         => 'Guide',
+            'activity'      => 'Activity',
+            'other'         => 'Other',
+        ];
+        $key = strtolower($serviceType);
+        return $map[$key] ?? ucfirst($key);
+    }
+
+    /**
      * Auto-assign available SPs to unassigned services in a trip.
      * Returns count of services that got an SP assigned.
      */
@@ -76,9 +100,10 @@ class SpMatchingService
     protected function findBestSp(TripDayService $service, $date, array $regionIds): ?array
     {
         // Find available SPs matching region and service type
+        $serviceLabel = self::serviceOfferedLabel($service->service_type);
         $candidates = ServiceProvider::where('status', 'approved')
             ->whereIn('region_id', $regionIds)
-            ->whereJsonContains('services_offered', $service->service_type)
+            ->whereJsonContains('services_offered', $serviceLabel)
             ->whereDoesntHave('availability', function ($q) use ($date) {
                 $q->where('date', $date);
             })

@@ -153,6 +153,21 @@ function loadTravellerPayments() {
 }
 loadTravellerPayments();
 
+$('#addSpPaymentForm').on('submit', function(e) {
+    e.preventDefault();
+    var data = { create_sp_payment: 1, trip_id: tripId };
+    $(this).find('[name]').each(function() {
+        data[$(this).attr('name')] = $(this).val();
+    });
+    ajaxPost(data, function() {
+        showAlert('SP payment created!');
+        location.reload();
+    }, function(xhr) {
+        var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not create SP payment') : 'Could not create SP payment';
+        showAlert(msg, 'danger');
+    });
+});
+
 $('#btnRecalc').on('click', function() {
     var $btn = $(this);
     $btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Calculating...');

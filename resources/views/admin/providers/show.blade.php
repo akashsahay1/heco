@@ -194,9 +194,10 @@ function loadTrips() {
             trips.forEach(function(t) {
                 var trip = t.trip || t;
                 var tId = trip.trip_id || trip.id || '-';
+                var tKey = trip.id || trip.trip_id || '';
                 var statusClass = trip.status === 'confirmed' ? 'success' : (trip.status === 'cancelled' ? 'danger' : 'secondary');
                 th += '<tr>';
-                th += '<td><a href="/trip-manager/' + tId + '" target="_blank">' + tId + '</a></td>';
+                th += '<td><a href="/trip-manager/' + tKey + '" target="_blank">' + tId + '</a></td>';
                 th += '<td><span class="badge bg-' + statusClass + '">' + (trip.status || '-') + '</span></td>';
                 th += '<td>' + (t.service_type || '-') + '</td>';
                 th += '</tr>';
@@ -220,12 +221,13 @@ function loadPayments() {
             payments.forEach(function(pay) {
                 var trip = pay.trip || {};
                 var tId = trip.trip_id || '-';
+                var tKey = trip.id || trip.trip_id || '';
                 var due = parseFloat(pay.amount_due) || 0;
                 var paid = parseFloat(pay.amount_paid) || 0;
                 var bal = parseFloat(pay.balance) || 0;
                 totalDue += due; totalPaid += paid; totalBalance += bal;
                 ph += '<tr>';
-                ph += '<td><a href="/trip-manager/' + tId + '" target="_blank">' + tId + '</a></td>';
+                ph += '<td><a href="/trip-manager/' + tKey + '" target="_blank">' + tId + '</a></td>';
                 ph += '<td class="text-end">' + due.toLocaleString('en-IN') + '</td>';
                 ph += '<td class="text-end">' + paid.toLocaleString('en-IN') + '</td>';
                 ph += '<td class="text-end">' + (bal > 0 ? '<span class="text-danger">' + bal.toLocaleString('en-IN') + '</span>' : bal.toLocaleString('en-IN')) + '</td>';

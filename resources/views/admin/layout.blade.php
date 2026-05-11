@@ -11,6 +11,7 @@
     <link href="{{ url('css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url('css/bootstrap-icons.min.css') }}" rel="stylesheet">
     <link href="{{ url('css/fontawesome.min.css') }}" rel="stylesheet">
+    <link href="{{ url('css/air-datepicker.min.css') }}" rel="stylesheet">
     <link href="{{ url('style.css') }}?v={{ time() }}" rel="stylesheet">
     <link href="{{ url('css/admin.css') }}?v={{ time() }}" rel="stylesheet">
     @yield('css')
@@ -138,6 +139,9 @@
     <script src="{{ url('js/jquery-3.7.1.min.js') }}"></script>
     <script src="{{ url('js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ url('js/sweetalert2.all.min.js') }}"></script>
+    <script src="{{ url('js/air-datepicker.min.js') }}"></script>
+    <script src="{{ url('js/air-datepicker-en.js') }}"></script>
+    <script src="{{ url('js/custom-select.js') }}?v={{ time() }}"></script>
     <script>
         jQuery.ajaxSetup({
             headers: { 'X-CSRF-TOKEN': jQuery('meta[name="csrf-token"]').attr('content') }

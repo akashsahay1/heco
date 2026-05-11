@@ -339,10 +339,53 @@
 
                 {{-- 7. Payments to SPs --}}
                 <div class="card mb-3">
-                    <div class="card-header py-2">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
                         <h6 class="mb-0"><i class="bi bi-building"></i> Payments to Service Providers</h6>
+                        <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="collapse" data-bs-target="#addSpPaymentCollapse"><i class="bi bi-plus"></i> Add SP Payment</button>
                     </div>
                     <div class="card-body p-0">
+                        {{-- Add SP Payment Inline Form --}}
+                        <div class="collapse" id="addSpPaymentCollapse">
+                            <div class="p-3 bg-light border-bottom">
+                                <form id="addSpPaymentForm">
+                                    <div class="row g-2">
+                                        <div class="col-md-12">
+                                            <label class="form-label small fw-bold mb-1">Service Provider</label>
+                                            <select class="form-select form-select-sm" name="service_provider_id" required>
+                                                <option value="">-- Select provider --</option>
+                                                @foreach($providers as $sp)
+                                                    <option value="{{ $sp->id }}">{{ $sp->name }} ({{ strtoupper($sp->provider_type) }}{{ $sp->region ? ' — ' . $sp->region->name : '' }})</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold mb-1">Service Type</label>
+                                            <select class="form-select form-select-sm" name="service_type" required>
+                                                <option value="">-- Select --</option>
+                                                <option value="accommodation">Accommodation</option>
+                                                <option value="transport">Transport</option>
+                                                <option value="guide">Guide</option>
+                                                <option value="activity">Activity</option>
+                                                <option value="meal">Meal</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold mb-1">Amount Due (₹)</label>
+                                            <input type="number" class="form-control form-control-sm" name="amount_due" step="0.01" min="0" required>
+                                        </div>
+                                        <div class="col-md-8">
+                                            <label class="form-label small fw-bold mb-1">Notes</label>
+                                            <input type="text" class="form-control form-control-sm" name="notes">
+                                        </div>
+                                        <div class="col-md-4 d-flex align-items-end">
+                                            <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-check"></i> Create</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
                         @if($trip->spPayments && $trip->spPayments->count())
                             <div class="list-group list-group-flush">
                                 @foreach($trip->spPayments as $spPayment)

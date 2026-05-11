@@ -141,7 +141,7 @@ function loadGstReport() {
                 totFinal += finalPrice;
 
                 html += '<tr>';
-                html += '<td><a href="/trip-manager/' + (t.id || t.trip_id) + '" target="_blank">' + (t.trip_id || '-') + '</a></td>';
+                html += '<td><a href="/trip-manager/' + (t.id || t.trip_id || '') + '" target="_blank">' + (t.trip_id || '-') + '</a></td>';
                 html += '<td>' + (t.user ? t.user.full_name || '' : '-') + '</td>';
                 html += '<td><small>' + (t.start_date ? t.start_date.substring(0, 10) : '-') + ' &mdash; ' + (t.end_date ? t.end_date.substring(0, 10) : '-') + '</small></td>';
                 html += '<td class="text-end">₹' + subtotal.toLocaleString() + '</td>';

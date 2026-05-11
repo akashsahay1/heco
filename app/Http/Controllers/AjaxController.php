@@ -626,6 +626,9 @@ class AjaxController extends Controller
             if ($request->has('get_sp_payments')) {
                 return $this->getSpPayments($request);
             }
+            if ($request->has('create_sp_payment')) {
+                return $this->createSpPayment($request);
+            }
             if ($request->has('add_sp_payment_entry')) {
                 return $this->addSpPaymentEntry($request);
             }
@@ -799,6 +802,9 @@ class AjaxController extends Controller
             }
             if ($request->has('update_sp_profile')) {
                 return $this->updateSpProfile($request);
+            }
+            if ($request->has('get_sp_assigned_trips')) {
+                return $this->getSpAssignedTrips($request);
             }
 
             // ===== SP AVAILABILITY (Admin) =====
@@ -3158,10 +3164,24 @@ class AjaxController extends Controller
 
     protected function getUpcomingTrips(Request $request): JsonResponse
     {
-        $trips = Trip::whereIn("status", ["confirmed", "running"])
-            ->with(["user", "tripRegions.region"])
-            ->orderBy("start_date")
-            ->paginate(20);
+        $allowedStatuses = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
+
+        $query = Trip::with(["user", "regions"]);
+
+        $status = $request->get("status");
+        if ($status && $status !== "all" && in_array($status, $allowedStatuses, true)) {
+            $query->where("status", $status);
+        }
+
+        if ($request->filled("date_from")) {
+            $query->whereDate("start_date", ">=", $request->date_from);
+        }
+        if ($request->filled("date_to")) {
+            $query->whereDate("start_date", "<=", $request->date_to);
+        }
+
+        // NULL start_date trips last; otherwise chronological.
+        $trips = $query->orderByRaw("start_date IS NULL, start_date ASC")->paginate(20);
         return response()->json($trips);
     }
 
@@ -3222,12 +3242,59 @@ class AjaxController extends Controller
 
     protected function getSpPayments(Request $request): JsonResponse
     {
-        $query = SpPayment::with(["trip", "serviceProvider"]);
+        $query = SpPayment::with(["trip", "serviceProvider", "entries"]);
         if ($request->filled("trip_id")) {
             $query->where("trip_id", $request->trip_id);
         }
+        if ($request->filled("trip_search")) {
+            $search = $request->trip_search;
+            $query->whereHas("trip", function ($q) use ($search) {
+                $q->where("trip_id", "like", "%{$search}%")
+                  ->orWhere("trip_name", "like", "%{$search}%");
+            });
+        }
         $payments = $query->orderBy("created_at", "desc")->paginate(20);
+        // Surface the trip code at top level — the payments.blade.php SP tab reads sp.trip_id.
+        $payments->getCollection()->transform(function ($p) {
+            $p->trip_id = $p->trip?->trip_id;
+            return $p;
+        });
         return response()->json($payments);
+    }
+
+    /**
+     * Create a payable record (SpPayment) for a service provider against a trip.
+     * This is the data source the SP-side "Payment Summary", the admin "/providers/{id}"
+     * payment history and the admin "/payments" SP tab all read from. Payment entries
+     * (actual disbursements) are then added against this record via addSpPaymentEntry().
+     */
+    protected function createSpPayment(Request $request): JsonResponse
+    {
+        if (!Auth::user()?->isHct()) {
+            return response()->json(["error" => "Unauthorized"], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            "trip_id" => "required|exists:trips,id",
+            "service_provider_id" => "required|exists:service_providers,id",
+            "service_type" => "required|string|max:50",
+            "amount_due" => "required|numeric|min:0",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $spPayment = SpPayment::create([
+            "trip_id" => $request->trip_id,
+            "service_provider_id" => $request->service_provider_id,
+            "service_type" => $request->service_type,
+            "amount_due" => $request->amount_due,
+            "amount_paid" => 0,
+            "balance" => $request->amount_due,
+            "notes" => $request->notes,
+        ]);
+
+        return response()->json(["success" => true, "id" => $spPayment->id]);
     }
 
     protected function addSpPaymentEntry(Request $request): JsonResponse
@@ -3311,23 +3378,50 @@ class AjaxController extends Controller
         $month = $request->get("month", now()->month);
         $year = $request->get("year", now()->year);
 
+        $gstPercent = (float) Setting::getValue("gst_percent", 5);
+
         $trips = Trip::whereIn("status", ["confirmed", "running", "completed"])
             ->whereMonth("created_at", $month)
             ->whereYear("created_at", $year)
             ->with("user")
+            ->orderBy("created_at")
             ->get()
-            ->map(fn($t) => [
-                "trip_id" => $t->trip_id,
-                "traveller" => $t->user->full_name ?? $t->user->email,
-                "subtotal" => $t->subtotal,
-                "gst_amount" => $t->gst_amount,
-                "final_price" => $t->final_price,
-                "status" => $t->status,
-            ]);
+            ->map(function ($t) use ($gstPercent) {
+                $subtotal = (float) ($t->subtotal ?? 0);
+                $gstAmount = (float) ($t->gst_amount ?? 0);
+                $finalPrice = (float) ($t->final_price ?? 0);
+                // Derive the effective rate per trip when possible; fall back to the global setting.
+                $effectiveRate = $subtotal > 0 ? round($gstAmount / $subtotal * 100, 2) : $gstPercent;
+                return [
+                    "id" => $t->id,
+                    "trip_id" => $t->trip_id,
+                    "user" => [
+                        "full_name" => $t->user->full_name ?? $t->user->email ?? "-",
+                        "email" => $t->user->email ?? "",
+                    ],
+                    "start_date" => $t->start_date,
+                    "end_date" => $t->end_date,
+                    "subtotal" => $subtotal,
+                    "gst_percent" => $effectiveRate,
+                    "gst_amount" => $gstAmount,
+                    "final_price" => $finalPrice,
+                    "status" => $t->status,
+                ];
+            })->values();
 
+        $totalRevenue = $trips->sum("final_price");
         $totalGst = $trips->sum("gst_amount");
+        $netRevenue = $trips->sum("subtotal");
 
-        return response()->json(["trips" => $trips, "total_gst" => $totalGst]);
+        return response()->json([
+            "success" => true,
+            "summary" => [
+                "total_revenue" => $totalRevenue,
+                "total_gst" => $totalGst,
+                "net_revenue" => $netRevenue,
+            ],
+            "trips" => $trips,
+        ]);
     }
 
     protected function getProviders(Request $request): JsonResponse
@@ -3392,6 +3486,87 @@ class AjaxController extends Controller
         $data['last_updated_by_role'] = 'provider';
         $provider->update($data);
         return response()->json(["success" => true]);
+    }
+
+    /**
+     * Trips the logged-in service provider is attached to. The primary link is
+     * TripDayService.service_provider_id (per-day services); for HRPs the
+     * tripRegions.hrp_id link is also folded in. Returns one row per trip with
+     * the day numbers and the services the SP is providing.
+     */
+    protected function getSpAssignedTrips(Request $request): JsonResponse
+    {
+        $provider = ServiceProvider::where('user_id', Auth::id())->first();
+        if (!$provider) {
+            return response()->json(["trips" => []]);
+        }
+
+        $tripsById = [];
+
+        // 1) Per-day services assigned to this SP.
+        $services = TripDayService::where('service_provider_id', $provider->id)
+            ->with(['tripDay.trip'])
+            ->get();
+        foreach ($services as $svc) {
+            $day = $svc->tripDay;
+            $trip = $day?->trip;
+            if (!$trip) {
+                continue;
+            }
+            if (!isset($tripsById[$trip->id])) {
+                $tripsById[$trip->id] = [
+                    'id' => $trip->id,
+                    'trip_id' => $trip->trip_id,
+                    'trip_name' => $trip->trip_name,
+                    'start_date' => $trip->start_date,
+                    'end_date' => $trip->end_date,
+                    'status' => $trip->status,
+                    '_days' => [],
+                    '_services' => [],
+                ];
+            }
+            if ($day->day_number !== null) {
+                $tripsById[$trip->id]['_days'][$day->day_number] = true;
+            }
+            $label = $svc->description ?: ucfirst((string) $svc->service_type);
+            $tripsById[$trip->id]['_services'][$label] = true;
+        }
+
+        // 2) HRP-managed regions (if this provider is an HRP).
+        if (strtolower((string) $provider->provider_type) === 'hrp') {
+            $tripRegions = TripRegion::where('hrp_id', $provider->id)->with('trip')->get();
+            foreach ($tripRegions as $tr) {
+                $trip = $tr->trip;
+                if (!$trip) {
+                    continue;
+                }
+                if (!isset($tripsById[$trip->id])) {
+                    $tripsById[$trip->id] = [
+                        'id' => $trip->id,
+                        'trip_id' => $trip->trip_id,
+                        'trip_name' => $trip->trip_name,
+                        'start_date' => $trip->start_date,
+                        'end_date' => $trip->end_date,
+                        'status' => $trip->status,
+                        '_days' => [],
+                        '_services' => [],
+                    ];
+                }
+                $tripsById[$trip->id]['_services']['Regional Partner (HRP)'] = true;
+            }
+        }
+
+        $trips = collect($tripsById)->map(function ($t) {
+            $days = array_keys($t['_days']);
+            sort($days);
+            $services = array_keys($t['_services']);
+            unset($t['_days'], $t['_services']);
+            $t['days'] = $days ? implode(', ', $days) : '';
+            $t['services'] = $services ? implode(', ', $services) : '';
+            return $t;
+        })->sortBy('start_date')->values();
+
+        return response()->json(["trips" => $trips]);
     }
 
     protected function getProviderTrips(Request $request): JsonResponse
