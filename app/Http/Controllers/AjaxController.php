@@ -3502,7 +3502,7 @@ class AjaxController extends Controller
 
         // Status filter — blank / "all" means no filter.
         $status = $request->get("status", "");
-        if ($status !== "" && $status !== "all") {
+        if (!empty($status) && $status !== "all") {
             $allowed = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
             if (in_array($status, $allowed, true)) {
                 $query->where("status", $status);
@@ -3781,7 +3781,7 @@ class AjaxController extends Controller
 
         // Status filter — blank / "all" means no filter; otherwise honour it.
         $status = $request->get("status", "approved");
-        if ($status !== "" && $status !== "all") {
+        if (!empty($status) && $status !== "all") {
             $query->where("status", $status);
         }
         if ($request->filled("provider_type")) {
@@ -4021,7 +4021,7 @@ class AjaxController extends Controller
         // Status filter — blank / "all" means no filter; defaults to "pending"
         // because this screen is the SP application inbox.
         $status = $request->get("status", "pending");
-        if ($status !== "" && $status !== "all") {
+        if (!empty($status) && $status !== "all") {
             $query->where("status", $status);
         }
 
