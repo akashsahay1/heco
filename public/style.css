@@ -31,12 +31,25 @@
     --heco-neutral-800: #1e293b;
     --heco-neutral-900: #0f172a;
 
-    /* Semantic Colors */
-    --heco-success: #16a34a;
+    /* Semantic Colors — "success"/"green" map to the turquoise brand, not actual green */
+    --heco-success: var(--heco-primary-700);
+    --heco-success-dark: var(--heco-primary-800);
+    --heco-green: var(--heco-primary-700);
     --heco-warning: #f59e0b;
     --heco-error: #dc2626;
     --heco-danger: #b54a4a;
     --heco-info: #0284c7;
+
+    /* Re-brand Bootstrap's blue "primary" and green "success" to the turquoise scheme */
+    --bs-primary: #79a09f;
+    --bs-primary-rgb: 121, 160, 159;
+    --bs-success: #79a09f;
+    --bs-success-rgb: 121, 160, 159;
+    --bs-success-text-emphasis: #496767;
+    --bs-success-bg-subtle: #eef4f4;
+    --bs-success-border-subtle: #c9dcdb;
+    --bs-link-color: #5f8484;
+    --bs-link-hover-color: #496767;
 
     /* Functional Aliases */
     --color-primary: var(--heco-primary-700);
@@ -160,6 +173,59 @@ body {
 .btn-outline-success:hover {
     background: var(--heco-primary-700);
     border-color: var(--heco-primary-700);
+}
+
+/* Bootstrap's blue "primary" buttons re-branded to the turquoise scheme too. */
+.btn-primary {
+    background: var(--heco-primary-700);
+    border-color: var(--heco-primary-700);
+}
+
+.btn-primary:hover {
+    background: var(--heco-primary-800);
+    border-color: var(--heco-primary-800);
+}
+
+.btn-outline-primary {
+    color: var(--heco-primary-700);
+    border-color: var(--heco-primary-700);
+}
+
+.btn-outline-primary:hover {
+    background: var(--heco-primary-700);
+    border-color: var(--heco-primary-700);
+}
+
+.heco-portal .btn-primary:active,
+.heco-portal .btn-primary.active,
+.heco-portal .btn-primary:focus,
+.heco-portal .btn-primary:focus-visible,
+.heco-portal .btn-primary.show,
+.heco-admin .btn-primary:active,
+.heco-admin .btn-primary.active,
+.heco-admin .btn-primary:focus,
+.heco-admin .btn-primary:focus-visible,
+.heco-admin .btn-primary.show {
+    background-color: var(--heco-primary-800);
+    border-color: var(--heco-primary-800);
+    color: #fff;
+    box-shadow: 0 0 0 0.2rem rgba(121, 160, 159, 0.25);
+}
+
+.heco-portal .btn-outline-primary:active,
+.heco-portal .btn-outline-primary.active,
+.heco-portal .btn-outline-primary:focus,
+.heco-portal .btn-outline-primary:focus-visible,
+.heco-portal .btn-outline-primary.show,
+.heco-admin .btn-outline-primary:active,
+.heco-admin .btn-outline-primary.active,
+.heco-admin .btn-outline-primary:focus,
+.heco-admin .btn-outline-primary:focus-visible,
+.heco-admin .btn-outline-primary.show {
+    background-color: var(--heco-primary-700);
+    border-color: var(--heco-primary-700);
+    color: #fff;
+    box-shadow: 0 0 0 0.2rem rgba(121, 160, 159, 0.25);
 }
 
 /* Active / focused button state matches the hover state.

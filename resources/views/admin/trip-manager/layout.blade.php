@@ -551,7 +551,7 @@ jQuery('#btnAiRecalc').on('click', function() {
         inputLabel: 'What would you like the AI to optimize?',
         inputValue: 'Optimize this itinerary for cost and experience balance',
         showCancelButton: true,
-        confirmButtonColor: '#2d6a4f'
+        confirmButtonColor: '#79a09f'
     }).then(function(result) {
         if (result.isConfirmed && result.value) {
             btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Processing...');

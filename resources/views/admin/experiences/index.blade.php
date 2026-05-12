@@ -180,7 +180,7 @@ function loadExperiences(page) {
             if (allInc.length) {
                 allInc.forEach(function(inc) {
                     var icon = incIconMap[inc] || 'bi-check';
-                    incHtml += '<span title="' + inc.charAt(0).toUpperCase() + inc.slice(1) + '" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin:1px;border-radius:5px;font-size:0.85rem;color:#16a34a;"><i class="bi ' + icon + '"></i></span>';
+                    incHtml += '<span title="' + inc.charAt(0).toUpperCase() + inc.slice(1) + '" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin:1px;border-radius:5px;font-size:0.85rem;color:#79a09f;"><i class="bi ' + icon + '"></i></span>';
                 });
             }
             html += '<td><div style="display:flex;flex-wrap:wrap;gap:2px;">' + (incHtml || '<small class="text-muted">-</small>') + '</div></td>';

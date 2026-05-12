@@ -166,7 +166,7 @@
                 text: message,
                 icon: 'warning',
                 showCancelButton: true,
-                confirmButtonColor: '#2d6a4f',
+                confirmButtonColor: '#79a09f',
                 cancelButtonColor: '#6c757d',
                 confirmButtonText: 'Yes, proceed'
             }).then(function(result) {

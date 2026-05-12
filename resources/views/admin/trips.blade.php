@@ -161,7 +161,7 @@ jQuery(document).on('change', '.status-change', function() {
         text: 'Change trip status to "' + formatTripStatus(newStatus) + '"?',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#2d6a4f',
+        confirmButtonColor: '#79a09f',
         cancelButtonColor: '#6c757d',
         confirmButtonText: 'Yes, change it'
     }).then(function(result) {

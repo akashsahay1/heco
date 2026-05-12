@@ -12,12 +12,12 @@
     }
     .header {
         text-align: center;
-        border-bottom: 2px solid #198754;
+        border-bottom: 2px solid #79a09f;
         padding-bottom: 10px;
         margin-bottom: 20px;
     }
     .header h1 {
-        color: #198754;
+        color: #79a09f;
         margin: 0;
         font-size: 22px;
     }
@@ -49,7 +49,7 @@
         page-break-inside: avoid;
     }
     .day-header {
-        background: #198754;
+        background: #79a09f;
         color: white;
         padding: 6px 12px;
         font-weight: bold;
@@ -69,7 +69,7 @@
     }
     .exp-name {
         font-weight: bold;
-        color: #198754;
+        color: #79a09f;
     }
     .service-row {
         padding: 2px 0;
@@ -103,7 +103,7 @@
         text-align: center;
     }
     .text-success {
-        color: #198754;
+        color: #79a09f;
     }
     .text-muted {
         color: #999;
@@ -114,8 +114,8 @@
     .section-title {
         font-size: 14px;
         font-weight: bold;
-        color: #198754;
-        border-bottom: 1px solid #198754;
+        color: #79a09f;
+        border-bottom: 1px solid #79a09f;
         padding-bottom: 4px;
         margin: 20px 0 10px;
     }
@@ -349,7 +349,7 @@
             <td>GST</td>
             <td class="text-right">{{ number_format($trip->gst_amount ?? 0, 2) }}</td>
         </tr>
-        <tr style="background: #198754; color: white;">
+        <tr style="background: #79a09f; color: white;">
             <td class="bold" style="font-size: 13px;">Final Price</td>
             <td class="text-right bold" style="font-size: 13px;">&#8377;{{ number_format($trip->final_price ?? 0, 2) }}</td>
         </tr>
@@ -387,7 +387,7 @@
             </tr>
             <tr>
                 <td class="bold">Balance Due</td>
-                <td class="text-right bold" style="color: {{ (($trip->final_price ?? 0) - $totalPaid) > 0 ? '#dc3545' : '#198754' }};">
+                <td class="text-right bold" style="color: {{ (($trip->final_price ?? 0) - $totalPaid) > 0 ? '#dc3545' : '#79a09f' }};">
                     &#8377;{{ number_format(($trip->final_price ?? 0) - $totalPaid, 2) }}
                 </td>
                 <td></td>
