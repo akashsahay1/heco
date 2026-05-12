@@ -29,7 +29,15 @@ class HomepageController extends Controller
             ->orderBy("type")
             ->pluck("type")
             ->values();
-        return view("portal.landing", compact("regions", "experienceTypes"));
+        // Real headline counts for the landing-page stats (no more hard-coded "20+").
+        $experienceCount = Experience::where("is_active", true)->count();
+        $regionCount = $regions->count();
+        $communityCount = ServiceProvider::where("status", "approved")
+            ->whereIn("provider_type", ["hlh", "hrp"])
+            ->count();
+        return view("portal.landing", compact(
+            "regions", "experienceTypes", "experienceCount", "regionCount", "communityCount"
+        ));
     }
 
     public function home(Request $request)

@@ -9,7 +9,6 @@
     ];
     $providerType = strtolower((string) $provider->provider_type);
     $providerTypeLabel = $providerTypeLabels[$providerType] ?? ucfirst((string) $provider->provider_type);
-    $providerTypeBadgeClass = $providerType === 'hlh' ? 'success' : ($providerType === 'hrp' ? 'primary' : 'info');
 @endphp
 
 @section('content')
@@ -19,11 +18,11 @@
         <div>
             <h4 class="mb-1"><i class="bi bi-building"></i> Service Provider Dashboard</h4>
             <span class="text-muted">{{ $provider->name }}</span>
-            <span class="badge bg-{{ $providerTypeBadgeClass }} ms-2">{{ $providerTypeLabel }}</span>
+            <span class="badge sp-type-badge ms-2">{{ $providerTypeLabel }}</span>
             <span class="badge bg-{{ $provider->status === 'approved' ? 'success' : ($provider->status === 'pending' ? 'warning text-dark' : 'secondary') }} ms-1">{{ ucfirst($provider->status ?? 'pending') }}</span>
         </div>
         <div class="d-flex gap-2">
-            <a href="{{ route('sp.profile.edit') }}" class="btn btn-sm btn-success"><i class="bi bi-pencil-square"></i> Edit Profile</a>
+            <a href="{{ route('sp.profile.edit') }}" class="btn btn-sm sp-btn-primary"><i class="bi bi-pencil-square"></i> Edit Profile</a>
             <a href="/home" class="btn btn-sm btn-outline-secondary"><i class="bi bi-house"></i> Home</a>
         </div>
     </div>
@@ -72,7 +71,7 @@
                             <tr>
                                 <td class="text-muted small">Type</td>
                                 <td class="small">
-                                    <span class="badge bg-{{ $providerTypeBadgeClass }}">{{ strtoupper($providerType) }}</span> {{ $providerTypeLabel }}
+                                    <span class="badge sp-type-badge">{{ strtoupper($providerType) }}</span> {{ $providerTypeLabel }}
                                 </td>
                             </tr>
                             <tr>
@@ -216,7 +215,7 @@
                             <label class="form-label small fw-bold">Services Offered</label>
                             <div>
                                 @foreach($provider->services_offered as $service)
-                                    <span class="badge bg-success me-1 mb-1">{{ ucfirst($service) }}</span>
+                                    <span class="badge sp-cap-badge me-1 mb-1">{{ \Str::title(str_replace('_', ' ', $service)) }}</span>
                                 @endforeach
                             </div>
                         </div>
@@ -228,7 +227,7 @@
                             <label class="form-label small fw-bold">Accommodation Categories</label>
                             <div>
                                 @foreach($provider->accommodation_categories as $cat)
-                                    <span class="badge bg-info me-1 mb-1">{{ ucfirst($cat) }}</span>
+                                    <span class="badge sp-cap-badge me-1 mb-1">{{ \Str::title(str_replace('_', ' ', $cat)) }}</span>
                                 @endforeach
                             </div>
                         </div>
@@ -240,7 +239,7 @@
                             <label class="form-label small fw-bold">Vehicle Types</label>
                             <div>
                                 @foreach($provider->vehicle_types as $vtype)
-                                    <span class="badge bg-secondary me-1 mb-1">{{ ucfirst($vtype) }}</span>
+                                    <span class="badge sp-cap-badge me-1 mb-1">{{ \Str::title(str_replace('_', ' ', $vtype)) }}</span>
                                 @endforeach
                             </div>
                         </div>
@@ -264,7 +263,7 @@
                                 <tbody>
                                     @foreach($provider->pricing as $price)
                                         <tr class="{{ !$price->is_active ? 'text-muted' : '' }}">
-                                            <td class="small">{{ ucfirst($price->service_type ?? '-') }}</td>
+                                            <td class="small">{{ $price->service_type ? \Str::title(str_replace('_', ' ', $price->service_type)) : '-' }}</td>
                                             <td class="small">{{ ucfirst($price->category ?? '-') }}</td>
                                             <td class="small">{{ $price->description ?? '-' }}</td>
                                             <td class="small">{{ $price->unit ?? '-' }}</td>
@@ -303,7 +302,7 @@
                                             <div>
                                                 <strong class="small">{{ $experience->name }}</strong>
                                                 @if($experience->type)
-                                                    <span class="badge bg-success bg-opacity-25 text-success ms-1">{{ $experience->type }}</span>
+                                                    <span class="badge sp-cap-badge ms-1">{{ \Str::title($experience->type) }}</span>
                                                 @endif
                                             </div>
                                             <div>
@@ -546,7 +545,7 @@ jQuery(function() {
             }
 
             var isSelected = selectedDates.indexOf(dateStr) !== -1;
-            var border = isSelected ? 'border: 2px solid #0d6efd;' : 'border: 1px solid transparent;';
+            var border = isSelected ? 'border: 2px solid var(--heco-primary-700);' : 'border: 1px solid transparent;';
 
             html += '<div class="col p-1">';
             html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '" style="' + cursor + border + '" title="' + title + '">';
@@ -615,8 +614,8 @@ jQuery(function() {
     jQuery('#btnSaveIcal').on('click', function() {
         var url = jQuery('#icalUrlInput').val().trim();
         ajaxPost({ sp_save_ical_url: 1, ical_url: url }, function(resp) {
-            alert('iCal URL saved successfully.');
-            location.reload();
+            if (typeof showAlert === 'function') showAlert('iCal URL saved successfully.', 'success');
+            setTimeout(function() { location.reload(); }, 800);
         });
     });
 

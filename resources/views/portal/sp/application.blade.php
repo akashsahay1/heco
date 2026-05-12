@@ -6,7 +6,7 @@
     <div class="row justify-content-center">
         <div class="col-md-8">
             <div class="text-center mb-4">
-                <h2><i class="bi bi-people text-success"></i> Join HECO as a Service Provider</h2>
+                <h2><i class="bi bi-people sp-accent"></i> Join HECO as a Service Provider</h2>
                 <p class="text-muted">Partner with us to offer regenerative travel experiences</p>
             </div>
 
@@ -68,7 +68,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Region *</label>
-                            <select class="form-select" name="region_id" required>
+                            <select class="form-select custom-select" name="region_id" required>
                                 <option value="">Select your region...</option>
                                 @foreach($regions as $region)
                                     <option value="{{ $region->id }}">{{ $region->name }}, {{ $region->country }}</option>
@@ -86,6 +86,17 @@
                     <h5>About Your Services</h5>
                     <div class="row g-3">
                         <div class="col-12">
+                            <label class="form-label">Services you can offer</label>
+                            <div class="sp-services-grid">
+                                @foreach($serviceTypes as $st)
+                                    <label class="sp-service-check">
+                                        <input type="checkbox" name="services_offered[]" value="{{ $st->name }}">
+                                        <span>{{ $st->name }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+                        <div class="col-12">
                             <label class="form-label">Describe your services and experience *</label>
                             <textarea class="form-control" name="description" rows="4" required></textarea>
                         </div>
@@ -93,7 +104,7 @@
                 </div>
 
                 <div class="text-center mt-4">
-                    <button type="submit" class="btn btn-success btn-lg">
+                    <button type="submit" class="btn sp-btn-primary btn-lg">
                         <i class="bi bi-send"></i> Submit Application
                     </button>
                 </div>
@@ -114,7 +125,13 @@ jQuery(function() {
 
         var formData = {};
         form.serializeArray().forEach(function(item) {
-            formData[item.name] = item.value;
+            if (/\[\]$/.test(item.name)) {
+                var key = item.name.replace(/\[\]$/, '');
+                if (!formData[key]) formData[key] = [];
+                formData[key].push(item.value);
+            } else {
+                formData[item.name] = item.value;
+            }
         });
         // Dispatch key MUST match AjaxController::index() — it checks
         // `submit_sp_application`, not `sp_application`.

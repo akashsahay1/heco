@@ -20,6 +20,9 @@ class SpController extends Controller
     {
         $user = auth()->user();
         $provider = ServiceProvider::where("user_id", $user->id)->with(["region", "pricing", "lastUpdatedBy"])->first();
+        if (!$provider) {
+            return redirect()->route("sp.application")->with("status", "Complete your service provider application to access the dashboard.");
+        }
         return view("portal.sp.dashboard", compact("provider"));
     }
 

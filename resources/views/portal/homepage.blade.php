@@ -293,7 +293,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="journey-panel-header">
                                 <h6 class="journey-panel-title"><i class="bi bi-calendar3"></i> Trip Timeline</h6>
                                 <div class="d-flex gap-2">
-                                    <button class="btn btn-sm" id="btnRegenerateItinerary" style="background: var(--heco-primary-500, #22c55e); color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 0.78rem; font-weight: 600;">
+                                    <button class="btn btn-sm btn-regenerate-itinerary" id="btnRegenerateItinerary">
                                         <i class="bi bi-arrow-clockwise me-1"></i>Regenerate
                                     </button>
                                 </div>
@@ -432,19 +432,17 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 <div class="detail-card-header"><i class="bi bi-credit-card"></i> Make Payment</div>
                                 <div class="detail-card-body">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
-                                        <span style="font-size:13px; color:var(--heco-neutral-600);">Amount Due</span>
-                                        <span id="payAmountDue" style="font-size:15px; font-weight:700; color:var(--heco-green);">--</span>
+                                        <span class="small text-muted">Amount Due</span>
+                                        <span id="payAmountDue" class="pay-amount-due">--</span>
                                     </div>
                                     <div class="mb-3">
-                                        <label style="font-size:12px; font-weight:600; color:var(--heco-neutral-600); margin-bottom:4px; display:block;">Pay Amount (INR)</label>
-                                        <input type="number" id="payAmountInput" class="form-control" min="1" step="0.01"
-                                            style="font-size:14px; border-radius:8px; border:1.5px solid var(--heco-primary-200);">
+                                        <label class="small fw-semibold text-muted d-block mb-1">Pay Amount (INR)</label>
+                                        <input type="number" id="payAmountInput" class="form-control" min="1" step="0.01">
                                     </div>
-                                    <button id="btnPayNow" class="w-100"
-                                        style="padding:10px 20px; font-size:14px; font-weight:700; color:#fff; background:linear-gradient(135deg, var(--heco-primary-500), var(--heco-primary-600)); border:none; border-radius:10px; cursor:pointer; transition:all 0.2s; box-shadow:0 2px 8px rgba(22,163,74,0.25);">
+                                    <button id="btnPayNow" class="w-100 btn-pay-now">
                                         <i class="bi bi-shield-lock me-1"></i> Pay Now
                                     </button>
-                                    <p style="font-size:10px; color:var(--heco-neutral-400); text-align:center; margin:8px 0 0;">
+                                    <p class="small text-muted text-center mt-2 mb-0">
                                         Secured by Razorpay. UPI, Cards, Netbanking accepted.
                                     </p>
                                 </div>
@@ -531,55 +529,40 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 --}}
 
 {{-- Add Day Modal --}}
-<div class="modal fade" id="addDayModal" tabindex="-1" aria-labelledby="addDayModalLabel" aria-hidden="true">
+<div class="modal fade journey-modal" id="addDayModal" tabindex="-1" aria-labelledby="addDayModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content" style="border-radius: 16px; border: none; box-shadow: 0 12px 40px rgba(22,163,74,0.15), 0 4px 16px rgba(0,0,0,0.08); overflow: hidden;">
-            {{-- Green gradient header --}}
-            <div style="background: linear-gradient(135deg, var(--heco-primary-600) 0%, var(--heco-primary-500) 100%); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 34px; height: 34px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                        <i class="bi bi-calendar-plus" style="color: #fff; font-size: 16px;"></i>
+        <div class="modal-content">
+            <div class="journey-modal-header is-primary">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="journey-modal-icon-wrap">
+                        <i class="bi bi-calendar-plus"></i>
                     </div>
                     <div>
-                        <h6 id="addDayModalLabel" style="font-weight: 700; color: #fff; margin: 0; font-size: 15px;">Add a Day</h6>
-                        <p id="addDayModalSubtitle" style="font-size: 12px; color: rgba(255,255,255,0.8); margin: 0;"></p>
+                        <h6 id="addDayModalLabel">Add a Day</h6>
+                        <p id="addDayModalSubtitle" class="journey-modal-subtitle"></p>
                     </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="font-size: 0.65rem; opacity: 0.8;"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            {{-- Body --}}
-            <div style="padding: 20px;">
-                <label style="font-size: 13px; font-weight: 600; color: var(--heco-neutral-700); margin-bottom: 8px; display: block;">
-                    Day Type
-                </label>
-                <div id="addDayTypeSelector" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;">
-                    <button type="button" class="day-type-btn active" data-type="rest" style="padding: 6px 14px; font-size: 12px; font-weight: 500; border: 1.5px solid var(--heco-primary-400); border-radius: 20px; background: var(--heco-primary-50); color: var(--heco-primary-700); cursor: pointer; transition: all 0.2s;">
+            <div class="journey-modal-body">
+                <label class="small fw-semibold d-block mb-2">Day Type</label>
+                <div id="addDayTypeSelector" class="d-flex flex-wrap gap-2 mb-3">
+                    <button type="button" class="day-type-btn active" data-type="rest">
                         <i class="bi bi-moon"></i> Rest & Relax
                     </button>
-                    <button type="button" class="day-type-btn" data-type="activity" style="padding: 6px 14px; font-size: 12px; font-weight: 500; border: 1.5px solid var(--heco-neutral-200); border-radius: 20px; background: #fff; color: var(--heco-neutral-600); cursor: pointer; transition: all 0.2s;">
+                    <button type="button" class="day-type-btn" data-type="activity">
                         <i class="bi bi-lightning"></i> Activity Day
                     </button>
                 </div>
-                <label style="font-size: 13px; font-weight: 600; color: var(--heco-neutral-700); margin-bottom: 8px; display: block;">
-                    Description <span style="font-weight: 400; color: #dc3545;">*</span>
+                <label class="small fw-semibold d-block mb-2">
+                    Description <span class="text-danger">*</span>
                 </label>
-                <textarea id="addDayDescription" class="form-control" rows="2"
-
-                    style="font-size: 13px; border-radius: 10px; resize: none; border: 1.5px solid var(--heco-primary-200); transition: border-color 0.2s, box-shadow 0.2s;"
-                    onfocus="this.style.borderColor='var(--heco-primary-400)';this.style.boxShadow='0 0 0 3px rgba(34,197,94,0.1)'"
-                    onblur="this.style.borderColor='var(--heco-primary-200)';this.style.boxShadow='none'"></textarea>
+                <textarea id="addDayDescription" class="form-control" rows="2"></textarea>
             </div>
-            {{-- Footer --}}
-            <div style="padding: 0 20px 16px; display: flex; gap: 10px; justify-content: flex-end;">
-                <button type="button" data-bs-dismiss="modal"
-                    style="padding: 8px 18px; font-size: 13px; font-weight: 500; color: var(--heco-neutral-500); background: none; border: 1.5px solid var(--heco-neutral-200); border-radius: 10px; cursor: pointer; transition: all 0.2s;">
-                    Cancel
-                </button>
-                <button type="button" id="addDayConfirmBtn"
-                    style="padding: 8px 22px; font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(135deg, var(--heco-primary-500), var(--heco-primary-600)); border: none; border-radius: 10px; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(22,163,74,0.25);"
-                    onmouseover="this.style.boxShadow='0 4px 14px rgba(22,163,74,0.35)';this.style.transform='translateY(-1px)'"
-                    onmouseout="this.style.boxShadow='0 2px 8px rgba(22,163,74,0.25)';this.style.transform='none'">
-                    <i class="bi bi-plus-lg" style="margin-right: 4px;"></i> Add Day
+            <div class="journey-modal-footer">
+                <button type="button" class="btn-modal-cancel" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="addDayConfirmBtn" class="btn-modal-confirm-primary">
+                    <i class="bi bi-plus-lg me-1"></i> Add Day
                 </button>
             </div>
         </div>
@@ -587,34 +570,28 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 </div>
 
 {{-- Remove Experience Confirmation Modal --}}
-<div class="modal fade" id="removeExpModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade journey-modal" id="removeExpModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content" style="border-radius: 16px; border: none; box-shadow: 0 12px 40px rgba(220,38,38,0.15), 0 4px 16px rgba(0,0,0,0.08); overflow: hidden;">
-            <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 34px; height: 34px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                        <i class="bi bi-x-circle" style="color: #fff; font-size: 16px;"></i>
+        <div class="modal-content">
+            <div class="journey-modal-header is-danger">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="journey-modal-icon-wrap">
+                        <i class="bi bi-x-circle"></i>
                     </div>
                     <div>
-                        <h6 style="font-weight: 700; color: #fff; margin: 0; font-size: 15px;">Remove Experience</h6>
-                        <p id="removeExpModalSubtitle" style="font-size: 12px; color: rgba(255,255,255,0.8); margin: 0; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></p>
+                        <h6>Remove Experience</h6>
+                        <p id="removeExpModalSubtitle" class="journey-modal-subtitle text-truncate exp-subtitle-truncate"></p>
                     </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="font-size: 0.65rem; opacity: 0.8;"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div style="padding: 20px;">
-                <p id="removeExpModalMsg" style="font-size: 13px; color: var(--heco-neutral-700); margin: 0; line-height: 1.5;">Are you sure you want to remove this experience?</p>
+            <div class="journey-modal-body">
+                <p id="removeExpModalMsg" class="small mb-0">Are you sure you want to remove this experience?</p>
             </div>
-            <div style="padding: 0 20px 16px; display: flex; gap: 10px; justify-content: flex-end;">
-                <button type="button" data-bs-dismiss="modal"
-                    style="padding: 8px 18px; font-size: 13px; font-weight: 500; color: var(--heco-neutral-500); background: none; border: 1.5px solid var(--heco-neutral-200); border-radius: 10px; cursor: pointer; transition: all 0.2s;">
-                    Cancel
-                </button>
-                <button type="button" id="removeExpConfirmBtn"
-                    style="padding: 8px 22px; font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(135deg, #dc2626, #ef4444); border: none; border-radius: 10px; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(220,38,38,0.25);"
-                    onmouseover="this.style.boxShadow='0 4px 14px rgba(220,38,38,0.35)';this.style.transform='translateY(-1px)'"
-                    onmouseout="this.style.boxShadow='0 2px 8px rgba(220,38,38,0.25)';this.style.transform='none'">
-                    <i class="bi bi-trash3" style="margin-right: 4px;"></i> Remove
+            <div class="journey-modal-footer">
+                <button type="button" class="btn-modal-cancel" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="removeExpConfirmBtn" class="btn-modal-confirm-danger">
+                    <i class="bi bi-trash3 me-1"></i> Remove
                 </button>
             </div>
         </div>
@@ -622,34 +599,28 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 </div>
 
 {{-- Remove Day Confirmation Modal --}}
-<div class="modal fade" id="removeDayModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade journey-modal" id="removeDayModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content" style="border-radius: 16px; border: none; box-shadow: 0 12px 40px rgba(220,38,38,0.15), 0 4px 16px rgba(0,0,0,0.08); overflow: hidden;">
-            <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 34px; height: 34px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                        <i class="bi bi-calendar-x" style="color: #fff; font-size: 16px;"></i>
+        <div class="modal-content">
+            <div class="journey-modal-header is-danger">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="journey-modal-icon-wrap">
+                        <i class="bi bi-calendar-x"></i>
                     </div>
                     <div>
-                        <h6 style="font-weight: 700; color: #fff; margin: 0; font-size: 15px;">Remove Day</h6>
-                        <p id="removeDayModalSubtitle" style="font-size: 12px; color: rgba(255,255,255,0.8); margin: 0;"></p>
+                        <h6>Remove Day</h6>
+                        <p id="removeDayModalSubtitle" class="journey-modal-subtitle"></p>
                     </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" style="font-size: 0.65rem; opacity: 0.8;"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div style="padding: 20px;">
-                <p id="removeDayModalMsg" style="font-size: 13px; color: var(--heco-neutral-700); margin: 0; line-height: 1.5;">Are you sure you want to remove this day?</p>
+            <div class="journey-modal-body">
+                <p id="removeDayModalMsg" class="small mb-0">Are you sure you want to remove this day?</p>
             </div>
-            <div style="padding: 0 20px 16px; display: flex; gap: 10px; justify-content: flex-end;">
-                <button type="button" data-bs-dismiss="modal"
-                    style="padding: 8px 18px; font-size: 13px; font-weight: 500; color: var(--heco-neutral-500); background: none; border: 1.5px solid var(--heco-neutral-200); border-radius: 10px; cursor: pointer; transition: all 0.2s;">
-                    Cancel
-                </button>
-                <button type="button" id="removeDayConfirmBtn"
-                    style="padding: 8px 22px; font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(135deg, #dc2626, #ef4444); border: none; border-radius: 10px; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(220,38,38,0.25);"
-                    onmouseover="this.style.boxShadow='0 4px 14px rgba(220,38,38,0.35)';this.style.transform='translateY(-1px)'"
-                    onmouseout="this.style.boxShadow='0 2px 8px rgba(220,38,38,0.25)';this.style.transform='none'">
-                    <i class="bi bi-trash3" style="margin-right: 4px;"></i> Remove
+            <div class="journey-modal-footer">
+                <button type="button" class="btn-modal-cancel" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="removeDayConfirmBtn" class="btn-modal-confirm-danger">
+                    <i class="bi bi-trash3 me-1"></i> Remove
                 </button>
             </div>
         </div>
@@ -2112,26 +2083,10 @@ jQuery(function() {
     }
 
 
-    // Helper: send a message to AI chat programmatically
-    function sendAiMessage(msg) {
-        // Switch to journey tab if not already there
-        var journeyTab = jQuery('#tab-journey');
-        if (journeyTab.length && !journeyTab.hasClass('active')) {
-            journeyTab.click();
-        }
-        // Set the journey chat input and trigger send
-        activeChatInput = '#journeyChatInput';
-        jQuery('#journeyChatInput').val(msg);
-        sendChatMessage();
-        // Scroll to chat section so user can see the AI response
-        var chatSection = document.querySelector('.journey-chat-section');
-        if (chatSection) chatSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
     // Day type selector in Add Day modal
     jQuery(document).on('click', '.day-type-btn', function() {
-        jQuery('.day-type-btn').css({ border: '1.5px solid var(--heco-neutral-200)', background: '#fff', color: 'var(--heco-neutral-600)' }).removeClass('active');
-        jQuery(this).css({ border: '1.5px solid var(--heco-primary-400)', background: 'var(--heco-primary-50)', color: 'var(--heco-primary-700)' }).addClass('active');
+        jQuery('.day-type-btn').removeClass('active');
+        jQuery(this).addClass('active');
     });
 
     // Insert Day — show popup for description, then send to AI
@@ -2142,8 +2097,8 @@ jQuery(function() {
         jQuery('#addDayModalSubtitle').text('Adding a new day after Day ' + pendingInsertAfterDay);
         jQuery('#addDayDescription').val('');
         // Reset day type selector
-        jQuery('.day-type-btn').css({ border: '1.5px solid var(--heco-neutral-200)', background: '#fff', color: 'var(--heco-neutral-600)' }).removeClass('active');
-        jQuery('.day-type-btn[data-type="rest"]').css({ border: '1.5px solid var(--heco-primary-400)', background: 'var(--heco-primary-50)', color: 'var(--heco-primary-700)' }).addClass('active');
+        jQuery('.day-type-btn').removeClass('active');
+        jQuery('.day-type-btn[data-type="rest"]').addClass('active');
         var modal = new bootstrap.Modal(document.getElementById('addDayModal'));
         modal.show();
         setTimeout(function() { jQuery('#addDayDescription').focus(); }, 300);
@@ -2219,19 +2174,21 @@ jQuery(function() {
         });
     });
 
-    // Trip name — send to AI for confirmation
+    // Trip name — save directly via AJAX (no synthetic AI chat message)
     var tripNameTimer = null;
     jQuery('#tripName').on('input', function() {
         var val = jQuery(this).val();
         clearTimeout(tripNameTimer);
         tripNameTimer = setTimeout(function() {
             if (val.trim()) {
-                sendAiMessage('I want to change my trip name to "' + val.trim() + '".');
+                ajaxPost({ save_trip_name: 1, trip_id: window.tripId, trip_name: val.trim() }, function() {
+                    if (typeof showAlert === 'function') showAlert('Trip name updated.', 'success');
+                });
             }
         }, 1200);
     });
 
-    // Group details — save directly + inform AI
+    // Group details — save directly via AJAX
     var groupTimer = null;
     jQuery('.group-input').on('change', function() {
         clearTimeout(groupTimer);
@@ -2240,15 +2197,15 @@ jQuery(function() {
             var children = parseInt(jQuery('#grpChildren').val()) || 0;
             var infants = parseInt(jQuery('#grpInfants').val()) || 0;
             // Save group size directly so it's always persisted
-            ajaxPost({ update_group_details: 1, trip_id: window.tripId, adults: adults, children: children, infants: infants });
-            sendAiMessage('I want to update my group to ' + adults + ' adults, ' + children + ' children, and ' + infants + ' infants.');
+            ajaxPost({ update_group_details: 1, trip_id: window.tripId, adults: adults, children: children, infants: infants }, function() {
+                if (typeof loadPricing === 'function') loadPricing();
+                if (typeof showAlert === 'function') showAlert('Group details updated.', 'success');
+            });
         }, 600);
     });
 
-    // Preferences — save directly, refresh pricing, then notify AI
+    // Preferences — save directly, refresh pricing
     jQuery('.pref-input').on('change', function() {
-        var label = jQuery(this).closest('.mb-3, .mb-2').find('label').text().trim();
-        var val = jQuery(this).val();
         var payload = {
             update_travel_preferences: 1,
             trip_id: window.tripId,
@@ -2260,8 +2217,8 @@ jQuery(function() {
         };
         ajaxPost(payload, function() {
             if (typeof loadPricing === 'function') loadPricing();
+            if (typeof showAlert === 'function') showAlert('Travel preferences updated.', 'success');
         });
-        sendAiMessage('I want to change my ' + label + ' preference to "' + val + '".');
     });
 
     // Start Date — Air Datepicker on a readonly text input.
@@ -2280,9 +2237,10 @@ jQuery(function() {
             var iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
             if (jQuery('#tripStartDateInput').val() === iso) return;
             jQuery('#tripStartDateInput').val(iso);
-            var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            var formatted = d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
-            sendAiMessage('I want to change my trip start date to ' + formatted + '.');
+            ajaxPost({ update_trip_start_date: 1, trip_id: window.tripId, start_date: iso }, function() {
+                if (typeof loadTimeline === 'function') loadTimeline();
+                if (typeof showAlert === 'function') showAlert('Trip start date updated.', 'success');
+            });
         }
     });
 
@@ -2720,7 +2678,7 @@ jQuery(function() {
 jQuery(document).on('click', '#btnPayNow', function() {
     var amount = parseFloat(jQuery('#payAmountInput').val());
     if (!amount || amount <= 0) {
-        alert('Please enter a valid amount.');
+        Swal.fire({ title: 'Invalid amount', text: 'Please enter a valid payment amount.', icon: 'warning', confirmButtonColor: '#79a09f' });
         return;
     }
 
@@ -2741,7 +2699,7 @@ jQuery(document).on('click', '#btnPayNow', function() {
                     email: resp.email || '',
                     contact: resp.contact || ''
                 },
-                theme: { color: '#16a34a' },
+                theme: { color: '#79a09f' },
                 handler: function(response) {
                     // Verify payment on server
                     ajaxPost({
@@ -2754,7 +2712,7 @@ jQuery(document).on('click', '#btnPayNow', function() {
                         window.location.href = '/trip/' + window.tripId + '/thank-you';
                     }, function(err) {
                         btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
-                        alert('Payment verification failed. Please contact support.');
+                        Swal.fire({ title: 'Verification failed', text: 'Payment verification failed. Please contact support.', icon: 'error', confirmButtonColor: '#79a09f' });
                     });
                 },
                 modal: {
@@ -2804,12 +2762,12 @@ jQuery(document).on('click', '#btnPayNow', function() {
                     userMsg = 'Insufficient funds on the test card. Try a different test method.';
                 }
 
-                alert('Payment failed: ' + userMsg);
+                Swal.fire({ title: 'Payment failed', text: userMsg, icon: 'error', confirmButtonColor: '#79a09f' });
             });
             rzp.open();
         }, function(err) {
             btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
-            alert('Could not create payment order. Please try again.');
+            Swal.fire({ title: 'Error', text: 'Could not create payment order. Please try again.', icon: 'error', confirmButtonColor: '#79a09f' });
         });
 });
 </script>

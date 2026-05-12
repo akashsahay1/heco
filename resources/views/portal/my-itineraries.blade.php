@@ -128,17 +128,25 @@ $(function() {
     $(document).on('click', '.btn-erase-trip', function() {
         var tripId = $(this).data('trip-id');
         var tripName = $(this).data('trip-name');
-        if (!confirm('Are you sure you want to erase "' + tripName + '"? This cannot be undone.')) return;
-
         var card = $(this).closest('.col-md-6');
-        ajaxPost({ erase_trip: 1, trip_id: tripId }, function(resp) {
-            card.fadeOut(300, function() {
-                $(this).remove();
-                if ($('#tripsContainer .trip-card').length === 0) {
-                    renderEmptyState();
-                }
+        Swal.fire({
+            title: 'Erase this trip?',
+            text: 'Are you sure you want to erase "' + tripName + '"? This cannot be undone.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, erase it',
+            confirmButtonColor: '#b54a4a'
+        }).then(function(res) {
+            if (!res.isConfirmed) return;
+            ajaxPost({ erase_trip: 1, trip_id: tripId }, function(resp) {
+                card.fadeOut(300, function() {
+                    $(this).remove();
+                    if ($('#tripsContainer .trip-card').length === 0) {
+                        renderEmptyState();
+                    }
+                });
+                showAlert('Trip erased successfully.', 'success');
             });
-            showAlert('Trip erased successfully.', 'success');
         });
     });
 });

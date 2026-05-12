@@ -11,7 +11,7 @@
             Immerse yourself in authentic experiences that transform communities and restore landscapes.
         </p>
         <div class="d-flex justify-content-center gap-3 flex-wrap">
-            <a href="/home" class="btn btn-light btn-lg px-5 fw-semibold text-success">
+            <a href="/home" class="btn btn-light btn-lg px-5 fw-semibold sp-accent">
                 <i class="bi bi-compass me-2"></i> Start Your Journey
             </a>
             <a href="/join" class="btn btn-outline-light btn-lg px-5 fw-semibold">
@@ -47,20 +47,20 @@
                 <div class="row g-3">
                     <div class="col-4">
                         <div class="landing-stat-card">
-                            <div class="landing-stat-value">{{ $regions->count() ?: '5' }}+</div>
-                            <div class="landing-stat-label">Regions</div>
+                            <div class="landing-stat-value">{{ $regionCount }}</div>
+                            <div class="landing-stat-label">{{ \Str::plural('Region', $regionCount) }}</div>
                         </div>
                     </div>
                     <div class="col-4">
                         <div class="landing-stat-card">
-                            <div class="landing-stat-value">20+</div>
-                            <div class="landing-stat-label">Experiences</div>
+                            <div class="landing-stat-value">{{ $experienceCount }}</div>
+                            <div class="landing-stat-label">{{ \Str::plural('Experience', $experienceCount) }}</div>
                         </div>
                     </div>
                     <div class="col-4">
                         <div class="landing-stat-card">
-                            <div class="landing-stat-value">10+</div>
-                            <div class="landing-stat-label">Communities</div>
+                            <div class="landing-stat-value">{{ $communityCount }}</div>
+                            <div class="landing-stat-label">{{ \Str::plural('Community', $communityCount) }}</div>
                         </div>
                     </div>
                 </div>
@@ -213,17 +213,59 @@
         <p class="text-muted mb-4">Start planning your regenerative journey today.</p>
         <div class="row justify-content-center">
             <div class="col-md-6">
-                <div class="d-flex gap-3 justify-content-center flex-wrap">
-                    <a href="/home" class="btn btn-success btn-lg px-5 fw-semibold">
+                <div class="d-flex gap-3 justify-content-center flex-wrap mb-4">
+                    <a href="/home" class="btn sp-btn-primary btn-lg px-5 fw-semibold">
                         <i class="bi bi-compass me-2"></i> Start Exploring
                     </a>
-                    <a href="/join" class="btn btn-outline-success btn-lg px-5 fw-semibold">
-                        <i class="bi bi-envelope me-2"></i> Partner With Us
+                    <a href="/join" class="btn btn-outline-secondary btn-lg px-5 fw-semibold">
+                        <i class="bi bi-people me-2"></i> Partner With Us
                     </a>
                 </div>
+            </div>
+        </div>
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-5">
+                <h6 class="fw-bold mb-2"><i class="bi bi-envelope me-1"></i> Stay in the loop</h6>
+                <p class="text-muted small mb-3">Get occasional updates on new regions and experiences. No spam.</p>
+                <form id="newsletterForm" class="newsletter-form d-flex gap-2 justify-content-center flex-wrap">
+                    <input type="email" name="email" class="form-control newsletter-input" required>
+                    <button type="submit" class="btn sp-btn-primary">Subscribe</button>
+                </form>
+                <div id="newsletterMsg" class="small mt-2"></div>
             </div>
         </div>
     </div>
 </section>
 
+@endsection
+
+@section('js')
+<script>
+jQuery(function() {
+    jQuery('#newsletterForm').on('submit', function(e) {
+        e.preventDefault();
+        var form = jQuery(this);
+        var btn = form.find('button[type="submit"]');
+        var email = form.find('input[name="email"]').val().trim();
+        if (!email) return;
+        btn.prop('disabled', true).text('Subscribing...');
+        jQuery.ajax({
+            url: '/ajax',
+            method: 'POST',
+            data: { subscribe_newsletter: 1, email: email },
+            skipGlobalError: true,
+            success: function(resp) {
+                btn.prop('disabled', false).text('Subscribe');
+                form[0].reset();
+                jQuery('#newsletterMsg').removeClass('text-danger').addClass('text-success').text(resp.message || 'Thanks for subscribing!');
+            },
+            error: function(xhr) {
+                btn.prop('disabled', false).text('Subscribe');
+                var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not subscribe. Please try again.') : 'Could not subscribe. Please try again.';
+                jQuery('#newsletterMsg').removeClass('text-success').addClass('text-danger').text(msg);
+            }
+        });
+    });
+});
+</script>
 @endsection

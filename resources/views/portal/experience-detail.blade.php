@@ -234,9 +234,9 @@
                 <div class="row g-3">
                     @foreach($experience->days as $day)
                     <div class="col-md-{{ $experience->days->count() === 1 ? '12' : '6' }}">
-                        <div style="border:1px solid var(--heco-primary-100); border-left:3px solid var(--heco-primary-600); border-radius:8px; padding:16px; background:#fff;">
+                        <div class="exp-day-card">
                             <div class="d-flex align-items-center gap-2 mb-2">
-                                <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--heco-primary-600);color:#fff;font-size:0.8rem;font-weight:600;">{{ $day->day_number }}</span>
+                                <span class="exp-day-num">{{ $day->day_number }}</span>
                                 <strong>Day {{ $day->day_number }}</strong>
                                 @if($day->title)
                                 <span class="text-muted">&mdash; {{ $day->title }}</span>
@@ -251,12 +251,12 @@
                             </div>
                             @endif
                             @if($day->short_description)
-                            <p class="small mb-2" style="color:var(--heco-neutral-600);">{{ $day->short_description }}</p>
+                            <p class="small mb-2 exp-day-desc">{{ $day->short_description }}</p>
                             @endif
                             @if(is_array($day->inclusions) && count($day->inclusions) > 0)
                             <div class="d-flex flex-wrap gap-1">
                                 @foreach($day->inclusions as $inc)
-                                <span style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:4px;font-size:0.72rem;background:var(--heco-primary-50);color:var(--heco-primary-700);border:1px solid var(--heco-primary-100);">
+                                <span class="exp-day-inclusion">
                                     <i class="bi {{ $incIcons[$inc] ?? 'bi-check' }}"></i> {{ ucfirst($inc) }}
                                 </span>
                                 @endforeach
@@ -415,10 +415,10 @@
             @if($experience->regenerativeProject)
             <div class="detail-section">
                 <h5><i class="bi bi-tree"></i> Regenerative Impact</h5>
-                <div class="card bg-success bg-opacity-10 border-0">
+                <div class="card border-0 exp-regen-card">
                     <div class="card-body">
                         <h6>{{ $experience->regenerativeProject->name }}</h6>
-                        <span class="badge bg-success mb-2">{{ $experience->regenerativeProject->action_type ?? 'Conservation' }}</span>
+                        <span class="badge mb-2 exp-regen-badge">{{ $experience->regenerativeProject->action_type ?? 'Conservation' }}</span>
                         @if($experience->regenerativeProject->short_description)
                             <p class="small mb-0">{{ $experience->regenerativeProject->short_description }}</p>
                         @endif
@@ -464,7 +464,7 @@
                 <hr class="my-4">
 
                 {{-- Submit review form --}}
-                <div id="reviewNotEligible" class="alert d-none" style="background-color: var(--heco-primary-600); color: #fff;">
+                <div id="reviewNotEligible" class="alert d-none exp-review-not-eligible">
                     <i class="bi bi-info-circle"></i> You can write a review after completing a trip that includes this experience.
                 </div>
                 @auth

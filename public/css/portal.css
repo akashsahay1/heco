@@ -7299,3 +7299,246 @@
     background: var(--heco-primary-700, #79a09f);
     border-color: var(--heco-primary-700, #79a09f);
 }
+
+/* ── Sprint 4 polish: inline-CSS → scoped classes ─────────────────── */
+.heco-portal .btn-regenerate-itinerary {
+    background: var(--heco-primary-700, #79a09f);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+.heco-portal .btn-regenerate-itinerary:hover {
+    background: var(--heco-primary-800, #5f8484);
+    color: #fff;
+}
+
+/* Razorpay pay-now button */
+.heco-portal .btn-pay-now {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, var(--heco-primary-600), var(--heco-primary-700));
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(121, 160, 159, 0.3);
+}
+.heco-portal .btn-pay-now:hover {
+    background: linear-gradient(135deg, var(--heco-primary-700), var(--heco-primary-800));
+}
+.heco-portal .pay-amount-due {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--heco-primary-700, #79a09f);
+}
+
+/* Journey modals (Add Day / Remove Experience / Remove Day) */
+.heco-portal .journey-modal .modal-content {
+    border-radius: 4px;
+    border: none;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 4px 16px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+.heco-portal .journey-modal-header {
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.heco-portal .journey-modal-header.is-primary {
+    background: linear-gradient(135deg, var(--heco-primary-700) 0%, var(--heco-primary-600) 100%);
+}
+.heco-portal .journey-modal-header.is-danger {
+    background: linear-gradient(135deg, var(--heco-danger) 0%, var(--heco-danger) 100%);
+}
+.heco-portal .journey-modal-header .journey-modal-icon-wrap {
+    width: 34px;
+    height: 34px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.heco-portal .journey-modal-header .journey-modal-icon-wrap i {
+    color: #fff;
+    font-size: 16px;
+}
+.heco-portal .journey-modal-header h6 {
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    font-size: 15px;
+}
+.heco-portal .journey-modal-header .journey-modal-subtitle {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    margin: 0;
+}
+.heco-portal .journey-modal-body {
+    padding: 20px;
+}
+.heco-portal .journey-modal-footer {
+    padding: 0 20px 16px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+.heco-portal .btn-modal-cancel {
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--heco-neutral-500);
+    background: none;
+    border: 1.5px solid var(--heco-neutral-200);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.heco-portal .btn-modal-confirm-primary {
+    padding: 8px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, var(--heco-primary-600), var(--heco-primary-700));
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(121, 160, 159, 0.3);
+}
+.heco-portal .btn-modal-confirm-danger {
+    padding: 8px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, var(--heco-danger), var(--heco-danger));
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(181, 74, 74, 0.25);
+}
+
+/* Experience-detail: day-wise itinerary cards */
+.heco-portal .exp-day-card {
+    border: 1px solid var(--heco-primary-100);
+    border-left: 3px solid var(--heco-primary-600);
+    border-radius: 4px;
+    padding: 16px;
+    background: #fff;
+}
+.heco-portal .exp-day-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--heco-primary-600);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.heco-portal .exp-day-desc {
+    color: var(--heco-neutral-600);
+}
+.heco-portal .exp-day-inclusion {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    background: var(--heco-primary-50);
+    color: var(--heco-primary-700);
+    border: 1px solid var(--heco-primary-100);
+}
+.heco-portal .exp-review-not-eligible {
+    background-color: var(--heco-primary-600);
+    color: #fff;
+}
+.heco-portal .exp-regen-card {
+    background: var(--heco-primary-50);
+    border: 1px solid var(--heco-primary-100);
+}
+.heco-portal .exp-regen-badge {
+    background: var(--heco-primary-700);
+    color: #fff;
+}
+
+/* SP dashboard: brand turquoise accents + difficulty badges */
+.heco-portal .sp-stat-icon,
+.heco-portal .sp-accent {
+    color: var(--heco-primary-700, #79a09f);
+}
+.heco-portal .difficulty-extreme {
+    background: var(--heco-danger, #b54a4a);
+    color: #fff;
+}
+.heco-portal .exp-subtitle-truncate {
+    max-width: 160px;
+}
+
+/* Add-Day modal: day-type toggle buttons */
+.heco-portal .day-type-btn {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1.5px solid var(--heco-neutral-200);
+    border-radius: 20px;
+    background: #fff;
+    color: var(--heco-neutral-600);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.heco-portal .day-type-btn.active {
+    border-color: var(--heco-primary-400);
+    background: var(--heco-primary-50);
+    color: var(--heco-primary-700);
+}
+
+/* SP dashboard: brand badges & buttons */
+.heco-portal .sp-type-badge {
+    background: var(--heco-primary-700, #79a09f);
+    color: #fff;
+}
+.heco-portal .sp-cap-badge {
+    background: var(--heco-primary-50, #f1f7f7);
+    color: var(--heco-primary-800, #5f8484);
+    border: 1px solid var(--heco-primary-100, #dceae9);
+}
+.heco-portal .sp-btn-primary {
+    background: var(--heco-primary-700, #79a09f);
+    border-color: var(--heco-primary-700, #79a09f);
+    color: #fff;
+}
+.heco-portal .sp-btn-primary:hover {
+    background: var(--heco-primary-800, #5f8484);
+    border-color: var(--heco-primary-800, #5f8484);
+    color: #fff;
+}
+
+/* SP application: services checkbox grid */
+.heco-portal .sp-services-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+}
+.heco-portal .sp-service-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+/* Landing: newsletter signup */
+.heco-portal .newsletter-input {
+    max-width: 280px;
+}

@@ -78,7 +78,7 @@
                         </div>
                         <div class="mb-3">
                             <label for="gender" class="form-label">Gender</label>
-                            <select class="form-select" id="gender">
+                            <select class="form-select custom-select" id="gender">
                                 <option value="" {{ empty($user->gender) ? 'selected' : '' }}>—</option>
                                 <option value="male" {{ $user->gender === 'male' ? 'selected' : '' }}>Male</option>
                                 <option value="female" {{ $user->gender === 'female' ? 'selected' : '' }}>Female</option>
@@ -109,7 +109,7 @@
                         <div class="row g-2">
                             <div class="col-md-6 mb-3">
                                 <label for="country" class="form-label">Country</label>
-                                <select class="form-select" id="country">
+                                <select class="form-select custom-select" id="country">
                                     <option value="">Select country</option>
                                     @foreach(config('countries.list') as $country)
                                         <option value="{{ $country }}" {{ ($user->country ?? '') === $country ? 'selected' : '' }}>{{ $country }}</option>

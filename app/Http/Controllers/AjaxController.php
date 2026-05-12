@@ -562,6 +562,9 @@ class AjaxController extends Controller
             if ($request->has('request_support')) {
                 return $this->requestSupport($request);
             }
+            if ($request->has('subscribe_newsletter')) {
+                return $this->subscribeNewsletter($request);
+            }
             if ($request->has('get_user_trips')) {
                 return $this->getUserTrips($request);
             }
@@ -2404,6 +2407,33 @@ class AjaxController extends Controller
         return response()->json(["success" => true, "message" => "Support request submitted"]);
     }
 
+    protected function subscribeNewsletter(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            "email" => "required|email|max:255",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $email = strtolower(trim($request->email));
+
+        // If this email belongs to a registered user, flip their opt-in.
+        $user = User::where("email", $email)->first();
+        if ($user) {
+            $user->update(["newsletter_optin" => true]);
+        }
+
+        ActivityLog::create([
+            "user_id" => $user?->id,
+            "action" => "newsletter_subscribe",
+            "details" => $email,
+            "ip_address" => $request->ip(),
+        ]);
+
+        return response()->json(["success" => true, "message" => "Thanks for subscribing!"]);
+    }
+
     protected function getUserTrips(Request $request): JsonResponse
     {
         $user = Auth::user();
@@ -3801,6 +3831,34 @@ class AjaxController extends Controller
     {
         $user = Auth::user();
         $provider = ServiceProvider::where('user_id', $user->id)->firstOrFail();
+
+        $validator = Validator::make($request->all(), [
+            "name" => "required|string|max:255",
+            "contact_person" => "nullable|string|max:255",
+            "email" => "nullable|email|max:255",
+            "phone_1" => "nullable|string|max:30",
+            "phone_2" => "nullable|string|max:30",
+            "address" => "nullable|string|max:500",
+            "bank_name" => "nullable|string|max:255",
+            "bank_ifsc" => "nullable|string|max:20",
+            "bank_account_name" => "nullable|string|max:255",
+            "bank_account_number" => "nullable|string|max:30",
+            "upi" => "nullable|string|max:100",
+            "services_offered" => "nullable|array",
+            "services_offered.*" => "string|max:100",
+            "accommodation_categories" => "nullable|array",
+            "accommodation_categories.*" => "string|max:100",
+            "vehicle_types" => "nullable|array",
+            "vehicle_types.*" => "string|max:100",
+            "guide_types" => "nullable|array",
+            "guide_types.*" => "string|max:100",
+            "activity_types" => "nullable|array",
+            "activity_types.*" => "string|max:100",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
         // SP cannot change own status, approval, or audit fields
         $data = $request->only([
             "name", "contact_person", "email", "phone_1", "phone_2",
@@ -4979,6 +5037,7 @@ class AjaxController extends Controller
             "services_offered" => $request->services_offered,
             "accommodation_categories" => $request->accommodation_categories,
             "vehicle_types" => $request->vehicle_types,
+            "guide_types" => $request->guide_types,
             "activity_types" => $request->activity_types,
             "notes" => $request->input('description', $request->input('notes')),
             "status" => "pending",

@@ -172,12 +172,19 @@
                         <p class="footer-tagline">
                             HECO — Regenerative travel experiences that connect you with nature, culture, and local communities across the world.
                         </p>
+                        @php $socialLinks = [
+                            'bi-facebook' => config('app.social_facebook'),
+                            'bi-instagram' => config('app.social_instagram'),
+                            'bi-twitter-x' => config('app.social_twitter'),
+                            'bi-youtube' => config('app.social_youtube'),
+                        ]; $socialLinks = array_filter($socialLinks); @endphp
+                        @if(count($socialLinks))
                         <div class="footer-social">
-                            <a href="#" class="social-link" title="Facebook"><i class="bi bi-facebook"></i></a>
-                            <a href="#" class="social-link" title="Instagram"><i class="bi bi-instagram"></i></a>
-                            <a href="#" class="social-link" title="Twitter"><i class="bi bi-twitter-x"></i></a>
-                            <a href="#" class="social-link" title="YouTube"><i class="bi bi-youtube"></i></a>
+                            @foreach($socialLinks as $icon => $url)
+                                <a href="{{ $url }}" class="social-link" target="_blank" rel="noopener"><i class="bi {{ $icon }}"></i></a>
+                            @endforeach
                         </div>
+                        @endif
                     </div>
 
                     <!-- Company Column -->
