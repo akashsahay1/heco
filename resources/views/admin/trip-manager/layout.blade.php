@@ -50,7 +50,7 @@
                     <input type="hidden" id="editServiceId">
                     <div class="mb-2">
                         <label class="form-label small fw-bold">Service Type</label>
-                        <select class="form-select form-select-sm" id="editServiceType">
+                        <select class="form-select form-select-sm custom-select" id="editServiceType">
                             <option value="accommodation">Accommodation</option>
                             <option value="transport">Transport</option>
                             <option value="guide">Guide</option>
@@ -71,7 +71,7 @@
                     </div>
                     <div class="mb-2">
                         <label class="form-label small fw-bold">Service Provider</label>
-                        <select class="form-select form-select-sm" id="editServiceProvider">
+                        <select class="form-select form-select-sm custom-select" id="editServiceProvider">
                             <option value="">No Provider</option>
                             @if(isset($providers))
                                 @foreach($providers as $p)
@@ -96,6 +96,31 @@ var tripData = @json($trip);
 // ==========================================
 // TRIP INFO TAB
 // ==========================================
+
+function tmIsoFromDate(d) {
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+// Air Datepickers for Start Date / End Date / Add-Payment date (no native type=date).
+function tmInitDatepicker(displayId, hiddenId) {
+    var $disp = $('#' + displayId);
+    if (!$disp.length) return;
+    new AirDatepicker('#' + displayId, {
+        locale: window.airDatepickerEn,
+        dateFormat: 'dd-MM-yyyy',
+        autoClose: true,
+        position: 'bottom left',
+        onSelect: function(o) {
+            $('#' + hiddenId).val(o.date ? tmIsoFromDate(o.date) : '');
+        }
+    });
+}
+$(function() {
+    tmInitDatepicker('startDateDisplay', 'startDateInput');
+    tmInitDatepicker('endDateDisplay', 'endDateInput');
+    tmInitDatepicker('addPaymentDateDisplay', 'addPaymentDateInput');
+});
 
 $('#tripInfoForm').on('submit', function(e) {
     e.preventDefault();
@@ -126,6 +151,7 @@ $('#addPaymentForm').on('submit', function(e) {
         showAlert('Payment recorded!');
         loadTravellerPayments();
         $('#addPaymentForm')[0].reset();
+        if (window.buildCustomDropdown) buildCustomDropdown($('#addPaymentForm select.custom-select')[0]);
         $('#addPaymentCollapse').collapse('hide');
     });
 });
@@ -275,6 +301,7 @@ function loadItinerary() {
 
         $('#itineraryTimeline').html(html);
         $('#targetDaySelect').html(daySelectHtml);
+        if (window.buildCustomDropdown) buildCustomDropdown($('#targetDaySelect')[0]);
 
         if (selectedDayId) {
             loadDayServices(selectedDayId);
@@ -436,6 +463,7 @@ $('#addServiceForm').on('submit', function(e) {
         loadDayServices($('#serviceDayId').val());
         loadItinerary();
         $('#addServiceForm')[0].reset();
+        if (window.buildCustomDropdown) $('#addServiceForm select.custom-select').each(function() { buildCustomDropdown(this); });
         $('#addServiceCollapse').collapse('hide');
         showAlert('Service added!');
     });
@@ -449,6 +477,10 @@ $(document).on('click', '.btn-edit-service', function() {
     $('#editServiceCost').val($btn.data('cost'));
     $('#editServiceProvider').val(String($btn.data('sp-id') || ''));
     $('#editServiceProvider').data('orig', String($btn.data('sp-id') || ''));
+    if (window.buildCustomDropdown) {
+        buildCustomDropdown($('#editServiceType')[0]);
+        buildCustomDropdown($('#editServiceProvider')[0]);
+    }
     $('#editServiceModal').modal('show');
 });
 

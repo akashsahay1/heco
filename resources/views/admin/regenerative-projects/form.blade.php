@@ -30,7 +30,7 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Region <span class="text-danger">*</span></label>
-                    <select class="form-select" name="region_id" required>
+                    <select class="form-select custom-select" name="region_id" required>
                         <option value="">Select Region</option>
                         @foreach($regions as $r)
                             <option value="{{ $r->id }}" {{ $p && $p->region_id == $r->id ? 'selected' : '' }}>{{ $r->name }}</option>
@@ -67,7 +67,7 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Measurement Frequency</label>
-                    <select class="form-select" name="measurement_frequency">
+                    <select class="form-select custom-select" name="measurement_frequency">
                         <option value="">Select</option>
                         <option value="one_time" {{ $p && $p->measurement_frequency === 'one_time' ? 'selected' : '' }}>One Time</option>
                         <option value="periodic" {{ $p && $p->measurement_frequency === 'periodic' ? 'selected' : '' }}>Periodic</option>

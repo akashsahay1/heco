@@ -5,13 +5,13 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0">Leads Management</h5>
     <div class="d-flex gap-2">
-        <select class="form-select form-select-sm" id="leadStageFilter" style="width: 150px;">
+        <select class="form-select form-select-sm custom-select heco-filter-date" id="leadStageFilter">
             <option value="">All Stages</option>
             <option value="follow_up" selected>Follow Up</option>
             <option value="won">Won</option>
             <option value="lost">Lost</option>
         </select>
-        <input type="text" class="form-control form-control-sm" id="leadSearch" style="width: 200px;">
+        <input type="text" class="form-control form-control-sm heco-filter-lg" id="leadSearch">
     </div>
 </div>
 
@@ -77,12 +77,16 @@ $(function() { loadLeads(); });
 $('#leadStageFilter, #leadSearch').on('change keyup', function() { loadLeads(); });
 
 $(document).on('click', '.mark-won', function() {
-    if (!confirm('Mark this lead as Won? This will confirm the trip.')) return;
-    ajaxPost({ update_lead: 1, lead_id: $(this).data('id'), stage: 'won' }, function() { loadLeads(); });
+    var id = $(this).data('id');
+    confirmAction('Mark this lead as Won? This will confirm the trip.', function() {
+        ajaxPost({ update_lead: 1, lead_id: id, stage: 'won' }, function() { loadLeads(); });
+    });
 });
 $(document).on('click', '.mark-lost', function() {
-    if (!confirm('Mark this lead as Lost?')) return;
-    ajaxPost({ update_lead: 1, lead_id: $(this).data('id'), stage: 'lost' }, function() { loadLeads(); });
+    var id = $(this).data('id');
+    confirmAction('Mark this lead as Lost?', function() {
+        ajaxPost({ update_lead: 1, lead_id: id, stage: 'lost' }, function() { loadLeads(); });
+    });
 });
 $(document).on('click', '.view-lead', function() {
     ajaxPost({ get_lead_history: 1, lead_id: $(this).data('id') }, function(resp) {
@@ -95,17 +99,21 @@ $(document).on('click', '.view-lead', function() {
         html += '<p>Notes: ' + (l.notes || '-') + '</p>';
         html += '</div><div class="col-md-6">';
         html += '<h6>Update Lead</h6>';
-        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Assigned HCT</label><select class="form-select form-select-sm" id="leadAssignedHct"><option value="">— Unassigned —</option>';
+        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Assigned HCT</label><select class="form-select form-select-sm custom-select" id="leadAssignedHct"><option value="">— Unassigned —</option>';
         hctUsers.forEach(function(u) {
             var sel = (l.assigned_hct_id == u.id) ? ' selected' : '';
             html += '<option value="' + u.id + '"' + sel + '>' + (u.full_name || u.email) + '</option>';
         });
         html += '</select></div>';
-        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Log Interaction</label><select class="form-select form-select-sm" id="leadInteraction"><option value="">— None —</option><option value="call">Call</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></div>';
+        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Log Interaction</label><select class="form-select form-select-sm custom-select" id="leadInteraction"><option value="">— None —</option><option value="call">Call</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></div>';
         html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Notes</label><textarea class="form-control form-control-sm" id="leadNotes" rows="2">' + (l.notes || '') + '</textarea></div>';
         html += '<button class="btn btn-sm btn-success" onclick="updateLead(' + l.id + ')">Save</button>';
         html += '</div></div>';
         $('#leadModalBody').html(html);
+        if (window.buildCustomDropdown) {
+            buildCustomDropdown($('#leadAssignedHct')[0]);
+            buildCustomDropdown($('#leadInteraction')[0]);
+        }
         new bootstrap.Modal('#leadModal').show();
     });
 });

@@ -4,9 +4,12 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-globe-americas"></i> Regions</h5>
-    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#regionModal" id="btnAddRegion">
-        <i class="bi bi-plus-lg"></i> Add Region
-    </button>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-danger btn-sm d-none" id="btnBulkDelete"><i class="bi bi-trash"></i> Delete Selected</button>
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#regionModal" id="btnAddRegion">
+            <i class="bi bi-plus-lg"></i> Add Region
+        </button>
+    </div>
 </div>
 
 <div class="card mb-3">
@@ -14,19 +17,19 @@
         <div class="row g-2 align-items-end">
             <div class="col-md-2">
                 <label class="form-label small mb-1">Continent</label>
-                <select class="form-select form-select-sm" id="filterContinent">
+                <select class="form-select form-select-sm custom-select" id="filterContinent">
                     <option value="">All Continents</option>
                 </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label small mb-1">Country</label>
-                <select class="form-select form-select-sm" id="filterCountry">
+                <select class="form-select form-select-sm custom-select" id="filterCountry">
                     <option value="">All Countries</option>
                 </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label small mb-1">Status</label>
-                <select class="form-select form-select-sm" id="filterStatus">
+                <select class="form-select form-select-sm custom-select" id="filterStatus">
                     <option value="">All</option>
                     <option value="1">Active</option>
                     <option value="0">Inactive</option>
@@ -51,6 +54,7 @@
             <table class="table table-hover table-sm mb-0">
                 <thead class="table-light">
                     <tr>
+                        <th style="width: 34px;"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
                         <th>Name</th>
                         <th>Continent</th>
                         <th>Country</th>
@@ -61,7 +65,7 @@
                     </tr>
                 </thead>
                 <tbody id="regionsTable">
-                    <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -85,7 +89,7 @@
                 <div class="row g-2 mb-3">
                     <div class="col-md-6">
                         <label class="form-label small">Continent <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm" id="regionContinent" required>
+                        <select class="form-select form-select-sm custom-select" id="regionContinent" required>
                             <option value="">Select...</option>
                             <option value="Africa">Africa</option>
                             <option value="Asia">Asia</option>
@@ -138,6 +142,12 @@
 @section('js')
 <script>
 var allRegions = [];
+var continentCountryMap = {};   // continent -> [countries]
+var allCountries = [];
+
+function rebuildDropdown(id) {
+    if (window.buildCustomDropdown) buildCustomDropdown(jQuery('#' + id)[0]);
+}
 
 function loadRegions() {
     var params = { get_regions_list: 1 };
@@ -154,40 +164,60 @@ function loadRegions() {
     ajaxPost(params, function(resp) {
         allRegions = resp.data || [];
         renderTable(allRegions);
-        buildFilterOptions(allRegions);
     });
 }
 
-function buildFilterOptions(data) {
-    var continents = [];
-    var countries = [];
-    data.forEach(function(r) {
-        if (r.continent && continents.indexOf(r.continent) === -1) continents.push(r.continent);
-        if (r.country && countries.indexOf(r.country) === -1) countries.push(r.country);
-    });
-    continents.sort();
-    countries.sort();
+// One-time fetch of the full region list to build the continent/country map for the cascading filters.
+function buildRegionMap() {
+    ajaxPost({ get_regions_list: 1 }, function(resp) {
+        var data = resp.data || [];
+        continentCountryMap = {};
+        allCountries = [];
+        var continents = [];
+        data.forEach(function(r) {
+            if (r.continent && continents.indexOf(r.continent) === -1) continents.push(r.continent);
+            if (r.country && allCountries.indexOf(r.country) === -1) allCountries.push(r.country);
+            if (r.continent) {
+                if (!continentCountryMap[r.continent]) continentCountryMap[r.continent] = [];
+                if (r.country && continentCountryMap[r.continent].indexOf(r.country) === -1) {
+                    continentCountryMap[r.continent].push(r.country);
+                }
+            }
+        });
+        continents.sort();
+        allCountries.sort();
 
-    var currentContinent = jQuery('#filterContinent').val();
-    var currentCountry = jQuery('#filterCountry').val();
-
-    if (!currentContinent) {
         var contHtml = '<option value="">All Continents</option>';
         continents.forEach(function(c) { contHtml += '<option value="' + c + '">' + c + '</option>'; });
         jQuery('#filterContinent').html(contHtml);
+        rebuildDropdown('filterContinent');
+        repopulateCountryFilter();
+    });
+}
+
+function repopulateCountryFilter() {
+    var continent = jQuery('#filterContinent').val();
+    var list = continent ? (continentCountryMap[continent] || []).slice() : allCountries.slice();
+    list.sort();
+    var current = jQuery('#filterCountry').val();
+    var html = '<option value="">All Countries</option>';
+    list.forEach(function(c) { html += '<option value="' + c + '">' + c + '</option>'; });
+    jQuery('#filterCountry').html(html);
+    // Keep current selection only if still valid for the chosen continent.
+    if (current && list.indexOf(current) !== -1) {
+        jQuery('#filterCountry').val(current);
+    } else {
+        jQuery('#filterCountry').val('');
     }
-    if (!currentCountry) {
-        var countHtml = '<option value="">All Countries</option>';
-        countries.forEach(function(c) { countHtml += '<option value="' + c + '">' + c + '</option>'; });
-        jQuery('#filterCountry').html(countHtml);
-    }
+    rebuildDropdown('filterCountry');
 }
 
 function renderTable(data) {
     var html = '';
     if (!data.length) {
-        html = '<tr><td colspan="7" class="text-center text-muted">No regions found</td></tr>';
+        html = '<tr><td colspan="8" class="text-center text-muted">No regions found</td></tr>';
         jQuery('#regionsTable').html(html);
+        refreshBulkBtn();
         return;
     }
 
@@ -195,13 +225,14 @@ function renderTable(data) {
     data.forEach(function(r) {
         if (r.continent !== currentContinent) {
             currentContinent = r.continent;
-            html += '<tr class="table-secondary"><td colspan="7" class="fw-bold small">';
+            html += '<tr class="table-secondary"><td colspan="8" class="fw-bold small">';
             html += '<i class="bi bi-globe me-1"></i> ' + (currentContinent || 'Unknown');
             html += '</td></tr>';
         }
 
         var expCount = r.experiences_count || 0;
         html += '<tr>';
+        html += '<td><i class="bi bi-square row-check" role="button" data-id="' + r.id + '"></i></td>';
         html += '<td><strong>' + r.name + '</strong><br><small class="text-muted">' + (r.slug || '') + '</small></td>';
         html += '<td><small>' + (r.continent || '-') + '</small></td>';
         html += '<td><small>' + (r.country || '-') + '</small></td>';
@@ -223,12 +254,14 @@ function renderTable(data) {
     });
 
     jQuery('#regionsTable').html(html);
+    refreshBulkBtn();
 }
 
 function resetForm() {
     jQuery('#regionId').val('');
     jQuery('#regionName').val('');
     jQuery('#regionContinent').val('');
+    rebuildDropdown('regionContinent');
     jQuery('#regionCountry').val('');
     jQuery('#regionDescription').val('');
     jQuery('#regionLatitude').val('');
@@ -239,6 +272,7 @@ function resetForm() {
 }
 
 jQuery(function() {
+    buildRegionMap();
     loadRegions();
 });
 
@@ -246,7 +280,12 @@ jQuery('#btnAddRegion').on('click', function() {
     resetForm();
 });
 
-jQuery('#filterContinent, #filterCountry, #filterStatus').on('change', function() {
+jQuery(document).on('change', '#filterContinent', function() {
+    repopulateCountryFilter();
+    loadRegions();
+});
+
+jQuery(document).on('change', '#filterCountry, #filterStatus', function() {
     loadRegions();
 });
 
@@ -257,8 +296,12 @@ jQuery('#filterSearch').on('keyup', function() {
 });
 
 jQuery('#btnReset').on('click', function() {
-    jQuery('#filterContinent, #filterCountry, #filterStatus').val('');
+    jQuery('#filterContinent').val('');
+    rebuildDropdown('filterContinent');
+    jQuery('#filterStatus').val('');
+    rebuildDropdown('filterStatus');
     jQuery('#filterSearch').val('');
+    repopulateCountryFilter();
     loadRegions();
 });
 
@@ -279,8 +322,9 @@ jQuery('#btnSaveRegion').on('click', function() {
     if (regionId) data.region_id = regionId;
 
     ajaxPost(data, function(resp) {
-        showAlert(resp.success, 'success');
+        showAlert(resp.message || resp.success || 'Saved', 'success');
         bootstrap.Modal.getInstance(document.getElementById('regionModal')).hide();
+        buildRegionMap();
         loadRegions();
     });
 });
@@ -293,6 +337,7 @@ jQuery(document).on('click', '.btn-edit', function() {
     jQuery('#regionId').val(region.id);
     jQuery('#regionName').val(region.name);
     jQuery('#regionContinent').val(region.continent);
+    rebuildDropdown('regionContinent');
     jQuery('#regionCountry').val(region.country);
     jQuery('#regionDescription').val(region.description || '');
     jQuery('#regionLatitude').val(region.latitude || '');
@@ -307,7 +352,7 @@ jQuery(document).on('click', '.btn-edit', function() {
 jQuery(document).on('click', '.btn-toggle', function() {
     var id = jQuery(this).data('id');
     ajaxPost({ toggle_region: 1, region_id: id }, function(resp) {
-        showAlert(resp.success, 'success');
+        showAlert(resp.message || resp.success || 'Saved', 'success');
         loadRegions();
     });
 });
@@ -317,7 +362,35 @@ jQuery(document).on('click', '.btn-delete', function() {
     var name = jQuery(this).data('name');
     confirmAction('Delete region "' + name + '"? This cannot be undone.', function() {
         ajaxPost({ delete_region: 1, region_id: id }, function(resp) {
-            showAlert(resp.success, 'success');
+            showAlert(resp.message || resp.success || 'Saved', 'success');
+            buildRegionMap();
+            loadRegions();
+        });
+    });
+});
+
+// ---- Bulk delete ----
+function refreshBulkBtn() {
+    jQuery('#btnBulkDelete').toggleClass('d-none', jQuery('.row-check.row-checked').length === 0);
+}
+jQuery(document).on('click', '.row-check', function() {
+    jQuery(this).toggleClass('row-checked').toggleClass('bi-square').toggleClass('bi-check-square');
+    refreshBulkBtn();
+});
+jQuery(document).on('click', '.selall-check', function() {
+    var anyUnchecked = jQuery('.row-check:not(.row-checked)').length > 0;
+    jQuery('.row-check').each(function() {
+        jQuery(this).toggleClass('row-checked', anyUnchecked).toggleClass('bi-square', !anyUnchecked).toggleClass('bi-check-square', anyUnchecked);
+    });
+    refreshBulkBtn();
+});
+jQuery('#btnBulkDelete').on('click', function() {
+    var ids = jQuery('.row-check.row-checked').map(function() { return jQuery(this).data('id'); }).get();
+    if (!ids.length) return;
+    confirmAction('Delete ' + ids.length + ' region(s)? This cannot be undone.', function() {
+        ajaxPost({ bulk_delete_regions: 1, ids: ids }, function(resp) {
+            showAlert(resp.message || 'Deleted', 'success');
+            buildRegionMap();
             loadRegions();
         });
     });

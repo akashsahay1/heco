@@ -133,9 +133,12 @@ function loadSpPayments() {
             html += '<h6 class="small fw-bold">Add Payment</h6>';
             html += '<div class="row g-2">';
             html += '<div class="col-md-3"><input type="number" class="form-control form-control-sm sp-amount" data-id="' + sp.id + '" step="0.01"></div>';
-            html += '<div class="col-md-3"><input type="date" class="form-control form-control-sm sp-date" data-id="' + sp.id + '"></div>';
             html += '<div class="col-md-3">';
-            html += '<select class="form-select form-select-sm sp-mode" data-id="' + sp.id + '">';
+            html += '<input type="text" class="form-control form-control-sm sp-date-display" data-id="' + sp.id + '" readonly autocomplete="off">';
+            html += '<input type="hidden" class="sp-date" data-id="' + sp.id + '">';
+            html += '</div>';
+            html += '<div class="col-md-3">';
+            html += '<select class="form-select form-select-sm sp-mode custom-select" data-id="' + sp.id + '">';
             html += '<option value="bank_transfer">Bank Transfer</option>';
             html += '<option value="upi">UPI</option>';
             html += '<option value="cash">Cash</option>';
@@ -152,7 +155,29 @@ function loadSpPayments() {
         });
         html += '</div>';
         $('#spPaymentsList').html(html);
+        // Wire up Air Datepickers + searchable mode selects on the freshly-rendered rows.
+        $('#spPaymentsList .sp-date-display').each(function() {
+            var $disp = $(this);
+            var $hidden = $('#spPaymentsList .sp-date[data-id="' + $disp.data('id') + '"]');
+            new AirDatepicker(this, {
+                locale: window.airDatepickerEn,
+                dateFormat: 'dd-MM-yyyy',
+                autoClose: true,
+                position: 'bottom left',
+                onSelect: function(o) {
+                    $hidden.val(o.date ? isoFromDate(o.date) : '');
+                }
+            });
+        });
+        if (window.buildCustomDropdown) {
+            $('#spPaymentsList .sp-mode').each(function() { buildCustomDropdown(this, { searchable: false }); });
+        }
     });
+}
+
+function isoFromDate(d) {
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
 
 function buildEntryTable(entries) {
@@ -212,7 +237,7 @@ $(document).on('click', '.add-sp-payment', function() {
     var notes = $('.sp-notes[data-id="' + id + '"]').val();
 
     if (!amount || !paymentDate) {
-        alert('Please enter amount and date.');
+        showAlert('Please enter amount and date.', 'warning');
         return;
     }
 

@@ -35,7 +35,7 @@
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Type</label>
-                            <select name="provider_type" class="form-select form-select-sm">
+                            <select name="provider_type" class="form-select form-select-sm custom-select">
                                 <option value="hrp" @selected($provider->provider_type === 'hrp')>HRP</option>
                                 <option value="hlh" @selected($provider->provider_type === 'hlh')>HLH</option>
                                 <option value="osp" @selected($provider->provider_type === 'osp')>OSP</option>
@@ -43,7 +43,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Region</label>
-                            <select name="region_id" class="form-select form-select-sm">
+                            <select name="region_id" class="form-select form-select-sm custom-select">
                                 <option value="">-- None --</option>
                                 @foreach($regions as $r)
                                     <option value="{{ $r->id }}" @selected($provider->region_id == $r->id)>{{ $r->name }}</option>
@@ -81,7 +81,7 @@
                     <h6 class="border-bottom pb-2"><i class="bi bi-shield-check"></i> Status & Notes <span class="badge bg-secondary ms-1">Admin only</span></h6>
                     <div class="mb-2">
                         <label class="form-label small text-muted">Status</label>
-                        <select name="status" class="form-select form-select-sm">
+                        <select name="status" class="form-select form-select-sm custom-select">
                             <option value="approved" @selected($provider->status === 'approved')>Approved</option>
                             <option value="pending" @selected($provider->status === 'pending')>Pending</option>
                             <option value="rejected" @selected($provider->status === 'rejected')>Rejected</option>
@@ -206,7 +206,7 @@
     <div class="modal-body"><form id="spPriceForm">
         <input type="hidden" name="id">
         <div class="mb-2"><label class="form-label small">Service type</label>
-            <select class="form-select form-select-sm" name="service_type" required>
+            <select class="form-select form-select-sm custom-select" name="service_type" required>
                 <option value="accommodation">Accommodation</option>
                 <option value="transport">Transport</option>
                 <option value="guide">Guide</option>
@@ -217,7 +217,7 @@
         <div class="row g-2 mb-2">
             <div class="col-md-7"><label class="form-label small">Rate (₹)</label><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price" required></div>
             <div class="col-md-5"><label class="form-label small">Unit</label>
-                <select class="form-select form-select-sm" name="unit" required>
+                <select class="form-select form-select-sm custom-select" name="unit" required>
                     <option value="per night">per night</option>
                     <option value="per day">per day</option>
                     <option value="per person">per person</option>

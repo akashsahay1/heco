@@ -26,6 +26,9 @@
     --admin-border: #e2e8f0;
     --admin-text: #1e293b;
     --admin-text-muted: #64748b;
+
+    /* Shared danger/red token — use this var instead of hardcoding reds */
+    --heco-danger: #b54a4a;
 }
 
 /* ============================================
@@ -1164,11 +1167,13 @@ body.admin-login-page {
 }
 
 /* Fixed-width helpers for inline filter controls (avoids inline styles). */
+.heco-admin .heco-filter-xs { width: 100px; }
 .heco-admin .heco-filter-sm { width: 140px; }
 .heco-admin .heco-filter-md { width: 160px; }
 .heco-admin .heco-filter-lg { width: 200px; }
 .heco-admin .heco-filter-date { width: 150px; }
 @media (max-width: 575.98px) {
+    .heco-admin .heco-filter-xs,
     .heco-admin .heco-filter-sm,
     .heco-admin .heco-filter-md,
     .heco-admin .heco-filter-lg,
@@ -1190,3 +1195,12 @@ body.admin-login-page {
 .heco-admin .sp-price-check,
 .heco-admin .sp-price-selall { font-size: 1.05rem; color: var(--heco-primary-700, #79a09f); cursor: pointer; }
 .heco-admin .sp-price-checked { color: var(--heco-primary-700, #79a09f); }
+
+/* ---- Bulk-delete check icons (shared list pages) ---- */
+.heco-admin .row-check,
+.heco-admin .selall-check { font-size: 1.05rem; color: var(--heco-primary-700, #79a09f); cursor: pointer; }
+.heco-admin .row-checked { color: var(--heco-primary-700, #79a09f); }
+
+/* ---- Trips: inline per-row status dropdown width ---- */
+.heco-admin .heco-trip-status { font-size: 0.75rem; }
+.heco-admin td .custom-select-wrap { width: 150px; }

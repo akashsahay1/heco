@@ -8,7 +8,7 @@
                 <input type="text" class="form-control form-control-sm" id="searchExpInput">
             </div>
             <div class="mb-2">
-                <select class="form-select form-select-sm" id="searchExpRegion">
+                <select class="form-select form-select-sm custom-select" id="searchExpRegion">
                     <option value="">All Regions</option>
                     @if(isset($regions))
                         @foreach($regions as $r)
@@ -22,7 +22,7 @@
                 </select>
             </div>
             <div class="mb-2">
-                <select class="form-select form-select-sm" id="searchExpType">
+                <select class="form-select form-select-sm custom-select" id="searchExpType">
                     <option value="">All Types</option>
                     <option value="trek">Trek</option>
                     <option value="cultural">Cultural</option>
@@ -40,7 +40,7 @@
 
             <div class="mb-2">
                 <label class="form-label small fw-bold">Add to Day:</label>
-                <select class="form-select form-select-sm" id="targetDaySelect">
+                <select class="form-select form-select-sm custom-select" id="targetDaySelect">
                     <option value="">-- Select Day --</option>
                     @foreach($trip->tripDays as $day)
                         <option value="{{ $day->id }}">Day {{ $day->day_number }}{{ $day->title ? ' - ' . $day->title : '' }}</option>
@@ -90,7 +90,7 @@
                 <div class="collapse" id="addServiceCollapse">
                     <form id="addServiceForm">
                         <div class="mb-1">
-                            <select class="form-select form-select-sm" name="service_type" required>
+                            <select class="form-select form-select-sm custom-select" name="service_type" required>
                                 <option value="">-- Type --</option>
                                 <option value="accommodation">Accommodation</option>
                                 <option value="transport">Transport</option>
@@ -118,7 +118,7 @@
                                 <input type="number" class="form-control form-control-sm" name="cost" step="0.01" min="0">
                             </div>
                             <div class="col-6">
-                                <select class="form-select form-select-sm" name="service_provider_id">
+                                <select class="form-select form-select-sm custom-select" name="service_provider_id">
                                     <option value="">No Provider</option>
                                     @if(isset($providers))
                                         @foreach($providers as $p)

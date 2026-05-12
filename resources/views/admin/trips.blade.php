@@ -94,7 +94,7 @@ function loadTrips() {
             html += '<td><a href="/trip-manager/' + t.id + '" target="_blank" class="fw-semibold">' + (t.trip_id || t.id) + '</a></td>';
             html += '<td>' + (t.user ? (t.user.full_name || t.user.email) : '-') + '</td>';
             html += '<td>';
-            html += '<select class="form-select form-select-sm d-inline-block status-change" data-trip-id="' + t.id + '" style="width: 140px; font-size: 0.75rem;">';
+            html += '<select class="form-select form-select-sm status-change heco-trip-status" data-trip-id="' + t.id + '">';
             ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'].forEach(function(s) {
                 html += '<option value="' + s + '"' + (t.status === s ? ' selected' : '') + '>' + formatTripStatus(s) + '</option>';
             });
@@ -107,6 +107,9 @@ function loadTrips() {
             html += '</tr>';
         });
         jQuery('#tripsTable').html(html);
+        if (window.buildCustomDropdown) {
+            jQuery('#tripsTable .heco-trip-status').each(function() { buildCustomDropdown(this, { searchable: false }); });
+        }
     });
 }
 

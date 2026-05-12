@@ -11,7 +11,7 @@
         <div class="row g-2 align-items-end">
             <div class="col-auto">
                 <label class="form-label small mb-1">Month</label>
-                <select class="form-select form-select-sm" id="gstMonth" style="width: 140px;">
+                <select class="form-select form-select-sm custom-select heco-filter-sm" id="gstMonth">
                     <option value="1">January</option>
                     <option value="2">February</option>
                     <option value="3">March</option>
@@ -28,7 +28,7 @@
             </div>
             <div class="col-auto">
                 <label class="form-label small mb-1">Year</label>
-                <input type="number" class="form-control form-control-sm" id="gstYear" style="width: 100px;" min="2020" max="2099">
+                <input type="number" class="form-control form-control-sm heco-filter-xs" id="gstYear" min="2020" max="2099">
             </div>
             <div class="col-auto">
                 <button class="btn btn-sm btn-primary" id="generateBtn"><i class="bi bi-arrow-repeat"></i> Generate</button>

@@ -56,7 +56,7 @@
     <div class="tab-pane fade show active" id="cpSettings">
         <div class="mb-3 cp-select-narrow">
             <label class="form-label small text-muted">Settings group</label>
-            <select class="form-select form-select-sm" id="cpSettingsGroup">
+            <select class="form-select form-select-sm custom-select" id="cpSettingsGroup">
                 @foreach($settingGroups as $g)
                     <option value="{{ $g }}">{{ ucwords(str_replace('_', ' ', $g)) }}</option>
                 @endforeach
@@ -77,7 +77,7 @@
     <div class="tab-pane fade" id="cpLists">
         <div class="mb-3 cp-select-narrow">
             <label class="form-label small text-muted">List type</label>
-            <select class="form-select form-select-sm" id="cpListType">
+            <select class="form-select form-select-sm custom-select" id="cpListType">
                 @foreach($systemListTypes as $val => $label)
                     <option value="{{ $val }}">{{ $label }}</option>
                 @endforeach
@@ -205,7 +205,7 @@
         <div class="row g-2 mb-3">
             <div class="col-md-6"><label class="form-label small">Paper size</label><input type="text" class="form-control form-control-sm" name="paper_size" value="A4"></div>
             <div class="col-md-6"><label class="form-label small">Orientation</label>
-                <select class="form-select form-select-sm" name="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+                <select class="form-select form-select-sm custom-select" name="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
             </div>
         </div>
         <button type="submit" class="btn btn-sm btn-success w-100">Save Template</button>

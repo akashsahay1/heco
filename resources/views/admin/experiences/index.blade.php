@@ -10,9 +10,12 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-compass"></i> Experiences</h5>
-    <a href="{{ url('/experiences/create') }}" class="btn btn-success btn-sm">
-        <i class="bi bi-plus-lg"></i> Create New
-    </a>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-danger btn-sm d-none" id="btnBulkDelete"><i class="bi bi-trash"></i> Delete Selected</button>
+        <a href="{{ url('/experiences/create') }}" class="btn btn-success btn-sm">
+            <i class="bi bi-plus-lg"></i> Create New
+        </a>
+    </div>
 </div>
 
 <div class="card mb-3">
@@ -72,6 +75,7 @@
             <table class="table table-hover table-sm mb-0">
                 <thead class="table-light">
                     <tr>
+                        <th style="width: 34px;"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
                         <th style="width: 60px;">Image</th>
                         <th>Name</th>
                         <th>Type</th>
@@ -86,7 +90,7 @@
                     </tr>
                 </thead>
                 <tbody id="experiencesTable">
-                    <tr><td colspan="11" class="text-center text-muted">Loading...</td></tr>
+                    <tr><td colspan="12" class="text-center text-muted">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -147,11 +151,12 @@ function loadExperiences(page) {
         var html = '';
         var items = resp.experiences || resp.data || [];
         if (!items.length) {
-            html = '<tr><td colspan="11" class="text-center text-muted">No experiences found</td></tr>';
+            html = '<tr><td colspan="12" class="text-center text-muted">No experiences found</td></tr>';
         }
         items.forEach(function(e) {
             var imgSrc = e.card_image ? e.card_image : '/images/placeholder.png';
             html += '<tr>';
+            html += '<td><i class="bi bi-square row-check" role="button" data-id="' + e.id + '"></i></td>';
             html += '<td><img src="' + imgSrc + '" class="rounded" style="width: 50px; height: 35px; object-fit: cover;" alt=""></td>';
             html += '<td><strong>' + (e.name || '') + '</strong><br><small class="text-muted">' + (e.slug || '') + '</small></td>';
             html += '<td><span class="badge bg-light text-dark">' + (e.type || '-') + '</span></td>';
@@ -195,6 +200,7 @@ function loadExperiences(page) {
             html += '</tr>';
         });
         $('#experiencesTable').html(html);
+        refreshBulkBtn();
 
         renderPagination(resp.pagination || {});
     });
@@ -280,6 +286,32 @@ $(document).on('click', '.btn-disable', function() {
     var action = isActive == 1 ? 'disable' : 'enable';
     confirmAction('Are you sure you want to ' + action + ' this experience?', function() {
         ajaxPost({ disable_experience: 1, id: id }, function(resp) {
+            loadExperiences(currentPage);
+        });
+    });
+});
+
+// ---- Bulk delete ----
+function refreshBulkBtn() {
+    $('#btnBulkDelete').toggleClass('d-none', $('.row-check.row-checked').length === 0);
+}
+$(document).on('click', '.row-check', function() {
+    $(this).toggleClass('row-checked').toggleClass('bi-square').toggleClass('bi-check-square');
+    refreshBulkBtn();
+});
+$(document).on('click', '.selall-check', function() {
+    var anyUnchecked = $('.row-check:not(.row-checked)').length > 0;
+    $('.row-check').each(function() {
+        $(this).toggleClass('row-checked', anyUnchecked).toggleClass('bi-square', !anyUnchecked).toggleClass('bi-check-square', anyUnchecked);
+    });
+    refreshBulkBtn();
+});
+$('#btnBulkDelete').on('click', function() {
+    var ids = $('.row-check.row-checked').map(function() { return $(this).data('id'); }).get();
+    if (!ids.length) return;
+    confirmAction('Delete ' + ids.length + ' experience(s)?', function() {
+        ajaxPost({ bulk_delete_experiences: 1, ids: ids }, function(resp) {
+            showAlert(resp.message || 'Deleted', 'success');
             loadExperiences(currentPage);
         });
     });

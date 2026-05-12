@@ -52,7 +52,7 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Type <span class="text-danger">*</span></label>
-                            <select class="form-select" name="type" required>
+                            <select class="form-select custom-select" name="type" required>
                                 <option value="">Select Type</option>
                                 @foreach(['Trek','Cultural Immersion','Wildlife','Adventure','Nature','Wellness','Culinary','Homestay','Volunteering'] as $t)
                                     <option value="{{ $t }}" {{ $e && strcasecmp($e->type, $t) === 0 ? 'selected' : '' }}>{{ $t }}</option>
@@ -61,7 +61,7 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">HLH Provider <span class="text-danger">*</span></label>
-                            <select class="form-select" name="hlh_id" required>
+                            <select class="form-select custom-select" name="hlh_id" required>
                                 <option value="">Select Provider</option>
                                 @foreach($providers as $prov)
                                     <option value="{{ $prov->id }}" {{ $e && $e->hlh_id == $prov->id ? 'selected' : '' }}>{{ $prov->name }}</option>
@@ -70,7 +70,7 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Region <span class="text-danger">*</span></label>
-                            <select class="form-select" name="region_id" required>
+                            <select class="form-select custom-select" name="region_id" required>
                                 <option value="">Select Region</option>
                                 @foreach($regions as $r)
                                     <option value="{{ $r->id }}" {{ $e && $e->region_id == $r->id ? 'selected' : '' }}>{{ $r->name }}</option>
@@ -79,7 +79,7 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Regenerative Project</label>
-                            <select class="form-select" name="regenerative_project_id">
+                            <select class="form-select custom-select" name="regenerative_project_id">
                                 <option value="">None</option>
                                 @foreach($regenerativeProjects as $rp)
                                     <option value="{{ $rp->id }}" {{ $e && $e->regenerative_project_id == $rp->id ? 'selected' : '' }}>{{ $rp->name }}</option>
@@ -189,7 +189,7 @@
                         </div>
                         <div class="col-md-4" id="accommodationCategoryGroup" style="{{ $e && $e->includes_accommodation ? '' : 'display:none;' }}">
                             <label class="form-label">Accommodation Category</label>
-                            <select class="form-select" name="accommodation_category">
+                            <select class="form-select custom-select" name="accommodation_category">
                                 <option value="">Select</option>
                                 @foreach(['budget','standard','premium','luxury','camping','homestay'] as $ac)
                                     <option value="{{ $ac }}" {{ $e && $e->accommodation_category === $ac ? 'selected' : '' }}>{{ ucfirst($ac) }}</option>
@@ -298,7 +298,7 @@
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label">Difficulty Level <span class="text-danger">*</span></label>
-                            <select class="form-select" name="difficulty_level" required>
+                            <select class="form-select custom-select" name="difficulty_level" required>
                                 <option value="">Select</option>
                                 <option value="easy" {{ $e && $e->difficulty_level === 'easy' ? 'selected' : '' }}>Easy</option>
                                 <option value="moderate" {{ $e && $e->difficulty_level === 'moderate' ? 'selected' : '' }}>Moderate</option>
@@ -422,7 +422,7 @@
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label">Price Currency <span class="text-danger">*</span></label>
-                            <select class="form-select" name="price_currency" id="priceCurrency">
+                            <select class="form-select custom-select" name="price_currency" id="priceCurrency">
                                 @foreach(\App\Models\Currency::where('is_active', true)->orderBy('sort_order')->get() as $cur)
                                     <option value="{{ $cur->code }}" data-symbol="{{ $cur->symbol }}" {{ (isset($e) && $e->price_currency === $cur->code) || (!isset($e) && $cur->code === 'INR') ? 'selected' : '' }}>
                                         {{ $cur->symbol }} {{ $cur->code }} - {{ $cur->name }}

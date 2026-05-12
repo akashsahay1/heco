@@ -4,9 +4,12 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-currency-exchange"></i> Currencies</h5>
-    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#currencyModal" id="btnAddCurrency">
-        <i class="bi bi-plus-lg"></i> Add Currency
-    </button>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-danger btn-sm d-none" id="btnBulkDelete"><i class="bi bi-trash"></i> Delete Selected</button>
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#currencyModal" id="btnAddCurrency">
+            <i class="bi bi-plus-lg"></i> Add Currency
+        </button>
+    </div>
 </div>
 
 <div class="card mb-3">
@@ -14,7 +17,7 @@
         <div class="row g-2 align-items-end">
             <div class="col-md-3">
                 <label class="form-label small mb-1">Status</label>
-                <select class="form-select form-select-sm" id="filterStatus">
+                <select class="form-select form-select-sm custom-select" id="filterStatus">
                     <option value="">All</option>
                     <option value="1">Active</option>
                     <option value="0">Inactive</option>
@@ -39,6 +42,7 @@
             <table class="table table-hover table-sm mb-0">
                 <thead class="table-light">
                     <tr>
+                        <th style="width: 34px;"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
                         <th>Code</th>
                         <th>Symbol</th>
                         <th>Name</th>
@@ -49,7 +53,7 @@
                     </tr>
                 </thead>
                 <tbody id="currenciesTable">
-                    <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -143,14 +147,16 @@ function loadCurrencies() {
 function renderTable(data) {
     var html = '';
     if (!data.length) {
-        html = '<tr><td colspan="7" class="text-center text-muted">No currencies found</td></tr>';
+        html = '<tr><td colspan="8" class="text-center text-muted">No currencies found</td></tr>';
         jQuery('#currenciesTable').html(html);
+        refreshBulkBtn();
         return;
     }
 
     data.forEach(function(c) {
         var flagImg = c.flag ? '<img src="/images/flags/' + c.flag + '.png" alt="" style="width:24px; height:16px; object-fit:cover; border-radius:2px; box-shadow:0 1px 2px rgba(0,0,0,.15);"> ' : '';
         html += '<tr>';
+        html += '<td><i class="bi bi-square row-check" role="button" data-id="' + c.id + '"></i></td>';
         html += '<td>' + flagImg + '<strong>' + c.code + '</strong></td>';
         html += '<td><span class="fs-5">' + c.symbol + '</span></td>';
         html += '<td>' + c.name + '</td>';
@@ -178,6 +184,7 @@ function renderTable(data) {
     });
 
     jQuery('#currenciesTable').html(html);
+    refreshBulkBtn();
 }
 
 function resetForm() {
@@ -214,6 +221,7 @@ jQuery('#filterSearch').on('keyup', function() {
 
 jQuery('#btnReset').on('click', function() {
     jQuery('#filterStatus').val('');
+    if (window.buildCustomDropdown) buildCustomDropdown(jQuery('#filterStatus')[0]);
     jQuery('#filterSearch').val('');
     loadCurrencies();
 });
@@ -235,7 +243,7 @@ jQuery('#btnSaveCurrency').on('click', function() {
     if (currencyId) data.currency_id = currencyId;
 
     ajaxPost(data, function(resp) {
-        showAlert(resp.success, 'success');
+        showAlert(resp.message || resp.success || 'Saved', 'success');
         bootstrap.Modal.getInstance(document.getElementById('currencyModal')).hide();
         loadCurrencies();
     });
@@ -264,7 +272,7 @@ jQuery(document).on('click', '.btn-edit', function() {
 jQuery(document).on('click', '.btn-toggle', function() {
     var id = jQuery(this).data('id');
     ajaxPost({ toggle_currency: 1, currency_id: id }, function(resp) {
-        showAlert(resp.success, 'success');
+        showAlert(resp.message || resp.success || 'Saved', 'success');
         loadCurrencies();
     });
 });
@@ -274,7 +282,33 @@ jQuery(document).on('click', '.btn-delete', function() {
     var code = jQuery(this).data('code');
     confirmAction('Delete currency "' + code + '"? This cannot be undone.', function() {
         ajaxPost({ delete_currency: 1, currency_id: id }, function(resp) {
-            showAlert(resp.success, 'success');
+            showAlert(resp.message || resp.success || 'Saved', 'success');
+            loadCurrencies();
+        });
+    });
+});
+
+// ---- Bulk delete ----
+function refreshBulkBtn() {
+    jQuery('#btnBulkDelete').toggleClass('d-none', jQuery('.row-check.row-checked').length === 0);
+}
+jQuery(document).on('click', '.row-check', function() {
+    jQuery(this).toggleClass('row-checked').toggleClass('bi-square').toggleClass('bi-check-square');
+    refreshBulkBtn();
+});
+jQuery(document).on('click', '.selall-check', function() {
+    var anyUnchecked = jQuery('.row-check:not(.row-checked)').length > 0;
+    jQuery('.row-check').each(function() {
+        jQuery(this).toggleClass('row-checked', anyUnchecked).toggleClass('bi-square', !anyUnchecked).toggleClass('bi-check-square', anyUnchecked);
+    });
+    refreshBulkBtn();
+});
+jQuery('#btnBulkDelete').on('click', function() {
+    var ids = jQuery('.row-check.row-checked').map(function() { return jQuery(this).data('id'); }).get();
+    if (!ids.length) return;
+    confirmAction('Delete ' + ids.length + ' currency(ies)? This cannot be undone.', function() {
+        ajaxPost({ bulk_delete_currencies: 1, ids: ids }, function(resp) {
+            showAlert(resp.message || 'Deleted', 'success');
             loadCurrencies();
         });
     });

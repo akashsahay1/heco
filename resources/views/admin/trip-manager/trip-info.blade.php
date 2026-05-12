@@ -22,7 +22,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Status</label>
-                                <select class="form-select form-select-sm" name="status">
+                                <select class="form-select form-select-sm custom-select" name="status">
                                     <option value="not_confirmed" {{ $trip->status === 'not_confirmed' ? 'selected' : '' }}>Not Confirmed</option>
                                     <option value="confirmed" {{ $trip->status === 'confirmed' ? 'selected' : '' }}>Confirmed</option>
                                     <option value="running" {{ $trip->status === 'running' ? 'selected' : '' }}>Running</option>
@@ -32,7 +32,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Stage</label>
-                                <select class="form-select form-select-sm" name="stage">
+                                <select class="form-select form-select-sm custom-select" name="stage">
                                     <option value="open" {{ ($trip->stage ?? 'open') === 'open' ? 'selected' : '' }}>Open</option>
                                     <option value="closed" {{ ($trip->stage ?? '') === 'closed' ? 'selected' : '' }}>Closed</option>
                                 </select>
@@ -50,7 +50,7 @@
                         <div class="row g-2">
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold">Traveller Origin</label>
-                                <select class="form-select form-select-sm" name="traveller_origin">
+                                <select class="form-select form-select-sm custom-select" name="traveller_origin">
                                     <option value="">-- Select --</option>
                                     <option value="indian" {{ $trip->traveller_origin === 'indian' ? 'selected' : '' }}>Indian</option>
                                     <option value="foreigner" {{ $trip->traveller_origin === 'foreigner' ? 'selected' : '' }}>Foreigner</option>
@@ -70,11 +70,13 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Start Date</label>
-                                <input type="date" class="form-control form-control-sm" name="start_date" value="{{ $trip->start_date ? $trip->start_date->format('Y-m-d') : '' }}">
+                                <input type="text" class="form-control form-control-sm" id="startDateDisplay" readonly autocomplete="off" value="{{ $trip->start_date ? $trip->start_date->format('d-m-Y') : '' }}">
+                                <input type="hidden" name="start_date" id="startDateInput" value="{{ $trip->start_date ? $trip->start_date->format('Y-m-d') : '' }}">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">End Date</label>
-                                <input type="date" class="form-control form-control-sm" name="end_date" value="{{ $trip->end_date ? $trip->end_date->format('Y-m-d') : '' }}">
+                                <input type="text" class="form-control form-control-sm" id="endDateDisplay" readonly autocomplete="off" value="{{ $trip->end_date ? $trip->end_date->format('d-m-Y') : '' }}">
+                                <input type="hidden" name="end_date" id="endDateInput" value="{{ $trip->end_date ? $trip->end_date->format('Y-m-d') : '' }}">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Start Location</label>
@@ -146,7 +148,7 @@
                         <div class="row g-2">
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Accommodation Comfort</label>
-                                <select class="form-select form-select-sm" name="accommodation_comfort">
+                                <select class="form-select form-select-sm custom-select" name="accommodation_comfort">
                                     <option value="">-- Select --</option>
                                     @foreach($prefOptsFor('accommodation_comfort') as $opt)
                                         <option value="{{ $opt }}" @selected($trip->accommodation_comfort === $opt)>{{ $opt }}</option>
@@ -155,7 +157,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Vehicle Comfort</label>
-                                <select class="form-select form-select-sm" name="vehicle_comfort">
+                                <select class="form-select form-select-sm custom-select" name="vehicle_comfort">
                                     <option value="">-- Select --</option>
                                     @foreach($prefOptsFor('vehicle_comfort') as $opt)
                                         <option value="{{ $opt }}" @selected($trip->vehicle_comfort === $opt)>{{ $opt }}</option>
@@ -164,7 +166,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Guide Preference</label>
-                                <select class="form-select form-select-sm" name="guide_preference">
+                                <select class="form-select form-select-sm custom-select" name="guide_preference">
                                     <option value="">-- Select --</option>
                                     @foreach($prefOptsFor('guide_preference') as $opt)
                                         <option value="{{ $opt }}" @selected($trip->guide_preference === $opt)>{{ $opt }}</option>
@@ -173,7 +175,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Travel Pace</label>
-                                <select class="form-select form-select-sm" name="travel_pace">
+                                <select class="form-select form-select-sm custom-select" name="travel_pace">
                                     <option value="">-- Select --</option>
                                     @foreach($prefOptsFor('travel_pace') as $opt)
                                         <option value="{{ $opt }}" @selected($trip->travel_pace === $opt)>{{ $opt }}</option>
@@ -182,7 +184,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Budget Sensitivity</label>
-                                <select class="form-select form-select-sm" name="budget_sensitivity">
+                                <select class="form-select form-select-sm custom-select" name="budget_sensitivity">
                                     <option value="">-- Select --</option>
                                     @foreach($prefOptsFor('budget_sensitivity') as $opt)
                                         <option value="{{ $opt }}" @selected($trip->budget_sensitivity === $opt)>{{ $opt }}</option>
@@ -280,10 +282,11 @@
                                             <input type="number" class="form-control form-control-sm" name="amount" step="0.01" required>
                                         </div>
                                         <div class="col-md-4">
-                                            <input type="date" class="form-control form-control-sm" name="payment_date" value="{{ date('Y-m-d') }}" required>
+                                            <input type="text" class="form-control form-control-sm" id="addPaymentDateDisplay" readonly autocomplete="off" value="{{ date('d-m-Y') }}">
+                                            <input type="hidden" name="payment_date" id="addPaymentDateInput" value="{{ date('Y-m-d') }}">
                                         </div>
                                         <div class="col-md-4">
-                                            <select class="form-select form-select-sm" name="mode" required>
+                                            <select class="form-select form-select-sm custom-select" name="mode" required>
                                                 <option value="">-- Mode --</option>
                                                 <option value="bank_transfer">Bank Transfer</option>
                                                 <option value="upi">UPI</option>
@@ -351,7 +354,7 @@
                                     <div class="row g-2">
                                         <div class="col-md-12">
                                             <label class="form-label small fw-bold mb-1">Service Provider</label>
-                                            <select class="form-select form-select-sm" name="service_provider_id" required>
+                                            <select class="form-select form-select-sm custom-select" name="service_provider_id" required>
                                                 <option value="">-- Select provider --</option>
                                                 @foreach($providers as $sp)
                                                     <option value="{{ $sp->id }}">{{ $sp->name }} ({{ strtoupper($sp->provider_type) }}{{ $sp->region ? ' — ' . $sp->region->name : '' }})</option>
@@ -360,7 +363,7 @@
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label small fw-bold mb-1">Service Type</label>
-                                            <select class="form-select form-select-sm" name="service_type" required>
+                                            <select class="form-select form-select-sm custom-select" name="service_type" required>
                                                 <option value="">-- Select --</option>
                                                 <option value="accommodation">Accommodation</option>
                                                 <option value="transport">Transport</option>

@@ -14,7 +14,7 @@
         <div class="row g-2 align-items-end">
             <div class="col-md-4">
                 <label class="form-label small text-muted mb-1">Segment</label>
-                <select class="form-select form-select-sm" name="segment">
+                <select class="form-select form-select-sm custom-select" name="segment">
                     <option value="all" {{ $segment === 'all' ? 'selected' : '' }}>All travelers</option>
                     <option value="with_bookings" {{ $segment === 'with_bookings' ? 'selected' : '' }}>With bookings</option>
                     <option value="without_bookings" {{ $segment === 'without_bookings' ? 'selected' : '' }}>Signed up &mdash; no booking yet</option>

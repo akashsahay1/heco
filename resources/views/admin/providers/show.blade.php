@@ -112,7 +112,7 @@
                 <div class="row g-3">
                     <div class="col-md-3">
                         <label class="form-label small text-muted">Status</label>
-                        <select class="form-select form-select-sm" id="editProviderStatus" data-id="{{ $provider->id }}">
+                        <select class="form-select form-select-sm custom-select" id="editProviderStatus" data-id="{{ $provider->id }}">
                             <option value="approved" @selected($provider->status === 'approved')>Approved</option>
                             <option value="pending" @selected($provider->status === 'pending')>Pending</option>
                             <option value="rejected" @selected($provider->status === 'rejected')>Rejected</option>

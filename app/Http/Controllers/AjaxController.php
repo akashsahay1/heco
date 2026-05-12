@@ -719,6 +719,9 @@ class AjaxController extends Controller
             if ($request->has('delete_region')) {
                 return $this->deleteRegion($request);
             }
+            if ($request->has('bulk_delete_regions')) {
+                return $this->bulkDeleteRegions($request);
+            }
 
             // ===== CURRENCY MANAGEMENT =====
             if ($request->has('get_currencies_list')) {
@@ -733,6 +736,9 @@ class AjaxController extends Controller
             if ($request->has('delete_currency')) {
                 return $this->deleteCurrency($request);
             }
+            if ($request->has('bulk_delete_currencies')) {
+                return $this->bulkDeleteCurrencies($request);
+            }
 
             // ===== EXPERIENCE & RP MANAGEMENT =====
             if ($request->has('get_experiences_list')) {
@@ -744,6 +750,9 @@ class AjaxController extends Controller
             if ($request->has('disable_experience')) {
                 return $this->disableExperience($request);
             }
+            if ($request->has('bulk_delete_experiences')) {
+                return $this->bulkDeleteExperiences($request);
+            }
             if ($request->has('get_regenerative_projects')) {
                 return $this->getRegenerativeProjects($request);
             }
@@ -752,6 +761,9 @@ class AjaxController extends Controller
             }
             if ($request->has('disable_regenerative_project')) {
                 return $this->disableRegenerativeProject($request);
+            }
+            if ($request->has('bulk_delete_regenerative_projects')) {
+                return $this->bulkDeleteRegenerativeProjects($request);
             }
 
             // ===== TRIP MANAGER =====
@@ -3531,16 +3543,18 @@ class AjaxController extends Controller
 
     protected function getCalendarTrips(Request $request): JsonResponse
     {
-        $month = $request->get("month", now()->month);
-        $year = $request->get("year", now()->year);
+        $month = (int) $request->get("month", now()->month);
+        $year = (int) $request->get("year", now()->year);
 
-        $trips = Trip::whereIn("status", ["confirmed", "running"])
-            ->where(function ($q) use ($month, $year) {
-                $q->whereMonth("start_date", $month)->whereYear("start_date", $year)
-                  ->orWhere(function ($q2) use ($month, $year) {
-                      $q2->whereMonth("end_date", $month)->whereYear("end_date", $year);
-                  });
-            })
+        $monthStart = \Carbon\Carbon::create($year, $month, 1)->startOfMonth()->toDateString();
+        $monthEnd = \Carbon\Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
+
+        // Include any trip whose date range overlaps the displayed month, in any non-cancelled-only status.
+        $trips = Trip::whereIn("status", ["not_confirmed", "confirmed", "running", "completed", "cancelled"])
+            ->whereNotNull("start_date")
+            ->whereNotNull("end_date")
+            ->whereDate("start_date", "<=", $monthEnd)
+            ->whereDate("end_date", ">=", $monthStart)
             ->with(["user", "tripRegions.region"])
             ->get();
 
@@ -4328,9 +4342,93 @@ class AjaxController extends Controller
 
     protected function disableRegenerativeProject(Request $request): JsonResponse
     {
-        $project = RegenerativeProject::findOrFail($request->id);
+        $id = $request->input("project_id", $request->input("id"));
+        $project = RegenerativeProject::findOrFail($id);
         $project->update(["is_active" => !$project->is_active]);
         return response()->json(["success" => true, "is_active" => $project->is_active]);
+    }
+
+    // ===========================
+    // BULK DELETE HANDLERS
+    // ===========================
+
+    /**
+     * Normalise an "ids" payload (array or comma string) to an array of ints.
+     */
+    protected function bulkIds(Request $request): array
+    {
+        $ids = $request->input("ids", []);
+        if (is_string($ids)) {
+            $ids = array_filter(explode(",", $ids));
+        }
+        return array_values(array_unique(array_map("intval", (array) $ids)));
+    }
+
+    protected function bulkDeleteExperiences(Request $request): JsonResponse
+    {
+        $ids = $this->bulkIds($request);
+        if (empty($ids)) {
+            return response()->json(["error" => "No items selected"], 422);
+        }
+        // No soft-delete trait on Experience; mirror the single "disable" action.
+        $count = Experience::whereIn("id", $ids)->update(["is_active" => false]);
+        return response()->json(["success" => true, "message" => "{$count} experience(s) deactivated"]);
+    }
+
+    protected function bulkDeleteRegenerativeProjects(Request $request): JsonResponse
+    {
+        $ids = $this->bulkIds($request);
+        if (empty($ids)) {
+            return response()->json(["error" => "No items selected"], 422);
+        }
+        $count = RegenerativeProject::whereIn("id", $ids)->update(["is_active" => false]);
+        return response()->json(["success" => true, "message" => "{$count} project(s) deactivated"]);
+    }
+
+    protected function bulkDeleteRegions(Request $request): JsonResponse
+    {
+        $ids = $this->bulkIds($request);
+        if (empty($ids)) {
+            return response()->json(["error" => "No items selected"], 422);
+        }
+        $deleted = 0;
+        $skipped = [];
+        foreach (Region::whereIn("id", $ids)->withCount("experiences")->get() as $region) {
+            if ($region->experiences_count > 0) {
+                $skipped[] = $region->name;
+                continue;
+            }
+            $region->delete();
+            $deleted++;
+        }
+        $msg = "{$deleted} region(s) deleted";
+        if (!empty($skipped)) {
+            $msg .= ". Skipped (have experiences): " . implode(", ", $skipped);
+        }
+        return response()->json(["success" => true, "message" => $msg]);
+    }
+
+    protected function bulkDeleteCurrencies(Request $request): JsonResponse
+    {
+        $ids = $this->bulkIds($request);
+        if (empty($ids)) {
+            return response()->json(["error" => "No items selected"], 422);
+        }
+        $deleted = 0;
+        $skipped = [];
+        foreach (Currency::whereIn("id", $ids)->get() as $currency) {
+            if (in_array($currency->code, ["USD", "INR"], true)) {
+                $skipped[] = $currency->code;
+                continue;
+            }
+            $currency->delete();
+            $deleted++;
+        }
+        $msg = "{$deleted} currency(ies) deleted";
+        if (!empty($skipped)) {
+            $msg .= ". Skipped (base currency): " . implode(", ", $skipped);
+        }
+        return response()->json(["success" => true, "message" => $msg]);
     }
 
     // ===========================
