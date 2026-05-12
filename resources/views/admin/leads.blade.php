@@ -5,9 +5,9 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0">Leads Management</h5>
     <div class="d-flex gap-2">
-        <select class="form-select form-select-sm custom-select heco-filter-date" id="leadStageFilter">
-            <option value="">All Stages</option>
-            <option value="follow_up" selected>Follow Up</option>
+        <select class="form-select form-select-sm custom-select heco-filter-md" id="leadStageFilter">
+            <option value="" selected>All Stages</option>
+            <option value="follow_up">Follow Up</option>
             <option value="won">Won</option>
             <option value="lost">Lost</option>
         </select>

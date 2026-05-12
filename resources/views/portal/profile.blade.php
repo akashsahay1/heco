@@ -73,7 +73,7 @@
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label for="dateOfBirth" class="form-label">Date of Birth</label>
-                                <input type="date" class="form-control" id="dateOfBirth" value="{{ optional($user->date_of_birth)->format('Y-m-d') }}">
+                                <input type="text" class="form-control" id="dateOfBirth" value="{{ optional($user->date_of_birth)->format('d-m-Y') }}" readonly autocomplete="off">
                             </div>
                         </div>
                         <div class="mb-3">
@@ -191,6 +191,23 @@
 <script>
 $(function() {
 
+    // Date of Birth — Air Datepicker (dd-MM-yyyy), per coding rules (no type=date)
+    if (window.AirDatepicker) {
+        new AirDatepicker('#dateOfBirth', {
+            locale: window.airDatepickerEn,
+            dateFormat: 'dd-MM-yyyy',
+            autoClose: true,
+            position: 'bottom left',
+            maxDate: new Date()
+        });
+    }
+    function dobToIso() {
+        var v = $('#dateOfBirth').val().trim();
+        if (!v) return '';
+        var p = v.split('-');
+        return p.length === 3 ? (p[2] + '-' + p[1] + '-' + p[0]) : '';
+    }
+
     // Save profile
     $('#profileForm').on('submit', function(e) {
         e.preventDefault();
@@ -201,7 +218,7 @@ $(function() {
             update_profile: 1,
             full_name: $('#fullName').val(),
             mobile: $('#mobile').val(),
-            date_of_birth: $('#dateOfBirth').val(),
+            date_of_birth: dobToIso(),
             gender: $('#gender').val(),
             address1: $('#address1').val(),
             address2: $('#address2').val(),
