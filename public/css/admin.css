@@ -1055,3 +1055,122 @@ body.admin-login-page {
 .heco-admin .input-group > :only-child {
     border-radius: 4px;
 }
+
+/* ============================================
+   CUSTOM SEARCHABLE SELECT (public/js/custom-select.js)
+   Mirrors the portal component but scoped under .heco-admin and
+   sized for the admin's small (form-select-sm) filter dropdowns.
+   ============================================ */
+.heco-admin .custom-select-wrap {
+    position: relative;
+}
+.heco-admin .custom-select-wrap select {
+    display: none;
+}
+.heco-admin .custom-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    border: 1px solid var(--heco-neutral-300, #ced4da);
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 31px;
+}
+.heco-admin .custom-select-trigger:hover {
+    border-color: var(--heco-primary-700, #79a09f);
+}
+.heco-admin .custom-select-wrap.open .custom-select-trigger {
+    border-color: var(--heco-primary-700, #79a09f);
+}
+.heco-admin .custom-select-trigger .caret {
+    margin-left: 8px;
+    font-size: 0.7rem;
+    color: var(--heco-neutral-400, #999);
+    flex-shrink: 0;
+}
+.heco-admin .custom-select-body {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1080;
+    background: #fff;
+    border: 1px solid var(--heco-neutral-300, #ced4da);
+    border-radius: 4px;
+    margin-top: 2px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+.heco-admin .custom-select-wrap.open .custom-select-body {
+    display: block;
+}
+.heco-admin .custom-select-search {
+    padding: 6px;
+    border-bottom: 1px solid var(--heco-neutral-200, #e5e7eb);
+    background: var(--heco-neutral-50, #f8fafc);
+}
+.heco-admin .custom-select-search-input {
+    width: 100%;
+    padding: 5px 10px;
+    font-size: 0.8125rem;
+    border: 1px solid var(--heco-neutral-200, #e5e7eb);
+    border-radius: 4px;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+.heco-admin .custom-select-search-input:focus {
+    border-color: var(--heco-primary-700, #79a09f);
+}
+.heco-admin .custom-select-options {
+    max-height: 220px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+.heco-admin .custom-select-option {
+    padding: 7px 12px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.heco-admin .custom-select-option:hover {
+    background: var(--heco-neutral-50, #f8f9fa);
+    color: var(--heco-primary-700, #79a09f);
+}
+.heco-admin .custom-select-option.selected {
+    background: var(--heco-primary-50, #f1f7f7);
+    color: var(--heco-primary-700, #79a09f);
+    font-weight: 600;
+}
+.heco-admin .custom-select-option.hidden {
+    display: none;
+}
+.heco-admin .custom-select-empty {
+    padding: 12px 14px;
+    text-align: center;
+    color: var(--heco-neutral-500, #6b7280);
+    font-size: 0.8125rem;
+}
+
+/* Fixed-width helpers for inline filter controls (avoids inline styles). */
+.heco-admin .heco-filter-sm { width: 140px; }
+.heco-admin .heco-filter-md { width: 160px; }
+.heco-admin .heco-filter-lg { width: 200px; }
+.heco-admin .heco-filter-date { width: 150px; }
+@media (max-width: 575.98px) {
+    .heco-admin .heco-filter-sm,
+    .heco-admin .heco-filter-md,
+    .heco-admin .heco-filter-lg,
+    .heco-admin .heco-filter-date { width: 100%; }
+}

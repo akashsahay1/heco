@@ -88,6 +88,31 @@ $(function() {
         });
         $('#supportList').html(html);
     });
+
+    ajaxPost({ get_upcoming_trips: 1, within_days: 30, limit: 12 }, function(resp) {
+        var items = resp.trips || resp.data || [];
+        var html = '';
+        if (!items.length) {
+            $('#upcomingList').html('<p class="text-muted text-center small">No trips starting in the next 30 days</p>');
+            return;
+        }
+        items.forEach(function(t) {
+            var regions = (t.regions && t.regions.length) ? t.regions.map(function(r) { return r.name; }).join(', ') : '';
+            var code = t.trip_id || t.id;
+            var traveller = t.user ? (t.user.full_name || t.user.email) : '-';
+            var start = t.start_date ? String(t.start_date).substring(0, 10) : '-';
+            var statusClass = t.status === 'confirmed' ? 'success' : (t.status === 'running' ? 'primary' : (t.status === 'cancelled' ? 'danger' : 'warning text-dark'));
+            html += '<div class="border-bottom pb-2 mb-2">';
+            html += '<div class="d-flex justify-content-between align-items-start">';
+            html += '<a href="/trip-manager/' + t.id + '" class="small fw-semibold">' + code + '</a>';
+            html += '<span class="badge bg-' + statusClass + '">' + (t.status ? t.status.replace(/_/g, ' ') : '-') + '</span>';
+            html += '</div>';
+            html += '<div class="small text-muted">' + traveller + (regions ? ' &middot; ' + regions : '') + '</div>';
+            html += '<div class="small"><i class="bi bi-calendar-event"></i> ' + start + '</div>';
+            html += '</div>';
+        });
+        $('#upcomingList').html(html);
+    });
 });
 
 $(document).on('click', '.resolve-btn', function() {

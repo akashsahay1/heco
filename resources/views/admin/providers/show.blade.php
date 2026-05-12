@@ -182,24 +182,38 @@ $(function() {
     loadPayments();
 });
 
+function fmtServiceType(s) {
+    if (!s) return '-';
+    return s.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+}
+function fmtTripStatus(s) {
+    return s ? s.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : '-';
+}
+
 function loadTrips() {
     ajaxPost({ get_provider_trips: 1, provider_id: providerId }, function(tripResp) {
-        var trips = tripResp.trips || [];
+        var trips = tripResp.trips || tripResp.data || [];
         var th = '';
         if (!trips.length) {
             th = '<p class="text-muted small mb-0">No trips found for this provider.</p>';
         } else {
             th += '<div class="table-responsive"><table class="table table-sm table-bordered mb-0">';
-            th += '<thead class="table-light"><tr><th>Trip ID</th><th>Status</th><th>Service Type</th></tr></thead><tbody>';
+            th += '<thead class="table-light"><tr><th>Trip</th><th>Service Type</th><th>Day</th><th>Dates</th><th>Status</th></tr></thead><tbody>';
             trips.forEach(function(t) {
-                var trip = t.trip || t;
-                var tId = trip.trip_id || trip.id || '-';
-                var tKey = trip.id || trip.trip_id || '';
-                var statusClass = trip.status === 'confirmed' ? 'success' : (trip.status === 'cancelled' ? 'danger' : 'secondary');
+                var trip = t.trip || {};
+                var tNum = trip.id;
+                var tCode = trip.trip_id || trip.id || '-';
+                var statusClass = trip.status === 'confirmed' ? 'success' : (trip.status === 'cancelled' ? 'danger' : (trip.status === 'completed' ? 'secondary' : 'warning text-dark'));
+                var dayLabel = (t.day_number ? 'Day ' + t.day_number : '-');
+                var dates = (trip.start_date || '-') + ' — ' + (trip.end_date || '-');
                 th += '<tr>';
-                th += '<td><a href="/trip-manager/' + tKey + '" target="_blank">' + tId + '</a></td>';
-                th += '<td><span class="badge bg-' + statusClass + '">' + (trip.status || '-') + '</span></td>';
-                th += '<td>' + (t.service_type || '-') + '</td>';
+                th += '<td>' + (tNum ? '<a href="/trip-manager/' + tNum + '" target="_blank">' + tCode + '</a>' : tCode);
+                if (trip.traveller) th += '<br><small class="text-muted">' + trip.traveller + '</small>';
+                th += '</td>';
+                th += '<td>' + fmtServiceType(t.service_type) + '</td>';
+                th += '<td><small>' + dayLabel + '</small></td>';
+                th += '<td><small>' + dates + '</small></td>';
+                th += '<td><span class="badge bg-' + statusClass + '">' + fmtTripStatus(trip.status) + '</span></td>';
                 th += '</tr>';
             });
             th += '</tbody></table></div>';
@@ -220,14 +234,14 @@ function loadPayments() {
             var totalDue = 0, totalPaid = 0, totalBalance = 0;
             payments.forEach(function(pay) {
                 var trip = pay.trip || {};
-                var tId = trip.trip_id || '-';
-                var tKey = trip.id || trip.trip_id || '';
+                var tNum = trip.id;
+                var tCode = trip.trip_id || trip.id || '-';
                 var due = parseFloat(pay.amount_due) || 0;
                 var paid = parseFloat(pay.amount_paid) || 0;
                 var bal = parseFloat(pay.balance) || 0;
                 totalDue += due; totalPaid += paid; totalBalance += bal;
                 ph += '<tr>';
-                ph += '<td><a href="/trip-manager/' + tKey + '" target="_blank">' + tId + '</a></td>';
+                ph += '<td>' + (tNum ? '<a href="/trip-manager/' + tNum + '" target="_blank">' + tCode + '</a>' : tCode) + '</td>';
                 ph += '<td class="text-end">' + due.toLocaleString('en-IN') + '</td>';
                 ph += '<td class="text-end">' + paid.toLocaleString('en-IN') + '</td>';
                 ph += '<td class="text-end">' + (bal > 0 ? '<span class="text-danger">' + bal.toLocaleString('en-IN') + '</span>' : bal.toLocaleString('en-IN')) + '</td>';

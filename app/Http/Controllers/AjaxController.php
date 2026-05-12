@@ -3050,8 +3050,9 @@ class AjaxController extends Controller
     protected function deactivateHctUser(Request $request): JsonResponse
     {
         $user = User::findOrFail($request->user_id);
-        $user->update(["status" => "inactive"]);
-        return response()->json(["success" => true]);
+        $newStatus = $user->status === "active" ? "inactive" : "active";
+        $user->update(["status" => $newStatus]);
+        return response()->json(["success" => true, "status" => $newStatus]);
     }
 
     protected function getSystemLists(Request $request): JsonResponse
@@ -3079,8 +3080,8 @@ class AjaxController extends Controller
     protected function deactivateSystemListItem(Request $request): JsonResponse
     {
         $item = SystemList::findOrFail($request->id);
-        $item->update(["is_active" => false]);
-        return response()->json(["success" => true]);
+        $item->update(["is_active" => !$item->is_active]);
+        return response()->json(["success" => true, "is_active" => $item->is_active]);
     }
 
     protected function getSupportRequests(Request $request): JsonResponse
@@ -3251,20 +3252,35 @@ class AjaxController extends Controller
 
     protected function getUpcomingTrips(Request $request): JsonResponse
     {
-        $allowedStatuses = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
-
         $query = Trip::with(["user", "regions"]);
 
-        $status = $request->get("status");
-        if ($status && $status !== "all" && in_array($status, $allowedStatuses, true)) {
-            $query->where("status", $status);
+        // Status filter — blank / "all" means no filter.
+        $status = $request->get("status", "");
+        if ($status !== "" && $status !== "all") {
+            $allowed = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
+            if (in_array($status, $allowed, true)) {
+                $query->where("status", $status);
+            }
         }
-
         if ($request->filled("date_from")) {
             $query->whereDate("start_date", ">=", $request->date_from);
         }
         if ($request->filled("date_to")) {
             $query->whereDate("start_date", "<=", $request->date_to);
+        }
+        // Dashboard widget passes within_days to scope to the next N days.
+        if ($request->filled("within_days")) {
+            $days = (int) $request->within_days;
+            $query->whereNotNull("start_date")
+                  ->whereDate("start_date", ">=", now()->toDateString())
+                  ->whereDate("start_date", "<=", now()->addDays($days)->toDateString());
+        }
+        if ($request->filled("limit")) {
+            $trips = $query->orderByRaw("start_date IS NULL, start_date ASC")->limit((int) $request->limit)->get();
+            return response()->json([
+                "trips" => $trips,
+                "data" => $trips,
+            ]);
         }
 
         // NULL start_date trips last; otherwise chronological.
@@ -3513,8 +3529,13 @@ class AjaxController extends Controller
 
     protected function getProviders(Request $request): JsonResponse
     {
-        $query = ServiceProvider::where("status", "approved")
-            ->with(["region", "lastUpdatedBy:id,full_name,email"]);
+        $query = ServiceProvider::with(["region", "lastUpdatedBy:id,full_name,email"]);
+
+        // Status filter — blank / "all" means no filter; otherwise honour it.
+        $status = $request->get("status", "approved");
+        if ($status !== "" && $status !== "all") {
+            $query->where("status", $status);
+        }
         if ($request->filled("provider_type")) {
             $query->where("provider_type", $request->provider_type);
         }
@@ -3527,7 +3548,7 @@ class AjaxController extends Controller
                 $q->where("name", "like", "%{$search}%")->orWhere("email", "like", "%{$search}%");
             });
         }
-        $providers = $query->paginate(20);
+        $providers = $query->orderBy("name")->paginate(20);
         return response()->json($providers);
     }
 
@@ -3658,11 +3679,36 @@ class AjaxController extends Controller
 
     protected function getProviderTrips(Request $request): JsonResponse
     {
-        $trips = Trip::whereHas("tripDays.services", fn($q) => $q->where("service_provider_id", $request->provider_id))
-            ->with("user")
-            ->orderBy("start_date", "desc")
+        // Each row in the provider "Trip History" table is a service this SP is
+        // attached to on some trip day (via TripDayService.service_provider_id).
+        // The blade reads row.service_type and row.trip.{id,trip_id,status,...}.
+        $services = TripDayService::where("service_provider_id", $request->provider_id)
+            ->with(["tripDay.trip.user", "tripDay:id,trip_id,day_number,date"])
             ->get();
-        return response()->json(["trips" => $trips]);
+
+        $rows = $services->map(function ($svc) {
+            $trip = optional(optional($svc->tripDay)->trip);
+            if (!$trip || !$trip->id) {
+                return null;
+            }
+            return [
+                "service_type" => $svc->service_type,
+                "description" => $svc->description,
+                "day_number" => optional($svc->tripDay)->day_number,
+                "date" => optional(optional($svc->tripDay)->date)?->toDateString(),
+                "trip" => [
+                    "id" => $trip->id,
+                    "trip_id" => $trip->trip_id,
+                    "trip_name" => $trip->trip_name,
+                    "status" => $trip->status,
+                    "start_date" => optional($trip->start_date)?->toDateString(),
+                    "end_date" => optional($trip->end_date)?->toDateString(),
+                    "traveller" => optional($trip->user)->full_name ?: optional($trip->user)->email,
+                ],
+            ];
+        })->filter()->sortByDesc(fn($r) => $r["trip"]["start_date"] ?: "")->values();
+
+        return response()->json(["trips" => $rows, "data" => $rows]);
     }
 
     protected function getProviderPaymentHistory(Request $request): JsonResponse
@@ -3694,10 +3740,16 @@ class AjaxController extends Controller
 
     protected function getProviderApplications(Request $request): JsonResponse
     {
-        $applications = ServiceProvider::where("status", "pending")
-            ->with("region")
-            ->orderBy("created_at", "desc")
-            ->paginate(20);
+        $query = ServiceProvider::with("region");
+
+        // Status filter — blank / "all" means no filter; defaults to "pending"
+        // because this screen is the SP application inbox.
+        $status = $request->get("status", "pending");
+        if ($status !== "" && $status !== "all") {
+            $query->where("status", $status);
+        }
+
+        $applications = $query->orderBy("created_at", "desc")->paginate(20);
         return response()->json($applications);
     }
 
@@ -3947,8 +3999,29 @@ class AjaxController extends Controller
         if ($request->filled("region_id")) {
             $query->where("region_id", $request->region_id);
         }
+        if ($request->filled("type")) {
+            $query->where("type", $request->type);
+        }
+        if ($request->filled("difficulty")) {
+            $query->where("difficulty_level", $request->difficulty);
+        }
+        // Status: "1" => active, "0" => inactive, blank => no filter.
+        if ($request->filled("status") && in_array((string) $request->status, ["0", "1"], true)) {
+            $query->where("is_active", (bool) $request->status);
+        }
+
         $experiences = $query->orderBy("sort_order")->paginate(20);
-        return response()->json($experiences);
+
+        return response()->json([
+            "experiences" => $experiences->items(),
+            "data" => $experiences->items(),
+            "pagination" => [
+                "current_page" => $experiences->currentPage(),
+                "last_page" => $experiences->lastPage(),
+                "total" => $experiences->total(),
+                "per_page" => $experiences->perPage(),
+            ],
+        ]);
     }
 
     protected function saveExperience(Request $request): JsonResponse
@@ -4013,8 +4086,8 @@ class AjaxController extends Controller
     protected function disableExperience(Request $request): JsonResponse
     {
         $experience = Experience::findOrFail($request->id);
-        $experience->update(["is_active" => false]);
-        return response()->json(["success" => true]);
+        $experience->update(["is_active" => !$experience->is_active]);
+        return response()->json(["success" => true, "is_active" => $experience->is_active]);
     }
 
     protected function getRegenerativeProjects(Request $request): JsonResponse
@@ -4052,8 +4125,8 @@ class AjaxController extends Controller
     protected function disableRegenerativeProject(Request $request): JsonResponse
     {
         $project = RegenerativeProject::findOrFail($request->id);
-        $project->update(["is_active" => false]);
-        return response()->json(["success" => true]);
+        $project->update(["is_active" => !$project->is_active]);
+        return response()->json(["success" => true, "is_active" => $project->is_active]);
     }
 
     // ===========================
@@ -4280,11 +4353,53 @@ class AjaxController extends Controller
 
     protected function getTravellerPaymentHistory(Request $request): JsonResponse
     {
+        $trip = Trip::find($request->trip_id);
+
         $payments = TravellerPayment::where("trip_id", $request->trip_id)
-            ->with("recorder")
+            ->with(["recorder", "trip:id,trip_id,trip_name,final_price"])
             ->orderBy("payment_date", "desc")
             ->get();
-        return response()->json(["payments" => $payments]);
+
+        $rows = $payments->map(function ($p) {
+            return [
+                "id" => $p->id,
+                "amount" => $p->amount,
+                "payment_date" => optional($p->payment_date)?->toDateString(),
+                "mode" => $p->mode,
+                "method" => $p->mode,
+                // Keep payment_status (existing consumers) AND status (new shape).
+                "payment_status" => $p->payment_status,
+                "status" => $p->payment_status,
+                "notes" => $p->notes,
+                "reference" => $p->razorpay_payment_id,
+                "recorder" => $p->recorder ? [
+                    "id" => $p->recorder->id,
+                    "full_name" => $p->recorder->full_name,
+                    "email" => $p->recorder->email,
+                ] : null,
+                "trip" => $p->trip ? [
+                    "id" => $p->trip->id,
+                    "trip_id" => $p->trip->trip_id,
+                    "trip_name" => $p->trip->trip_name,
+                ] : null,
+            ];
+        });
+
+        $totalPaid = $payments->where("payment_status", "paid")->sum("amount");
+        $finalPrice = $trip ? (float) $trip->final_price : 0;
+
+        return response()->json([
+            "payments" => $rows,
+            "total_paid" => $totalPaid,
+            "total_due" => $finalPrice,
+            "balance" => $finalPrice - $totalPaid,
+            "trip" => $trip ? [
+                "id" => $trip->id,
+                "trip_id" => $trip->trip_id,
+                "trip_name" => $trip->trip_name,
+                "final_price" => $trip->final_price,
+            ] : null,
+        ]);
     }
 
     protected function editTravellerPayment(Request $request): JsonResponse

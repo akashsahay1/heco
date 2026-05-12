@@ -7,25 +7,31 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-people"></i> Service Providers</h5>
     <div class="d-flex gap-2">
-        <select class="form-select form-select-sm" id="providerTypeFilter" style="width: 140px;">
-            <option value="">All Types</option>
-            <option value="hrp">HRP</option>
-            <option value="hlh">HLH</option>
-            <option value="osp">OSP</option>
-        </select>
-        <select class="form-select form-select-sm" id="regionFilter" style="width: 160px;">
-            <option value="">All Regions</option>
-            @foreach($regions as $r)
-                <option value="{{ $r->id }}">{{ $r->name }}</option>
-            @endforeach
-        </select>
-        <select class="form-select form-select-sm" id="statusFilter" style="width: 140px;">
-            <option value="">All Status</option>
-            <option value="approved">Approved</option>
-            <option value="pending">Pending</option>
-            <option value="rejected">Rejected</option>
-        </select>
-        <input type="text" class="form-control form-control-sm" id="providerSearch" style="width: 200px;">
+        <div class="heco-filter-sm">
+            <select class="form-select form-select-sm custom-select" id="providerTypeFilter">
+                <option value="">All Types</option>
+                <option value="hrp">HRP</option>
+                <option value="hlh">HLH</option>
+                <option value="osp">OSP</option>
+            </select>
+        </div>
+        <div class="heco-filter-md">
+            <select class="form-select form-select-sm custom-select" id="regionFilter">
+                <option value="">All Regions</option>
+                @foreach($regions as $r)
+                    <option value="{{ $r->id }}">{{ $r->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="heco-filter-sm">
+            <select class="form-select form-select-sm custom-select" id="statusFilter">
+                <option value="approved">Approved</option>
+                <option value="pending">Pending</option>
+                <option value="rejected">Rejected</option>
+                <option value="">All Statuses</option>
+            </select>
+        </div>
+        <input type="text" class="form-control form-control-sm heco-filter-lg" id="providerSearch">
     </div>
 </div>
 

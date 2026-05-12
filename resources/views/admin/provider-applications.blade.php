@@ -5,12 +5,14 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-envelope-paper"></i> Provider Applications</h5>
     <div class="d-flex gap-2">
-        <select class="form-select form-select-sm" id="appStatusFilter" style="width: 160px;">
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="">All</option>
-        </select>
+        <div class="heco-filter-md">
+            <select class="form-select form-select-sm custom-select" id="appStatusFilter">
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="">All</option>
+            </select>
+        </div>
     </div>
 </div>
 

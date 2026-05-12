@@ -4,6 +4,8 @@
 
 @php
     $regions = \App\Models\Region::where('is_active', 1)->orderBy('name')->get();
+    $expTypes = \App\Models\Experience::query()->whereNotNull('type')->where('type', '!=', '')->distinct()->orderBy('type')->pluck('type');
+    $expDifficulties = \App\Models\Experience::query()->whereNotNull('difficulty_level')->where('difficulty_level', '!=', '')->distinct()->orderBy('difficulty_level')->pluck('difficulty_level');
 @endphp
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -18,7 +20,7 @@
         <div class="row g-2 align-items-end">
             <div class="col-md-2">
                 <label class="form-label small mb-1">Region</label>
-                <select class="form-select form-select-sm" id="filterRegion">
+                <select class="form-select form-select-sm custom-select" id="filterRegion">
                     <option value="">All Regions</option>
                     @foreach($regions as $r)
                         <option value="{{ $r->id }}">{{ $r->name }}</option>
@@ -27,31 +29,25 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label small mb-1">Type</label>
-                <select class="form-select form-select-sm" id="filterType">
+                <select class="form-select form-select-sm custom-select" id="filterType">
                     <option value="">All Types</option>
-                    <option value="trek">Trek</option>
-                    <option value="cultural">Cultural</option>
-                    <option value="wildlife">Wildlife</option>
-                    <option value="adventure">Adventure</option>
-                    <option value="wellness">Wellness</option>
-                    <option value="culinary">Culinary</option>
-                    <option value="homestay">Homestay</option>
-                    <option value="volunteering">Volunteering</option>
+                    @foreach($expTypes as $t)
+                        <option value="{{ $t }}">{{ $t }}</option>
+                    @endforeach
                 </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label small mb-1">Difficulty</label>
-                <select class="form-select form-select-sm" id="filterDifficulty">
+                <select class="form-select form-select-sm custom-select" id="filterDifficulty">
                     <option value="">All Levels</option>
-                    <option value="easy">Easy</option>
-                    <option value="moderate">Moderate</option>
-                    <option value="challenging">Challenging</option>
-                    <option value="extreme">Extreme</option>
+                    @foreach($expDifficulties as $d)
+                        <option value="{{ $d }}">{{ ucfirst($d) }}</option>
+                    @endforeach
                 </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label small mb-1">Status</label>
-                <select class="form-select form-select-sm" id="filterStatus">
+                <select class="form-select form-select-sm custom-select" id="filterStatus">
                     <option value="">All</option>
                     <option value="1">Active</option>
                     <option value="0">Inactive</option>
@@ -149,7 +145,7 @@ function loadExperiences(page) {
 
     ajaxPost(params, function(resp) {
         var html = '';
-        var items = resp.data || [];
+        var items = resp.experiences || resp.data || [];
         if (!items.length) {
             html = '<tr><td colspan="11" class="text-center text-muted">No experiences found</td></tr>';
         }
@@ -258,7 +254,9 @@ $('#filterSearch').on('keyup', function() {
 });
 
 $('#btnReset').on('click', function() {
-    $('#filterRegion, #filterType, #filterDifficulty, #filterStatus').val('');
+    $('#filterRegion, #filterType, #filterDifficulty, #filterStatus').val('').each(function() {
+        if (window.buildCustomDropdown) buildCustomDropdown(this);
+    });
     $('#filterSearch').val('');
     loadExperiences(1);
 });

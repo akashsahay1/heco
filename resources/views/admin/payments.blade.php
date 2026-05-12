@@ -183,8 +183,8 @@ function loadTravellerPayments() {
             var statusLabel = balance <= 0 ? 'Paid' : 'Pending';
             var statusBadge = balance <= 0 ? 'success' : 'warning text-dark';
 
-            html += '<tr class="traveller-row" style="cursor: pointer;" data-trip-id="' + (p.trip ? p.trip.trip_id : '') + '" data-user="' + (p.user ? p.user.full_name || p.user.email : '') + '" data-due="' + (p.total_due || 0) + '" data-paid="' + (p.total_paid || 0) + '">';
-            html += '<td><a href="/trip-manager/' + (p.trip ? p.trip.id || p.trip.trip_id : '') + '" target="_blank" onclick="event.stopPropagation();">' + (p.trip ? p.trip.trip_id : '-') + '</a></td>';
+            html += '<tr class="traveller-row" style="cursor: pointer;" data-trip-num="' + (p.trip ? p.trip.id || '' : '') + '" data-trip-id="' + (p.trip ? p.trip.trip_id : '') + '" data-user="' + (p.user ? p.user.full_name || p.user.email : '') + '" data-due="' + (p.total_due || 0) + '" data-paid="' + (p.total_paid || 0) + '">';
+            html += '<td><a href="/trip-manager/' + (p.trip ? p.trip.id || '' : '') + '" target="_blank" onclick="event.stopPropagation();">' + (p.trip ? p.trip.trip_id : '-') + '</a></td>';
             html += '<td>' + (p.user ? p.user.full_name || p.user.email : '-') + '</td>';
             html += '<td>₹' + Number(p.total_due || 0).toLocaleString() + '</td>';
             html += '<td>₹' + Number(p.total_paid || 0).toLocaleString() + '</td>';
@@ -242,23 +242,68 @@ $(document).on('click', '.load-sp-history', function() {
     });
 });
 
+function travellerPaymentStatusBadge(status) {
+    var cls = 'secondary';
+    if (status === 'paid') cls = 'success';
+    else if (status === 'pending') cls = 'warning text-dark';
+    else if (status === 'failed') cls = 'danger';
+    return '<span class="badge bg-' + cls + '">' + (status || '-') + '</span>';
+}
+
 $(document).on('click', '.traveller-row', function() {
-    var tripId = $(this).data('trip-id');
+    var tripNum = $(this).data('trip-num');
+    var tripCode = $(this).data('trip-id');
     var user = $(this).data('user');
-    var due = $(this).data('due');
-    var paid = $(this).data('paid');
-    var balance = Number(due) - Number(paid);
+    var dueAttr = $(this).data('due');
+    var paidAttr = $(this).data('paid');
 
-    var html = '<div class="mb-3">';
-    html += '<p><strong>Trip:</strong> ' + tripId + '</p>';
-    html += '<p><strong>Traveller:</strong> ' + user + '</p>';
-    html += '<p><strong>Total Due:</strong> ₹' + Number(due).toLocaleString() + '</p>';
-    html += '<p><strong>Total Paid:</strong> ₹' + Number(paid).toLocaleString() + '</p>';
-    html += '<p><strong>Balance:</strong> <span class="fw-bold ' + (balance > 0 ? 'text-danger' : 'text-success') + '">₹' + balance.toLocaleString() + '</span></p>';
-    html += '</div>';
+    var header = '<div class="mb-3">';
+    header += '<p class="mb-1"><strong>Trip:</strong> ' + (tripNum ? '<a href="/trip-manager/' + tripNum + '" target="_blank">' + tripCode + '</a>' : tripCode) + '</p>';
+    header += '<p class="mb-1"><strong>Traveller:</strong> ' + user + '</p>';
+    header += '</div>';
 
-    $('#travellerEntriesBody').html(html);
+    $('#travellerEntriesBody').html(header + '<p class="text-muted text-center">Loading payment history...</p>');
     new bootstrap.Modal('#travellerEntriesModal').show();
+
+    if (!tripNum) {
+        $('#travellerEntriesBody').html(header + '<p class="text-muted text-center">No trip linked.</p>');
+        return;
+    }
+
+    ajaxPost({ get_traveller_payment_history: 1, trip_id: tripNum }, function(resp) {
+        var payments = resp.payments || [];
+        var totalDue = Number(resp.total_due != null ? resp.total_due : dueAttr) || 0;
+        var totalPaid = Number(resp.total_paid != null ? resp.total_paid : paidAttr) || 0;
+        var balance = Number(resp.balance != null ? resp.balance : (totalDue - totalPaid));
+
+        var html = header;
+        html += '<div class="row text-center mb-3">';
+        html += '<div class="col"><div class="small text-muted">Total Due</div><div class="fw-bold">₹' + totalDue.toLocaleString() + '</div></div>';
+        html += '<div class="col"><div class="small text-muted">Total Paid</div><div class="fw-bold text-success">₹' + totalPaid.toLocaleString() + '</div></div>';
+        html += '<div class="col"><div class="small text-muted">Balance</div><div class="fw-bold ' + (balance > 0 ? 'text-danger' : 'text-success') + '">₹' + balance.toLocaleString() + '</div></div>';
+        html += '</div>';
+
+        if (!payments.length) {
+            html += '<p class="text-muted text-center mb-0">No payments recorded yet.</p>';
+        } else {
+            html += '<h6 class="small fw-bold">Payment History</h6>';
+            html += '<div class="table-responsive"><table class="table table-sm table-bordered mb-0">';
+            html += '<thead class="table-light"><tr><th>Date</th><th class="text-end">Amount</th><th>Mode</th><th>Status</th><th>Recorded By</th></tr></thead><tbody>';
+            payments.forEach(function(p) {
+                html += '<tr>';
+                html += '<td><small>' + (p.payment_date ? String(p.payment_date).substring(0, 10) : '-') + '</small></td>';
+                html += '<td class="text-end fw-semibold"><small>₹' + Number(p.amount || 0).toLocaleString() + '</small></td>';
+                html += '<td><small>' + (p.mode ? p.mode.replace(/_/g, ' ') : '-') + '</small></td>';
+                html += '<td>' + travellerPaymentStatusBadge(p.payment_status || p.status) + '</td>';
+                html += '<td><small>' + (p.recorder ? (p.recorder.full_name || p.recorder.email || '-') : '-') + '</small></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+        }
+        $('#travellerEntriesBody').html(html);
+    }, function() {
+        $('#travellerEntriesBody').html(header + '<p class="text-danger text-center mb-0">Failed to load payment history.</p>');
+    });
 });
 
 $('a[data-bs-toggle="pill"]').on('shown.bs.tab', function(e) {

@@ -5,17 +5,19 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-luggage"></i> Trips</h5>
     <div class="d-flex gap-2 flex-wrap">
-        <select class="form-select form-select-sm custom-select" id="statusFilter" style="width: 170px;">
-            <option value="">All Statuses</option>
-            <option value="not_confirmed">Not Confirmed</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="running">Running</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-        </select>
-        <input type="text" class="form-control form-control-sm" id="dateFromDisplay" readonly style="width: 150px;" autocomplete="off">
+        <div class="heco-filter-md">
+            <select class="form-select form-select-sm custom-select" id="statusFilter">
+                <option value="">All Statuses</option>
+                <option value="not_confirmed">Not Confirmed</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="running">Running</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+        </div>
+        <input type="text" class="form-control form-control-sm heco-filter-date" id="dateFromDisplay" readonly autocomplete="off">
         <input type="hidden" id="dateFrom">
-        <input type="text" class="form-control form-control-sm" id="dateToDisplay" readonly style="width: 150px;" autocomplete="off">
+        <input type="text" class="form-control form-control-sm heco-filter-date" id="dateToDisplay" readonly autocomplete="off">
         <input type="hidden" id="dateTo">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="clearTripFilters" title="Clear filters"><i class="bi bi-x-circle"></i></button>
     </div>
