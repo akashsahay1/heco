@@ -204,6 +204,11 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     </select>
                                 </div>
                             </div>
+                            <div class="text-end mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="clearFilters">
+                                    <i class="bi bi-x-circle"></i> Clear Filters
+                                </button>
+                            </div>
                         </div>
                         <div id="mapViewPanel">
                             <div id="discoverMap"></div>
@@ -219,6 +224,15 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
         <div class="tab-pane fade" id="pane-journey" role="tabpanel">
             <div class="content-container">
                 <div id="journeyContent">
+                    @guest
+                    {{-- Guests can view their journey read-only; finalising the trip
+                         (proceed to itinerary builder / AI itinerary / checkout)
+                         requires an account. --}}
+                    <div class="alert d-flex flex-wrap align-items-center justify-content-between gap-2 guest-journey-cta" role="alert">
+                        <span><i class="bi bi-info-circle me-1"></i> You're viewing your journey as a guest. Sign in to save it, generate a full itinerary, and proceed to checkout.</span>
+                        <a href="/login" class="btn btn-sm btn-success"><i class="bi bi-box-arrow-in-right me-1"></i> Sign in to continue</a>
+                    </div>
+                    @endguest
                     {{-- AI Chat inside Journey tab (collapsible) --}}
                     <div class="chat-collapse-outer journey-chat-collapse-outer">
                     <div class="chat-collapse-panel journey-chat-collapse-panel">
@@ -1361,9 +1375,8 @@ jQuery(function() {
 
     // Auto-switch to journey tab if logged in with a trip and tab=journey in URL
     var urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('tab') === 'journey' && isLoggedIn) {
+    if (urlParams.get('tab') === 'journey') {
         jQuery('#tab-journey').click();
-        if (tripId) { loadJourneyData(); syncChats(); }
         urlParams.delete('tab');
         urlParams.delete('trip_id');
         var cleanUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
@@ -1526,21 +1539,16 @@ jQuery(function() {
         if (mapInitialized && map) setTimeout(function() { map.invalidateSize(); }, 100);
     });
 
-    // Block journey tab for guests — redirect to /login
-    jQuery('#tab-journey').on('click', function(e) {
-        if (!isLoggedIn) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            // Send the user to the login page; after successful login they
-            // will land back on /home where they can re-open the journey tab.
-            window.location.href = '/login';
-            return false;
-        }
-    });
-
-    // Load journey data on tab show
+    // Load journey data on tab show. Guests get a read-only view of their
+    // session journey; a "Sign in to continue" CTA gates the account-only
+    // actions (full AI itinerary, checkout).
     jQuery('button[data-bs-target="#pane-journey"]').on('shown.bs.tab', function() {
-        if (tripId) {
+        if (!isLoggedIn && !tripId) {
+            // Open the guest session journey so the panels populate.
+            ensureTrip(function() {
+                loadJourneyData();
+            });
+        } else if (tripId) {
             loadJourneyData();
         }
         syncChats();

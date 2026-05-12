@@ -30,12 +30,21 @@
                     </div>
                 @endif
             </div>
-            <div>
+            <div class="text-end">
                 @php
                     $statusMap = ['not_confirmed' => ['Open', 'open'], 'confirmed' => ['Confirmed', 'confirmed'], 'running' => ['Running', 'running'], 'completed' => ['Completed', 'completed']];
                     $s = $statusMap[$trip->status] ?? ['Unknown', 'open'];
+                    $tripHasItinerary = ($trip->tripDays()->exists() || $trip->selectedExperiences->count() > 0);
+                    $canConfirm = ($trip->status === 'not_confirmed' && $trip->stage === 'open' && $tripHasItinerary);
                 @endphp
                 <span class="td-badge td-badge-{{ $s[1] }}">{{ $s[0] }}</span>
+                @if($trip->status === 'not_confirmed' && $trip->stage === 'open')
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-success" id="btnConfirmTrip" data-trip-id="{{ $trip->id }}" @if(!$tripHasItinerary) disabled title="Add at least one experience before confirming" @endif>
+                            <i class="bi bi-check2-circle"></i> Confirm Trip
+                        </button>
+                    </div>
+                @endif
             </div>
         </div>
     </div>
@@ -113,6 +122,31 @@ jQuery(function() {
     // Load payments
     ajaxPost({ get_traveller_payment_history: 1, trip_id: tripId }, function(resp) {
         renderPayments(resp.payments || []);
+    });
+
+    // Confirm Trip
+    jQuery('#btnConfirmTrip').on('click', function() {
+        var btn = jQuery(this);
+        if (btn.prop('disabled')) return;
+        Swal.fire({
+            title: 'Confirm this trip?',
+            text: 'Confirming locks in your itinerary so our team can finalise arrangements. You can still request changes via support.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, confirm',
+            confirmButtonColor: '#79a09f'
+        }).then(function(res) {
+            if (!res.isConfirmed) return;
+            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Confirming...');
+            ajaxPost({ confirm_trip: 1, trip_id: tripId }, function() {
+                showAlert('Trip confirmed!', 'success');
+                setTimeout(function() { window.location.reload(); }, 800);
+            }, function(xhr) {
+                btn.prop('disabled', false).html('<i class="bi bi-check2-circle"></i> Confirm Trip');
+                var msg = xhr.responseJSON ? xhr.responseJSON.error : 'Could not confirm the trip.';
+                showAlert(msg, 'danger');
+            });
+        });
     });
 
     function renderTimeline(resp) {

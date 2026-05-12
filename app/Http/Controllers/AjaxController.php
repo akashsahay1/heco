@@ -568,6 +568,9 @@ class AjaxController extends Controller
             if ($request->has('reopen_trip')) {
                 return $this->reopenTrip($request);
             }
+            if ($request->has('confirm_trip')) {
+                return $this->confirmTrip($request);
+            }
             if ($request->has('erase_trip')) {
                 return $this->eraseTrip($request);
             }
@@ -2394,7 +2397,7 @@ class AjaxController extends Controller
         $user = Auth::user();
         $trips = Trip::where("user_id", $user->id)
             ->where("status", "!=", "cancelled")
-            ->with(["tripRegions.region", "selectedExperiences.experience"])
+            ->with(["regions", "tripRegions.region", "selectedExperiences.experience"])
             ->orderBy("updated_at", "desc")
             ->get();
         return response()->json(["trips" => $trips]);
@@ -2409,6 +2412,26 @@ class AjaxController extends Controller
         }
         $trip->update(["status" => "not_confirmed", "stage" => "open"]);
         return response()->json(["success" => true]);
+    }
+
+    protected function confirmTrip(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        $trip = Trip::where("id", $request->trip_id)->where("user_id", $user->id)->first();
+        if (!$trip) {
+            return response()->json(["error" => "Trip not found"], 404);
+        }
+        if ($trip->status !== 'not_confirmed' || $trip->stage !== 'open') {
+            return response()->json(["error" => "This trip is already confirmed or locked."], 422);
+        }
+        $hasItinerary = $trip->tripDays()->exists() || $trip->selectedExperiences()->exists();
+        if (!$hasItinerary) {
+            return response()->json(["error" => "Add at least one experience to your trip before confirming."], 422);
+        }
+        // Confirm the trip but keep the stage open — closing the stage is an
+        // explicit HCT action (matches the C2 guard against silent downgrades).
+        $trip->update(["status" => "confirmed"]);
+        return response()->json(["success" => true, "status" => "confirmed"]);
     }
 
     protected function eraseTrip(Request $request): JsonResponse

@@ -82,11 +82,11 @@ class SpMatchingService
             }
         }
 
-        // Recalculate trip costs after assignment
+        // Recalculate trip costs after assignment (calculate() persists the result).
         if ($assigned > 0) {
             try {
-                app(CostCalculatorService::class)->recalculate($trip);
-            } catch (\Exception $e) {
+                app(CostCalculatorService::class)->calculate($trip);
+            } catch (\Throwable $e) {
                 Log::warning("Cost recalculation failed after SP matching: " . $e->getMessage());
             }
         }

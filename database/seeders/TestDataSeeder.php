@@ -7,8 +7,15 @@ use App\Models\User;
 use App\Models\ServiceProvider;
 use App\Models\Experience;
 use App\Models\Trip;
+use App\Models\TripDay;
+use App\Models\TripDayExperience;
+use App\Models\TripSelectedExperience;
+use App\Models\TripRegion;
 use App\Models\Lead;
 use App\Models\Region;
+use App\Models\RegenerativeProject;
+use App\Models\PdfTemplate;
+use App\Models\TravellerPayment;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -1859,6 +1866,265 @@ class TestDataSeeder extends Seeder
                 'notes' => 'Priya and friends found the Sikkim trip slightly above their group budget. They are comparing with a local operator. Offered a 10% group discount but no response yet. Likely lost.',
             ]
         );
+
+        // ─────────────────────────────────────────────────────────
+        // 6. TRIP ITINERARIES — give a few trips real day-wise plans
+        //    (idempotent via updateOrCreate). One trip is set to
+        //    "completed" WITH experiences so review-eligibility passes.
+        // ─────────────────────────────────────────────────────────
+
+        // helper: attach a region + selected experiences + day-wise itinerary to a trip.
+        $seedItinerary = function (?Trip $trip, int $regionId, array $expSlugs, array $dayPlan) {
+            if (!$trip) return;
+            $adults = max($trip->adults ?? 1, 1);
+
+            TripRegion::updateOrCreate(['trip_id' => $trip->id, 'region_id' => $regionId], []);
+
+            $expBySlug = Experience::whereIn('slug', $expSlugs)->get()->keyBy('slug');
+            $sortOrder = 0;
+            foreach ($expSlugs as $slug) {
+                $exp = $expBySlug->get($slug);
+                if (!$exp) continue;
+                TripSelectedExperience::updateOrCreate(
+                    ['trip_id' => $trip->id, 'experience_id' => $exp->id],
+                    ['sort_order' => $sortOrder++]
+                );
+            }
+
+            $dayNum = 0;
+            foreach ($dayPlan as $plan) {
+                $dayNum++;
+                $exp = isset($plan['exp']) ? $expBySlug->get($plan['exp']) : null;
+                $day = TripDay::updateOrCreate(
+                    ['trip_id' => $trip->id, 'day_number' => $dayNum],
+                    [
+                        'date' => $trip->start_date ? Carbon::parse($trip->start_date)->addDays($dayNum - 1) : null,
+                        'title' => $plan['title'] ?? ('Day ' . $dayNum),
+                        'description' => $plan['description'] ?? null,
+                        'day_type' => $plan['type'] ?? ($exp ? 'activity' : 'travel'),
+                        'added_by' => 'system',
+                        'is_experience_day' => $exp ? true : false,
+                        'sort_order' => $dayNum - 1,
+                    ]
+                );
+                if ($exp) {
+                    TripDayExperience::updateOrCreate(
+                        ['trip_day_id' => $day->id, 'experience_id' => $exp->id],
+                        [
+                            'start_time' => $plan['start'] ?? '08:00',
+                            'end_time' => $plan['end'] ?? '18:00',
+                            'cost_per_person' => $exp->base_cost_per_person,
+                            'total_cost' => ($plan['charge'] ?? false) ? ($exp->base_cost_per_person * $adults) : 0,
+                            'notes' => $plan['notes'] ?? null,
+                            'sort_order' => 0,
+                        ]
+                    );
+                }
+            }
+        };
+
+        // Trip 2 — Annapurna (region 12): 4-day plan (stays not_confirmed)
+        $seedItinerary($trips[1] ?? null, 12, ['annapurna-sunrise-trek', 'gurung-cultural-immersion'], [
+            ['type' => 'arrival', 'title' => 'Arrival in Pokhara', 'description' => 'Arrive, acclimatise, gear check.'],
+            ['exp' => 'annapurna-sunrise-trek', 'charge' => true, 'title' => 'Poon Hill Sunrise Trek begins', 'notes' => 'Drive to Nayapul, trek to Ulleri.', 'start' => '06:00', 'end' => '17:00'],
+            ['exp' => 'annapurna-sunrise-trek', 'title' => 'Ghorepani to Poon Hill', 'notes' => 'Pre-dawn climb to Poon Hill (3,210 m) for sunrise over Annapurna & Dhaulagiri.', 'start' => '04:30', 'end' => '16:00'],
+            ['exp' => 'gurung-cultural-immersion', 'charge' => true, 'title' => 'Gurung Village Cultural Day', 'notes' => 'Homestay with a Gurung family, traditional dinner and dances.', 'start' => '09:00', 'end' => '21:00'],
+        ]);
+
+        // Trip 3 — Spiti Valley (region 3): 5-day plan (stays confirmed)
+        $seedItinerary($trips[2] ?? null, 3, ['spiti-monastery-circuit', 'pin-valley-snow-leopard-trail'], [
+            ['type' => 'travel', 'title' => 'Manali to Kaza', 'description' => 'Long drive over Kunzum Pass into Spiti.'],
+            ['exp' => 'spiti-monastery-circuit', 'charge' => true, 'title' => 'Spiti Monastery Circuit', 'notes' => 'Key, Tabo and Dhankar monasteries.', 'start' => '08:00', 'end' => '18:00'],
+            ['exp' => 'spiti-monastery-circuit', 'title' => 'Kibber & Langza villages', 'notes' => 'High-altitude villages, fossil hunting at Langza.', 'start' => '08:30', 'end' => '17:30'],
+            ['exp' => 'pin-valley-snow-leopard-trail', 'charge' => true, 'title' => 'Pin Valley Snow Leopard Trail', 'notes' => 'Trek into Pin Valley National Park with a wildlife tracker.', 'start' => '07:00', 'end' => '18:00'],
+            ['type' => 'departure', 'title' => 'Kaza to Shimla', 'description' => 'Return drive via the Hindustan-Tibet road.'],
+        ]);
+
+        // Trip 4 — Tirthan Valley (region 1): COMPLETED with experiences (review-eligible)
+        $seedItinerary($trips[3] ?? null, 1, ['tirthan-valley-homestay', 'great-himalayan-national-park-trek'], [
+            ['exp' => 'tirthan-valley-homestay', 'charge' => true, 'title' => 'Tirthan Valley Homestay', 'notes' => 'Riverside homestay, trout fishing, local Himachali meals.', 'start' => '12:00', 'end' => '22:00'],
+            ['exp' => 'great-himalayan-national-park-trek', 'charge' => true, 'title' => 'GHNP Day Trek', 'notes' => 'Guided trek into the buffer zone of the Great Himalayan National Park.', 'start' => '07:00', 'end' => '17:00'],
+            ['type' => 'departure', 'title' => 'Departure from Aut', 'description' => 'Drive back to Aut for onward journey.'],
+        ]);
+        if (isset($trips[3])) {
+            $trips[3]->update(['status' => 'completed', 'stage' => 'closed']);
+        }
+
+        // ─────────────────────────────────────────────────────────
+        // 7. REGENERATIVE PROJECTS (4) — linked to real regions
+        // ─────────────────────────────────────────────────────────
+
+        $regenSeed = [
+            [
+                'name' => 'Tirthan River Trout Habitat Restoration',
+                'region_slug' => 'tirthan-valley',
+                'local_association' => 'Tirthan Conservation & Tourism Development Association',
+                'action_type' => 'River & Aquatic Habitat',
+                'short_description' => 'Restoring native trout spawning grounds and riparian buffers along the Tirthan river.',
+                'detailed_description' => 'Removes invasive willow, replants native alder and bamboo on eroded banks, and funds community patrols against illegal fishing during the spawning season.',
+                'impact_unit' => 'metres of riverbank restored',
+                'measurement_frequency' => 'cumulative',
+                'reference_budget' => 250000.00,
+                'cost_per_impact_unit' => 500.00,
+                'operational_constraints' => 'Planting only April–June and September–October; monsoon access limited.',
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Spiti Cold-Desert Reforestation',
+                'region_slug' => 'spiti-valley',
+                'local_association' => 'Spiti Ecosphere',
+                'action_type' => 'Reforestation',
+                'short_description' => 'Planting hardy seabuckthorn and willow to stabilise Spiti\'s fragile cold-desert slopes.',
+                'detailed_description' => 'Village nurseries raise saplings that are transplanted with drip irrigation; seabuckthorn berries also generate supplementary income for women\'s self-help groups.',
+                'impact_unit' => 'trees planted & maintained',
+                'measurement_frequency' => 'periodic',
+                'reference_budget' => 400000.00,
+                'cost_per_impact_unit' => 120.00,
+                'operational_constraints' => 'Single short planting window in May–June; site frozen Nov–Mar.',
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Ladakh Solar Cookstove Programme',
+                'region_slug' => 'ladakh',
+                'local_association' => 'Ladakh Ecological Development Group (LEDeG)',
+                'action_type' => 'Clean Energy',
+                'short_description' => 'Replacing kerosene and dung stoves with parabolic solar cookers in remote Ladakhi homestays.',
+                'detailed_description' => 'Each installed unit offsets roughly one tonne of CO2 a year and cuts indoor air pollution; technicians train host families in maintenance.',
+                'impact_unit' => 'solar cookers installed',
+                'measurement_frequency' => 'one_time',
+                'reference_budget' => 300000.00,
+                'cost_per_impact_unit' => 8000.00,
+                'operational_constraints' => 'Installation Jun–Sep only; many villages road-cut in winter.',
+                'is_active' => true,
+            ],
+            [
+                'name' => 'Annapurna Trail Waste & Plastic-Free Initiative',
+                'region_slug' => 'annapurna',
+                'local_association' => 'Annapurna Conservation Area Project (ACAP)',
+                'action_type' => 'Waste Management',
+                'short_description' => 'Funding waste segregation points, refill stations and porter clean-up crews along the Annapurna circuit.',
+                'detailed_description' => 'Supports back-hauling of non-biodegradable waste, community recycling sheds in Ghorepani and Chhomrong, and water-refill stations to cut single-use plastic bottles.',
+                'impact_unit' => 'kg of waste removed from the trail',
+                'measurement_frequency' => 'cumulative',
+                'reference_budget' => 350000.00,
+                'cost_per_impact_unit' => 80.00,
+                'operational_constraints' => 'Clean-up sweeps concentrated in spring and autumn trekking seasons.',
+                'is_active' => true,
+            ],
+        ];
+        foreach ($regenSeed as $rp) {
+            $regionSlug = $rp['region_slug'];
+            unset($rp['region_slug']);
+            $region = Region::where('slug', $regionSlug)->first();
+            if (!$region) continue;
+            RegenerativeProject::updateOrCreate(
+                ['name' => $rp['name']],
+                array_merge($rp, ['region_id' => $region->id])
+            );
+        }
+
+        // Link a couple of experiences to regenerative projects so the
+        // detail-page "Regenerative Impact" block and the Impact tab have data.
+        $rpTirthan = RegenerativeProject::where('name', 'Tirthan River Trout Habitat Restoration')->first();
+        $rpSpiti = RegenerativeProject::where('name', 'Spiti Cold-Desert Reforestation')->first();
+        if ($rpTirthan) {
+            Experience::where('slug', 'tirthan-valley-homestay')->update(['regenerative_project_id' => $rpTirthan->id]);
+            Experience::where('slug', 'great-himalayan-national-park-trek')->update(['regenerative_project_id' => $rpTirthan->id]);
+        }
+        if ($rpSpiti) {
+            Experience::where('slug', 'spiti-monastery-circuit')->update(['regenerative_project_id' => $rpSpiti->id]);
+        }
+
+        // ─────────────────────────────────────────────────────────
+        // 8. PDF TEMPLATES (additional — id 1 "itinerary_pdf" already exists)
+        // ─────────────────────────────────────────────────────────
+
+        PdfTemplate::updateOrCreate(
+            ['key' => 'trip_voucher'],
+            [
+                'name' => 'Trip Confirmation Voucher',
+                'header_html' => '<div style="text-align:center;font-family:sans-serif;"><h2 style="color:#79a09f;margin:0;">HECO</h2><p style="margin:2px 0;font-size:11px;color:#555;">Regenerative Travel — Trip Voucher</p></div>',
+                'footer_html' => '<div style="text-align:center;font-size:9px;color:#888;">This voucher confirms your trip with HECO. Carry a copy during travel.</div>',
+                'css' => 'body{font-family:sans-serif;color:#333;font-size:12px;} h1,h2,h3{color:#79a09f;}',
+                'paper_size' => 'A4',
+                'orientation' => 'portrait',
+                'is_active' => true,
+            ]
+        );
+        PdfTemplate::updateOrCreate(
+            ['key' => 'payment_receipt'],
+            [
+                'name' => 'Payment Receipt',
+                'header_html' => '<div style="text-align:center;font-family:sans-serif;"><h2 style="color:#79a09f;margin:0;">HECO</h2><p style="margin:2px 0;font-size:11px;color:#555;">Payment Receipt</p></div>',
+                'footer_html' => '<div style="text-align:center;font-size:9px;color:#888;">Computer-generated receipt. GST included where applicable.</div>',
+                'css' => 'body{font-family:sans-serif;color:#333;font-size:12px;} table{width:100%;border-collapse:collapse;} td,th{padding:6px;border:1px solid #ddd;}',
+                'paper_size' => 'A4',
+                'orientation' => 'portrait',
+                'is_active' => true,
+            ]
+        );
+
+        // ─────────────────────────────────────────────────────────
+        // 9. TRAVELLER PAYMENTS — against confirmed trips
+        // ─────────────────────────────────────────────────────────
+
+        $tripLadakh = $trips[0] ?? null;   // HECO-T-0101, confirmed, final_price 57960
+        $tripSpiti = $trips[2] ?? null;    // HECO-T-0103, confirmed, final_price 79695
+        if ($tripLadakh) {
+            TravellerPayment::updateOrCreate(
+                ['trip_id' => $tripLadakh->id, 'razorpay_payment_id' => 'SEED-PAY-0101-A'],
+                [
+                    'user_id' => $tripLadakh->user_id,
+                    'amount' => 25000.00,
+                    'payment_date' => Carbon::parse('2026-03-01'),
+                    'mode' => 'razorpay',
+                    'payment_status' => 'paid',
+                    'recorded_by' => $adminId,
+                    'razorpay_order_id' => 'SEED-ORD-0101-A',
+                    'notes' => 'Initial 25% advance payment.',
+                ]
+            );
+            TravellerPayment::updateOrCreate(
+                ['trip_id' => $tripLadakh->id, 'razorpay_payment_id' => 'SEED-PAY-0101-B'],
+                [
+                    'user_id' => $tripLadakh->user_id,
+                    'amount' => 32960.00,
+                    'payment_date' => Carbon::parse('2026-04-15'),
+                    'mode' => 'razorpay',
+                    'payment_status' => 'paid',
+                    'recorded_by' => $adminId,
+                    'razorpay_order_id' => 'SEED-ORD-0101-B',
+                    'notes' => 'Balance payment — trip fully paid.',
+                ]
+            );
+        }
+        if ($tripSpiti) {
+            TravellerPayment::updateOrCreate(
+                ['trip_id' => $tripSpiti->id, 'razorpay_payment_id' => 'SEED-PAY-0103-A'],
+                [
+                    'user_id' => $tripSpiti->user_id,
+                    'amount' => 30000.00,
+                    'payment_date' => Carbon::parse('2026-05-02'),
+                    'mode' => 'bank_transfer',
+                    'payment_status' => 'paid',
+                    'recorded_by' => $adminId,
+                    'notes' => 'Partial payment received via NEFT.',
+                ]
+            );
+            TravellerPayment::updateOrCreate(
+                ['trip_id' => $tripSpiti->id, 'razorpay_payment_id' => 'SEED-PAY-0103-B'],
+                [
+                    'user_id' => $tripSpiti->user_id,
+                    'amount' => 15000.00,
+                    'payment_date' => Carbon::parse('2026-05-08'),
+                    'mode' => 'razorpay',
+                    'payment_status' => 'pending',
+                    'recorded_by' => $adminId,
+                    'razorpay_order_id' => 'SEED-ORD-0103-B',
+                    'notes' => 'Payment initiated, awaiting confirmation.',
+                ]
+            );
+        }
     }
 
     /**

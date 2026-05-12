@@ -97,6 +97,7 @@ jQuery(function() {
             }
             html += '</div>';
             html += '<div class="wishlist-price-actions">';
+            html += '<button class="wishlist-action-icon btn-add-exp" data-exp-id="' + exp.id + '" data-exp-name="' + (exp.name || '').replace(/"/g, '&quot;') + '" title="Add to Journey"><i class="bi bi-plus-lg"></i></button>';
             html += '<a href="/experience/' + exp.slug + '" target="_blank" class="wishlist-action-icon" title="View Details"><i class="bi bi-eye"></i></a>';
             html += '<button class="wishlist-action-icon wishlist-action-remove btn-remove-wishlist" data-exp-id="' + exp.id + '" title="Remove from Wishlist"><i class="bi bi-trash3"></i></button>';
             html += '</div>';
@@ -126,22 +127,22 @@ jQuery(function() {
         });
     });
 
-    // Add to journey (kept for backward compat)
+    // Add to journey — resolves (or creates) the traveller's open trip server-side.
     jQuery(document).on('click', '.btn-add-exp', function(e) {
         e.stopPropagation();
         var btn = jQuery(this);
         var expId = btn.data('exp-id');
-        var expName = btn.data('exp-name');
+        var expName = btn.data('exp-name') || 'This experience';
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
 
         ajaxPost({ add_experience_to_trip: 1, experience_id: expId }, function(resp) {
-            btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Added!');
-            showAlert(expName + ' added to your journey!', 'success');
+            btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i>').attr('title', 'Added to Journey');
+            showAlert('"' + expName + '" added to your journey!', 'success');
             setTimeout(function() {
-                btn.html('<i class="bi bi-plus-lg"></i> Add');
+                btn.html('<i class="bi bi-plus-lg"></i>').attr('title', 'Add to Journey');
             }, 2000);
-        }, function() {
-            btn.prop('disabled', false).html('<i class="bi bi-plus-lg"></i> Add');
+        }, function(xhr) {
+            btn.prop('disabled', false).html('<i class="bi bi-plus-lg"></i>');
         });
     });
 });

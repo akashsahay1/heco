@@ -10,7 +10,7 @@ class TravellerController extends Controller
     public function myItineraries()
     {
         $trips = Trip::where("user_id", auth()->id())
-            ->with(["tripRegions.region", "selectedExperiences"])
+            ->with(["regions", "tripRegions.region", "selectedExperiences"])
             ->orderBy("updated_at", "desc")
             ->get();
         return view("portal.my-itineraries", compact("trips"));

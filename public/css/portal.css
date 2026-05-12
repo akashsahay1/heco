@@ -7287,3 +7287,15 @@
     color: var(--color-text-muted, #6b7280);
     font-size: 0.85rem;
 }
+
+/* ── Guest journey CTA (read-only journey tab) ─────────────────────── */
+.guest-journey-cta {
+    background: var(--heco-primary-50, #eef5f4);
+    border: 1px solid var(--heco-primary-100, #cfe0de);
+    color: var(--heco-primary-700, #79a09f);
+    border-radius: 4px;
+}
+.guest-journey-cta .btn-success {
+    background: var(--heco-primary-700, #79a09f);
+    border-color: var(--heco-primary-700, #79a09f);
+}

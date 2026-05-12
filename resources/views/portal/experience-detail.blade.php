@@ -117,6 +117,61 @@
             </div>
             @endif
 
+            {{-- What to Expect --}}
+            @if($experience->what_to_expect)
+            <div class="detail-section">
+                <h5><i class="bi bi-eye"></i> What to Expect</h5>
+                <p>{!! nl2br(e($experience->what_to_expect)) !!}</p>
+            </div>
+            @endif
+
+            {{-- Cultural Etiquette --}}
+            @if($experience->cultural_etiquette)
+            <div class="detail-section">
+                <h5><i class="bi bi-people"></i> Cultural Etiquette</h5>
+                <p>{!! nl2br(e($experience->cultural_etiquette)) !!}</p>
+            </div>
+            @endif
+
+            {{-- Sustainability & Community --}}
+            @if($experience->sustainability_practices || $experience->community_impact_notes || $experience->accessibility_notes)
+            <div class="detail-section">
+                <h5><i class="bi bi-globe-americas"></i> Sustainability & Community</h5>
+                <div class="row g-3">
+                    @if($experience->sustainability_practices)
+                    <div class="col-md-6">
+                        <div class="card border-0 bg-light h-100">
+                            <div class="card-body p-3">
+                                <h6><i class="bi bi-recycle text-success"></i> Sustainability Practices</h6>
+                                <p class="small mb-0">{!! nl2br(e($experience->sustainability_practices)) !!}</p>
+                            </div>
+                        </div>
+                    </div>
+                    @endif
+                    @if($experience->community_impact_notes)
+                    <div class="col-md-6">
+                        <div class="card border-0 bg-light h-100">
+                            <div class="card-body p-3">
+                                <h6><i class="bi bi-heart text-success"></i> Community Impact</h6>
+                                <p class="small mb-0">{!! nl2br(e($experience->community_impact_notes)) !!}</p>
+                            </div>
+                        </div>
+                    </div>
+                    @endif
+                    @if($experience->accessibility_notes)
+                    <div class="col-md-6">
+                        <div class="card border-0 bg-light h-100">
+                            <div class="card-body p-3">
+                                <h6><i class="bi bi-universal-access text-success"></i> Accessibility</h6>
+                                <p class="small mb-0">{!! nl2br(e($experience->accessibility_notes)) !!}</p>
+                            </div>
+                        </div>
+                    </div>
+                    @endif
+                </div>
+            </div>
+            @endif
+
             {{-- Inclusions --}}
             <div class="detail-section">
                 <h5><i class="bi bi-check2-square"></i> Inclusions</h5>
@@ -601,32 +656,23 @@ jQuery(function() {
         });
     });
 
-    // Guest: Add to Journey (localStorage)
+    // Guest: Add to Journey — writes to the server session store (same as the
+    // homepage Discover "add" handler), so it survives login (syncGuestJourney).
     jQuery('#btnGuestAddToJourney').on('click', function() {
         var btn = jQuery(this);
         var expName = {!! json_encode($experience->name) !!};
-        var expSlug = {!! json_encode($experience->slug) !!};
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Adding...');
 
-        try {
-            var items = JSON.parse(localStorage.getItem('heco_guest_journey') || '[]');
-            var exists = false;
-            for (var i = 0; i < items.length; i++) {
-                if (items[i].id === experienceId) { exists = true; break; }
-            }
-            if (!exists) {
-                items.push({ id: experienceId, name: expName, slug: expSlug });
-                localStorage.setItem('heco_guest_journey', JSON.stringify(items));
-                btn.html('<i class="bi bi-check-lg"></i> Added to Journey!').removeClass('btn-success').addClass('btn-outline-success');
-                showAlert('"' + expName + '" added to your journey!', 'success');
-                setTimeout(function() {
-                    btn.html('<i class="bi bi-plus-lg"></i> Add to Journey').removeClass('btn-outline-success').addClass('btn-success');
-                }, 3000);
-            } else {
-                showAlert('This experience is already in your journey.', 'info');
-            }
-        } catch (e) {
-            showAlert('Could not save. Please try again.', 'danger');
-        }
+        ajaxPost({ add_experience_to_trip: 1, trip_id: 'guest', experience_id: experienceId }, function(resp) {
+            btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Added to Journey!');
+            btn.removeClass('btn-success').addClass('btn-outline-success');
+            showAlert('"' + expName + '" added to your journey!', 'success');
+            setTimeout(function() {
+                btn.html('<i class="bi bi-plus-lg"></i> Add to Journey').removeClass('btn-outline-success').addClass('btn-success');
+            }, 3000);
+        }, function(xhr) {
+            btn.prop('disabled', false).html('<i class="bi bi-plus-lg"></i> Add to Journey');
+        });
     });
 
     // Guest: Wishlist requires login
