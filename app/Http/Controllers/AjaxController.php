@@ -1346,13 +1346,11 @@ class AjaxController extends Controller
             return response()->json(['error' => 'You can only review experiences from your completed trips.'], 422);
         }
 
-        $review = Review::create([
-            'user_id' => Auth::id(),
-            'experience_id' => $request->experience_id,
-            'rating' => $request->rating,
-            'title' => $request->title,
-            'body' => $request->body,
-        ]);
+        // One review per user per experience — update the existing one rather than 500 on the unique index.
+        $review = Review::updateOrCreate(
+            ['user_id' => Auth::id(), 'experience_id' => $request->experience_id],
+            ['rating' => $request->rating, 'title' => $request->title, 'body' => $request->body]
+        );
 
         $review->load('user:id,full_name,avatar');
 
@@ -1926,6 +1924,10 @@ class AjaxController extends Controller
 
     protected function addExperienceToTrip(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), ['experience_id' => 'required|integer|exists:experiences,id']);
+        if ($validator->fails()) {
+            return response()->json(['error' => 'Invalid experience.'], 422);
+        }
         $experience = Experience::findOrFail($request->experience_id);
 
         if (!Auth::check()) {
@@ -2117,11 +2119,15 @@ class AjaxController extends Controller
 
     protected function updateGroupDetails(Request $request): JsonResponse
     {
+        $adults = max(1, (int) ($request->adults ?? 1));
+        $children = max(0, (int) ($request->children ?? 0));
+        $infants = max(0, (int) ($request->infants ?? 0));
+
         if (!Auth::check()) {
             $gt = $this->guestTrip();
-            $gt['adults'] = (int) ($request->adults ?? 0);
-            $gt['children'] = (int) ($request->children ?? 0);
-            $gt['infants'] = (int) ($request->infants ?? 0);
+            $gt['adults'] = $adults;
+            $gt['children'] = $children;
+            $gt['infants'] = $infants;
             $this->saveGuestTrip($gt);
             return response()->json(["success" => true]);
         }
@@ -2129,7 +2135,11 @@ class AjaxController extends Controller
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["error" => "Trip not found"], 404);
 
-        $trip->update($request->only(["adults", "children", "infants", "traveller_origin"]));
+        $data = ["adults" => $adults, "children" => $children, "infants" => $infants];
+        if ($request->filled("traveller_origin")) {
+            $data["traveller_origin"] = $request->traveller_origin;
+        }
+        $trip->update($data);
         return response()->json(["success" => true]);
     }
 
@@ -4368,13 +4378,45 @@ class AjaxController extends Controller
 
     protected function getRegenerativeProjects(Request $request): JsonResponse
     {
-        $projects = RegenerativeProject::with("region")->orderBy("name")->paginate(20);
-        return response()->json($projects);
+        $query = RegenerativeProject::with("region");
+        if ($request->filled("region_id")) {
+            $query->where("region_id", $request->region_id);
+        }
+        if ($request->filled("status")) {
+            $query->where("is_active", $request->boolean("status"));
+        }
+        if ($request->filled("search")) {
+            $s = $request->search;
+            $query->where(function ($q) use ($s) {
+                $q->where("name", "like", "%{$s}%")->orWhere("short_description", "like", "%{$s}%");
+            });
+        }
+        $projects = $query->orderBy("name")->paginate(20);
+        return response()->json([
+            "data" => $projects->items(),
+            "pagination" => [
+                "current_page" => $projects->currentPage(),
+                "last_page" => $projects->lastPage(),
+                "total" => $projects->total(),
+                "per_page" => $projects->perPage(),
+            ],
+        ]);
     }
 
     protected function saveRegenerativeProject(Request $request): JsonResponse
     {
-        $data = $request->except(["_token", "save_regenerative_project"]);
+        $validator = Validator::make($request->all(), [
+            "name" => "required|string|max:255",
+            "region_id" => "required|exists:regions,id",
+            "action_type" => "required|string|max:255",
+            "short_description" => "required|string",
+            "impact_unit" => "required|string|max:255",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $data = $request->except(["_token", "save_regenerative_project", "id", "project_id"]);
 
         if ($request->hasFile("main_image")) {
             $data["main_image"] = $request->file("main_image")->store("rp", "public");
@@ -4388,8 +4430,9 @@ class AjaxController extends Controller
             }
         }
 
-        if ($request->filled("id")) {
-            $project = RegenerativeProject::findOrFail($request->id);
+        $editId = $request->input("project_id", $request->input("id"));
+        if ($editId) {
+            $project = RegenerativeProject::findOrFail($editId);
             $project->update($data);
         } else {
             $project = RegenerativeProject::create($data);
@@ -4523,7 +4566,12 @@ class AjaxController extends Controller
         }
         $trip->update($data);
 
-        app(CostCalculatorService::class)->calculate($trip);
+        // Only recalculate when there's an itinerary — otherwise CostCalculatorService
+        // would persist an all-zero breakdown and wipe the trip's cost columns
+        // (same hazard recalculateTripCost() guards against).
+        if ($trip->tripDays()->exists() || $trip->selectedExperiences()->exists()) {
+            app(CostCalculatorService::class)->calculate($trip);
+        }
 
         return response()->json(["success" => true]);
     }

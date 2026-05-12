@@ -67,7 +67,7 @@ Route::domain(config('app.admin_domain'))->group(function () {
         Route::get('/trip-manager/{trip_id}', [TripManagerController::class, 'show'])->name('trip-manager');
 
         // PDF
-        Route::get('/pdf/trip/{trip_id}', [PdfController::class, 'tripPdf'])->name('pdf.trip');
+        Route::get('/pdf/trip/{trip_id}', [PdfController::class, 'tripPdf'])->name('pdf.trip')->whereNumber('trip_id');
 
         // Email Test (developer tool)
         Route::get('/email-test', [EmailTestController::class, 'show'])->name('email-test');
@@ -152,9 +152,9 @@ Route::domain(config('app.portal_domain'))->group(function () {
     // Traveller (auth required)
     Route::middleware('auth')->group(function () {
         Route::get('/my-itineraries', [TravellerController::class, 'myItineraries'])->name('my-itineraries');
-        Route::get('/my-itineraries/{trip_id}', [TravellerController::class, 'resumeTrip'])->name('trip.resume');
-        Route::get('/trip/{trip}', [TravellerController::class, 'tripDetail'])->name('trip.detail');
-        Route::get('/trip/{trip}/thank-you', [TravellerController::class, 'paymentThankYou'])->name('trip.thank-you');
+        Route::get('/my-itineraries/{trip_id}', [TravellerController::class, 'resumeTrip'])->name('trip.resume')->whereNumber('trip_id');
+        Route::get('/trip/{trip}', [TravellerController::class, 'tripDetail'])->name('trip.detail')->whereNumber('trip');
+        Route::get('/trip/{trip}/thank-you', [TravellerController::class, 'paymentThankYou'])->name('trip.thank-you')->whereNumber('trip');
         Route::get('/wishlist', [TravellerController::class, 'wishlist'])->name('wishlist');
         Route::get('/profile', [TravellerController::class, 'profile'])->name('profile');
     });
