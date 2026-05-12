@@ -1050,7 +1050,7 @@ class AjaxController extends Controller
     {
         $user = Auth::user();
         $validator = Validator::make($request->all(), [
-            "full_name" => "nullable|string|max:255",
+            "full_name" => "sometimes|required|string|max:255",
             "mobile" => "nullable|string|max:20",
             "address1" => "nullable|string|max:500",
             "address2" => "nullable|string|max:500",
@@ -2169,6 +2169,16 @@ class AjaxController extends Controller
 
     protected function updateTravelPreferences(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            "accommodation_comfort" => "nullable|string|max:100",
+            "vehicle_comfort"       => "nullable|string|max:100",
+            "guide_preference"      => "nullable|string|max:100",
+            "travel_pace"           => "nullable|string|max:100",
+            "budget_sensitivity"    => "nullable|string|max:100",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
         if (!Auth::check()) {
             $gt = $this->guestTrip();
             foreach (['accommodation_comfort', 'vehicle_comfort', 'guide_preference', 'travel_pace', 'budget_sensitivity'] as $key) {
@@ -2190,9 +2200,19 @@ class AjaxController extends Controller
 
     protected function saveTripName(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            "trip_name" => "required|string|min:2|max:120",
+        ], [
+            "trip_name.required" => "Please enter a trip name.",
+            "trip_name.min"      => "The trip name must be at least 2 characters.",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
         if (!Auth::check()) {
             $gt = $this->guestTrip();
-            $gt['trip_name'] = $request->trip_name ?? 'My Trip';
+            $gt['trip_name'] = $request->trip_name;
             $this->saveGuestTrip($gt);
             return response()->json(["success" => true]);
         }
@@ -3615,9 +3635,9 @@ class AjaxController extends Controller
             });
         }
         $payments = $query->orderBy("created_at", "desc")->paginate(20);
-        // Surface the trip code at top level — the payments.blade.php SP tab reads sp.trip_id.
+        // Expose the HECO-T-… code as a separate field; leave the numeric trip_id FK intact.
         $payments->getCollection()->transform(function ($p) {
-            $p->trip_id = $p->trip?->trip_id;
+            $p->trip_code = $p->trip?->trip_id;
             return $p;
         });
         return response()->json($payments);
@@ -4312,6 +4332,19 @@ class AjaxController extends Controller
 
     protected function saveExperience(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            "id"        => "nullable|integer|exists:experiences,id",
+            "name"      => "required|string|max:255",
+            "region_id" => "required|integer|exists:regions,id",
+        ], [
+            "name.required"      => "Please enter an experience name.",
+            "region_id.required" => "Please choose a region.",
+            "region_id.exists"   => "The selected region is invalid.",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
         $data = $request->except(["_token", "save_experience", "experience_days"]);
 
         if ($request->hasFile("card_image")) {
@@ -4618,7 +4651,16 @@ class AjaxController extends Controller
                 return response()->json(["error" => "Trip not found."], 404);
             }
 
-            $amountInRupees = (float) ($request->amount ?: $trip->final_price);
+            // Only fall back to the trip's final price when no amount was sent at all;
+            // an explicit amount of 0 / blank is a bad request, not "charge me everything".
+            if ($request->filled('amount')) {
+                $amountInRupees = (float) $request->amount;
+            } elseif ($request->has('amount')) {
+                // amount key present but null/empty/0 → reject
+                $amountInRupees = 0.0;
+            } else {
+                $amountInRupees = (float) $trip->final_price;
+            }
             if ($amountInRupees <= 0) {
                 return response()->json(["error" => "Invalid payment amount."], 422);
             }

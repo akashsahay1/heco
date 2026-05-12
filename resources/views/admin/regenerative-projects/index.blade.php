@@ -9,7 +9,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-tree"></i> Regenerative Projects</h5>
     <div class="d-flex gap-2">
-        <button type="button" class="btn btn-danger btn-sm d-none" id="btnBulkDelete"><i class="bi bi-trash"></i> Delete Selected</button>
+        <button type="button" class="btn btn-danger btn-sm d-none" id="btnBulkDelete"><i class="bi bi-slash-circle"></i> Deactivate Selected</button>
         <a href="{{ url('/regenerative-projects/create') }}" class="btn btn-success btn-sm">
             <i class="bi bi-plus-lg"></i> Create New
         </a>
@@ -174,9 +174,9 @@ $(document).on('click', '.selall-check', function() {
 $('#btnBulkDelete').on('click', function() {
     var ids = $('.row-check.row-checked').map(function() { return $(this).data('id'); }).get();
     if (!ids.length) return;
-    confirmAction('Delete ' + ids.length + ' project(s)?', function() {
+    confirmAction('Deactivate ' + ids.length + ' project(s)?', function() {
         ajaxPost({ bulk_delete_regenerative_projects: 1, ids: ids }, function(resp) {
-            showAlert(resp.message || 'Deleted', 'success');
+            showAlert(resp.message || 'Deactivated', 'success');
             loadProjects();
         });
     });

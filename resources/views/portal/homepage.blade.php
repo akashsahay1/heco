@@ -1896,7 +1896,7 @@ jQuery(function() {
                 var emptyDayText = day.title || dt.label;
                 var emptyDayDesc = day.description || day.notes || dt.desc;
                 html += '<div style="text-align: center; padding: var(--space-3);">';
-                html += '<p style="font-size: var(--text-sm); color: var(--heco-green, #2d6a4f); font-weight: 600; margin: 0;"><i class="bi ' + dt.icon + '"></i> ' + emptyDayText + '</p>';
+                html += '<p style="font-size: var(--text-sm); color: var(--heco-green, #79a09f); font-weight: 600; margin: 0;"><i class="bi ' + dt.icon + '"></i> ' + emptyDayText + '</p>';
                 html += '<p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 4px 0 0;">' + emptyDayDesc + '</p>';
                 html += '</div>';
             }

@@ -133,6 +133,14 @@
             </div>
             @endif
 
+            {{-- Connectivity --}}
+            @if($experience->connectivity_notes)
+            <div class="detail-section">
+                <h5><i class="bi bi-wifi"></i> Connectivity</h5>
+                <p>{!! nl2br(e($experience->connectivity_notes)) !!}</p>
+            </div>
+            @endif
+
             {{-- Sustainability & Community --}}
             @if($experience->sustainability_practices || $experience->community_impact_notes || $experience->accessibility_notes)
             <div class="detail-section">

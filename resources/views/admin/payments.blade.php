@@ -102,7 +102,7 @@ function loadSpPayments() {
             html += '<div>';
             html += '<strong>' + (sp.service_provider ? sp.service_provider.name : '-') + '</strong>';
             html += ' <span class="badge bg-info ms-1">' + (sp.service_type || '-') + '</span>';
-            html += ' <small class="text-muted ms-2">Trip: ' + (sp.trip_id || '-') + '</small>';
+            html += ' <small class="text-muted ms-2">Trip: ' + (sp.trip_code || (sp.trip ? sp.trip.trip_id : '') || '-') + '</small>';
             html += '</div>';
             html += '<div class="text-end">';
             html += '<span class="small">Due: ₹' + Number(sp.amount_due || 0).toLocaleString() + '</span>';

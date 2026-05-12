@@ -10,7 +10,7 @@
         </div>
     </div>
 
-    <div class="card" style="max-width:680px;">
+    <div class="card email-test-card">
         <div class="card-body p-4">
             <div class="alert alert-info d-flex align-items-start" role="alert">
                 <i class="bi bi-info-circle me-2 mt-1"></i>
@@ -25,11 +25,10 @@
             </div>
 
             <form id="emailTestForm">
-                @csrf
                 <div class="mb-3">
                     <label for="testEmail" class="form-label">Recipient email address</label>
                     <input type="email" class="form-control" id="testEmail" name="email" required value="{{ auth()->user()->email ?? '' }}">
-                    <div class="form-text">All five emails below will be sent to this address with sample data.</div>
+                    <div class="form-text">All emails below will be sent to this address with sample data.</div>
                 </div>
 
                 <ul class="list-group mb-3" id="emailList">
@@ -68,7 +67,7 @@
                 </button>
             </form>
 
-            <div id="emailTestResult" class="mt-4" style="display:none;"></div>
+            <div id="emailTestResult" class="mt-4 d-none"></div>
         </div>
     </div>
 </div>
@@ -76,87 +75,65 @@
 
 @section('js')
 <script>
-(function() {
-    const form = document.getElementById('emailTestForm');
-    const btn = document.getElementById('btnSendAll');
-    const resultBox = document.getElementById('emailTestResult');
+jQuery(function ($) {
+    var $form = $('#emailTestForm');
+    var $btn = $('#btnSendAll');
+    var $resultBox = $('#emailTestResult');
 
     function setRowStatus(key, status, errorMsg) {
-        const row = document.querySelector('#emailList li[data-key="' + key + '"] .status-badge');
-        if (!row) return;
-        row.className = 'badge status-badge';
+        var $badge = $('#emailList li[data-key="' + key + '"] .status-badge');
+        if (!$badge.length) return;
+        $badge.attr('class', 'badge status-badge').removeAttr('title');
         if (status === 'sent') {
-            row.classList.add('bg-success');
-            row.textContent = 'sent';
+            $badge.addClass('bg-success').text('sent');
         } else if (status === 'failed') {
-            row.classList.add('bg-danger');
-            row.textContent = 'failed';
-            row.title = errorMsg || '';
+            $badge.addClass('bg-danger').text('failed').attr('title', errorMsg || '');
         } else {
-            row.classList.add('bg-secondary');
-            row.textContent = 'pending';
+            $badge.addClass('bg-secondary').text('pending');
         }
     }
 
     function resetRows() {
-        document.querySelectorAll('#emailList .status-badge').forEach(b => {
-            b.className = 'badge bg-warning text-dark status-badge';
-            b.textContent = 'sending...';
-        });
+        $('#emailList .status-badge').attr('class', 'badge bg-warning text-dark status-badge').text('sending...');
     }
 
-    form.addEventListener('submit', function(e) {
+    $form.on('submit', function (e) {
         e.preventDefault();
 
-        const email = document.getElementById('testEmail').value.trim();
+        var email = $.trim($('#testEmail').val());
         if (!email) return;
 
-        const original = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Sending...';
-        resultBox.style.display = 'none';
+        var original = $btn.html();
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span> Sending...');
+        $resultBox.addClass('d-none');
         resetRows();
 
-        fetch('{{ url('/email-test/send') }}', {
+        $.ajax({
+            url: '{{ url('/email-test/send') }}',
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ email: email })
-        })
-        .then(r => r.json())
-        .then(data => {
-            btn.disabled = false;
-            btn.innerHTML = original;
-
-            if (!data.success) {
-                resultBox.style.display = 'block';
-                resultBox.className = 'alert alert-danger';
-                resultBox.textContent = 'Request failed.';
+            dataType: 'json',
+            data: { email: email },
+            skipGlobalError: true
+        }).done(function (data) {
+            $btn.prop('disabled', false).html(original);
+            if (!data || !data.success) {
+                $resultBox.removeClass('d-none').attr('class', 'mt-4 alert alert-danger').text('Request failed.');
                 return;
             }
-
-            let okCount = 0, failCount = 0;
-            Object.keys(data.results).forEach(key => {
-                const r = data.results[key];
+            var okCount = 0, failCount = 0;
+            $.each(data.results || {}, function (key, r) {
                 setRowStatus(key, r.status, r.error);
-                if (r.status === 'sent') okCount++; else failCount++;
+                if (r.status === 'sent') { okCount++; } else { failCount++; }
             });
-
-            resultBox.style.display = 'block';
-            resultBox.className = 'alert ' + (failCount === 0 ? 'alert-success' : 'alert-warning');
-            resultBox.innerHTML = '<strong>Done.</strong> ' + okCount + ' sent, ' + failCount + ' failed. Recipient: <code>' + data.to + '</code> via <code>' + data.mailer + '</code>.';
-        })
-        .catch(err => {
-            btn.disabled = false;
-            btn.innerHTML = original;
-            resultBox.style.display = 'block';
-            resultBox.className = 'alert alert-danger';
-            resultBox.textContent = 'Error: ' + err.message;
+            $resultBox.removeClass('d-none')
+                .attr('class', 'mt-4 alert ' + (failCount === 0 ? 'alert-success' : 'alert-warning'))
+                .html('<strong>Done.</strong> ' + okCount + ' sent, ' + failCount + ' failed. Recipient: <code>' + data.to + '</code> via <code>' + data.mailer + '</code>.');
+        }).fail(function (xhr) {
+            $btn.prop('disabled', false).html(original);
+            var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Request failed.';
+            $resultBox.removeClass('d-none').attr('class', 'mt-4 alert alert-danger').text('Error: ' + msg);
         });
     });
-})();
+});
 </script>
 @endsection

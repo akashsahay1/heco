@@ -1204,3 +1204,6 @@ body.admin-login-page {
 /* ---- Trips: inline per-row status dropdown width ---- */
 .heco-admin .heco-trip-status { font-size: 0.75rem; }
 .heco-admin td .custom-select-wrap { width: 150px; }
+
+/* ---- Email test page ---- */
+.heco-admin .email-test-card { max-width: 680px; }
