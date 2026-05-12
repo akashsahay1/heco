@@ -69,6 +69,17 @@
                         <label class="form-label small fw-bold">Cost</label>
                         <input type="number" class="form-control form-control-sm" id="editServiceCost" step="0.01" min="0">
                     </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Service Provider</label>
+                        <select class="form-select form-select-sm" id="editServiceProvider">
+                            <option value="">No Provider</option>
+                            @if(isset($providers))
+                                @foreach($providers as $p)
+                                    <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->provider_type }})</option>
+                                @endforeach
+                            @endif
+                        </select>
+                    </div>
                     <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-check"></i> Update Service</button>
                 </form>
             </div>
@@ -309,7 +320,7 @@ function loadDayServices(dayId) {
                 html += '</div>';
                 if (s.cost > 0) html += '<span class="small text-success fw-bold">&#8377;' + Number(s.cost).toLocaleString('en-IN') + '</span>';
                 html += '<div class="d-flex gap-1 ms-1">';
-                html += '<button class="btn btn-sm btn-outline-secondary btn-edit-service" data-id="' + s.id + '" data-type="' + s.service_type + '" data-description="' + (s.description || '').replace(/"/g, '&quot;') + '" data-cost="' + (s.cost || 0) + '" title="Edit"><i class="bi bi-pencil"></i></button>';
+                html += '<button class="btn btn-sm btn-outline-secondary btn-edit-service" data-id="' + s.id + '" data-type="' + s.service_type + '" data-description="' + (s.description || '').replace(/"/g, '&quot;') + '" data-cost="' + (s.cost || 0) + '" data-sp-id="' + (s.service_provider_id || '') + '" title="Edit"><i class="bi bi-pencil"></i></button>';
                 html += '<button class="btn btn-sm btn-outline-danger rm-service" data-id="' + s.id + '" title="Remove"><i class="bi bi-x"></i></button>';
                 html += '</div>';
                 html += '</div>';
@@ -436,22 +447,45 @@ $(document).on('click', '.btn-edit-service', function() {
     $('#editServiceType').val($btn.data('type'));
     $('#editServiceDesc').val($btn.data('description'));
     $('#editServiceCost').val($btn.data('cost'));
+    $('#editServiceProvider').val(String($btn.data('sp-id') || ''));
+    $('#editServiceProvider').data('orig', String($btn.data('sp-id') || ''));
     $('#editServiceModal').modal('show');
 });
 
 $('#editServiceForm').on('submit', function(e) {
     e.preventDefault();
-    ajaxPost({
-        edit_day_service: 1,
-        service_id: $('#editServiceId').val(),
-        service_type: $('#editServiceType').val(),
-        description: $('#editServiceDesc').val(),
-        cost: $('#editServiceCost').val()
-    }, function() {
+    var serviceId = $('#editServiceId').val();
+    var newSp = String($('#editServiceProvider').val() || '');
+    var origSp = String($('#editServiceProvider').data('orig') || '');
+
+    function afterSave() {
         $('#editServiceModal').modal('hide');
         loadDayServices($('#serviceDayId').val());
         loadItinerary();
         showAlert('Service updated!');
+    }
+
+    ajaxPost({
+        edit_day_service: 1,
+        service_id: serviceId,
+        service_type: $('#editServiceType').val(),
+        description: $('#editServiceDesc').val(),
+        cost: $('#editServiceCost').val()
+    }, function() {
+        if (newSp !== origSp) {
+            ajaxPost({
+                change_day_service_provider: 1,
+                service_id: serviceId,
+                service_provider_id: newSp
+            }, afterSave, function(xhr) {
+                $('#editServiceModal').modal('hide');
+                loadDayServices($('#serviceDayId').val());
+                loadItinerary();
+                showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Provider change failed') : 'Provider change failed', 'danger');
+            });
+        } else {
+            afterSave();
+        }
     });
 });
 

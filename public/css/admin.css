@@ -1174,3 +1174,19 @@ body.admin-login-page {
     .heco-admin .heco-filter-lg,
     .heco-admin .heco-filter-date { width: 100%; }
 }
+
+/* ---- Control Panel ---- */
+.heco-admin .cp-scroll-box { max-height: 360px; overflow-y: auto; }
+.heco-admin .cp-tabwrap { border-radius: 0 0 4px 4px; background: #fff; }
+.heco-admin .cp-select-narrow { max-width: 320px; }
+.heco-admin textarea.cp-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8125rem; }
+.heco-admin .cp-list-check,
+.heco-admin .cp-prompt-check { font-size: 1.05rem; color: var(--heco-primary-700, #79a09f); }
+.heco-admin .cp-list-selall,
+.heco-admin .cp-prompt-selall { font-size: 1.05rem; color: var(--heco-primary-700, #79a09f); cursor: pointer; }
+.heco-admin .cp-checked { color: var(--heco-primary-700, #79a09f); }
+
+/* ---- SP pricing section on provider edit ---- */
+.heco-admin .sp-price-check,
+.heco-admin .sp-price-selall { font-size: 1.05rem; color: var(--heco-primary-700, #79a09f); cursor: pointer; }
+.heco-admin .sp-price-checked { color: var(--heco-primary-700, #79a09f); }

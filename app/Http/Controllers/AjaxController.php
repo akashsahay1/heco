@@ -53,6 +53,7 @@ use App\Mail\SpApplicationReceivedEmail;
 use App\Mail\SpApplicationApprovedEmail;
 use App\Mail\ProfileUpdatedEmail;
 use App\Mail\PasswordChangedEmail;
+use App\Mail\PasswordResetEmail;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
@@ -592,6 +593,33 @@ class AjaxController extends Controller
             }
             if ($request->has('deactivate_system_list_item')) {
                 return $this->deactivateSystemListItem($request);
+            }
+            if ($request->has('delete_system_list_item')) {
+                return $this->deleteSystemListItem($request);
+            }
+            if ($request->has('reset_hct_user_password')) {
+                return $this->resetHctUserPassword($request);
+            }
+            if ($request->has('get_ai_prompts')) {
+                return $this->getAiPrompts($request);
+            }
+            if ($request->has('save_ai_prompt')) {
+                return $this->saveAiPrompt($request);
+            }
+            if ($request->has('delete_ai_prompt')) {
+                return $this->deleteAiPrompt($request);
+            }
+            if ($request->has('get_activity_logs')) {
+                return $this->getActivityLogs($request);
+            }
+            if ($request->has('get_sp_pricing')) {
+                return $this->getSpPricing($request);
+            }
+            if ($request->has('save_sp_pricing')) {
+                return $this->saveSpPricing($request);
+            }
+            if ($request->has('delete_sp_pricing')) {
+                return $this->deleteSpPricing($request);
             }
             if ($request->has('get_support_requests')) {
                 return $this->getSupportRequests($request);
@@ -3084,6 +3112,152 @@ class AjaxController extends Controller
         return response()->json(["success" => true, "is_active" => $item->is_active]);
     }
 
+    protected function deleteSystemListItem(Request $request): JsonResponse
+    {
+        $ids = $request->input("ids");
+        if (is_array($ids) && count($ids)) {
+            SystemList::whereIn("id", $ids)->delete();
+        } elseif ($request->filled("id")) {
+            SystemList::where("id", $request->id)->delete();
+        } else {
+            return response()->json(["error" => "Nothing to delete"], 422);
+        }
+        return response()->json(["success" => true]);
+    }
+
+    protected function resetHctUserPassword(Request $request): JsonResponse
+    {
+        $user = User::whereIn("user_role", ["hct_admin", "hct_collaborator"])->findOrFail($request->user_id);
+        $user->update(["password" => Str::random(40)]);
+
+        try {
+            $token = Password::createToken($user);
+            $resetUrl = route("password.reset", ["token" => $token, "email" => $user->email]);
+            $this->sendMail($user->email, new PasswordResetEmail($user->full_name ?: $user->email, $resetUrl), "hct_pw_reset:" . $user->id);
+        } catch (\Throwable $e) {
+            Log::error("HCT password reset email failed [" . $user->id . "]: " . $e->getMessage());
+        }
+
+        return response()->json(["success" => true]);
+    }
+
+    protected function getAiPrompts(Request $request): JsonResponse
+    {
+        $prompts = AiPrompt::orderBy("key")->get();
+        return response()->json(["prompts" => $prompts]);
+    }
+
+    protected function saveAiPrompt(Request $request): JsonResponse
+    {
+        $data = $request->only([
+            "name", "key", "system_prompt", "user_prompt_template",
+            "model", "temperature", "max_tokens", "response_format", "notes",
+        ]);
+        if ($request->has("is_active")) {
+            $data["is_active"] = $request->boolean("is_active");
+        }
+
+        if ($request->filled("id")) {
+            $prompt = AiPrompt::findOrFail($request->id);
+            $prompt->update($data);
+        } else {
+            $validator = Validator::make($data, [
+                "name" => "required|string|max:255",
+                "key"  => "required|string|max:100|unique:ai_prompts,key",
+            ]);
+            if ($validator->fails()) {
+                return response()->json(["error" => $validator->errors()->first()], 422);
+            }
+            $prompt = AiPrompt::create($data);
+        }
+        return response()->json(["success" => true, "prompt" => $prompt]);
+    }
+
+    protected function deleteAiPrompt(Request $request): JsonResponse
+    {
+        $ids = $request->input("ids");
+        if (is_array($ids) && count($ids)) {
+            AiPrompt::whereIn("id", $ids)->delete();
+        } elseif ($request->filled("id")) {
+            AiPrompt::where("id", $request->id)->delete();
+        } else {
+            return response()->json(["error" => "Nothing to delete"], 422);
+        }
+        return response()->json(["success" => true]);
+    }
+
+    protected function getActivityLogs(Request $request): JsonResponse
+    {
+        $logs = ActivityLog::with("user")->orderByDesc("created_at")->paginate(30);
+
+        // `details` is cast to array; surface a plain-text fallback for rows that
+        // were written as a non-JSON string so the viewer always has something.
+        $logs->getCollection()->transform(function ($log) {
+            $raw = $log->getRawOriginal("details");
+            $log->setAttribute("details_text", is_string($raw) ? $raw : null);
+            return $log;
+        });
+
+        return response()->json($logs);
+    }
+
+    protected function getSpPricing(Request $request): JsonResponse
+    {
+        $rows = SpPricing::where("service_provider_id", $request->provider_id)
+            ->orderBy("service_type")
+            ->get();
+        return response()->json(["rows" => $rows]);
+    }
+
+    protected function saveSpPricing(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            "provider_id"  => "required|exists:service_providers,id",
+            "service_type" => "required|in:accommodation,transport,guide,activity,other",
+            "unit"         => "required|string|max:50",
+            "price"        => "required|numeric|min:0",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $data = [
+            "service_provider_id" => $request->provider_id,
+            "service_type"        => $request->service_type,
+            "category"            => $request->input("category") ?: null,
+            "description"         => $request->input("description") ?: null,
+            "unit"                => $request->unit,
+            "price"               => $request->price,
+            "meal_plan"           => $request->input("meal_plan") ?: null,
+            "vehicle_type"        => $request->input("vehicle_type") ?: null,
+            "notes"               => $request->input("notes") ?: null,
+        ];
+        if ($request->has("is_active")) {
+            $data["is_active"] = $request->boolean("is_active");
+        }
+
+        if ($request->filled("id")) {
+            $row = SpPricing::findOrFail($request->id);
+            $row->update($data);
+        } else {
+            $row = SpPricing::create($data);
+        }
+        return response()->json(["success" => true, "row" => $row]);
+    }
+
+    protected function deleteSpPricing(Request $request): JsonResponse
+    {
+        $ids = $request->input("ids");
+        if (is_array($ids) && count($ids)) {
+            SpPricing::whereIn("id", $ids)->delete();
+        } elseif ($request->filled("id")) {
+            SpPricing::where("id", $request->id)->delete();
+        } else {
+            return response()->json(["error" => "Nothing to delete"], 422);
+        }
+        return response()->json(["success" => true]);
+    }
+
     protected function getSupportRequests(Request $request): JsonResponse
     {
         $query = SupportRequest::with(["user", "trip"]);
@@ -3228,8 +3402,15 @@ class AjaxController extends Controller
         $lead = Lead::findOrFail($request->lead_id);
         $data = $request->only(["stage", "assigned_hct_id", "interaction_mode", "reminder_delay_days", "notes"]);
 
-        if (isset($data["interaction_mode"])) {
+        // Empty assigned_hct_id from the "Unassigned" option means clear it.
+        if (array_key_exists("assigned_hct_id", $data) && ($data["assigned_hct_id"] === "" || $data["assigned_hct_id"] === null)) {
+            $data["assigned_hct_id"] = null;
+        }
+
+        if (isset($data["interaction_mode"]) && $data["interaction_mode"] !== "") {
             $data["last_interaction_date"] = now();
+        } else {
+            unset($data["interaction_mode"]);
         }
 
         $lead->update($data);

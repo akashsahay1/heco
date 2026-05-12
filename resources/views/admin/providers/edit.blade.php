@@ -164,13 +164,80 @@
         </div>
     </div>
 
-    <div class="d-flex gap-2 mt-3 mb-5">
+    <div class="d-flex gap-2 mt-3 mb-4">
         <button type="submit" class="btn btn-success" id="saveBtn">
             <i class="bi bi-check-lg"></i> Save Changes
         </button>
         <a href="{{ route('hct.providers.show', $provider->id) }}" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>
+
+{{-- ===== Services & Pricing ===== --}}
+<div class="card mb-5" id="spPricingCard" data-provider-id="{{ $provider->id }}">
+    <div class="card-body">
+        <h6 class="border-bottom pb-2"><i class="bi bi-cash-stack"></i> Services &amp; Pricing
+            <span class="text-muted small fw-normal">— flat rates the trip manager pulls in when this provider is assigned</span>
+        </h6>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:34px;"><i class="bi bi-check2-square sp-price-selall" role="button" title="Select all"></i></th>
+                        <th>Service</th>
+                        <th>Category / Vehicle / Meal plan</th>
+                        <th>Description</th>
+                        <th style="width:150px;">Rate</th>
+                        <th style="width:80px;">Active</th>
+                        <th style="width:90px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="spPriceBody"><tr><td colspan="7" class="text-center text-muted small">Loading...</td></tr></tbody>
+            </table>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-danger d-none" id="spPriceBulkDelete"><i class="bi bi-trash me-1"></i> Delete Selected</button>
+            <button type="button" class="btn btn-sm btn-success" id="spPriceAdd"><i class="bi bi-plus-lg me-1"></i> Add Rate</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="spPriceModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h6 class="modal-title">Service Rate</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body"><form id="spPriceForm">
+        <input type="hidden" name="id">
+        <div class="mb-2"><label class="form-label small">Service type</label>
+            <select class="form-select form-select-sm" name="service_type" required>
+                <option value="accommodation">Accommodation</option>
+                <option value="transport">Transport</option>
+                <option value="guide">Guide</option>
+                <option value="activity">Activity</option>
+                <option value="other">Other</option>
+            </select>
+        </div>
+        <div class="row g-2 mb-2">
+            <div class="col-md-7"><label class="form-label small">Rate (₹)</label><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price" required></div>
+            <div class="col-md-5"><label class="form-label small">Unit</label>
+                <select class="form-select form-select-sm" name="unit" required>
+                    <option value="per night">per night</option>
+                    <option value="per day">per day</option>
+                    <option value="per person">per person</option>
+                    <option value="per trip">per trip</option>
+                    <option value="per km">per km</option>
+                    <option value="per activity">per activity</option>
+                </select>
+            </div>
+        </div>
+        <div class="mb-2"><label class="form-label small">Category (optional)</label><input type="text" class="form-control form-control-sm" name="category"></div>
+        <div class="row g-2 mb-2">
+            <div class="col-md-6"><label class="form-label small">Vehicle type (optional)</label><input type="text" class="form-control form-control-sm" name="vehicle_type"></div>
+            <div class="col-md-6"><label class="form-label small">Meal plan (optional)</label><input type="text" class="form-control form-control-sm" name="meal_plan"></div>
+        </div>
+        <div class="mb-2"><label class="form-label small">Description (optional)</label><input type="text" class="form-control form-control-sm" name="description"></div>
+        <div class="mb-2"><label class="form-label small">Notes (optional)</label><textarea class="form-control form-control-sm" name="notes" rows="2"></textarea></div>
+        <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" name="is_active" value="1" checked id="spPriceActive"><label class="form-check-label small" for="spPriceActive">Active</label></div>
+        <button type="submit" class="btn btn-sm btn-success w-100">Save Rate</button>
+    </form></div>
+</div></div></div>
 
 @endsection
 
@@ -239,6 +306,90 @@ jQuery('#providerEditForm').on('submit', function(e) {
         btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Save Changes');
         alert('Failed to save. Please try again.');
     });
+});
+
+// === Services & Pricing ===
+jQuery(function() {
+    var providerId = jQuery('#spPricingCard').data('provider-id');
+    var priceCache = {};
+
+    function spEscape(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+    function refreshBulkBtn() {
+        jQuery('#spPriceBulkDelete').toggleClass('d-none', jQuery('.sp-price-check.sp-price-checked').length === 0);
+    }
+    function loadPricing() {
+        jQuery('#spPriceBody').html('<tr><td colspan="7" class="text-center text-muted small">Loading...</td></tr>');
+        ajaxPost({ get_sp_pricing: 1, provider_id: providerId }, function(resp) {
+            var rows = resp.rows || [];
+            priceCache = {};
+            if (!rows.length) { jQuery('#spPriceBody').html('<tr><td colspan="7" class="text-center text-muted small">No rates set. Add the first one.</td></tr>'); refreshBulkBtn(); return; }
+            var html = '';
+            rows.forEach(function(r) {
+                priceCache[r.id] = r;
+                var meta = [r.category, r.vehicle_type, r.meal_plan].filter(function(x) { return x; }).join(' / ');
+                html += '<tr data-id="' + r.id + '">';
+                html += '<td><i class="bi bi-square sp-price-check" role="button" data-id="' + r.id + '"></i></td>';
+                html += '<td class="text-capitalize">' + spEscape(r.service_type) + '</td>';
+                html += '<td class="small">' + spEscape(meta || '—') + '</td>';
+                html += '<td class="small">' + spEscape(r.description || '—') + '</td>';
+                html += '<td class="small fw-bold">&#8377;' + Number(r.price).toLocaleString('en-IN') + ' <span class="text-muted fw-normal">' + spEscape(r.unit) + '</span></td>';
+                html += '<td>' + (r.is_active ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>') + '</td>';
+                html += '<td><button class="btn btn-sm btn-outline-primary sp-price-edit" title="Edit"><i class="bi bi-pencil"></i></button></td>';
+                html += '</tr>';
+            });
+            jQuery('#spPriceBody').html(html);
+            refreshBulkBtn();
+        });
+    }
+    jQuery(document).on('click', '.sp-price-check', function() {
+        jQuery(this).toggleClass('sp-price-checked').toggleClass('bi-square').toggleClass('bi-check-square');
+        refreshBulkBtn();
+    });
+    jQuery(document).on('click', '.sp-price-selall', function() {
+        var anyUnchecked = jQuery('.sp-price-check:not(.sp-price-checked)').length > 0;
+        jQuery('.sp-price-check').each(function() {
+            jQuery(this).toggleClass('sp-price-checked', anyUnchecked).toggleClass('bi-square', !anyUnchecked).toggleClass('bi-check-square', anyUnchecked);
+        });
+        refreshBulkBtn();
+    });
+    jQuery('#spPriceBulkDelete').on('click', function() {
+        var ids = jQuery('.sp-price-check.sp-price-checked').map(function() { return jQuery(this).data('id'); }).get();
+        if (!ids.length) return;
+        confirmAction('Delete ' + ids.length + ' rate(s)? This is permanent.', function() {
+            ajaxPost({ delete_sp_pricing: 1, ids: ids }, function() { loadPricing(); showAlert('Deleted.', 'success'); });
+        });
+    });
+    function fillPriceForm(r) {
+        var $f = jQuery('#spPriceForm');
+        $f[0].reset();
+        $f.find('[name=id]').val(r ? r.id : '');
+        $f.find('[name=service_type]').val(r ? r.service_type : 'accommodation');
+        $f.find('[name=price]').val(r ? r.price : '');
+        $f.find('[name=unit]').val(r ? r.unit : 'per night');
+        $f.find('[name=category]').val(r ? (r.category || '') : '');
+        $f.find('[name=vehicle_type]').val(r ? (r.vehicle_type || '') : '');
+        $f.find('[name=meal_plan]').val(r ? (r.meal_plan || '') : '');
+        $f.find('[name=description]').val(r ? (r.description || '') : '');
+        $f.find('[name=notes]').val(r ? (r.notes || '') : '');
+        $f.find('[name=is_active]').prop('checked', r ? !!r.is_active : true);
+    }
+    jQuery('#spPriceAdd').on('click', function() { fillPriceForm(null); new bootstrap.Modal('#spPriceModal').show(); });
+    jQuery(document).on('click', '.sp-price-edit', function() { fillPriceForm(priceCache[jQuery(this).closest('tr').data('id')]); new bootstrap.Modal('#spPriceModal').show(); });
+    jQuery('#spPriceForm').on('submit', function(e) {
+        e.preventDefault();
+        var data = { save_sp_pricing: 1, provider_id: providerId };
+        jQuery(this).find('[name]').each(function() {
+            if (this.type === 'checkbox') data[this.name] = this.checked ? 1 : 0;
+            else data[this.name] = jQuery(this).val();
+        });
+        ajaxPost(data, function() { bootstrap.Modal.getInstance('#spPriceModal').hide(); loadPricing(); showAlert('Rate saved.', 'success'); },
+            function(xhr) { showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Save failed') : 'Save failed', 'danger'); });
+    });
+    loadPricing();
 });
 </script>
 @endsection

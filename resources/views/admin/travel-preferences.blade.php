@@ -99,10 +99,11 @@
                 html += '<td>';
                 html += '<a href="/travel-preferences/' + item.id + '/edit" class="btn btn-sm btn-outline-primary me-1" title="Edit"><i class="bi bi-pencil"></i></a>';
                 if (item.is_active) {
-                    html += '<button class="btn btn-sm btn-outline-warning btn-toggle-pref" title="Deactivate"><i class="bi bi-eye-slash"></i></button>';
+                    html += '<button class="btn btn-sm btn-outline-warning btn-toggle-pref me-1" title="Deactivate"><i class="bi bi-eye-slash"></i></button>';
                 } else {
-                    html += '<button class="btn btn-sm btn-outline-success btn-toggle-pref" title="Reactivate"><i class="bi bi-eye"></i></button>';
+                    html += '<button class="btn btn-sm btn-outline-success btn-toggle-pref me-1" title="Reactivate"><i class="bi bi-eye"></i></button>';
                 }
+                html += '<button class="btn btn-sm btn-outline-danger btn-delete-pref" title="Delete"><i class="bi bi-trash"></i></button>';
                 html += '</td>';
                 html += '</tr>';
             });
@@ -132,6 +133,19 @@
             $sort.val(0);
             loadList(type);
             showAlert('Option added.', 'success');
+        });
+    });
+
+    // Delete option permanently
+    jQuery(document).on('click', '.btn-delete-pref', function() {
+        var $row = jQuery(this).closest('tr');
+        var id = $row.data('id');
+        var type = $row.closest('.pref-list').data('type');
+        confirmAction('Delete this option permanently? Existing trips keep their saved value.', function() {
+            ajaxPost({ delete_system_list_item: 1, id: id }, function() {
+                loadList(type);
+                showAlert('Option deleted.', 'success');
+            });
         });
     });
 

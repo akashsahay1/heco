@@ -41,6 +41,8 @@
 
 @section('js')
 <script>
+var hctUsers = @json($hctUsers);
+
 function loadLeads() {
     ajaxPost({
         get_leads: 1,
@@ -93,8 +95,14 @@ $(document).on('click', '.view-lead', function() {
         html += '<p>Notes: ' + (l.notes || '-') + '</p>';
         html += '</div><div class="col-md-6">';
         html += '<h6>Update Lead</h6>';
-        html += '<div class="mb-2"><select class="form-select form-select-sm" id="leadInteraction"><option value="">Log Interaction...</option><option value="call">Call</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></div>';
-        html += '<div class="mb-2"><textarea class="form-control form-control-sm" id="leadNotes" rows="2">' + (l.notes || '') + '</textarea></div>';
+        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Assigned HCT</label><select class="form-select form-select-sm" id="leadAssignedHct"><option value="">— Unassigned —</option>';
+        hctUsers.forEach(function(u) {
+            var sel = (l.assigned_hct_id == u.id) ? ' selected' : '';
+            html += '<option value="' + u.id + '"' + sel + '>' + (u.full_name || u.email) + '</option>';
+        });
+        html += '</select></div>';
+        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Log Interaction</label><select class="form-select form-select-sm" id="leadInteraction"><option value="">— None —</option><option value="call">Call</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></div>';
+        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Notes</label><textarea class="form-control form-control-sm" id="leadNotes" rows="2">' + (l.notes || '') + '</textarea></div>';
         html += '<button class="btn btn-sm btn-success" onclick="updateLead(' + l.id + ')">Save</button>';
         html += '</div></div>';
         $('#leadModalBody').html(html);
@@ -103,7 +111,7 @@ $(document).on('click', '.view-lead', function() {
 });
 
 function updateLead(id) {
-    var data = { update_lead: 1, lead_id: id, notes: $('#leadNotes').val() };
+    var data = { update_lead: 1, lead_id: id, notes: $('#leadNotes').val(), assigned_hct_id: $('#leadAssignedHct').val() };
     var mode = $('#leadInteraction').val();
     if (mode) data.interaction_mode = mode;
     ajaxPost(data, function() {

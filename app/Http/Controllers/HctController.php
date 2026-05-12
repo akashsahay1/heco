@@ -56,12 +56,33 @@ class HctController extends Controller
 
     public function controlPanel()
     {
-        return view("admin.control-panel");
+        $settingGroups = \App\Models\Setting::query()
+            ->select("group")
+            ->distinct()
+            ->orderBy("group")
+            ->pluck("group")
+            ->all();
+        if (empty($settingGroups)) {
+            $settingGroups = ["general"];
+        }
+        $systemListTypes = [
+            "service_type"           => "Service Types",
+            "accommodation_category" => "Accommodation Categories",
+            "vehicle_type"           => "Vehicle Types",
+            "activity_type"          => "Activity Types",
+            "experience_type"        => "Experience Types",
+            "payment_mode"           => "Payment Modes",
+        ];
+        return view("admin.control-panel", compact("settingGroups", "systemListTypes"));
     }
 
     public function leads()
     {
-        return view("admin.leads");
+        $hctUsers = User::whereIn("user_role", ["hct_admin", "hct_collaborator"])
+            ->where("status", "active")
+            ->orderBy("full_name")
+            ->get(["id", "full_name", "email"]);
+        return view("admin.leads", compact("hctUsers"));
     }
 
     public function trips()

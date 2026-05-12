@@ -3,61 +3,30 @@
 namespace Database\Seeders;
 
 use App\Models\SystemList;
+use App\Services\CostCalculatorService;
 use Illuminate\Database\Seeder;
 
 /**
- * Seeds the right-sidebar travel preference dropdowns into system_lists.
- * Values mirror the strings that were previously hardcoded in
- * resources/views/portal/homepage.blade.php so existing trips' stored
- * values stay valid (e.g. trips.accommodation_comfort = "Cat C - Standard"
- * still finds a matching option).
+ * Seeds the five "travel preference" system_lists types whose option labels
+ * must mirror the keys of CostCalculatorService::getMultiplierMap() exactly
+ * (the pricing engine matches stored trip column strings against those labels,
+ * e.g. trips.accommodation_comfort = "Cat C - Standard").
  *
- * Idempotent — uses firstOrCreate so re-running won't duplicate rows.
+ * Types: accommodation_comfort, vehicle_comfort, guide_preference,
+ *        travel_pace, budget_sensitivity.
+ *
+ * Idempotent — updateOrCreate on (list_type, name).
  */
 class PreferenceListsSeeder extends Seeder
 {
     public function run(): void
     {
-        $lists = [
-            'accommodation_comfort' => [
-                'Cat E - Camping/Tents',
-                'Cat D - Basic/Homestay',
-                'Cat C - Standard',
-                'Cat B - Comfort',
-                'Cat A - Premium/Luxury',
-            ],
-            'vehicle_comfort' => [
-                'Local Transport',
-                'SUV (Bolero/Scorpio)',
-                'SUV (Innova/Crysta)',
-                'Premium (Fortuner/Similar)',
-                'Tempo Traveller',
-            ],
-            'guide_preference' => [
-                'No Guide',
-                'Local Guide',
-                'English-speaking',
-                'Certified/Expert',
-            ],
-            'travel_pace' => [
-                'Relaxed',
-                'Moderate',
-                'Active',
-                'Intensive',
-            ],
-            'budget_sensitivity' => [
-                'Budget-friendly',
-                'Mid-range',
-                'Premium',
-                'No Limit',
-            ],
-        ];
-
-        foreach ($lists as $type => $items) {
-            foreach ($items as $idx => $name) {
-                SystemList::firstOrCreate(
-                    ['list_type' => $type, 'name' => $name],
-                    ['is_active' => 1, 'sort_order' => $idx]
+        foreach (CostCalculatorService::getMultiplierMap() as $listType => $options) {
+            $sort = 0;
+            foreach (array_keys($options) as $label) {
+                SystemList::updateOrCreate(
+                    ['list_type' => $listType, 'name' => $label],
+                    ['sort_order' => $sort++, 'is_active' => true]
                 );
             }
         }

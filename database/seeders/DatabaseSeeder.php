@@ -12,6 +12,7 @@ class DatabaseSeeder extends Seeder
             AdminUserSeeder::class,
             RegionSeeder::class,
             SystemListSeeder::class,
+            PreferenceListsSeeder::class,
             AiPromptSeeder::class,
             SettingSeeder::class,
             CurrencySeeder::class,
