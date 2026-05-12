@@ -7,10 +7,10 @@
     <div class="d-flex gap-2">
         <div class="heco-filter-md">
             <select class="form-select form-select-sm custom-select" id="appStatusFilter">
+                <option value="" selected>All</option>
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
-                <option value="">All</option>
             </select>
         </div>
     </div>

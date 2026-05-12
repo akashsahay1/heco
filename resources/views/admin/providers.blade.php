@@ -25,10 +25,10 @@
         </div>
         <div class="heco-filter-sm">
             <select class="form-select form-select-sm custom-select" id="statusFilter">
+                <option value="" selected>All Statuses</option>
                 <option value="approved">Approved</option>
                 <option value="pending">Pending</option>
                 <option value="rejected">Rejected</option>
-                <option value="">All Statuses</option>
             </select>
         </div>
         <input type="text" class="form-control form-control-sm heco-filter-lg" id="providerSearch">
