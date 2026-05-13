@@ -7537,6 +7537,9 @@
     font-size: 0.9rem;
     cursor: pointer;
 }
+.heco-portal .sp-detail-label {
+    width: 140px;
+}
 
 /* Landing: newsletter signup */
 .heco-portal .newsletter-input {

@@ -883,6 +883,10 @@ class AjaxController extends Controller
 
             return response()->json(['error' => 'Unknown action'], 400);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['error' => $e->validator->errors()->first()], 422);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['error' => 'Not found'], 404);
         } catch (\Exception $e) {
             \Log::error('AjaxController error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Server error', 'message' => $e->getMessage()], 500);

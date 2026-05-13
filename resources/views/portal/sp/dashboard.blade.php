@@ -65,7 +65,7 @@
                     <table class="table table-sm table-borderless mb-0">
                         <tbody>
                             <tr>
-                                <td class="text-muted small" style="width: 140px;">Name</td>
+                                <td class="text-muted small sp-detail-label">Name</td>
                                 <td class="small fw-bold">{{ $provider->name }}</td>
                             </tr>
                             <tr>
@@ -123,7 +123,7 @@
                     <table class="table table-sm table-borderless mb-0">
                         <tbody>
                             <tr>
-                                <td class="text-muted small" style="width: 140px;">Bank Name</td>
+                                <td class="text-muted small sp-detail-label">Bank Name</td>
                                 <td class="small">{{ $provider->bank_name ?? '-' }}</td>
                             </tr>
                             <tr>
