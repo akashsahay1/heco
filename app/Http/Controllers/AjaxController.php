@@ -3625,6 +3625,14 @@ class AjaxController extends Controller
         if (in_array($newStatus, ["completed", "cancelled"], true)) {
             $trip->update(["stage" => "closed"]);
         }
+
+        // Keep the linked lead in sync when an admin confirms via /trips dropdown,
+        // mirroring what LeadService::checkPaymentAndTransition does for paid trips
+        // and what the leads-page "Mark Won" button does.
+        if ($newStatus === 'confirmed' && $trip->lead && $trip->lead->stage === 'follow_up') {
+            app(\App\Services\LeadService::class)->markWon($trip->lead);
+        }
+
         return response()->json(["success" => true]);
     }
 
@@ -5142,9 +5150,11 @@ class AjaxController extends Controller
         $validator = Validator::make($request->all(), [
             "provider_type" => "required|in:hrp,hlh,osp",
             "name" => "required|string|max:255",
-            "email" => "required|email",
+            "email" => "required|email|unique:service_providers,email",
             "phone_1" => "required|string|max:20",
             "region_id" => "required|exists:regions,id",
+        ], [
+            "email.unique" => "An application with this email already exists. Please contact us if you need to update your application.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -5257,7 +5267,10 @@ class AjaxController extends Controller
             return [null, response()->json(['error' => 'No provider found'], 404)];
         }
         if ($sp->status !== 'approved') {
-            return [null, response()->json(['error' => 'Your service provider application is still under review.'], 403)];
+            $message = $sp->status === 'rejected'
+                ? 'Your service provider application was not approved. Please contact HCT for details.'
+                : 'Your service provider application is under review. You will get an email once it is approved.';
+            return [null, response()->json(['error' => $message], 403)];
         }
         return [$sp, null];
     }

@@ -23,12 +23,12 @@ class SpMiddleware
         // status banner so they understand their application is still in review.
         $provider = ServiceProvider::where('user_id', auth()->id())->first();
         if (!$provider || $provider->status !== 'approved') {
-            if ($request->ajax() || $request->wantsJson()) {
-                return response()->json(['error' => 'Your service provider application is still under review.'], 403);
-            }
             $message = $provider && $provider->status === 'rejected'
                 ? 'Your service provider application was not approved. Please contact HCT for details.'
                 : 'Your service provider application is under review. You will get an email once it is approved.';
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['error' => $message], 403);
+            }
             return redirect('/join')->with('error', $message);
         }
 
