@@ -2033,7 +2033,10 @@ class AjaxController extends Controller
             return response()->json(["error" => "Login required"], 401);
         }
 
-        // If no trip_id provided (e.g. from wishlist page), toggle across all user's trips
+        // No trip_id is sent only from the wishlist page, where the heart button is
+        // always a REMOVE on items the user has already hearted. If we find records,
+        // unheart them; if we don't, treat it as a no-op rather than falling through
+        // and silently attaching the experience to the user's first trip.
         if (!$request->filled('trip_id') || $request->trip_id === 'guest') {
             $userTripIds = Trip::where('user_id', Auth::id())->pluck('id');
             $records = TripSelectedExperience::whereIn('trip_id', $userTripIds)
@@ -2042,12 +2045,12 @@ class AjaxController extends Controller
                 ->get();
 
             if ($records->isNotEmpty()) {
-                // Remove from wishlist across all trips
                 foreach ($records as $rec) {
                     $rec->update(['is_preferred' => false]);
                 }
                 return response()->json(["success" => true, "is_preferred" => false]);
             }
+            return response()->json(["success" => true, "is_preferred" => false]);
         }
 
         $trip = $this->resolveTrip($request);
@@ -2123,6 +2126,16 @@ class AjaxController extends Controller
 
     protected function updateGroupDetails(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            "adults" => "nullable|integer|min:1|max:50",
+            "children" => "nullable|integer|min:0|max:50",
+            "infants" => "nullable|integer|min:0|max:50",
+            "traveller_origin" => "nullable|in:indian,foreigner",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
         $adults = max(1, (int) ($request->adults ?? 1));
         $children = max(0, (int) ($request->children ?? 0));
         $infants = max(0, (int) ($request->infants ?? 0));
@@ -2486,7 +2499,15 @@ class AjaxController extends Controller
         if (!$trip) {
             return response()->json(["error" => "Trip not found"], 404);
         }
-        $trip->update(["status" => "not_confirmed", "stage" => "open"]);
+        // Mirrors eraseTrip: once a trip is confirmed/running/completed it's a real
+        // booking. Reopening (status→not_confirmed) would break payment reconciliation
+        // and SP coordination, so route the user through HCT instead.
+        if ($trip->status !== 'not_confirmed') {
+            return response()->json([
+                "error" => "This trip can no longer be reopened. Confirmed trips must be modified by our team — please use Request Support.",
+            ], 422);
+        }
+        $trip->update(["stage" => "open"]);
         return response()->json(["success" => true]);
     }
 
@@ -3261,8 +3282,10 @@ class AjaxController extends Controller
             $prompt->update($data);
         } else {
             $validator = Validator::make($data, [
-                "name" => "required|string|max:255",
-                "key"  => "required|string|max:100|unique:ai_prompts,key",
+                "name"                  => "required|string|max:255",
+                "key"                   => "required|string|max:100|unique:ai_prompts,key",
+                "system_prompt"         => "required|string",
+                "user_prompt_template"  => "required|string",
             ]);
             if ($validator->fails()) {
                 return response()->json(["error" => $validator->errors()->first()], 422);
@@ -3863,8 +3886,9 @@ class AjaxController extends Controller
 
     protected function updateSpProfile(Request $request): JsonResponse
     {
+        [$provider, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
         $user = Auth::user();
-        $provider = ServiceProvider::where('user_id', $user->id)->firstOrFail();
 
         $validator = Validator::make($request->all(), [
             "name" => "required|string|max:255",
@@ -3914,10 +3938,8 @@ class AjaxController extends Controller
      */
     protected function getSpAssignedTrips(Request $request): JsonResponse
     {
-        $provider = ServiceProvider::where('user_id', Auth::id())->first();
-        if (!$provider) {
-            return response()->json(["trips" => []]);
-        }
+        [$provider, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
 
         $tripsById = [];
 
@@ -4337,13 +4359,22 @@ class AjaxController extends Controller
     protected function saveExperience(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            "id"        => "nullable|integer|exists:experiences,id",
-            "name"      => "required|string|max:255",
-            "region_id" => "required|integer|exists:regions,id",
+            "id"                => "nullable|integer|exists:experiences,id",
+            "name"              => "required|string|max:255",
+            "region_id"         => "required|integer|exists:regions,id",
+            "hlh_id"            => "required|integer|exists:service_providers,id",
+            "type"              => "required|string|max:100",
+            "short_description" => "required|string|max:500",
+            "duration_type"     => "required|in:less_than_day,single_day,multi_day",
         ], [
-            "name.required"      => "Please enter an experience name.",
-            "region_id.required" => "Please choose a region.",
-            "region_id.exists"   => "The selected region is invalid.",
+            "name.required"              => "Please enter an experience name.",
+            "region_id.required"         => "Please choose a region.",
+            "region_id.exists"           => "The selected region is invalid.",
+            "hlh_id.required"            => "Please choose an HLH (host).",
+            "hlh_id.exists"              => "The selected HLH is invalid.",
+            "type.required"              => "Please choose an experience type.",
+            "short_description.required" => "Please write a short description.",
+            "duration_type.required"     => "Please choose a duration type.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -5207,14 +5238,34 @@ class AjaxController extends Controller
     // SP AVAILABILITY (Portal - logged-in SP)
     // ===========================
 
-    protected function getSpCalendar(Request $request): JsonResponse
+    /**
+     * Resolve the currently logged-in SP and verify the application is approved.
+     * Mirrors SpMiddleware's gate so AJAX handlers don't accept calls from
+     * pending/rejected applicants who bypass the dashboard route.
+     * Returns [ServiceProvider, null] on success or [null, JsonResponse] on failure.
+     *
+     * @return array{0: ?ServiceProvider, 1: ?JsonResponse}
+     */
+    protected function resolveApprovedSp(): array
     {
         $user = Auth::user();
         if (!$user || !$user->isServiceProvider()) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+            return [null, response()->json(['error' => 'Unauthorized'], 403)];
         }
         $sp = ServiceProvider::where('user_id', $user->id)->first();
-        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+        if (!$sp) {
+            return [null, response()->json(['error' => 'No provider found'], 404)];
+        }
+        if ($sp->status !== 'approved') {
+            return [null, response()->json(['error' => 'Your service provider application is still under review.'], 403)];
+        }
+        return [$sp, null];
+    }
+
+    protected function getSpCalendar(Request $request): JsonResponse
+    {
+        [$sp, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
 
         $year = (int) ($request->year ?: now()->year);
         $month = (int) ($request->month ?: now()->month);
@@ -5231,12 +5282,8 @@ class AjaxController extends Controller
 
     protected function spBlockDates(Request $request): JsonResponse
     {
-        $user = Auth::user();
-        if (!$user || !$user->isServiceProvider()) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-        $sp = ServiceProvider::where('user_id', $user->id)->first();
-        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+        [$sp, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
 
         $dates = $request->input('dates', []);
         if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
@@ -5249,12 +5296,8 @@ class AjaxController extends Controller
 
     protected function spUnblockDates(Request $request): JsonResponse
     {
-        $user = Auth::user();
-        if (!$user || !$user->isServiceProvider()) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-        $sp = ServiceProvider::where('user_id', $user->id)->first();
-        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+        [$sp, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
 
         $dates = $request->input('dates', []);
         if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
@@ -5267,12 +5310,8 @@ class AjaxController extends Controller
 
     protected function spSaveIcalUrl(Request $request): JsonResponse
     {
-        $user = Auth::user();
-        if (!$user || !$user->isServiceProvider()) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-        $sp = ServiceProvider::where('user_id', $user->id)->first();
-        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+        [$sp, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
 
         $sp->update(['ical_url' => $request->ical_url ?: null]);
 
@@ -5281,12 +5320,8 @@ class AjaxController extends Controller
 
     protected function spSyncIcalNow(Request $request): JsonResponse
     {
-        $user = Auth::user();
-        if (!$user || !$user->isServiceProvider()) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-        $sp = ServiceProvider::where('user_id', $user->id)->first();
-        if (!$sp) return response()->json(['error' => 'No provider found'], 404);
+        [$sp, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
         if (!$sp->ical_url) return response()->json(['error' => 'No iCal URL configured'], 422);
 
         try {
