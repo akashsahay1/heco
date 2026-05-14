@@ -541,8 +541,30 @@ jQuery(function() {
     var calYear = {{ now()->year }};
     var calMonth = {{ now()->month }};
     var calendarData = {};
+    var roomCalendar = {};
     var selectedDates = [];
     var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+    function roomBreakdownHtml(dateStr) {
+        var cats = roomCalendar[dateStr] || [];
+        if (!cats.length) return '';
+        var lines = cats.map(function(c) {
+            // Use 3-letter code from category name so cells stay compact.
+            var code = (c.room_category || '').split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 3).toUpperCase() || '?';
+            var lowAvail = c.available === 0;
+            var color = lowAvail ? 'text-danger' : (c.available < c.total ? 'text-warning' : 'text-success');
+            return '<div class="sp-cal-room-row ' + color + '">' + code + ' ' + c.available + '/' + c.total + '</div>';
+        });
+        return '<div class="sp-cal-rooms">' + lines.join('') + '</div>';
+    }
+
+    function roomTooltip(dateStr) {
+        var cats = roomCalendar[dateStr] || [];
+        if (!cats.length) return '';
+        return cats.map(function(c) {
+            return c.room_category + ': ' + c.available + '/' + c.total + ' available (' + c.booked + ' booked)';
+        }).join('\n');
+    }
 
     function statusBadge(status) {
         var cls = 'secondary';
@@ -587,6 +609,7 @@ jQuery(function() {
         jQuery('#calMonthLabel').text(monthNames[calMonth - 1] + ' ' + calYear);
         ajaxPost({ get_sp_calendar: 1, year: calYear, month: calMonth }, function(resp) {
             calendarData = resp.calendar || {};
+            roomCalendar = resp.rooms || {};
             renderCalendar();
             if (resp.ical_url) jQuery('#icalUrlInput').val(resp.ical_url);
         });
@@ -623,10 +646,13 @@ jQuery(function() {
 
             var isSelected = selectedDates.indexOf(dateStr) !== -1;
             var selectedClass = isSelected ? 'sp-cal-day--selected' : '';
+            var roomTip = roomTooltip(dateStr);
+            var fullTitle = title + (roomTip ? '\n\n' + roomTip : '');
 
             html += '<div class="col p-1">';
-            html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day ' + cursorClass + ' ' + selectedClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '" title="' + title + '">';
+            html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day ' + cursorClass + ' ' + selectedClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '" title="' + fullTitle + '">';
             html += '<small>' + d + '</small>';
+            html += roomBreakdownHtml(dateStr);
             html += '</div></div>';
 
             if ((firstDay + d) % 7 === 0) {

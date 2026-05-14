@@ -5633,12 +5633,44 @@ class AjaxController extends Controller
 
         $service = new SpAvailabilityService();
         $calendar = $service->getMonthCalendar($sp->id, $year, $month);
+        $rooms = $this->buildRoomCalendar($sp->id, $year, $month);
 
         return response()->json([
             'calendar' => $calendar,
+            'rooms'    => $rooms,
             'ical_url' => $sp->ical_url,
             'ical_last_synced_at' => $sp->ical_last_synced_at?->format('d M Y H:i'),
         ]);
+    }
+
+    /**
+     * Per-date per-room-category availability for a month. Used by SP and
+     * admin calendars to show "Sgl 2/2 · Dbl 3/4" type breakdowns instead
+     * of just the binary day-level status.
+     *
+     * @return array<string, array<int, array{room_category:string,total:int,available:int,booked:int}>>
+     *   Keyed by YYYY-MM-DD.
+     */
+    protected function buildRoomCalendar(int $spId, int $year, int $month): array
+    {
+        $svc = app(\App\Services\RoomAvailabilityService::class);
+        $start = \Carbon\Carbon::create($year, $month, 1)->startOfDay();
+        $end = $start->copy()->endOfMonth();
+        $out = [];
+        foreach (\Carbon\CarbonPeriod::create($start, $end) as $day) {
+            $key = $day->format('Y-m-d');
+            $cats = $svc->categoriesForDate($spId, $key)
+                ->map(fn($c) => [
+                    'room_category' => $c['room_category'],
+                    'total'         => $c['total'],
+                    'available'     => $c['available'],
+                    'booked'        => $c['booked'],
+                ])
+                ->values()
+                ->all();
+            if (!empty($cats)) $out[$key] = $cats;
+        }
+        return $out;
     }
 
     protected function spBlockDates(Request $request): JsonResponse
@@ -5715,9 +5747,11 @@ class AjaxController extends Controller
 
         $service = new SpAvailabilityService();
         $calendar = $service->getMonthCalendar($sp->id, $year, $month);
+        $rooms = $this->buildRoomCalendar($sp->id, $year, $month);
 
         return response()->json([
             'calendar' => $calendar,
+            'rooms'    => $rooms,
             'provider_name' => $sp->name,
             'ical_url' => $sp->ical_url,
             'ical_last_synced_at' => $sp->ical_last_synced_at?->format('d M Y H:i'),

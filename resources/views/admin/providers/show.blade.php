@@ -359,10 +359,32 @@ function initAdminCalendar(spId) {
     loadAdminCalendar();
 }
 
+var adminRoomCalendar = {};
+
+function adminRoomBreakdown(dateStr) {
+    var cats = adminRoomCalendar[dateStr] || [];
+    if (!cats.length) return '';
+    var lines = cats.map(function(c) {
+        var code = (c.room_category || '').split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 3).toUpperCase() || '?';
+        var color = c.available === 0 ? 'text-danger' : (c.available < c.total ? 'text-warning' : 'text-success');
+        return '<div class="admin-cal-room-row ' + color + '">' + code + ' ' + c.available + '/' + c.total + '</div>';
+    });
+    return '<div class="admin-cal-rooms">' + lines.join('') + '</div>';
+}
+
+function adminRoomTooltip(dateStr) {
+    var cats = adminRoomCalendar[dateStr] || [];
+    if (!cats.length) return '';
+    return cats.map(function(c) {
+        return c.room_category + ': ' + c.available + '/' + c.total + ' (' + c.booked + ' booked)';
+    }).join('\n');
+}
+
 function loadAdminCalendar() {
     $('#adminCalMonthLabel').text(monthNames[adminCalMonth - 1] + ' ' + adminCalYear);
     ajaxPost({ admin_get_sp_calendar: 1, service_provider_id: adminCalSpId, year: adminCalYear, month: adminCalMonth }, function(resp) {
         adminCalData = resp.calendar || {};
+        adminRoomCalendar = resp.rooms || {};
         renderAdminCalendar();
     });
 }
@@ -385,7 +407,8 @@ function renderAdminCalendar() {
         else if (info.status === 'blocked') { bgClass = 'bg-secondary bg-opacity-25 text-secondary'; cursorClass = 'cursor-pointer'; }
         var isSelected = adminSelectedDates.indexOf(dateStr) !== -1;
         var selClass = isSelected ? 'admin-cal-day--selected' : '';
-        html += '<div class="col p-1"><div class="rounded-2 p-1 ' + bgClass + ' admin-cal-day ' + cursorClass + ' ' + selClass + '" data-date="' + dateStr + '" data-status="' + info.status + '"><small>' + d + '</small></div></div>';
+        var tip = adminRoomTooltip(dateStr);
+        html += '<div class="col p-1"><div class="rounded-2 p-1 ' + bgClass + ' admin-cal-day ' + cursorClass + ' ' + selClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" title="' + tip + '"><small>' + d + '</small>' + adminRoomBreakdown(dateStr) + '</div></div>';
         if ((firstDay + d) % 7 === 0) html += '</div><div class="row g-0 text-center">';
     }
     html += '</div>';
