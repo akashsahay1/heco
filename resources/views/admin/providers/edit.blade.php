@@ -223,7 +223,104 @@
             <small class="text-muted">The form below changes based on what you pick.</small>
         </div>
 
+        {{-- Add-mode tabs (only visible for Accommodation / Transport, hidden on Edit) --}}
+        <ul class="nav nav-pills nav-fill mb-3 sp-add-mode-tabs d-none" id="spAddModeTabs" role="tablist">
+            <li class="nav-item"><button type="button" class="nav-link active" data-add-mode="single"><i class="bi bi-1-square me-1"></i> Single entry</button></li>
+            <li class="nav-item"><button type="button" class="nav-link" data-add-mode="bulk"><i class="bi bi-list-stars me-1"></i> Add multiple at once</button></li>
+        </ul>
+
+        {{-- ============= BULK ADD MODE (Accommodation + Transport only) ============= --}}
+        <div class="add-mode-pane add-mode-bulk d-none">
+            <div class="alert alert-info border small mb-3">
+                <i class="bi bi-stars me-1"></i> Add multiple <span class="bulk-mode-label">room categories</span> in one go. Click <strong>+ Add another</strong> to append a row. Each row creates a separate entry.
+            </div>
+            <div id="bulkRowsContainer"></div>
+            <button type="button" class="btn btn-sm btn-outline-success mt-1" id="bulkAddRow"><i class="bi bi-plus-lg me-1"></i> Add another row</button>
+        </div>
+
+        {{-- Hidden templates for bulk rows — JS clones these. --}}
+        <template id="bulkRowTplAccommodation">
+            <div class="bulk-row card border p-2 mb-2" data-bulk-svc="accommodation">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">Room Category <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="room_category" data-list-type="room_category">
+                            <option value="">Pick...</option>
+                            @foreach($roomCategories as $r)
+                                <option value="{{ $r->name }}" data-desc="{{ $r->description }}">{{ $r->name }}</option>
+                            @endforeach
+                        </select>
+                        <small class="form-help-text text-muted d-block mt-1"></small>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Total <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control form-control-sm bulk-field" data-field="total_rooms" min="1" max="500" placeholder="4">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Rate/night ₹ <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="2500">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Meal Plan</label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="meal_plan" data-list-type="meal_plan">
+                            <option value="">— none —</option>
+                            @foreach($mealPlans as $m)
+                                <option value="{{ $m->name }}" data-desc="{{ $m->description }}">{{ $m->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-1 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger bulk-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <template id="bulkRowTplTransport">
+            <div class="bulk-row card border p-2 mb-2" data-bulk-svc="transport">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Vehicle <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="vehicle_type" data-list-type="vehicle_type">
+                            <option value="">Pick...</option>
+                            @foreach($vehicleTypes as $v)
+                                <option value="{{ $v->name }}" data-desc="{{ $v->description }}">{{ $v->name }}</option>
+                            @endforeach
+                        </select>
+                        <small class="form-help-text text-muted d-block mt-1"></small>
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label small mb-1">Seats</label>
+                        <input type="number" class="form-control form-control-sm bulk-field" data-field="vehicle_capacity" min="1" max="80" placeholder="7">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Rate ₹ <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="25">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Unit <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="unit">
+                            <option value="">Pick...</option>
+                            <option value="per km">per km</option>
+                            <option value="per day">per day</option>
+                            <option value="per trip">per trip</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Driver ₹/day</label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="driver_allowance" placeholder="optional">
+                    </div>
+                    <div class="col-md-1 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger bulk-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
         <hr class="my-3">
+
+        {{-- ============= SINGLE-ENTRY FIELDS (default mode) ============= --}}
+        <div class="add-mode-pane add-mode-single">
 
         {{-- ============= ACCOMMODATION FIELDS ============= --}}
         <div class="svc-fields" data-svc="accommodation">
@@ -397,8 +494,13 @@
             </div>
         </div>
 
+        </div> {{-- /.add-mode-single --}}
+
         <hr class="my-3">
 
+        {{-- Common: description + active (single mode only — bulk rows submit each
+             with empty description; admin can edit individual entries afterwards) --}}
+        <div class="add-mode-single-only">
         {{-- Common: description + active --}}
         <div class="mb-2">
             <label class="form-label small">Internal note (optional)</label>
@@ -408,6 +510,7 @@
             <input class="form-check-input" type="checkbox" name="is_active" value="1" checked id="spPriceActive">
             <label class="form-check-label small" for="spPriceActive">Active — visible to Trip Manager &amp; AI suggestions</label>
         </div>
+        </div> {{-- /.add-mode-single-only --}}
 
         <button type="submit" class="btn btn-success w-100" id="spPriceSaveBtn"><i class="bi bi-check-lg me-1"></i> Save</button>
     </form></div>
@@ -642,15 +745,169 @@ jQuery(function() {
         showServiceFields(t);
     }
 
-    jQuery('#spPriceAdd').on('click', function() { fillPriceForm(null); new bootstrap.Modal('#spPriceModal').show(); });
-    jQuery(document).on('click', '.sp-price-edit', function() { fillPriceForm(priceCache[jQuery(this).closest('tr').data('id')]); new bootstrap.Modal('#spPriceModal').show(); });
+    // ─────────────────────────────────────────────────────────────────────
+    // Bulk Add mode — Accommodation + Transport only.
+    // Edit mode always uses single-entry; bulk is "Add" only.
+    // ─────────────────────────────────────────────────────────────────────
+    var bulkEligibleTypes = ['accommodation', 'transport'];
+    var currentAddMode = 'single';
+
+    function setAddMode(mode) {
+        currentAddMode = mode;
+        jQuery('#spAddModeTabs .nav-link').removeClass('active').filter('[data-add-mode="' + mode + '"]').addClass('active');
+        jQuery('.add-mode-bulk').toggleClass('d-none', mode !== 'bulk');
+        jQuery('.add-mode-single, .add-mode-single-only').toggleClass('d-none', mode !== 'single');
+        // Update Save button label
+        var $btn = jQuery('#spPriceSaveBtn');
+        if (mode === 'bulk') {
+            $btn.html('<i class="bi bi-check-lg me-1"></i> Save All Rows');
+        } else {
+            $btn.html('<i class="bi bi-check-lg me-1"></i> Save');
+        }
+    }
+
+    function refreshBulkVisibility(serviceType, isEdit) {
+        var eligible = bulkEligibleTypes.indexOf(serviceType) !== -1 && !isEdit;
+        jQuery('#spAddModeTabs').toggleClass('d-none', !eligible);
+        if (!eligible && currentAddMode === 'bulk') {
+            setAddMode('single');
+        }
+        // Update label "room categories" vs "vehicles"
+        jQuery('.bulk-mode-label').text(serviceType === 'transport' ? 'vehicle types' : 'room categories');
+    }
+
+    function addBulkRow(serviceType) {
+        var tplId = serviceType === 'transport' ? '#bulkRowTplTransport' : '#bulkRowTplAccommodation';
+        var $tpl = jQuery(tplId);
+        if (!$tpl.length) return;
+        var $clone = jQuery($tpl[0].content.cloneNode(true));
+        jQuery('#bulkRowsContainer').append($clone);
+        // Re-wrap any custom-select that was cloned
+        jQuery('#bulkRowsContainer .bulk-field[data-list-type]').each(function() {
+            if (!jQuery(this).closest('.custom-select-wrap').length) {
+                buildCustomDropdown(this);
+            }
+        });
+    }
+
+    function resetBulkRows(serviceType) {
+        jQuery('#bulkRowsContainer').empty();
+        addBulkRow(serviceType); // always start with one empty row
+    }
+
+    function collectBulkRows(serviceType) {
+        var rows = [];
+        jQuery('#bulkRowsContainer .bulk-row').each(function() {
+            var $r = jQuery(this);
+            var row = { service_type: serviceType };
+            $r.find('.bulk-field').each(function() {
+                var field = jQuery(this).data('field');
+                var val = jQuery(this).val();
+                if (val !== null && val !== '') row[field] = val;
+            });
+            // Skip entirely blank rows
+            var meaningful = Object.keys(row).filter(function(k) { return k !== 'service_type'; });
+            if (meaningful.length > 0) rows.push(row);
+        });
+        return rows;
+    }
+
+    jQuery('#spAddModeTabs').on('click', '.nav-link', function() {
+        var mode = jQuery(this).data('add-mode');
+        setAddMode(mode);
+        if (mode === 'bulk') {
+            resetBulkRows(jQuery('#spServiceType').val());
+        }
+    });
+
+    jQuery('#bulkAddRow').on('click', function() {
+        addBulkRow(jQuery('#spServiceType').val());
+    });
+
+    jQuery(document).on('click', '.bulk-row-remove', function() {
+        var $rows = jQuery('#bulkRowsContainer .bulk-row');
+        if ($rows.length <= 1) {
+            // Keep at least one row — clear instead of removing.
+            jQuery(this).closest('.bulk-row').find('.bulk-field').val('');
+        } else {
+            jQuery(this).closest('.bulk-row').remove();
+        }
+    });
+
+    // Reset bulk container when service type changes (and bulk mode is active).
+    jQuery('#spServiceType').on('change', function() {
+        var t = this.value;
+        var isEdit = !!jQuery('#spPriceForm [name=id]').val();
+        refreshBulkVisibility(t, isEdit);
+        if (currentAddMode === 'bulk') resetBulkRows(t);
+    });
+
+    jQuery('#spPriceAdd').on('click', function() {
+        fillPriceForm(null);
+        setAddMode('single');
+        refreshBulkVisibility(jQuery('#spServiceType').val(), false);
+        new bootstrap.Modal(jQuery('#spPriceModal')[0]).show();
+    });
+    jQuery(document).on('click', '.sp-price-edit', function() {
+        fillPriceForm(priceCache[jQuery(this).closest('tr').data('id')]);
+        setAddMode('single');
+        refreshBulkVisibility(jQuery('#spServiceType').val(), true);
+        new bootstrap.Modal(jQuery('#spPriceModal')[0]).show();
+    });
 
     jQuery('#spPriceForm').on('submit', function(e) {
         e.preventDefault();
-        var type = jQuery('#spServiceType').val();
 
-        // Re-fold service-type-specific fields back into the canonical names
-        // the backend expects (price, unit, category, specialties).
+        // BULK MODE — loop through bulk rows, save each.
+        if (currentAddMode === 'bulk') {
+            var type = jQuery('#spServiceType').val();
+            var rows = collectBulkRows(type);
+            if (!rows.length) {
+                showAlert('Fill at least one row before saving.', 'warning');
+                return;
+            }
+            var $btn = jQuery('#spPriceSaveBtn');
+            $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Saving ' + rows.length + ' rows...');
+
+            // Save sequentially so a 422 on one row doesn't lose the others.
+            var saved = 0, failed = 0, errors = [];
+            function saveNext(i) {
+                if (i >= rows.length) {
+                    $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Rows');
+                    bootstrap.Modal.getInstance(jQuery('#spPriceModal')[0]).hide();
+                    loadPricing();
+                    var msg = saved + ' saved' + (failed ? ', ' + failed + ' failed: ' + errors.join('; ') : '.');
+                    showAlert(msg, failed ? 'warning' : 'success');
+                    return;
+                }
+                var row = rows[i];
+                var payload = jQuery.extend({
+                    save_sp_pricing: 1,
+                    provider_id: providerId,
+                    is_active: 1,
+                }, row);
+                if (type === 'accommodation') {
+                    // Mirror room_category → category for backward compat;
+                    // unit is implicit "per night".
+                    payload.category = payload.room_category;
+                    payload.unit = 'per night';
+                }
+                ajaxPost(payload, function() {
+                    saved++;
+                    saveNext(i + 1);
+                }, function(xhr) {
+                    failed++;
+                    var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'row ' + (i+1) + ' failed') : 'row ' + (i+1) + ' failed';
+                    errors.push(msg);
+                    saveNext(i + 1);
+                });
+            }
+            saveNext(0);
+            return;
+        }
+
+        // SINGLE MODE — original logic.
+        var type = jQuery('#spServiceType').val();
         var data = {
             save_sp_pricing: 1,
             provider_id: providerId,
@@ -665,8 +922,7 @@ jQuery(function() {
             data.total_rooms      = jQuery(this).find('[name=total_rooms]').val();
             data.meal_plan        = jQuery(this).find('[name=meal_plan]').val();
             data.price            = jQuery(this).find('[name=price_accommodation]').val();
-            data.unit             = jQuery(this).find('[name=unit_accommodation]').val(); // 'per night'
-            // Mirror room_category into category for backward compat
+            data.unit             = jQuery(this).find('[name=unit_accommodation]').val();
             data.category         = data.room_category;
         } else if (type === 'transport') {
             data.vehicle_type     = jQuery(this).find('[name=vehicle_type]').val();
@@ -678,7 +934,7 @@ jQuery(function() {
             data.category         = jQuery(this).find('[name=category_guide]').val();
             data.specialties      = jQuery(this).find('[name=specialties_guide]').val();
             data.price            = jQuery(this).find('[name=price_guide]').val();
-            data.unit             = jQuery(this).find('[name=unit_guide]').val(); // 'per day'
+            data.unit             = jQuery(this).find('[name=unit_guide]').val();
         } else if (type === 'activity') {
             data.category         = jQuery(this).find('[name=category_activity]').val();
             data.min_group        = jQuery(this).find('[name=min_group]').val();
@@ -686,14 +942,14 @@ jQuery(function() {
             data.specialties      = jQuery(this).find('[name=specialties_activity]').val();
             data.price            = jQuery(this).find('[name=price_activity]').val();
             data.unit             = jQuery(this).find('[name=unit_activity]').val();
-        } else { // other
+        } else {
             data.category         = jQuery(this).find('[name=category_other]').val();
             data.price            = jQuery(this).find('[name=price_other]').val();
             data.unit             = jQuery(this).find('[name=unit_other]').val();
         }
 
         ajaxPost(data, function() {
-            bootstrap.Modal.getInstance('#spPriceModal').hide();
+            bootstrap.Modal.getInstance(jQuery('#spPriceModal')[0]).hide();
             loadPricing();
             showAlert('Saved.', 'success');
         }, function(xhr) {
