@@ -6023,6 +6023,20 @@
     text-overflow: ellipsis;
     min-height: 42px;
 }
+/* Compact variant — match Bootstrap form-control-sm dimensions whenever the
+   wrapped <select> uses form-select-sm. Without this, sm dropdowns render at
+   42px while sibling form-control-sm inputs are ~31px, creating an obvious
+   height mismatch in rows like Room Category / Total Rooms. */
+.custom-select-wrap:has(select.form-select-sm) .custom-select-trigger {
+    padding: 0.25rem 1.75rem 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    min-height: 31px;
+    border-radius: 4px;
+}
+.custom-select-wrap:has(select.form-select-sm) .custom-select-trigger .caret {
+    font-size: 0.65rem;
+}
 .custom-select-trigger:hover {
     border-color: var(--heco-primary-500, #7ca4a3);
 }
