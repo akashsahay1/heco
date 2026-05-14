@@ -7521,6 +7521,8 @@
 .heco-portal .sp-type-badge {
     background: var(--heco-primary-700, #79a09f);
     color: #fff;
+    padding: 7px;
+    border-radius: 5px;
 }
 .heco-portal .sp-cap-badge {
     background: var(--heco-primary-50, #f1f7f7);
