@@ -475,7 +475,10 @@ jQuery(function() {
                 html += '<td>' + inventory + '</td>';
                 html += '<td>' + (r.is_active ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>') + '</td>';
                 html += '<td>';
-                html += '  <button class="btn btn-sm btn-outline-primary sp-price-edit me-1" title="Edit"><i class="bi bi-pencil"></i></button>';
+                if (r.service_type === 'accommodation' && r.room_category) {
+                    html += '  <button class="btn btn-sm btn-outline-success sp-price-tier-matrix me-1" title="Set prices for all tiers of this room"><i class="bi bi-grid-3x3-gap"></i></button>';
+                }
+                html += '  <button class="btn btn-sm btn-outline-primary sp-price-edit me-1" title="Edit this row only"><i class="bi bi-pencil"></i></button>';
                 html += '  <button class="btn btn-sm btn-outline-danger sp-price-delete" title="Delete"><i class="bi bi-trash"></i></button>';
                 html += '</td>';
                 html += '</tr>';
@@ -581,15 +584,21 @@ jQuery(function() {
     function collectBulkRows(serviceType) {
         var rows = [];
         jQuery('#bulkRowsContainer .bulk-row').each(function() {
+            var $r = jQuery(this);
             var row = { service_type: serviceType };
-            jQuery(this).find('.bulk-field').each(function() {
+            // If this row was generated from an existing sp_pricing record,
+            // carry its id so the save endpoint UPDATEs instead of creating
+            // a duplicate (used by the "All tiers" matrix on Edit).
+            var existingId = $r.attr('data-row-id');
+            if (existingId) row.id = existingId;
+            $r.find('.bulk-field').each(function() {
                 var field = jQuery(this).data('field');
                 var val = jQuery(this).val();
                 if (val !== null && val !== '') row[field] = val;
             });
-            // Skip rows the SP left blank. For accommodation/transport, a missing
-            // price means "don't offer this tier/vehicle" — silently drop it so
-            // the quick-tier matrix can carry empty tiers without erroring out.
+            // Skip rows the SP left blank with no existing record. Existing
+            // rows with a cleared price are left untouched (use the trash
+            // icon on the list to delete them).
             if (!row.price) return;
             if (Object.keys(row).filter(function(k) { return k !== 'service_type'; }).length) rows.push(row);
         });
@@ -654,6 +663,52 @@ jQuery(function() {
         fillPriceForm(priceCache[jQuery(this).closest('tr').data('id')]);
         setAddMode('single');
         refreshBulkVisibility(jQuery('#spServiceType').val(), true);
+        new bootstrap.Modal(jQuery('#spPriceModal')[0]).show();
+    });
+
+    // "All tiers" action — open the modal in bulk mode with one pre-populated
+    // row per comfort tier for the clicked row's room_category. Existing tiers
+    // are pre-filled (and carry their row id, so save updates instead of
+    // creating duplicates); missing tiers are blank for the SP to fill.
+    jQuery(document).on('click', '.sp-price-tier-matrix', function() {
+        var clickedRow = priceCache[jQuery(this).closest('tr').data('id')];
+        if (!clickedRow || !clickedRow.room_category) return;
+        var roomCat = clickedRow.room_category;
+        // Find existing rows for this room_category, keyed by comfort_tier
+        var existingByTier = {};
+        Object.keys(priceCache).forEach(function(id) {
+            var row = priceCache[id];
+            if (row.service_type !== 'accommodation') return;
+            if ((row.room_category || row.category) !== roomCat) return;
+            if (row.comfort_tier) existingByTier[row.comfort_tier] = row;
+        });
+
+        // Reset the modal into bulk mode for accommodation
+        fillPriceForm(null);
+        jQuery('#spServiceType').val('accommodation').trigger('change');
+        setAddMode('bulk');
+        refreshBulkVisibility('accommodation', false);
+        jQuery('#bulkRowsContainer').empty();
+
+        // Generate one row per comfort tier
+        allComfortTiers.forEach(function(tier) {
+            addBulkRow('accommodation');
+            var $row = jQuery('#bulkRowsContainer .bulk-row').last();
+            $row.find('.bulk-field[data-field=room_category]').val(roomCat);
+            $row.find('.bulk-field[data-field=comfort_tier]').val(tier);
+            var existing = existingByTier[tier];
+            if (existing) {
+                $row.attr('data-row-id', existing.id);
+                $row.find('.bulk-field[data-field=total_rooms]').val(existing.total_rooms || '');
+                $row.find('.bulk-field[data-field=price]').val(existing.price || '');
+                $row.find('.bulk-field[data-field=meal_plan]').val(existing.meal_plan || '');
+            }
+        });
+        jQuery('#bulkRowsContainer .custom-select').each(function() {
+            if (window.buildCustomDropdown) window.buildCustomDropdown(this);
+            jQuery(this).trigger('change');
+        });
+        jQuery('#spPriceModalTitle').text('All tier prices: ' + roomCat);
         new bootstrap.Modal(jQuery('#spPriceModal')[0]).show();
     });
     jQuery(document).on('click', '.sp-price-delete', function() {
