@@ -1316,3 +1316,22 @@ body.admin-login-page {
     gap: 1px;
 }
 .heco-admin .admin-cal-day .admin-cal-room-row { white-space: nowrap; }
+
+/* Admin SP calendar cell states. The HECO brand override on .bg-success /
+   .text-success forces solid turquoise, so Bootstrap's bg-opacity-25 utility
+   results in same-colour text on background. Use dedicated state classes. */
+.heco-admin .cal-cell-available {
+    background-color: var(--heco-primary-100, #e8f0ef);
+    color: var(--heco-primary-800, #496767);
+}
+.heco-admin .cal-cell-booked {
+    background-color: #fdecea;
+    color: #b91c1c;
+}
+.heco-admin .cal-cell-blocked {
+    background-color: #e5e7eb;
+    color: #4b5563;
+}
+.heco-admin .cal-room-row--ok      { color: var(--heco-primary-800, #496767); }
+.heco-admin .cal-room-row--partial { color: #b45309; }
+.heco-admin .cal-room-row--sold    { color: #b91c1c; }

@@ -7674,6 +7674,26 @@
 }
 .heco-portal .sp-cal-day .sp-cal-room-row { white-space: nowrap; }
 
+/* SP calendar cell states — the HECO brand override on .bg-success /
+   .text-success forces solid turquoise, which breaks Bootstrap's
+   bg-opacity-25 utility (text and bg become the same colour). Use
+   dedicated classes so day numbers and room badges stay legible. */
+.heco-portal .cal-cell-available {
+    background-color: var(--heco-primary-100, #e8f0ef);
+    color: var(--heco-primary-800, #496767);
+}
+.heco-portal .cal-cell-booked {
+    background-color: #fdecea;
+    color: #b91c1c;
+}
+.heco-portal .cal-cell-blocked {
+    background-color: #e5e7eb;
+    color: #4b5563;
+}
+.heco-portal .cal-room-row--ok      { color: var(--heco-primary-800, #496767); }
+.heco-portal .cal-room-row--partial { color: #b45309; }
+.heco-portal .cal-room-row--sold    { color: #b91c1c; }
+
 /* Experience-detail Stay options card. */
 .heco-portal .exp-detail-card .stay-table th { font-size: 0.8rem; }
 .heco-portal .stay-results { min-height: 30px; }

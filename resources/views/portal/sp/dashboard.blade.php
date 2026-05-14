@@ -551,8 +551,9 @@ jQuery(function() {
         var lines = cats.map(function(c) {
             // Use 3-letter code from category name so cells stay compact.
             var code = (c.room_category || '').split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 3).toUpperCase() || '?';
-            var lowAvail = c.available === 0;
-            var color = lowAvail ? 'text-danger' : (c.available < c.total ? 'text-warning' : 'text-success');
+            var color = c.available === 0
+                ? 'cal-room-row--sold'
+                : (c.available < c.total ? 'cal-room-row--partial' : 'cal-room-row--ok');
             return '<div class="sp-cal-room-row ' + color + '">' + code + ' ' + c.available + '/' + c.total + '</div>';
         });
         return '<div class="sp-cal-rooms">' + lines.join('') + '</div>';
@@ -631,15 +632,15 @@ jQuery(function() {
         for (var d = 1; d <= daysInMonth; d++) {
             var dateStr = calYear + '-' + String(calMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
             var info = calendarData[dateStr] || { status: 'available' };
-            var bgClass = 'bg-success bg-opacity-25 text-success';
+            var bgClass = 'cal-cell-available';
             var cursorClass = 'cursor-pointer';
             var title = 'Available - click to select';
             if (info.status === 'booked') {
-                bgClass = 'bg-danger bg-opacity-25 text-danger';
+                bgClass = 'cal-cell-booked';
                 cursorClass = 'cursor-not-allowed';
                 title = 'Booked (Trip #' + (info.trip_id || '') + ')';
             } else if (info.status === 'blocked') {
-                bgClass = 'bg-secondary bg-opacity-25 text-secondary';
+                bgClass = 'cal-cell-blocked';
                 cursorClass = 'cursor-pointer';
                 title = 'Blocked (' + (info.source || 'manual') + ')';
             }

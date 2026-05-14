@@ -366,7 +366,9 @@ function adminRoomBreakdown(dateStr) {
     if (!cats.length) return '';
     var lines = cats.map(function(c) {
         var code = (c.room_category || '').split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 3).toUpperCase() || '?';
-        var color = c.available === 0 ? 'text-danger' : (c.available < c.total ? 'text-warning' : 'text-success');
+        var color = c.available === 0
+            ? 'cal-room-row--sold'
+            : (c.available < c.total ? 'cal-room-row--partial' : 'cal-room-row--ok');
         return '<div class="admin-cal-room-row ' + color + '">' + code + ' ' + c.available + '/' + c.total + '</div>';
     });
     return '<div class="admin-cal-rooms">' + lines.join('') + '</div>';
@@ -401,10 +403,10 @@ function renderAdminCalendar() {
     for (var d = 1; d <= daysInMonth; d++) {
         var dateStr = adminCalYear + '-' + String(adminCalMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
         var info = adminCalData[dateStr] || { status: 'available' };
-        var bgClass = 'bg-success bg-opacity-25 text-success';
+        var bgClass = 'cal-cell-available';
         var cursorClass = 'cursor-pointer';
-        if (info.status === 'booked') { bgClass = 'bg-danger bg-opacity-25 text-danger'; cursorClass = 'cursor-not-allowed'; }
-        else if (info.status === 'blocked') { bgClass = 'bg-secondary bg-opacity-25 text-secondary'; cursorClass = 'cursor-pointer'; }
+        if (info.status === 'booked') { bgClass = 'cal-cell-booked'; cursorClass = 'cursor-not-allowed'; }
+        else if (info.status === 'blocked') { bgClass = 'cal-cell-blocked'; cursorClass = 'cursor-pointer'; }
         var isSelected = adminSelectedDates.indexOf(dateStr) !== -1;
         var selClass = isSelected ? 'admin-cal-day--selected' : '';
         var tip = adminRoomTooltip(dateStr);
