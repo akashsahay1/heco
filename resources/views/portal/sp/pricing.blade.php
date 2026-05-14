@@ -77,6 +77,30 @@
             <div class="alert alert-info border small mb-3">
                 <i class="bi bi-stars me-1"></i> Add multiple <span class="bulk-mode-label">room categories</span> in one go. Click <strong>+ Add another</strong> to append a row. Each row creates a separate entry.
             </div>
+
+            {{-- Quick tier helper — pick a room category, get one row per comfort tier
+                 so the SP can set prices for Cat A / B / C / D side-by-side. --}}
+            <div class="quick-tier-helper bulk-accom-only card border-success border-opacity-25 bg-light p-2 mb-2 d-none">
+                <div class="small fw-semibold mb-1"><i class="bi bi-lightning-charge me-1 text-success"></i> Quick: add one row for every comfort tier</div>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-6">
+                        <label class="form-label small mb-1">Room Category</label>
+                        <select class="form-select form-select-sm custom-select" id="quickTierRoomCategory" data-list-type="room_category">
+                            <option value="">Select category...</option>
+                            @foreach($roomCategories as $r)
+                                <option value="{{ $r->name }}" data-desc="{{ $r->description }}">{{ $r->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <button type="button" class="btn btn-sm btn-success w-100" id="quickTierGenerateBtn">
+                            <i class="bi bi-plus-square me-1"></i> Generate {{ count($accommodationCategories) }} rows (one per tier)
+                        </button>
+                    </div>
+                </div>
+                <small class="text-muted d-block mt-1">Leave blank any tier you don't offer — only rows with a Rate will be saved.</small>
+            </div>
+
             <div id="bulkRowsContainer"></div>
             <button type="button" class="btn btn-sm btn-outline-success mt-1" id="bulkAddRow"><i class="bi bi-plus-lg me-1"></i> Add another row</button>
         </div>
@@ -535,6 +559,8 @@ jQuery(function() {
         jQuery('#spAddModeTabs').toggleClass('d-none', !eligible);
         if (!eligible && currentAddMode === 'bulk') setAddMode('single');
         jQuery('.bulk-mode-label').text(serviceType === 'transport' ? 'vehicle types' : 'room categories');
+        // Quick-tier helper only applies to accommodation
+        jQuery('.bulk-accom-only').toggleClass('d-none', serviceType !== 'accommodation');
     }
 
     function addBulkRow(serviceType) {
@@ -561,6 +587,10 @@ jQuery(function() {
                 var val = jQuery(this).val();
                 if (val !== null && val !== '') row[field] = val;
             });
+            // Skip rows the SP left blank. For accommodation/transport, a missing
+            // price means "don't offer this tier/vehicle" — silently drop it so
+            // the quick-tier matrix can carry empty tiers without erroring out.
+            if (!row.price) return;
             if (Object.keys(row).filter(function(k) { return k !== 'service_type'; }).length) rows.push(row);
         });
         return rows;
@@ -573,6 +603,30 @@ jQuery(function() {
     });
 
     jQuery('#bulkAddRow').on('click', function() { addBulkRow(jQuery('#spServiceType').val()); });
+
+    // Quick-tier helper: pre-fill one row per comfort tier (Cat A / B / C / D)
+    // for a chosen room category. SP only has to type Rate + Total for each.
+    var allComfortTiers = @json($accommodationCategories->pluck('name')->values());
+    jQuery('#quickTierGenerateBtn').on('click', function() {
+        var roomCat = jQuery('#quickTierRoomCategory').val();
+        if (!roomCat) {
+            window.showError && window.showError('Pick a Room Category first');
+            return;
+        }
+        // Wipe existing rows so the matrix is clean; SP can still remove or add more.
+        jQuery('#bulkRowsContainer').empty();
+        allComfortTiers.forEach(function(tier) {
+            addBulkRow('accommodation');
+            var $row = jQuery('#bulkRowsContainer .bulk-row').last();
+            $row.find('.bulk-field[data-field=room_category]').val(roomCat);
+            $row.find('.bulk-field[data-field=comfort_tier]').val(tier);
+        });
+        // Refresh dropdowns so labels reflect the pre-set values.
+        jQuery('#bulkRowsContainer .custom-select').each(function() {
+            if (window.buildCustomDropdown) window.buildCustomDropdown(this);
+            jQuery(this).trigger('change');
+        });
+    });
 
     jQuery(document).on('click', '.bulk-row-remove', function() {
         var $rows = jQuery('#bulkRowsContainer .bulk-row');
