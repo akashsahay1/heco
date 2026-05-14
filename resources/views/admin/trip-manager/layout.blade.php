@@ -78,6 +78,21 @@
                             @endif
                         </select>
                     </div>
+
+                    {{-- Room picker — shown only when service_type=accommodation AND a provider is selected.
+                         Populated live from get_room_availability for the day's date. --}}
+                    <div class="mb-2 d-none" id="editServiceRoomBlock">
+                        <label class="form-label small fw-bold">Room Category</label>
+                        <select class="form-select form-select-sm custom-select" id="editServiceRoom">
+                            <option value="">Select room category…</option>
+                        </select>
+                        <small class="text-muted" id="editServiceRoomHelp"></small>
+                    </div>
+                    <div class="mb-2 d-none" id="editServiceQtyBlock">
+                        <label class="form-label small fw-bold">Number of rooms</label>
+                        <input type="number" class="form-control form-control-sm" id="editServiceRoomQty" min="1" max="500" value="1">
+                    </div>
+
                     <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-check"></i> Update Service</button>
                 </form>
             </div>
@@ -232,7 +247,7 @@ function loadItinerary() {
                 var isLocked = day.is_locked;
                 daySelectHtml += '<option value="' + day.id + '">Day ' + day.day_number + (day.title ? ' - ' + day.title : '') + '</option>';
 
-                html += '<div class="day-block card mb-2 ' + (isLocked ? 'locked' : '') + (selectedDayId == day.id ? ' selected' : '') + '" data-day-id="' + day.id + '">';
+                html += '<div class="day-block card mb-2 ' + (isLocked ? 'locked' : '') + (selectedDayId == day.id ? ' selected' : '') + '" data-day-id="' + day.id + '" data-day-date="' + (day.date || '') + '">';
                 html += '<div class="card-header d-flex justify-content-between align-items-center bg-light py-1 px-2">';
                 html += '<div class="d-flex align-items-center gap-2">';
                 if (isLocked) html += '<i class="bi bi-lock-fill text-success" title="Locked by experience"></i>';
@@ -345,7 +360,8 @@ function loadDayServices(dayId) {
                 html += '</div>';
                 if (s.cost > 0) html += '<span class="small text-success fw-bold">&#8377;' + Number(s.cost).toLocaleString('en-IN') + '</span>';
                 html += '<div class="d-flex gap-1 ms-1">';
-                html += '<button class="btn btn-sm btn-outline-secondary btn-edit-service" data-id="' + s.id + '" data-type="' + s.service_type + '" data-description="' + (s.description || '').replace(/"/g, '&quot;') + '" data-cost="' + (s.cost || 0) + '" data-sp-id="' + (s.service_provider_id || '') + '" title="Edit"><i class="bi bi-pencil"></i></button>';
+                var dayDate = $('.day-block[data-day-id="' + dayId + '"]').data('day-date') || '';
+                html += '<button class="btn btn-sm btn-outline-secondary btn-edit-service" data-id="' + s.id + '" data-type="' + s.service_type + '" data-description="' + (s.description || '').replace(/"/g, '&quot;') + '" data-cost="' + (s.cost || 0) + '" data-sp-id="' + (s.service_provider_id || '') + '" data-sp-pricing-id="' + (s.sp_pricing_id || '') + '" data-room-qty="' + (s.room_quantity || '') + '" data-day-date="' + dayDate + '" title="Edit"><i class="bi bi-pencil"></i></button>';
                 html += '<button class="btn btn-sm btn-outline-danger rm-service" data-id="' + s.id + '" title="Remove"><i class="bi bi-x"></i></button>';
                 html += '</div>';
                 html += '</div>';
@@ -475,12 +491,75 @@ $(document).on('click', '.btn-edit-service', function() {
     $('#editServiceCost').val($btn.data('cost'));
     $('#editServiceProvider').val(String($btn.data('sp-id') || ''));
     $('#editServiceProvider').data('orig', String($btn.data('sp-id') || ''));
+    // Stash the room link the row was saved with so the picker can preselect.
+    $('#editServiceForm').data('orig-pricing-id', String($btn.data('sp-pricing-id') || ''));
+    $('#editServiceForm').data('orig-qty', String($btn.data('room-qty') || ''));
+    $('#editServiceForm').data('day-date', String($btn.data('day-date') || ''));
+    $('#editServiceRoomQty').val($btn.data('room-qty') || 1);
     if (window.buildCustomDropdown) {
         buildCustomDropdown($('#editServiceType')[0]);
         buildCustomDropdown($('#editServiceProvider')[0]);
     }
+    refreshEditServiceRoomPicker();
     $('#editServiceModal').modal('show');
 });
+
+// Reload the room-category picker whenever the type or SP changes, OR
+// when the modal first opens. Only shown for accommodation + SP.
+function refreshEditServiceRoomPicker() {
+    var type = $('#editServiceType').val();
+    var spId = $('#editServiceProvider').val();
+    var $room = $('#editServiceRoom');
+    var $qty = $('#editServiceRoomQty');
+    var $roomBlock = $('#editServiceRoomBlock');
+    var $qtyBlock = $('#editServiceQtyBlock');
+
+    if (type !== 'accommodation' || !spId) {
+        $roomBlock.addClass('d-none');
+        $qtyBlock.addClass('d-none');
+        return;
+    }
+
+    var dayDate = $('#editServiceForm').data('day-date') || '';
+    var origPricingId = $('#editServiceForm').data('orig-pricing-id') || '';
+
+    $roomBlock.removeClass('d-none');
+    $qtyBlock.removeClass('d-none');
+    $room.html('<option value="">Loading…</option>');
+    $('#editServiceRoomHelp').text('');
+
+    ajaxPost({
+        get_room_availability: 1,
+        service_provider_id: spId,
+        start_date: dayDate || undefined,
+        end_date: dayDate || undefined,
+    }, function(resp) {
+        var cats = resp.categories || [];
+        if (!cats.length) {
+            $room.html('<option value="">No room categories for this SP</option>');
+            return;
+        }
+        var html = '<option value="">— no specific category —</option>';
+        cats.forEach(function(c) {
+            // When editing the same row, "available" should add back the qty
+            // this row already holds so the option isn't shown as 0 free.
+            var effectiveAvail = c.available + (String(c.sp_pricing_id) === String(origPricingId) ? (Number($qty.val()) || 0) : 0);
+            var disabled = effectiveAvail === 0 ? ' disabled' : '';
+            var label = c.room_category + ' — ₹' + Number(c.rate).toLocaleString('en-IN') + '/night · ' + effectiveAvail + ' of ' + c.total + ' available';
+            if (c.meal_plan) label += ' (' + c.meal_plan + ')';
+            html += '<option value="' + c.sp_pricing_id + '"' + disabled + '>' + label + '</option>';
+        });
+        $room.html(html);
+        if (origPricingId) $room.val(origPricingId);
+        if (window.buildCustomDropdown) buildCustomDropdown($room[0]);
+        $('#editServiceRoomHelp').text('Live availability for ' + (dayDate || 'this day') + '.');
+    }, function(xhr) {
+        $room.html('<option value="">Could not load availability</option>');
+        var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Lookup failed') : 'Lookup failed';
+        $('#editServiceRoomHelp').text(msg);
+    });
+}
+$(document).on('change', '#editServiceType, #editServiceProvider', refreshEditServiceRoomPicker);
 
 $('#editServiceForm').on('submit', function(e) {
     e.preventDefault();
@@ -495,13 +574,22 @@ $('#editServiceForm').on('submit', function(e) {
         showAlert('Service updated!');
     }
 
-    ajaxPost({
+    var roomId = $('#editServiceRoom').val();
+    var roomQty = $('#editServiceRoomQty').val();
+    var serviceType = $('#editServiceType').val();
+    var payload = {
         edit_day_service: 1,
         service_id: serviceId,
-        service_type: $('#editServiceType').val(),
+        service_type: serviceType,
         description: $('#editServiceDesc').val(),
-        cost: $('#editServiceCost').val()
-    }, function() {
+        cost: $('#editServiceCost').val(),
+    };
+    if (serviceType === 'accommodation') {
+        payload.sp_pricing_id = roomId || '';
+        payload.room_quantity = roomId ? (roomQty || 1) : '';
+    }
+
+    ajaxPost(payload, function() {
         if (newSp !== origSp) {
             ajaxPost({
                 change_day_service_provider: 1,
@@ -516,6 +604,9 @@ $('#editServiceForm').on('submit', function(e) {
         } else {
             afterSave();
         }
+    }, function(xhr) {
+        var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Save failed') : 'Save failed';
+        showAlert(msg, 'danger');
     });
 });
 

@@ -627,6 +627,9 @@ class AjaxController extends Controller
             if ($request->has('delete_sp_pricing')) {
                 return $this->deleteSpPricing($request);
             }
+            if ($request->has('get_room_availability')) {
+                return $this->getRoomAvailability($request);
+            }
             if ($request->has('get_support_requests')) {
                 return $this->getSupportRequests($request);
             }
@@ -5671,6 +5674,89 @@ class AjaxController extends Controller
             'rooms'    => $rooms,
             'ical_url' => $sp->ical_url,
             'ical_last_synced_at' => $sp->ical_last_synced_at?->format('d M Y H:i'),
+        ]);
+    }
+
+    /**
+     * Per-room-category availability for an SP across a date range.
+     *
+     * Used by:
+     *   - Experience detail page (traveller-side "Stay options" widget)
+     *   - Trip Manager edit-service modal (admin picking room category)
+     *
+     * Auth: HCT can query any SP; an SP can query their own; travellers
+     * (logged in or guest) can query any approved SP (read-only — no
+     * inventory write).
+     *
+     * Input:  service_provider_id, start_date (YYYY-MM-DD),
+     *         end_date (optional — defaults to start_date)
+     * Output: { sp_name, currency, dates: [...], categories: [
+     *            { sp_pricing_id, room_category, total, available,
+     *              rate, meal_plan, default_occupancy } ] }
+     *
+     * For multi-night ranges, the "available" count returned is the
+     * MIN available across every night in the range (binding constraint).
+     */
+    protected function getRoomAvailability(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'service_provider_id' => 'required|integer|exists:service_providers,id',
+            'start_date'          => 'nullable|date',
+            'end_date'            => 'nullable|date|after_or_equal:start_date',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        $sp = ServiceProvider::findOrFail($request->service_provider_id);
+
+        // Approved-only — don't leak pending/rejected SP inventory.
+        if ($sp->status !== 'approved') {
+            return response()->json(['error' => 'Provider not approved'], 403);
+        }
+
+        $svc = app(\App\Services\RoomAvailabilityService::class);
+
+        // Default: today + 1 night if no dates supplied.
+        $start = $request->filled('start_date') ? \Carbon\Carbon::parse($request->start_date) : now()->startOfDay();
+        $end = $request->filled('end_date') ? \Carbon\Carbon::parse($request->end_date) : $start->copy();
+        if ($end->lt($start)) $end = $start->copy();
+
+        // Pull each accommodation category. For multi-night, compute MIN
+        // available across the range (the binding constraint).
+        $rows = SpPricing::where('service_provider_id', $sp->id)
+            ->where('service_type', 'accommodation')
+            ->where('is_active', true)
+            ->whereNotNull('total_rooms')
+            ->orderBy('id')
+            ->get();
+
+        $categories = $rows->map(function (SpPricing $row) use ($svc, $start, $end) {
+            $minAvail = (int) $row->total_rooms;
+            foreach (\Carbon\CarbonPeriod::create($start, $end) as $d) {
+                $minAvail = min($minAvail, $svc->availableForCategory($row->id, $d));
+                if ($minAvail === 0) break;
+            }
+            return [
+                'sp_pricing_id'     => $row->id,
+                'room_category'    => $row->room_category ?: $row->category,
+                'total'            => (int) $row->total_rooms,
+                'available'        => $minAvail,
+                'rate'             => (float) $row->price,
+                'meal_plan'        => $row->meal_plan,
+                'default_occupancy' => $row->default_occupancy,
+            ];
+        })->values();
+
+        $nights = \Carbon\CarbonPeriod::create($start, $end)->count();
+
+        return response()->json([
+            'sp_id'      => $sp->id,
+            'sp_name'    => $sp->name,
+            'start_date' => $start->format('Y-m-d'),
+            'end_date'   => $end->format('Y-m-d'),
+            'nights'     => $nights,
+            'categories' => $categories,
         ]);
     }
 

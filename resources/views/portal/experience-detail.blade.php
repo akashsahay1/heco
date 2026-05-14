@@ -582,6 +582,37 @@
     </div>
 </div>
 
+{{-- ===== Stay options (live availability from hosting HLH) ===== --}}
+@if($hostHasRooms ?? false)
+    <div class="container mt-4" id="stayOptionsBlock"
+         data-sp-id="{{ $experience->hlh->id }}"
+         data-sp-name="{{ $experience->hlh->name }}">
+        <div class="exp-detail-card">
+            <h5 class="mb-3"><i class="bi bi-door-open me-2"></i>Stay options at <strong>{{ $experience->hlh->name }}</strong></h5>
+            <p class="text-muted small mb-3">Live room availability from your host. Pick your check-in and check-out dates to see what's free.</p>
+
+            <div class="row g-2 align-items-end mb-3">
+                <div class="col-sm-4">
+                    <label class="form-label small mb-1">Check-in</label>
+                    <input type="text" class="form-control form-control-sm" id="stayCheckIn" placeholder="Pick a date" autocomplete="off">
+                </div>
+                <div class="col-sm-4">
+                    <label class="form-label small mb-1">Check-out</label>
+                    <input type="text" class="form-control form-control-sm" id="stayCheckOut" placeholder="Pick a date" autocomplete="off">
+                </div>
+                <div class="col-sm-4">
+                    <button type="button" class="btn btn-sm sp-btn-primary w-100" id="stayCheckBtn">
+                        <i class="bi bi-search me-1"></i> Check availability
+                    </button>
+                </div>
+            </div>
+
+            <div id="stayResults" class="stay-results"></div>
+            <p class="text-muted small mb-0 mt-2"><i class="bi bi-info-circle me-1"></i> To book a room, add this experience to your journey and our team will allocate the right room from your dates.</p>
+        </div>
+    </div>
+@endif
+
 {{-- Gallery Modal --}}
 <div class="modal fade" id="galleryModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -825,5 +856,86 @@ function openGallery(imgPath) {
     jQuery('#galleryModalImg').attr('src', '/storage/' + imgPath);
     new bootstrap.Modal(jQuery('#galleryModal')[0]).show();
 }
+
+// ─── Stay options widget (live availability for hosting HLH) ───
+jQuery(function ($) {
+    var $block = $('#stayOptionsBlock');
+    if (!$block.length) return; // host has no rooms
+    var spId = $block.data('sp-id');
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+        });
+    }
+
+    // Init Air Datepickers on both date fields (Rule 5 — no native type=date).
+    var today = new Date();
+    var tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    new AirDatepicker('#stayCheckIn', {
+        autoClose: true,
+        dateFormat: 'yyyy-MM-dd',
+        minDate: today,
+        startDate: tomorrow,
+    });
+    new AirDatepicker('#stayCheckOut', {
+        autoClose: true,
+        dateFormat: 'yyyy-MM-dd',
+        minDate: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2),
+        startDate: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2),
+    });
+
+    function renderRows(resp) {
+        var cats = resp.categories || [];
+        if (!cats.length) {
+            $('#stayResults').html('<p class="text-muted small mb-0">This host has no room categories listed yet.</p>');
+            return;
+        }
+        var html = '<div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0 stay-table">';
+        html += '<thead class="table-light"><tr><th>Room category</th><th class="text-end">Rate/night</th><th>Meal plan</th><th class="text-center">Available</th></tr></thead><tbody>';
+        cats.forEach(function (c) {
+            var availClass = c.available === 0 ? 'text-danger fw-bold' : (c.available < c.total ? 'text-warning fw-bold' : 'text-success fw-bold');
+            var availTxt = c.available === 0
+                ? 'Sold out'
+                : (c.available + ' of ' + c.total + ' available');
+            html += '<tr>';
+            html += '<td><strong>' + escapeHtml(c.room_category) + '</strong>';
+            if (c.default_occupancy) html += ' <small class="text-muted">(' + escapeHtml(c.default_occupancy) + ')</small>';
+            html += '</td>';
+            html += '<td class="text-end fw-semibold">&#8377;' + Number(c.rate).toLocaleString('en-IN') + '</td>';
+            html += '<td class="small">' + escapeHtml(c.meal_plan || '—') + '</td>';
+            html += '<td class="text-center ' + availClass + '">' + availTxt + '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        var stayLabel = resp.nights + (resp.nights === 1 ? ' night' : ' nights') + ' (' + resp.start_date + ' → ' + resp.end_date + ')';
+        $('#stayResults').html('<div class="small text-muted mb-2">For <strong>' + stayLabel + '</strong>:</div>' + html);
+    }
+
+    $('#stayCheckBtn').on('click', function () {
+        var startDate = $('#stayCheckIn').val();
+        var endDate = $('#stayCheckOut').val();
+        if (!startDate || !endDate) {
+            showAlert('Pick both check-in and check-out dates.', 'warning');
+            return;
+        }
+        var $btn = $(this);
+        var orig = $btn.html();
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+        ajaxPost({
+            get_room_availability: 1,
+            service_provider_id: spId,
+            start_date: startDate,
+            end_date: endDate,
+        }, function (resp) {
+            $btn.prop('disabled', false).html(orig);
+            renderRows(resp);
+        }, function (xhr) {
+            $btn.prop('disabled', false).html(orig);
+            var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not load availability.') : 'Could not load availability.';
+            $('#stayResults').html('<p class="text-danger small mb-0">' + escapeHtml(msg) + '</p>');
+        });
+    });
+});
 </script>
 @endsection

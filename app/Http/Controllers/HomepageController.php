@@ -207,6 +207,18 @@ class HomepageController extends Controller
 
         $avgRating = $experience->reviews()->avg('rating');
 
-        return view("portal.experience-detail", compact("experience", "avgRating"));
+        // If the hosting HLH has at least one active accommodation row, the
+        // experience-detail page renders a "Stay options" widget that lets the
+        // traveller pick dates and see live per-room-category availability.
+        $hostHasRooms = false;
+        if ($experience->hlh) {
+            $hostHasRooms = \App\Models\SpPricing::where('service_provider_id', $experience->hlh->id)
+                ->where('service_type', 'accommodation')
+                ->where('is_active', true)
+                ->whereNotNull('total_rooms')
+                ->exists();
+        }
+
+        return view("portal.experience-detail", compact("experience", "avgRating", "hostHasRooms"));
     }
 }

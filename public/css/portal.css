@@ -7673,3 +7673,7 @@
     gap: 1px;
 }
 .heco-portal .sp-cal-day .sp-cal-room-row { white-space: nowrap; }
+
+/* Experience-detail Stay options card. */
+.heco-portal .exp-detail-card .stay-table th { font-size: 0.8rem; }
+.heco-portal .stay-results { min-height: 30px; }
