@@ -52,8 +52,8 @@
                     <div class="form-check form-switch mt-2">
                         <input class="form-check-input" type="checkbox" id="isActiveSwitch" name="is_active" value="1" {{ $item->is_active ? 'checked' : '' }}>
                         <label class="form-check-label" for="isActiveSwitch">
-                            <span class="status-on" style="{{ $item->is_active ? '' : 'display:none;' }}">Active — shown in dropdowns</span>
-                            <span class="status-off" style="{{ $item->is_active ? 'display:none;' : '' }}">Inactive — hidden from new selections</span>
+                            <span class="status-on {{ $item->is_active ? '' : 'd-none' }}">Active — shown in dropdowns</span>
+                            <span class="status-off {{ $item->is_active ? 'd-none' : '' }}">Inactive — hidden from new selections</span>
                         </label>
                     </div>
                 </div>

@@ -49,7 +49,7 @@
 
                     <div class="form-group">
                         <label class="form-label">Subject *</label>
-                        <select class="form-input form-select" name="subject" required>
+                        <select class="form-input form-select custom-select" name="subject" required>
                             <option value="">Select a topic</option>
                             <option value="booking">Booking Inquiry</option>
                             <option value="experience">Experience Information</option>
@@ -232,53 +232,37 @@
 
 @section('js')
 <script>
-(function() {
-    // FAQ Accordion
-    document.querySelectorAll('.faq-question').forEach(function(button) {
-        button.addEventListener('click', function() {
-            var item = this.closest('.faq-item');
-            var isActive = item.classList.contains('active');
-
-            // Close all items
-            document.querySelectorAll('.faq-item').forEach(function(i) {
-                i.classList.remove('active');
-            });
-
-            // Open clicked item if it wasn't active
-            if (!isActive) {
-                item.classList.add('active');
-            }
-        });
+jQuery(function($) {
+    // FAQ accordion: open one item at a time across the whole list.
+    $('.faq-question').on('click', function() {
+        var $item = $(this).closest('.faq-item');
+        var wasActive = $item.hasClass('active');
+        $('.faq-item').removeClass('active');
+        if (!wasActive) $item.addClass('active');
     });
 
-    // Contact Form Submission
-    var contactForm = document.getElementById('contactForm');
-    if (contactForm) {
-        contactForm.addEventListener('submit', function(e) {
-            e.preventDefault();
+    $('#contactForm').on('submit', function(e) {
+        e.preventDefault();
+        var $btn = $('#btnSubmitContact');
+        var original = $btn.html();
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Sending...');
 
-            var btn = document.getElementById('btnSubmitContact');
-            var originalText = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sending...';
+        // Serialise the form into a plain object so it goes through ajaxPost
+        // (which adds the CSRF + key the dispatcher expects).
+        var payload = { contact_form: 1 };
+        $.each($(this).serializeArray(), function(_, f) { payload[f.name] = f.value; });
 
-            var formData = new FormData(contactForm);
-            formData.append('contact_form', 1);
-
-            ajaxPost(Object.fromEntries(formData), function(resp) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-                if (resp.success) {
-                    showAlert('Message sent successfully! We\'ll get back to you soon.', 'success');
-                    contactForm.reset();
-                }
-            }, function() {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-                showAlert('Failed to send message. Please try again.', 'danger');
-            });
+        ajaxPost(payload, function(resp) {
+            $btn.prop('disabled', false).html(original);
+            if (resp.success) {
+                showAlert('Message sent successfully! We\'ll get back to you soon.', 'success');
+                $('#contactForm')[0].reset();
+            }
+        }, function() {
+            $btn.prop('disabled', false).html(original);
+            showAlert('Failed to send message. Please try again.', 'danger');
         });
-    }
-})();
+    });
+});
 </script>
 @endsection

@@ -19,7 +19,7 @@
         </div>
         <p class="admin-login-subtitle">Sign in to your admin account</p>
 
-        <div id="loginError" class="admin-login-error mb-3" style="display: none;"></div>
+        <div id="loginError" class="admin-login-error mb-3 d-none"></div>
 
         <form id="adminLoginForm">
             <div class="mb-3">

@@ -24,7 +24,7 @@
             <h2>How to Request Deletion</h2>
             <p>To delete your HECO account and all associated data, choose either of the methods below:</p>
 
-            <h3 style="font-size: var(--text-lg); font-weight: 600; color: var(--heco-primary-900); margin: var(--space-4) 0 var(--space-2);">Option 1 — Email request</h3>
+            <h3 class="data-deletion-heading">Option 1 — Email request</h3>
             <p>
                 Send an email to
                 <a href="mailto:privacy@heco.eco?subject=Data%20Deletion%20Request">privacy@heco.eco</a>
@@ -37,7 +37,7 @@
                 <li>(Optional) The login method you used: Facebook, Google, or email</li>
             </ul>
 
-            <h3 style="font-size: var(--text-lg); font-weight: 600; color: var(--heco-primary-900); margin: var(--space-4) 0 var(--space-2);">Option 2 — Contact form</h3>
+            <h3 class="data-deletion-heading">Option 2 — Contact form</h3>
             <p>
                 Visit our <a href="/contact">Contact page</a> and select the subject
                 <strong>"Customer Support"</strong>. In your message, write

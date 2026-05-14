@@ -65,7 +65,7 @@
         <form id="cpSettingsForm">
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
-                    <thead class="table-light"><tr><th style="width:35%;">Key</th><th>Value</th></tr></thead>
+                    <thead class="table-light"><tr><th class="w-key-col">Key</th><th>Value</th></tr></thead>
                     <tbody id="cpSettingsBody"><tr><td colspan="2" class="text-center text-muted small">Loading...</td></tr></tbody>
                 </table>
             </div>
@@ -87,12 +87,12 @@
             <table class="table table-sm table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th style="width:34px;"><i class="bi bi-check2-square cp-list-selall" role="button" title="Select all"></i></th>
-                        <th style="width:40px;">#</th>
+                        <th class="w-check"><i class="bi bi-check2-square cp-list-selall" role="button" title="Select all"></i></th>
+                        <th class="w-id">#</th>
                         <th>Name</th>
-                        <th style="width:80px;">Sort</th>
-                        <th style="width:90px;">Status</th>
-                        <th style="width:120px;">Actions</th>
+                        <th class="w-sort">Sort</th>
+                        <th class="w-status">Status</th>
+                        <th class="w-actions-md">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="cpListBody"><tr><td colspan="6" class="text-center text-muted small">Loading...</td></tr></tbody>
@@ -110,12 +110,12 @@
             <table class="table table-sm table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th style="width:34px;"><i class="bi bi-check2-square cp-prompt-selall" role="button" title="Select all"></i></th>
+                        <th class="w-check"><i class="bi bi-check2-square cp-prompt-selall" role="button" title="Select all"></i></th>
                         <th>Key</th>
                         <th>Name</th>
-                        <th style="width:90px;">Model</th>
-                        <th style="width:80px;">Active</th>
-                        <th style="width:100px;">Actions</th>
+                        <th class="w-paper">Model</th>
+                        <th class="w-active">Active</th>
+                        <th class="w-actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="cpPromptBody"><tr><td colspan="6" class="text-center text-muted small">Loading...</td></tr></tbody>
@@ -131,7 +131,7 @@
     <div class="tab-pane fade" id="cpLogs">
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle">
-                <thead class="table-light"><tr><th style="width:150px;">When</th><th style="width:160px;">User</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+                <thead class="table-light"><tr><th class="w-when">When</th><th class="w-user">User</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
                 <tbody id="cpLogBody"><tr><td colspan="5" class="text-center text-muted small">Loading...</td></tr></tbody>
             </table>
         </div>
@@ -148,7 +148,7 @@
     <div class="tab-pane fade" id="cpPdf">
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle">
-                <thead class="table-light"><tr><th>Key</th><th>Name</th><th style="width:90px;">Paper</th><th style="width:110px;">Orientation</th><th style="width:80px;">Actions</th></tr></thead>
+                <thead class="table-light"><tr><th>Key</th><th>Name</th><th class="w-paper">Paper</th><th class="w-orient">Orientation</th><th class="w-active">Actions</th></tr></thead>
                 <tbody id="cpPdfBody"><tr><td colspan="5" class="text-center text-muted small">Loading...</td></tr></tbody>
             </table>
         </div>

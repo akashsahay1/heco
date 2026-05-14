@@ -246,7 +246,7 @@
             </div>
 
             <!-- No Positions Placeholder -->
-            <div class="no-positions" style="display: none;">
+            <div class="no-positions d-none">
                 <div class="no-positions-icon">
                     <i class="bi bi-inbox"></i>
                 </div>

@@ -36,7 +36,7 @@
                 <h6 class="mb-0">Unresolved Support</h6>
                 <span class="badge bg-danger" id="supportCount">0</span>
             </div>
-            <div class="card-body" id="supportList" style="max-height: 300px; overflow-y: auto;">
+            <div class="card-body scroll-panel-md" id="supportList">
                 <p class="text-muted text-center small">Loading...</p>
             </div>
         </div>
@@ -44,7 +44,7 @@
     <div class="col-md-4">
         <div class="card">
             <div class="card-header"><h6 class="mb-0">Upcoming Trips (30 days)</h6></div>
-            <div class="card-body" id="upcomingList" style="max-height: 300px; overflow-y: auto;">
+            <div class="card-body scroll-panel-md" id="upcomingList">
                 <p class="text-muted text-center small">Loading...</p>
             </div>
         </div>

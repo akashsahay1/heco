@@ -86,7 +86,7 @@
                 <tbody id="gstTable">
                     <tr><td colspan="7" class="text-center text-muted">Select month/year and click Generate</td></tr>
                 </tbody>
-                <tfoot id="gstTotals" class="table-light" style="display: none;">
+                <tfoot id="gstTotals" class="table-light d-none">
                     <tr class="fw-bold">
                         <td colspan="3" class="text-end">Totals:</td>
                         <td class="text-end" id="footSubtotal">-</td>

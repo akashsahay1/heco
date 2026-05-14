@@ -4,7 +4,7 @@
 @section('content')
 <div class="container py-4">
     {{-- Back link --}}
-    <a href="/my-itineraries" class="text-muted text-decoration-none mb-3 d-inline-block" style="font-size:13px;">
+    <a href="/my-itineraries" class="text-muted text-decoration-none mb-3 d-inline-block td-small-text">
         <i class="bi bi-arrow-left"></i> Back to Itineraries
     </a>
 
@@ -67,7 +67,7 @@
             <div class="td-card">
                 <div class="td-card-title"><i class="bi bi-receipt"></i> Pricing Summary</div>
                 <div id="pricingContainer">
-                    <div class="text-center py-3 text-muted" style="font-size:13px;">Loading...</div>
+                    <div class="text-center py-3 text-muted td-small-text">Loading...</div>
                 </div>
             </div>
 
@@ -75,7 +75,7 @@
             <div class="td-card">
                 <div class="td-card-title"><i class="bi bi-credit-card"></i> Payment History</div>
                 <div id="paymentsContainer">
-                    <div class="text-center py-3 text-muted" style="font-size:13px;">Loading...</div>
+                    <div class="text-center py-3 text-muted td-small-text">Loading...</div>
                 </div>
             </div>
 
@@ -84,17 +84,17 @@
                 <div class="td-card-title"><i class="bi bi-list-check"></i> Experiences</div>
                 <div>
                     @forelse($trip->selectedExperiences as $se)
-                        <div class="d-flex align-items-center gap-2 mb-2" style="font-size:13px;">
+                        <div class="d-flex align-items-center gap-2 mb-2 td-small-text">
                             @if($se->experience && $se->experience->card_image)
-                                <img src="{{ $se->experience->card_image }}" alt="" style="width:36px; height:36px; border-radius:6px; object-fit:cover;">
+                                <img src="{{ $se->experience->card_image }}" alt="" class="img-trip-exp-thumb">
                             @endif
                             <div>
                                 <strong>{{ $se->experience->name ?? 'Experience #'.$se->experience_id }}</strong>
-                                <span class="text-muted" style="font-size:11px;">ID: #{{ $se->experience_id }}</span>
+                                <span class="text-muted td-tiny-text">ID: #{{ $se->experience_id }}</span>
                             </div>
                         </div>
                     @empty
-                        <p class="text-muted" style="font-size:13px;">No experiences added.</p>
+                        <p class="text-muted td-small-text">No experiences added.</p>
                     @endforelse
                 </div>
             </div>
@@ -152,7 +152,7 @@ jQuery(function() {
     function renderTimeline(resp) {
         var days = resp.days || [];
         if (!days.length) {
-            jQuery('#timelineContainer').html('<p class="text-center text-muted" style="font-size:13px;">No itinerary generated yet.</p>');
+            jQuery('#timelineContainer').html('<p class="text-center text-muted td-small-text">No itinerary generated yet.</p>');
             return;
         }
 
@@ -180,7 +180,7 @@ jQuery(function() {
                     var expPrice = firstExp && firstExp.base_cost_per_person ? fmtCurrency(firstExp.base_cost_per_person) + '/person' : '';
                     html += '<div class="td-group-header">';
                     html += '<div></div><div class="td-day-line"></div>';
-                    html += '<div class="td-group-title"><span>' + expName + ' <span style="font-size:10px;color:var(--heco-neutral-500);">#' + firstExp.id + '</span></span>';
+                    html += '<div class="td-group-title"><span>' + expName + ' <span class="td-exp-id-tag">#' + firstExp.id + '</span></span>';
                     if (expPrice) html += '<span class="td-group-price">' + expPrice + '</span>';
                     html += '</div></div>';
                 }
@@ -248,7 +248,7 @@ jQuery(function() {
                 var label = day.title || dt.label;
                 var desc = day.description || day.notes || '';
                 html += '<div class="td-empty-day"><i class="bi ' + dt.icon + '"></i> ' + label + '</div>';
-                if (desc) html += '<div style="font-size:12px; color:var(--heco-neutral-500); text-align:center;">' + desc + '</div>';
+                if (desc) html += '<div class="td-empty-desc">' + desc + '</div>';
             }
 
             html += '</div></div>';
@@ -280,7 +280,7 @@ jQuery(function() {
 
     function renderPayments(payments) {
         if (!payments.length) {
-            jQuery('#paymentsContainer').html('<p class="text-center text-muted" style="font-size:13px;">No payments yet.</p>');
+            jQuery('#paymentsContainer').html('<p class="text-center text-muted td-small-text">No payments yet.</p>');
             return;
         }
         var html = '';
@@ -289,7 +289,7 @@ jQuery(function() {
             var dateStr = d ? d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() : '';
             var status = pay.payment_status || 'pending';
             html += '<div class="td-pay-item">';
-            html += '<div><strong>' + fmtCurrency(pay.amount) + '</strong><br><span style="font-size:11px; color:var(--heco-neutral-500);">' + dateStr + ' &middot; ' + (pay.mode || '') + '</span></div>';
+            html += '<div><strong>' + fmtCurrency(pay.amount) + '</strong><br><span class="td-pay-meta">' + dateStr + ' &middot; ' + (pay.mode || '') + '</span></div>';
             html += '<span class="td-pay-status ' + status + '">' + status.charAt(0).toUpperCase() + status.slice(1) + '</span>';
             html += '</div>';
         });

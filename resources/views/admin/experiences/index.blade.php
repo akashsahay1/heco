@@ -75,8 +75,8 @@
             <table class="table table-hover table-sm mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 34px;"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
-                        <th style="width: 60px;">Image</th>
+                        <th class="w-check"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
+                        <th class="w-img-thumb">Image</th>
                         <th>Name</th>
                         <th>Type</th>
                         <th>Region</th>
@@ -86,7 +86,7 @@
                         <th>Difficulty</th>
                         <th>Cost/Person</th>
                         <th>Status</th>
-                        <th style="width: 110px;">Actions</th>
+                        <th class="w-actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="experiencesTable">
@@ -157,7 +157,7 @@ function loadExperiences(page) {
             var imgSrc = e.card_image ? e.card_image : '/images/placeholder.png';
             html += '<tr>';
             html += '<td><i class="bi bi-square row-check" role="button" data-id="' + e.id + '"></i></td>';
-            html += '<td><img src="' + imgSrc + '" class="rounded" style="width: 50px; height: 35px; object-fit: cover;" alt=""></td>';
+            html += '<td><img src="' + imgSrc + '" class="rounded img-thumb-list" alt=""></td>';
             html += '<td><strong>' + (e.name || '') + '</strong><br><small class="text-muted">' + (e.slug || '') + '</small></td>';
             html += '<td><span class="badge bg-light text-dark">' + (e.type || '-') + '</span></td>';
             html += '<td>' + (e.region ? e.region.name : '-') + '</td>';
@@ -180,10 +180,10 @@ function loadExperiences(page) {
             if (allInc.length) {
                 allInc.forEach(function(inc) {
                     var icon = incIconMap[inc] || 'bi-check';
-                    incHtml += '<span title="' + inc.charAt(0).toUpperCase() + inc.slice(1) + '" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin:1px;border-radius:5px;font-size:0.85rem;color:#79a09f;"><i class="bi ' + icon + '"></i></span>';
+                    incHtml += '<span class="exp-inc-chip" title="' + inc.charAt(0).toUpperCase() + inc.slice(1) + '"><i class="bi ' + icon + '"></i></span>';
                 });
             }
-            html += '<td><div style="display:flex;flex-wrap:wrap;gap:2px;">' + (incHtml || '<small class="text-muted">-</small>') + '</div></td>';
+            html += '<td><div class="exp-inc-row">' + (incHtml || '<small class="text-muted">-</small>') + '</div></td>';
             html += '<td>' + difficultyBadge(e.difficulty_level) + '</td>';
             html += '<td>' + (e.base_cost_per_person ? '<i class="bi bi-currency-rupee"></i>' + Number(e.base_cost_per_person).toLocaleString() : '-') + '</td>';
             html += '<td>';

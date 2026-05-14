@@ -402,6 +402,67 @@
                 </div>
             @endif
 
+            {{-- OSP: My Services --}}
+            @if($providerType === 'osp')
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <h6 class="mb-0"><i class="bi bi-tools"></i> My Services</h6>
+                    </div>
+                    <div class="card-body">
+                        @php
+                            $services = is_array($provider->services_offered) ? $provider->services_offered : [];
+                            $vehicles = is_array($provider->vehicle_types) ? $provider->vehicle_types : [];
+                            $activities = is_array($provider->activity_types) ? $provider->activity_types : [];
+                            $accomCats = is_array($provider->accommodation_categories) ? $provider->accommodation_categories : [];
+                        @endphp
+
+                        @if(count($services))
+                            <p class="small fw-bold mb-1">Services Offered</p>
+                            <div class="mb-2">
+                                @foreach($services as $s)
+                                    <span class="badge sp-cap-badge me-1">{{ \Str::title($s) }}</span>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        @if(count($vehicles))
+                            <p class="small fw-bold mb-1">Vehicles</p>
+                            <div class="mb-2">
+                                @foreach($vehicles as $v)
+                                    <span class="badge sp-cap-badge me-1">{{ \Str::title($v) }}</span>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        @if(count($activities))
+                            <p class="small fw-bold mb-1">Activity Types</p>
+                            <div class="mb-2">
+                                @foreach($activities as $a)
+                                    <span class="badge sp-cap-badge me-1">{{ \Str::title($a) }}</span>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        @if(count($accomCats))
+                            <p class="small fw-bold mb-1">Accommodation Categories</p>
+                            <div class="mb-2">
+                                @foreach($accomCats as $c)
+                                    <span class="badge sp-cap-badge me-1">{{ \Str::title($c) }}</span>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        @if($provider->region)
+                            <p class="small text-muted mb-0"><i class="bi bi-geo-alt"></i> Based in {{ $provider->region->name }}@if($provider->region->country), {{ $provider->region->country }}@endif</p>
+                        @endif
+
+                        @if(empty($services) && empty($vehicles) && empty($activities) && empty($accomCats))
+                            <p class="text-muted small mb-0">No services configured yet. Update your profile to add what you offer.</p>
+                        @endif
+                    </div>
+                </div>
+            @endif
+
             {{-- SP Payments summary --}}
             @if($provider->spPayments && $provider->spPayments->count())
                 <div class="card mb-3">
@@ -532,23 +593,23 @@ jQuery(function() {
             var dateStr = calYear + '-' + String(calMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
             var info = calendarData[dateStr] || { status: 'available' };
             var bgClass = 'bg-success bg-opacity-25 text-success';
-            var cursor = 'cursor: pointer;';
+            var cursorClass = 'cursor-pointer';
             var title = 'Available - click to select';
             if (info.status === 'booked') {
                 bgClass = 'bg-danger bg-opacity-25 text-danger';
-                cursor = 'cursor: not-allowed;';
+                cursorClass = 'cursor-not-allowed';
                 title = 'Booked (Trip #' + (info.trip_id || '') + ')';
             } else if (info.status === 'blocked') {
                 bgClass = 'bg-secondary bg-opacity-25 text-secondary';
-                cursor = 'cursor: pointer;';
+                cursorClass = 'cursor-pointer';
                 title = 'Blocked (' + (info.source || 'manual') + ')';
             }
 
             var isSelected = selectedDates.indexOf(dateStr) !== -1;
-            var border = isSelected ? 'border: 2px solid var(--heco-primary-700);' : 'border: 1px solid transparent;';
+            var selectedClass = isSelected ? 'sp-cal-day--selected' : '';
 
             html += '<div class="col p-1">';
-            html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '" style="' + cursor + border + '" title="' + title + '">';
+            html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day ' + cursorClass + ' ' + selectedClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '" title="' + title + '">';
             html += '<small>' + d + '</small>';
             html += '</div></div>';
 

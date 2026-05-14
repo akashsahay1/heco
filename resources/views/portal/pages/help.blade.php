@@ -518,69 +518,43 @@
 
 @section('js')
 <script>
-(function() {
-    // FAQ Accordion
-    document.querySelectorAll('.faq-question').forEach(function(button) {
-        button.addEventListener('click', function() {
-            var item = this.closest('.faq-item');
-            var isActive = item.classList.contains('active');
+jQuery(function($) {
+    // FAQ accordion: clicking a question toggles its item; opening one closes
+    // any sibling within the same category.
+    $('.faq-question').on('click', function() {
+        var $item = $(this).closest('.faq-item');
+        var wasActive = $item.hasClass('active');
+        $item.closest('.faq-category').find('.faq-item').removeClass('active');
+        if (!wasActive) $item.addClass('active');
+    });
 
-            // Close all items in same category
-            var category = item.closest('.faq-category');
-            category.querySelectorAll('.faq-item').forEach(function(i) {
-                i.classList.remove('active');
-            });
+    // Live search across questions + answers.
+    $('#helpSearch').on('input', function() {
+        var query = $(this).val().toLowerCase().trim();
 
-            // Open clicked item if it wasn't active
-            if (!isActive) {
-                item.classList.add('active');
-            }
+        $('.faq-item').each(function() {
+            var match = query === '' || $(this).text().toLowerCase().indexOf(query) !== -1;
+            $(this).toggleClass('d-none', !match);
+        });
+
+        // Hide whole categories that have no remaining visible items.
+        $('.faq-category').each(function() {
+            var $cat = $(this);
+                $cat.toggleClass('d-none', $cat.find('.faq-item:not(.d-none)').length === 0);
         });
     });
 
-    // Search functionality
-    var searchInput = document.getElementById('helpSearch');
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            var query = this.value.toLowerCase().trim();
-
-            document.querySelectorAll('.faq-item').forEach(function(item) {
-                var text = item.textContent.toLowerCase();
-                if (query === '' || text.includes(query)) {
-                    item.style.display = 'block';
-                } else {
-                    item.style.display = 'none';
-                }
-            });
-
-            // Show categories that have visible items
-            document.querySelectorAll('.faq-category').forEach(function(category) {
-                var visibleItems = category.querySelectorAll('.faq-item[style="display: block;"], .faq-item:not([style])');
-                var hiddenCount = category.querySelectorAll('.faq-item[style="display: none;"]').length;
-                var totalItems = category.querySelectorAll('.faq-item').length;
-
-                if (hiddenCount === totalItems) {
-                    category.style.display = 'none';
-                } else {
-                    category.style.display = 'block';
-                }
-            });
-        });
-    }
-
-    // Smooth scroll for category links
-    document.querySelectorAll('.category-card').forEach(function(card) {
-        card.addEventListener('click', function(e) {
-            var href = this.getAttribute('href');
-            if (href.startsWith('#')) {
+    // Smooth-scroll category cards to their target anchor.
+    $('.category-card').on('click', function(e) {
+        var href = $(this).attr('href') || '';
+        if (href.indexOf('#') === 0) {
+            var $target = $(href);
+            if ($target.length) {
                 e.preventDefault();
-                var target = document.querySelector(href);
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
+                jQuery('html, body').animate({ scrollTop: $target.offset().top }, 400);
             }
-        });
+        }
     });
-})();
+});
 </script>
 @endsection

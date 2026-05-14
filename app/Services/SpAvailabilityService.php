@@ -71,19 +71,32 @@ class SpAvailabilityService
     }
 
     /**
-     * Manually block dates for an SP.
+     * Manually block dates for an SP. Refuses to overwrite trip-assignment
+     * bookings — those would silently break a confirmed trip if replaced with
+     * a manual block. Returns ['blocked' => count, 'conflicts' => [dates]].
+     *
+     * @return array{blocked:int,conflicts:array<string>}
      */
-    public function blockDates(int $spId, array $dates, ?string $notes = null): int
+    public function blockDates(int $spId, array $dates, ?string $notes = null): array
     {
-        $count = 0;
+        $blocked = 0;
+        $conflicts = [];
         foreach ($dates as $date) {
+            $day = Carbon::parse($date)->startOfDay();
+            $existing = SpAvailability::where('service_provider_id', $spId)
+                ->where('date', $day)
+                ->first();
+            if ($existing && $existing->source === 'trip_assignment') {
+                $conflicts[] = $day->format('Y-m-d');
+                continue;
+            }
             SpAvailability::updateOrCreate(
-                ['service_provider_id' => $spId, 'date' => Carbon::parse($date)->startOfDay()],
+                ['service_provider_id' => $spId, 'date' => $day],
                 ['status' => 'blocked', 'source' => 'manual', 'notes' => $notes]
             );
-            $count++;
+            $blocked++;
         }
-        return $count;
+        return ['blocked' => $blocked, 'conflicts' => $conflicts];
     }
 
     /**

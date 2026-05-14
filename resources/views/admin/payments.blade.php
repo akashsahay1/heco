@@ -19,7 +19,7 @@
     {{-- SP Payments Tab --}}
     <div class="tab-pane fade show active" id="spPayments">
         <div class="d-flex gap-2 mb-3">
-            <input type="text" class="form-control form-control-sm" id="spTripSearch" style="width: 250px;">
+            <input type="text" class="form-control form-control-sm input-trip-search" id="spTripSearch">
             <button class="btn btn-sm btn-outline-primary" id="spSearchBtn"><i class="bi bi-search"></i> Search</button>
         </div>
 
@@ -208,7 +208,7 @@ function loadTravellerPayments() {
             var statusLabel = balance <= 0 ? 'Paid' : 'Pending';
             var statusBadge = balance <= 0 ? 'success' : 'warning text-dark';
 
-            html += '<tr class="traveller-row" style="cursor: pointer;" data-trip-num="' + (p.trip ? p.trip.id || '' : '') + '" data-trip-id="' + (p.trip ? p.trip.trip_id : '') + '" data-user="' + (p.user ? p.user.full_name || p.user.email : '') + '" data-due="' + (p.total_due || 0) + '" data-paid="' + (p.total_paid || 0) + '">';
+            html += '<tr class="traveller-row cursor-pointer" data-trip-num="' + (p.trip ? p.trip.id || '' : '') + '" data-trip-id="' + (p.trip ? p.trip.trip_id : '') + '" data-user="' + (p.user ? p.user.full_name || p.user.email : '') + '" data-due="' + (p.total_due || 0) + '" data-paid="' + (p.total_paid || 0) + '">';
             html += '<td><a href="/trip-manager/' + (p.trip ? p.trip.id || '' : '') + '" target="_blank" onclick="event.stopPropagation();">' + (p.trip ? p.trip.trip_id : '-') + '</a></td>';
             html += '<td>' + (p.user ? p.user.full_name || p.user.email : '-') + '</td>';
             html += '<td>₹' + Number(p.total_due || 0).toLocaleString() + '</td>';

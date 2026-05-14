@@ -54,14 +54,14 @@
             <table class="table table-hover table-sm mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 34px;"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
+                        <th class="w-check"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
                         <th>Name</th>
                         <th>Continent</th>
                         <th>Country</th>
                         <th>Lat / Lng</th>
                         <th>Experiences</th>
                         <th>Status</th>
-                        <th style="width: 140px;">Actions</th>
+                        <th class="w-actions-lg">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="regionsTable">
@@ -323,7 +323,7 @@ jQuery('#btnSaveRegion').on('click', function() {
 
     ajaxPost(data, function(resp) {
         showAlert(resp.message || resp.success || 'Saved', 'success');
-        bootstrap.Modal.getInstance(document.getElementById('regionModal')).hide();
+        bootstrap.Modal.getInstance(jQuery('#regionModal')[0]).hide();
         buildRegionMap();
         loadRegions();
     });
@@ -346,7 +346,7 @@ jQuery(document).on('click', '.btn-edit', function() {
     jQuery('#regionActive').prop('checked', region.is_active);
     jQuery('#regionModalTitle').text('Edit Region');
 
-    new bootstrap.Modal(document.getElementById('regionModal')).show();
+    new bootstrap.Modal(jQuery('#regionModal')[0]).show();
 });
 
 jQuery(document).on('click', '.btn-toggle', function() {

@@ -55,14 +55,14 @@
             <table class="table table-hover table-sm mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 34px;"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
+                        <th class="w-check"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
                         <th>Name</th>
                         <th>Region</th>
                         <th>Action Type</th>
                         <th>Impact Unit</th>
                         <th>Cost Per Unit</th>
                         <th>Status</th>
-                        <th style="width: 110px;">Actions</th>
+                        <th class="w-actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="projectsTable">

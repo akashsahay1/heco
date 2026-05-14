@@ -134,7 +134,7 @@
                     <label class="form-label">Main Image</label>
                     @if($p && $p->main_image)
                         <div class="mb-2">
-                            <img src="{{ $p->main_image }}" class="rounded" style="max-height: 120px;" alt="Current image">
+                            <img src="{{ $p->main_image }}" class="rounded img-preview-md" alt="Current image">
                         </div>
                     @endif
                     <input type="file" class="form-control" name="main_image" accept="image/*">
@@ -144,7 +144,7 @@
                     @if($p && $p->gallery && count($p->gallery))
                         <div class="mb-2 d-flex gap-1 flex-wrap">
                             @foreach($p->gallery as $img)
-                                <img src="{{ $img }}" class="rounded" style="height: 60px; width: 80px; object-fit: cover;" alt="Gallery">
+                                <img src="{{ $img }}" class="rounded img-thumb-gallery" alt="Gallery">
                             @endforeach
                         </div>
                     @endif

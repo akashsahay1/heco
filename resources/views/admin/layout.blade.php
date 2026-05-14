@@ -195,32 +195,27 @@
 
         // Sidebar toggle
         (function() {
-            var sidebar = document.getElementById('hctSidebar');
-            var wrapper = document.getElementById('hctMainWrapper');
-            var toggle = document.getElementById('sidebarToggle');
+            var $sidebar = jQuery('#hctSidebar');
+            var $wrapper = jQuery('#hctMainWrapper');
+            var $toggle = jQuery('#sidebarToggle');
             var collapsed = localStorage.getItem('hct-sidebar-collapsed') === 'true';
 
             function applySidebarState() {
-                if (collapsed) {
-                    sidebar.classList.add('collapsed');
-                    wrapper.classList.add('sidebar-collapsed');
-                } else {
-                    sidebar.classList.remove('collapsed');
-                    wrapper.classList.remove('sidebar-collapsed');
-                }
+                $sidebar.toggleClass('collapsed', collapsed);
+                $wrapper.toggleClass('sidebar-collapsed', collapsed);
             }
 
             applySidebarState();
 
-            toggle.addEventListener('click', function() {
+            $toggle.on('click', function() {
                 collapsed = !collapsed;
                 localStorage.setItem('hct-sidebar-collapsed', collapsed);
                 applySidebarState();
             });
 
-            // Mobile overlay close
-            sidebar.addEventListener('click', function(e) {
-                if (window.innerWidth < 992 && e.target === sidebar) {
+            // Mobile overlay close: tapping the dimmed sidebar area itself closes it.
+            $sidebar.on('click', function(e) {
+                if (window.innerWidth < 992 && e.target === this) {
                     collapsed = true;
                     localStorage.setItem('hct-sidebar-collapsed', collapsed);
                     applySidebarState();

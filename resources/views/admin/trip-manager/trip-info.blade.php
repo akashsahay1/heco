@@ -232,21 +232,21 @@
                                 <tr>
                                     <td class="ps-3 small text-muted">RP Margin</td>
                                     <td class="text-end pe-3 small">
-                                        <input type="number" class="form-control form-control-sm d-inline-block" style="width: 70px;" name="margin_rp_percent" value="{{ $trip->margin_rp_percent ?? 0 }}" step="0.01"> %
+                                        <input type="number" class="form-control form-control-sm d-inline-block input-pct" name="margin_rp_percent" value="{{ $trip->margin_rp_percent ?? 0 }}" step="0.01"> %
                                     </td>
                                     <td class="text-end pe-3 small">&#8377;{{ number_format($trip->margin_rp_amount ?? 0, 2) }}</td>
                                 </tr>
                                 <tr>
                                     <td class="ps-3 small text-muted">HRP Margin</td>
                                     <td class="text-end pe-3 small">
-                                        <input type="number" class="form-control form-control-sm d-inline-block" style="width: 70px;" name="margin_hrp_percent" value="{{ $trip->margin_hrp_percent ?? 0 }}" step="0.01"> %
+                                        <input type="number" class="form-control form-control-sm d-inline-block input-pct" name="margin_hrp_percent" value="{{ $trip->margin_hrp_percent ?? 0 }}" step="0.01"> %
                                     </td>
                                     <td class="text-end pe-3 small">&#8377;{{ number_format($trip->margin_hrp_amount ?? 0, 2) }}</td>
                                 </tr>
                                 <tr>
                                     <td class="ps-3 small text-muted">HCT Commission</td>
                                     <td class="text-end pe-3 small">
-                                        <input type="number" class="form-control form-control-sm d-inline-block" style="width: 70px;" name="commission_hct_percent" value="{{ $trip->commission_hct_percent ?? 0 }}" step="0.01"> %
+                                        <input type="number" class="form-control form-control-sm d-inline-block input-pct" name="commission_hct_percent" value="{{ $trip->commission_hct_percent ?? 0 }}" step="0.01"> %
                                     </td>
                                     <td class="text-end pe-3 small">&#8377;{{ number_format($trip->commission_hct_amount ?? 0, 2) }}</td>
                                 </tr>

@@ -182,13 +182,13 @@
             <table class="table table-sm table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th style="width:34px;"><i class="bi bi-check2-square sp-price-selall" role="button" title="Select all"></i></th>
+                        <th class="w-check"><i class="bi bi-check2-square sp-price-selall" role="button" title="Select all"></i></th>
                         <th>Service</th>
                         <th>Category / Vehicle / Meal plan</th>
                         <th>Description</th>
-                        <th style="width:150px;">Rate</th>
-                        <th style="width:80px;">Active</th>
-                        <th style="width:90px;">Actions</th>
+                        <th class="w-rate">Rate</th>
+                        <th class="w-active">Active</th>
+                        <th class="w-status">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="spPriceBody"><tr><td colspan="7" class="text-center text-muted small">Loading...</td></tr></tbody>

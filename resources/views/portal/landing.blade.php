@@ -4,10 +4,10 @@
 @section('content')
 <!-- Hero Section -->
 <div class="landing-hero text-white d-flex align-items-center position-relative">
-    <div class="container text-center position-relative" style="z-index: 2;">
-        <p class="text-uppercase small fw-bold mb-3" style="letter-spacing: 3px; opacity: 0.8;">HECO — Regenerative Travel Collective</p>
+    <div class="container text-center position-relative landing-hero-stack">
+        <p class="text-uppercase small fw-bold mb-3 landing-hero-eyebrow">HECO — Regenerative Travel Collective</p>
         <h1 class="display-3 fw-bold mb-3">Discover Regenerative<br>Travel Worldwide</h1>
-        <p class="lead mb-4 mx-auto" style="max-width: 600px; opacity: 0.9;">
+        <p class="lead mb-4 mx-auto landing-hero-lead">
             Immerse yourself in authentic experiences that transform communities and restore landscapes.
         </p>
         <div class="d-flex justify-content-center gap-3 flex-wrap">
@@ -70,7 +70,7 @@
 </section>
 
 <!-- How It Works -->
-<section class="landing-section" style="background: #fff;">
+<section class="landing-section landing-bg-white">
     <div class="container text-center">
         <h2 class="landing-section-title">How It Works</h2>
         <p class="landing-section-subtitle">Plan your regenerative journey in three simple steps</p>
@@ -126,7 +126,7 @@
                 <div class="col-md-4 col-6">
                     <a href="/home?region_id={{ $region->id }}" class="text-decoration-none">
                         <div class="landing-region-card">
-                            <div class="landing-region-image" style="background-image: url('{{ $regionImages[$idx % count($regionImages)] }}');">
+                            <div class="landing-region-image" data-bg="{{ $regionImages[$idx % count($regionImages)] }}">
                                 <div class="landing-region-overlay"></div>
                                 <div class="landing-region-content">
                                     <div class="landing-region-name">{{ $region->name }}</div>
@@ -143,7 +143,7 @@
 @endif
 
 <!-- Experience Categories -->
-<section class="landing-section" style="background: #fff;">
+<section class="landing-section landing-bg-white">
     <div class="container text-center">
         <h2 class="landing-section-title">What Inspires You?</h2>
         <p class="landing-section-subtitle">Choose from diverse experience categories</p>
@@ -182,7 +182,7 @@
 <section class="landing-impact-section">
     <div class="container text-center">
         <h2 class="display-6 fw-bold mb-3">Travel That Gives Back</h2>
-        <p class="mb-5 mx-auto" style="max-width: 600px; opacity: 0.85;">
+        <p class="mb-5 mx-auto landing-impact-lead">
             Every trip through HECO contributes to regenerative projects that restore ecosystems and empower communities.
         </p>
         <div class="row g-4 justify-content-center">
@@ -242,6 +242,8 @@
 @section('js')
 <script>
 jQuery(function() {
+    // (Background-image hydration for [data-bg] elements lives in app.js.)
+
     jQuery('#newsletterForm').on('submit', function(e) {
         e.preventDefault();
         var form = jQuery(this);

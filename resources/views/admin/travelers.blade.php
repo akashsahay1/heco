@@ -154,7 +154,7 @@ function loadTravelerDetail(traveler) {
     html += '<div class="col-md-6">';
     html += '<h6 class="border-bottom pb-2"><i class="bi bi-person"></i> Traveler Information</h6>';
     html += '<table class="table table-sm table-borderless">';
-    html += '<tr><td class="text-muted" style="width:140px;">Name</td><td><strong>' + (traveler.name || '-') + '</strong></td></tr>';
+    html += '<tr><td class="text-muted w-cell-label">Name</td><td><strong>' + (traveler.name || '-') + '</strong></td></tr>';
     html += '<tr><td class="text-muted">Email</td><td>' + (traveler.email || '-') + '</td></tr>';
     html += '<tr><td class="text-muted">Phone</td><td>' + (traveler.mobile || '-') + '</td></tr>';
     html += '<tr><td class="text-muted">Gender</td><td>' + (traveler.gender ? traveler.gender.replace(/_/g, ' ') : '-') + '</td></tr>';

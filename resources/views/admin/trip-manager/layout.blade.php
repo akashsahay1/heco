@@ -56,8 +56,6 @@
                             <option value="guide">Guide</option>
                             <option value="activity">Activity</option>
                             <option value="meal">Meal</option>
-                            <option value="permit">Permit</option>
-                            <option value="equipment">Equipment</option>
                             <option value="other">Other</option>
                         </select>
                     </div>
@@ -242,8 +240,8 @@ function loadItinerary() {
                 if (day.date) html += ' <span class="text-muted fw-normal">(' + day.date + ')</span>';
                 html += '</strong>';
                 if (day.title) html += '<span class="text-muted small ms-1">- ' + day.title + '</span>';
-                if (day.day_type && day.day_type !== 'activity') html += '<span class="badge bg-secondary ms-2" style="font-size:10px;">' + day.day_type + '</span>';
-                if (day.added_by === 'traveller') html += '<span class="badge bg-info text-white ms-2" style="font-size:10px;">Added by Traveller</span>';
+                if (day.day_type && day.day_type !== 'activity') html += '<span class="badge bg-secondary ms-2 badge-xs">' + day.day_type + '</span>';
+                if (day.added_by === 'traveller') html += '<span class="badge bg-info text-white ms-2 badge-xs">Added by Traveller</span>';
                 html += '</div>';
                 html += '<div class="d-flex gap-1">';
                 html += '<button class="btn btn-sm btn-outline-secondary btn-move-day-up" data-id="' + day.id + '" title="Move up"><i class="bi bi-arrow-up"></i></button>';

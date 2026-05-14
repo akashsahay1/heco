@@ -162,7 +162,7 @@
                             <hr class="my-2">
                             <label class="form-label"><i class="bi bi-calendar3"></i> Day-wise Details</label>
                             <div id="experienceDaysContainer"></div>
-                            <button type="button" class="btn btn-outline-success btn-sm mt-1" id="btnAddDay" style="display:none;">
+                            <button type="button" class="btn btn-outline-success btn-sm mt-1 d-none" id="btnAddDay">
                                 <i class="bi bi-plus-lg"></i> Add Day
                             </button>
                         </div>
@@ -187,7 +187,7 @@
                                 <label class="form-check-label" for="includesAccommodation"><i class="bi bi-house"></i> Includes Accommodation</label>
                             </div>
                         </div>
-                        <div class="col-md-4" id="accommodationCategoryGroup" style="{{ $e && $e->includes_accommodation ? '' : 'display:none;' }}">
+                        <div class="col-md-4 {{ $e && $e->includes_accommodation ? '' : 'd-none' }}" id="accommodationCategoryGroup">
                             <label class="form-label">Accommodation Category</label>
                             <select class="form-select custom-select" name="accommodation_category">
                                 <option value="">Select</option>
@@ -371,7 +371,7 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Available Months</label>
-                            <div class="border rounded p-2" style="max-height: 180px; overflow-y: auto;">
+                            <div class="border rounded p-2 scroll-panel-sm">
                                 @foreach($months as $idx => $month)
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" name="available_months[]" value="{{ $idx + 1 }}" id="avail_{{ $idx }}"
@@ -383,7 +383,7 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Restricted Months</label>
-                            <div class="border rounded p-2" style="max-height: 180px; overflow-y: auto;">
+                            <div class="border rounded p-2 scroll-panel-sm">
                                 @foreach($months as $idx => $month)
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" name="restricted_months[]" value="{{ $idx + 1 }}" id="restr_{{ $idx }}"
@@ -395,7 +395,7 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Unavailable Months</label>
-                            <div class="border rounded p-2" style="max-height: 180px; overflow-y: auto;">
+                            <div class="border rounded p-2 scroll-panel-sm">
                                 @foreach($months as $idx => $month)
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" name="unavailable_months[]" value="{{ $idx + 1 }}" id="unavail_{{ $idx }}"
@@ -584,7 +584,7 @@
                             <label class="form-label">Card Image</label>
                             @if($e && $e->card_image)
                                 <div class="mb-2">
-                                    <img src="{{ $e->card_image }}" class="rounded" style="max-height: 120px;" alt="Card image" id="currentCardImage">
+                                    <img src="{{ $e->card_image }}" class="rounded img-preview-md" alt="Card image" id="currentCardImage">
                                 </div>
                             @endif
                             <input type="file" class="form-control" name="card_image" accept="image/*" id="cardImageInput">
@@ -597,7 +597,7 @@
                                 <div class="mb-2 d-flex gap-1 flex-wrap" id="currentGallery">
                                     @foreach($e->gallery as $gidx => $img)
                                         <div class="position-relative">
-                                            <img src="{{ $img }}" class="rounded" style="height: 60px; width: 80px; object-fit: cover;" alt="Gallery">
+                                            <img src="{{ $img }}" class="rounded img-thumb-gallery" alt="Gallery">
                                         </div>
                                     @endforeach
                                 </div>
@@ -741,9 +741,9 @@ function addDayCard(data, removable) {
     var desc = data ? (data.short_description || '') : '';
     var inclusions = data && data.inclusions ? data.inclusions : [];
 
-    var card = '<div class="card mb-2 day-card-item" style="border-left: 3px solid var(--admin-primary); background: #f0fdf4;">';
-    card += '<div class="card-header py-2 d-flex align-items-center gap-2" style="background: rgba(255,255,255,0.6); border-bottom: 1px solid var(--admin-border);">';
-    card += '<span class="badge day-number-badge" style="background: var(--admin-primary);">Day ' + dayNum + '</span>';
+    var card = '<div class="card mb-2 day-card-item day-card-shell">';
+    card += '<div class="card-header py-2 d-flex align-items-center gap-2 day-card-header">';
+    card += '<span class="badge day-number-badge day-card-badge">Day ' + dayNum + '</span>';
     card += '<input type="hidden" class="day-number-input" name="experience_days[' + i + '][day_number]" value="' + dayNum + '">';
     card += '<input type="text" class="form-control form-control-sm flex-grow-1" name="experience_days[' + i + '][title]" value="' + escAttr(title) + '">';
     if (removable) {
@@ -755,7 +755,7 @@ function addDayCard(data, removable) {
 
     // Short description
     card += '<div class="col-12">';
-    card += '<textarea class="form-control form-control-sm" name="experience_days[' + i + '][short_description]" rows="2" style="background:rgba(255,255,255,0.7);">' + escHtml(desc) + '</textarea>';
+    card += '<textarea class="form-control form-control-sm day-card-textarea" name="experience_days[' + i + '][short_description]" rows="2">' + escHtml(desc) + '</textarea>';
     card += '</div>';
 
     // Inclusion checkboxes
@@ -813,7 +813,7 @@ jQuery('#cardImageInput').on('change', function() {
     if (file) {
         var reader = new FileReader();
         reader.onload = function(ev) {
-            jQuery('#cardImagePreview').html('<img src="' + ev.target.result + '" class="rounded" style="max-height: 100px;" alt="Preview">');
+            jQuery('#cardImagePreview').html('<img src="' + ev.target.result + '" class="rounded img-preview-sm" alt="Preview">');
         };
         reader.readAsDataURL(file);
     } else {

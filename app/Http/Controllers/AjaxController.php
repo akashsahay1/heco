@@ -2162,6 +2162,16 @@ class AjaxController extends Controller
 
     protected function updateTripStartDate(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            "start_date" => "nullable|date|after_or_equal:today",
+        ], [
+            "start_date.date" => "Please pick a valid date.",
+            "start_date.after_or_equal" => "Trip start date cannot be in the past.",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
         $date = $request->start_date ?: null;
 
         if (!Auth::check()) {
@@ -4192,12 +4202,17 @@ class AjaxController extends Controller
     protected function saveRegion(Request $request): JsonResponse
     {
         $rules = [
-            "name" => "required|string|max:255",
+            "name" => [
+                "required", "string", "max:255",
+                \Illuminate\Validation\Rule::unique("regions", "name")->ignore($request->region_id),
+            ],
             "continent" => "required|string|max:100",
             "country" => "required|string|max:100",
         ];
 
-        $validator = Validator::make($request->all(), $rules);
+        $validator = Validator::make($request->all(), $rules, [
+            "name.unique" => "A region with this name already exists.",
+        ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
@@ -4388,19 +4403,22 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
-        $data = $request->except(["_token", "save_experience", "experience_days"]);
+        $data = $request->except(["_token", "save_experience", "experience_days", "gallery"]);
 
         if ($request->hasFile("card_image")) {
-            $file = $request->file("card_image");
-            $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/experiences'), $filename);
-            $data["card_image"] = '/uploads/experiences/' . $filename;
+            $stored = \App\Services\ImageUploadService::storeUploadedImage($request->file("card_image"), "experiences", 1200);
+            if ($stored) {
+                $data["card_image"] = $stored;
+            } else {
+                return response()->json(["error" => "Failed to upload card image. Use JPG, PNG, or WebP."], 422);
+            }
         } else {
             unset($data["card_image"]);
         }
 
-        // Handle JSON fields
-        foreach (["best_seasons", "available_months", "restricted_months", "unavailable_months", "gallery", "osp_services", "seasonal_price_variation"] as $jsonField) {
+        // Handle JSON fields (gallery handled separately below — it's both an
+        // existing-paths JSON string AND new multipart uploads).
+        foreach (["best_seasons", "available_months", "restricted_months", "unavailable_months", "osp_services", "seasonal_price_variation"] as $jsonField) {
             if (isset($data[$jsonField]) && is_string($data[$jsonField])) {
                 $data[$jsonField] = json_decode($data[$jsonField], true);
             }
@@ -4425,6 +4443,25 @@ class AjaxController extends Controller
             $experience->update($data);
         } else {
             $experience = Experience::create($data);
+        }
+
+        // Append any newly uploaded gallery images. The form's hidden gallery
+        // field (JSON string of existing paths to keep) was previously the only
+        // path that touched this column; new multipart uploads were silently
+        // dropped.
+        $existingGallery = $experience->gallery ?? [];
+        if (is_string($existingGallery)) {
+            $existingGallery = json_decode($existingGallery, true) ?: [];
+        }
+        $newPaths = [];
+        foreach ((array) $request->file("gallery", []) as $galleryFile) {
+            if ($galleryFile) {
+                $stored = \App\Services\ImageUploadService::storeUploadedImage($galleryFile, "experiences", 1200);
+                if ($stored) $newPaths[] = $stored;
+            }
+        }
+        if (!empty($newPaths)) {
+            $experience->update(["gallery" => array_values(array_merge($existingGallery, $newPaths))]);
         }
 
         // Save day-wise details
@@ -4492,15 +4529,20 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
-        $data = $request->except(["_token", "save_regenerative_project", "id", "project_id"]);
+        $data = $request->except(["_token", "save_regenerative_project", "id", "project_id", "gallery"]);
 
         if ($request->hasFile("main_image")) {
-            $data["main_image"] = $request->file("main_image")->store("rp", "public");
+            $stored = \App\Services\ImageUploadService::storeUploadedImage($request->file("main_image"), "regenerative_projects", 1200);
+            if ($stored) {
+                $data["main_image"] = $stored;
+            } else {
+                return response()->json(["error" => "Failed to upload main image. Use JPG, PNG, or WebP."], 422);
+            }
         } else {
             unset($data["main_image"]);
         }
 
-        foreach (["gallery", "active_periods", "paused_periods", "fallback_for_regions"] as $jsonField) {
+        foreach (["active_periods", "paused_periods", "fallback_for_regions"] as $jsonField) {
             if (isset($data[$jsonField]) && is_string($data[$jsonField])) {
                 $data[$jsonField] = json_decode($data[$jsonField], true);
             }
@@ -4512,6 +4554,22 @@ class AjaxController extends Controller
             $project->update($data);
         } else {
             $project = RegenerativeProject::create($data);
+        }
+
+        // Append newly uploaded gallery images (same pattern as saveExperience).
+        $existingGallery = $project->gallery ?? [];
+        if (is_string($existingGallery)) {
+            $existingGallery = json_decode($existingGallery, true) ?: [];
+        }
+        $newPaths = [];
+        foreach ((array) $request->file("gallery", []) as $galleryFile) {
+            if ($galleryFile) {
+                $stored = \App\Services\ImageUploadService::storeUploadedImage($galleryFile, "regenerative_projects", 1200);
+                if ($stored) $newPaths[] = $stored;
+            }
+        }
+        if (!empty($newPaths)) {
+            $project->update(["gallery" => array_values(array_merge($existingGallery, $newPaths))]);
         }
 
         return response()->json(["success" => true, "project" => $project]);
@@ -5026,6 +5084,16 @@ class AjaxController extends Controller
 
     protected function addDayService(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            "day_id" => "required|integer|exists:trip_days,id",
+            "service_type" => "required|in:accommodation,transport,guide,activity,meal,other",
+            "service_provider_id" => "nullable|integer|exists:service_providers,id",
+            "cost" => "nullable|numeric|min:0",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
         $service = TripDayService::create([
             "trip_day_id" => $request->day_id,
             "service_provider_id" => $request->service_provider_id,
@@ -5042,6 +5110,16 @@ class AjaxController extends Controller
 
     protected function editDayService(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            "service_id" => "required|integer|exists:trip_day_services,id",
+            "service_type" => "nullable|in:accommodation,transport,guide,activity,meal,other",
+            "service_provider_id" => "nullable|integer|exists:service_providers,id",
+            "cost" => "nullable|numeric|min:0",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
         $service = TripDayService::findOrFail($request->service_id);
         $service->update($request->only([
             "service_provider_id", "service_type", "description",
@@ -5212,7 +5290,10 @@ class AjaxController extends Controller
 
     protected function getSettings(Request $request): JsonResponse
     {
-        $group = $request->get("group", "general");
+        // Use ?: not the second arg of get() — `?group=` (empty string after
+        // ConvertEmptyStringsToNull middleware) would otherwise filter to "" and
+        // return [] instead of the default 'general' group.
+        $group = $request->input("group") ?: "general";
         $settings = Setting::where("group", $group)->get();
         return response()->json(["settings" => $settings]);
     }
@@ -5234,6 +5315,20 @@ class AjaxController extends Controller
 
     protected function savePdfTemplate(Request $request): JsonResponse
     {
+        $rules = [
+            "name" => "required|string|max:255",
+            "key" => [
+                "required", "string", "max:100",
+                \Illuminate\Validation\Rule::unique("pdf_templates", "key")->ignore($request->id),
+            ],
+            "paper_size" => "nullable|string|max:20",
+            "orientation" => "nullable|in:portrait,landscape",
+        ];
+        $validator = Validator::make($request->all(), $rules);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
         $data = $request->only(["name", "key", "header_html", "footer_html", "css", "paper_size", "orientation"]);
         if ($request->filled("id")) {
             $template = PdfTemplate::findOrFail($request->id);
@@ -5302,9 +5397,13 @@ class AjaxController extends Controller
         if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
 
         $service = new SpAvailabilityService();
-        $count = $service->blockDates($sp->id, $dates, $request->notes);
+        $result = $service->blockDates($sp->id, $dates, $request->notes);
 
-        return response()->json(['success' => true, 'blocked' => $count]);
+        return response()->json([
+            'success' => true,
+            'blocked' => $result['blocked'],
+            'conflicts' => $result['conflicts'],
+        ]);
     }
 
     protected function spUnblockDates(Request $request): JsonResponse
@@ -5384,9 +5483,13 @@ class AjaxController extends Controller
         if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
 
         $service = new SpAvailabilityService();
-        $count = $service->blockDates($sp->id, $dates, $request->notes);
+        $result = $service->blockDates($sp->id, $dates, $request->notes);
 
-        return response()->json(['success' => true, 'blocked' => $count]);
+        return response()->json([
+            'success' => true,
+            'blocked' => $result['blocked'],
+            'conflicts' => $result['conflicts'],
+        ]);
     }
 
     protected function adminSpUnblockDates(Request $request): JsonResponse

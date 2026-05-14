@@ -42,14 +42,14 @@
             <table class="table table-hover table-sm mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 34px;"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
+                        <th class="w-check"><i class="bi bi-check2-square selall-check" role="button" title="Select all"></i></th>
                         <th>Code</th>
                         <th>Symbol</th>
                         <th>Name</th>
                         <th>Locale</th>
                         <th>Rate to USD</th>
                         <th>Status</th>
-                        <th style="width: 140px;">Actions</th>
+                        <th class="w-actions-lg">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="currenciesTable">
@@ -73,7 +73,7 @@
                 <div class="row g-2 mb-3">
                     <div class="col-md-4">
                         <label class="form-label small">Code <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control form-control-sm" id="currencyCode" maxlength="3" style="text-transform: uppercase;">
+                        <input type="text" class="form-control form-control-sm text-uppercase" id="currencyCode" maxlength="3">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small">Symbol <span class="text-danger">*</span></label>
@@ -154,7 +154,7 @@ function renderTable(data) {
     }
 
     data.forEach(function(c) {
-        var flagImg = c.flag ? '<img src="/images/flags/' + c.flag + '.png" alt="" style="width:24px; height:16px; object-fit:cover; border-radius:2px; box-shadow:0 1px 2px rgba(0,0,0,.15);"> ' : '';
+        var flagImg = c.flag ? '<img src="/images/flags/' + c.flag + '.png" alt="" class="img-flag"> ' : '';
         html += '<tr>';
         html += '<td><i class="bi bi-square row-check" role="button" data-id="' + c.id + '"></i></td>';
         html += '<td>' + flagImg + '<strong>' + c.code + '</strong></td>';
@@ -244,7 +244,7 @@ jQuery('#btnSaveCurrency').on('click', function() {
 
     ajaxPost(data, function(resp) {
         showAlert(resp.message || resp.success || 'Saved', 'success');
-        bootstrap.Modal.getInstance(document.getElementById('currencyModal')).hide();
+        bootstrap.Modal.getInstance(jQuery('#currencyModal')[0]).hide();
         loadCurrencies();
     });
 });
@@ -260,13 +260,13 @@ jQuery(document).on('click', '.btn-edit', function() {
     jQuery('#currencyName').val(currency.name);
     jQuery('#currencyLocale').val(currency.locale || '');
     jQuery('#currencyFlag').val(currency.flag || '');
-    jQuery('#flagPreview').html(currency.flag ? '<img src="/images/flags/' + currency.flag + '.png" style="width:24px;height:16px;object-fit:cover;">' : '');
+    jQuery('#flagPreview').html(currency.flag ? '<img src="/images/flags/' + currency.flag + '.png" class="img-flag-plain">' : '');
     jQuery('#currencyRate').val(currency.rate_to_usd);
     jQuery('#currencySortOrder').val(currency.sort_order || 0);
     jQuery('#currencyActive').prop('checked', currency.is_active);
     jQuery('#currencyModalTitle').text('Edit Currency');
 
-    new bootstrap.Modal(document.getElementById('currencyModal')).show();
+    new bootstrap.Modal(jQuery('#currencyModal')[0]).show();
 });
 
 jQuery(document).on('click', '.btn-toggle', function() {
@@ -318,7 +318,7 @@ jQuery('#btnBulkDelete').on('click', function() {
 jQuery('#currencyFlag').on('input', function() {
     var code = jQuery(this).val().toLowerCase().trim();
     if (code.length >= 2) {
-        jQuery('#flagPreview').html('<img src="/images/flags/' + code + '.png" style="width:24px;height:16px;object-fit:cover;" onerror="this.style.display=\'none\'">');
+        jQuery('#flagPreview').html('<img src="/images/flags/' + code + '.png" class="img-flag-plain" onerror="jQuery(this).hide()">');
     } else {
         jQuery('#flagPreview').html('');
     }

@@ -47,7 +47,7 @@
             <div class="card-body">
                 <h6 class="border-bottom pb-2"><i class="bi bi-info-circle"></i> Provider Information</h6>
                 <table class="table table-sm table-borderless mb-0">
-                    <tr><td class="text-muted" style="width:160px;">Name</td><td><strong>{{ $provider->name ?: '-' }}</strong></td></tr>
+                    <tr><td class="text-muted w-cell-label-md">Name</td><td><strong>{{ $provider->name ?: '-' }}</strong></td></tr>
                     <tr><td class="text-muted">Contact Person</td><td>{{ $provider->contact_person ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Email</td><td>{{ $provider->email ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Phone 1</td><td>{{ $provider->phone_1 ?: '-' }}</td></tr>
@@ -65,7 +65,7 @@
             <div class="card-body">
                 <h6 class="border-bottom pb-2"><i class="bi bi-bank"></i> Bank Details</h6>
                 <table class="table table-sm table-borderless mb-3">
-                    <tr><td class="text-muted" style="width:160px;">Bank Name</td><td>{{ $provider->bank_name ?: '-' }}</td></tr>
+                    <tr><td class="text-muted w-cell-label-md">Bank Name</td><td>{{ $provider->bank_name ?: '-' }}</td></tr>
                     <tr><td class="text-muted">IFSC</td><td>{{ $provider->bank_ifsc ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Account Name</td><td>{{ $provider->bank_account_name ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Account Number</td><td>{{ $provider->bank_account_number ?: '-' }}</td></tr>
@@ -309,12 +309,12 @@ function renderAdminCalendar() {
         var dateStr = adminCalYear + '-' + String(adminCalMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
         var info = adminCalData[dateStr] || { status: 'available' };
         var bgClass = 'bg-success bg-opacity-25 text-success';
-        var cursor = 'cursor: pointer;';
-        if (info.status === 'booked') { bgClass = 'bg-danger bg-opacity-25 text-danger'; cursor = 'cursor: not-allowed;'; }
-        else if (info.status === 'blocked') { bgClass = 'bg-secondary bg-opacity-25 text-secondary'; cursor = 'cursor: pointer;'; }
+        var cursorClass = 'cursor-pointer';
+        if (info.status === 'booked') { bgClass = 'bg-danger bg-opacity-25 text-danger'; cursorClass = 'cursor-not-allowed'; }
+        else if (info.status === 'blocked') { bgClass = 'bg-secondary bg-opacity-25 text-secondary'; cursorClass = 'cursor-pointer'; }
         var isSelected = adminSelectedDates.indexOf(dateStr) !== -1;
-        var border = isSelected ? 'border: 2px solid #0d6efd;' : 'border: 1px solid transparent;';
-        html += '<div class="col p-1"><div class="rounded-2 p-1 ' + bgClass + ' admin-cal-day" data-date="' + dateStr + '" data-status="' + info.status + '" style="' + cursor + border + '"><small>' + d + '</small></div></div>';
+        var selClass = isSelected ? 'admin-cal-day--selected' : '';
+        html += '<div class="col p-1"><div class="rounded-2 p-1 ' + bgClass + ' admin-cal-day ' + cursorClass + ' ' + selClass + '" data-date="' + dateStr + '" data-status="' + info.status + '"><small>' + d + '</small></div></div>';
         if ((firstDay + d) % 7 === 0) html += '</div><div class="row g-0 text-center">';
     }
     html += '</div>';

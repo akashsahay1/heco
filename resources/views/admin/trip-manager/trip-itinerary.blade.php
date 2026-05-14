@@ -48,7 +48,7 @@
                 </select>
             </div>
 
-            <div id="expSearchResults" style="max-height: 400px; overflow-y: auto;">
+            <div id="expSearchResults" class="scroll-panel-lg">
                 <p class="text-muted small text-center">Search for experiences above</p>
             </div>
 
@@ -72,7 +72,7 @@
 
         {{-- Right column: Day Services --}}
         <div class="col-md-3 trip-manager-col tm-sidebar">
-            <div id="dayServicesPanel" style="display: none;">
+            <div id="dayServicesPanel" class="d-none">
                 <h6 class="mb-2"><i class="bi bi-gear"></i> <span id="selectedDayLabel">Day Services</span></h6>
                 <input type="hidden" id="serviceDayId" value="">
 
@@ -97,8 +97,6 @@
                                 <option value="guide">Guide</option>
                                 <option value="activity">Activity</option>
                                 <option value="meal">Meal</option>
-                                <option value="permit">Permit</option>
-                                <option value="equipment">Equipment</option>
                                 <option value="other">Other</option>
                             </select>
                         </div>

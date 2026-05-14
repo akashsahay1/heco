@@ -137,7 +137,7 @@
                         <input type="text" class="form-control" id="currencySearchInput" autocomplete="off">
                     </div>
                 </div>
-                <div class="modal-body px-4 pb-4" style="max-height: 500px; overflow-y: auto;">
+                <div class="modal-body px-4 pb-4 modal-scroll">
                     <p class="text-muted small fw-bold mb-2 text-uppercase" id="suggestedHeader">Suggested for you</p>
                     <div class="row g-2 mb-4" id="suggestedCurrencies"></div>
                     <p class="text-muted small fw-bold mb-2 text-uppercase">All currencies</p>
@@ -477,7 +477,7 @@
                 var c = currencies[code];
                 if (!c) return '';
                 var isActive = (code === currentCurrency) ? ' currency-pick-active' : '';
-                var check = (code === currentCurrency) ? '<i class="bi bi-check-circle-fill text-success" style="font-size: 14px;"></i>' : '';
+                var check = (code === currentCurrency) ? '<i class="bi bi-check-circle-fill text-success fs-14"></i>' : '';
                 var flagImg = c.flag ? '<img src="/images/flags/' + c.flag + '.png" alt="" class="currency-flag">' : '';
                 return '<div class="col-6 col-md-3">'
                     + '<button class="currency-pick-item' + isActive + '" data-currency="' + code + '">'

@@ -6,7 +6,7 @@
     <h5 class="mb-0"><i class="bi bi-calendar3"></i> Trip Calendar</h5>
     <div class="d-flex gap-2 align-items-center">
         <button class="btn btn-sm btn-outline-secondary" id="prevMonth"><i class="bi bi-chevron-left"></i></button>
-        <span class="fw-semibold" id="currentMonthLabel" style="min-width: 140px; text-align: center;"></span>
+        <span class="fw-semibold month-label" id="currentMonthLabel"></span>
         <button class="btn btn-sm btn-outline-secondary" id="nextMonth"><i class="bi bi-chevron-right"></i></button>
         <button class="btn btn-sm btn-outline-primary ms-2" id="todayBtn">Today</button>
     </div>
@@ -18,13 +18,13 @@
             <table class="table table-bordered mb-0" id="calendarGrid">
                 <thead class="table-light">
                     <tr>
-                        <th class="text-center" style="width:14.28%">Mon</th>
-                        <th class="text-center" style="width:14.28%">Tue</th>
-                        <th class="text-center" style="width:14.28%">Wed</th>
-                        <th class="text-center" style="width:14.28%">Thu</th>
-                        <th class="text-center" style="width:14.28%">Fri</th>
-                        <th class="text-center" style="width:14.28%">Sat</th>
-                        <th class="text-center" style="width:14.28%">Sun</th>
+                        <th class="text-center w-day-col">Mon</th>
+                        <th class="text-center w-day-col">Tue</th>
+                        <th class="text-center w-day-col">Wed</th>
+                        <th class="text-center w-day-col">Thu</th>
+                        <th class="text-center w-day-col">Fri</th>
+                        <th class="text-center w-day-col">Sat</th>
+                        <th class="text-center w-day-col">Sun</th>
                     </tr>
                 </thead>
                 <tbody id="calendarBody">
@@ -82,14 +82,14 @@ function renderCalendar(month, year) {
         html += '<tr>';
         for (var col = 0; col < 7; col++) {
             if (!started && col < startDow) {
-                html += '<td class="text-muted bg-light" style="height: 100px; vertical-align: top; padding: 4px;"></td>';
+                html += '<td class="text-muted bg-light cal-cell"></td>';
             } else if (day > totalDays) {
-                html += '<td class="text-muted bg-light" style="height: 100px; vertical-align: top; padding: 4px;"></td>';
+                html += '<td class="text-muted bg-light cal-cell"></td>';
             } else {
                 started = true;
                 var dateStr = year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
                 var isToday = dateStr === todayStr;
-                html += '<td data-date="' + dateStr + '" style="height: 100px; vertical-align: top; padding: 4px;"' + (isToday ? ' class="bg-light"' : '') + '>';
+                html += '<td data-date="' + dateStr + '" class="cal-cell' + (isToday ? ' bg-light' : '') + '">';
                 html += '<div class="fw-bold small' + (isToday ? ' text-primary' : '') + '">' + day + '</div>';
                 html += '<div class="cal-trips" data-date="' + dateStr + '"></div>';
                 html += '</td>';
@@ -123,8 +123,7 @@ function loadCalendarTrips(month, year) {
                     var label = trip.trip_id || trip.id;
                     var name = trip.user ? trip.user.full_name : '';
                     cell.append(
-                        '<a href="/trip-manager/' + trip.id + '" target="_blank" class="badge bg-' + color + ' d-block mb-1 text-decoration-none" ' +
-                        'style="font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" ' +
+                        '<a href="/trip-manager/' + trip.id + '" target="_blank" class="badge bg-' + color + ' d-block mb-1 text-decoration-none cal-trip-badge" ' +
                         'title="' + label + ' - ' + name + '">' +
                         label + '</a>'
                     );

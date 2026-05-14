@@ -547,7 +547,7 @@
                 <i class="bi bi-compass"></i>
                 Explore Experiences
             </a>
-            <a href="/contact" class="btn btn-secondary btn-lg" style="color: white; border-color: white;">
+            <a href="/contact" class="btn btn-secondary btn-lg guidelines-cta-btn">
                 <i class="bi bi-question-circle"></i>
                 Ask Us Anything
             </a>
@@ -558,17 +558,15 @@
 
 @section('js')
 <script>
-(function() {
-    // Smooth scroll for quick links
-    document.querySelectorAll('.quick-link').forEach(function(link) {
-        link.addEventListener('click', function(e) {
+jQuery(function($) {
+    // Smooth-scroll the top-of-page quick links to their in-page anchors.
+    $('.quick-link').on('click', function(e) {
+        var $target = jQuery($(this).attr('href') || '');
+        if ($target.length) {
             e.preventDefault();
-            var target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        });
+            jQuery('html, body').animate({ scrollTop: $target.offset().top }, 400);
+        }
     });
-})();
+});
 </script>
 @endsection

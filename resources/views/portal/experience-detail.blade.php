@@ -5,7 +5,7 @@
 {{-- Hero Section --}}
 <div class="hero-section {{ $experience->card_image ? '' : 'hero-no-image' }}"
     @if($experience->card_image)
-        style="background-image: url('{{ $experience->card_image }}');"
+        data-bg="{{ $experience->card_image }}"
     @endif
 >
     <div class="hero-content p-4 text-white">
@@ -587,7 +587,7 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content bg-transparent border-0">
             <div class="modal-body text-center p-0">
-                <img id="galleryModalImg" src="" class="img-fluid rounded" style="max-height: 80vh;">
+                <img id="galleryModalImg" src="" class="img-fluid rounded gallery-modal-img">
                 <button type="button" class="btn btn-sm btn-light position-absolute top-0 end-0 m-2" data-bs-dismiss="modal">
                     <i class="bi bi-x-lg"></i>
                 </button>
@@ -823,7 +823,7 @@ jQuery(function() {
 
 function openGallery(imgPath) {
     jQuery('#galleryModalImg').attr('src', '/storage/' + imgPath);
-    new bootstrap.Modal(document.getElementById('galleryModal')).show();
+    new bootstrap.Modal(jQuery('#galleryModal')[0]).show();
 }
 </script>
 @endsection

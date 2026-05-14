@@ -7545,3 +7545,119 @@
 .heco-portal .newsletter-input {
     max-width: 280px;
 }
+
+/* Leaflet selected-experience marker tint (used on the homepage discover map). */
+.hue-rotate-marker { filter: hue-rotate(140deg) saturate(1.5); }
+
+/* ============================================================
+   Portal utility classes — retire inline style= attributes per
+   project Rule 2 (no inline CSS in blade files).
+   ============================================================ */
+
+.heco-portal .cursor-pointer { cursor: pointer; }
+
+/* Trip-detail card image thumbnail (36x36 circle-ish). */
+.heco-portal .img-trip-exp-thumb { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+
+/* Layout modal body scroll. */
+.heco-portal .modal-scroll { max-height: 500px; overflow-y: auto; }
+
+/* Experience-detail gallery modal image. */
+.heco-portal .gallery-modal-img { max-height: 80vh; }
+
+/* Inline loading spinner used in dynamic JS-built strings. */
+.heco-portal .heco-inline-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #e9ecef;
+    border-top-color: #6c757d;
+    border-radius: 50%;
+    animation: spinIcon 0.8s linear infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 10px;
+}
+@keyframes spinIcon { to { transform: rotate(360deg); } }
+
+/* Payment thank-you success/error icon disc (turquoise gradient). */
+.heco-portal .pay-status-disc {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--heco-primary-500, #7ca4a3) 0%, var(--heco-primary-700, #79a09f) 100%);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Trip-detail (portal) text-size + colour helpers used to retire inline styles. */
+.heco-portal .td-small-text  { font-size: 13px; }
+.heco-portal .td-tiny-text   { font-size: 11px; }
+.heco-portal .td-exp-id-tag  { font-size: 10px; color: var(--heco-neutral-500); }
+.heco-portal .td-empty-desc  { font-size: 12px; color: var(--heco-neutral-500); text-align: center; }
+.heco-portal .td-pay-meta    { font-size: 11px; color: var(--heco-neutral-500); }
+
+/* Layout currency-switcher check icon size. */
+.heco-portal .fs-14 { font-size: 14px; }
+
+/* Payment thank-you page styling (replaces inline styles on the success card). */
+.heco-portal .pay-card        { border-radius: 16px; }
+.heco-portal .pay-status-disc { width: 88px; height: 88px; border-radius: 50%; background: linear-gradient(135deg, var(--heco-primary-500, #7ca4a3) 0%, var(--heco-primary-700, #79a09f) 100%); color: #fff; display: flex; align-items: center; justify-content: center; }
+.heco-portal .pay-status-icon { font-size: 48px; line-height: 1; }
+.heco-portal .pay-heading     { color: var(--heco-primary-800, #496767); }
+.heco-portal .pay-subtext     { font-size: 0.95rem; }
+.heco-portal .pay-summary     { background: #f8fafc; }
+.heco-portal .pay-cta-btn     { background: linear-gradient(135deg, var(--heco-primary-600, #7aa1a0) 0%, var(--heco-primary-700, #79a09f) 100%); border: 0; }
+
+/* Landing-page utilities (replaces inline styles in landing.blade.php). */
+.heco-portal .landing-hero-stack    { z-index: 2; }
+.heco-portal .landing-hero-eyebrow  { letter-spacing: 3px; opacity: 0.8; }
+.heco-portal .landing-hero-lead     { max-width: 600px; opacity: 0.9; }
+.heco-portal .landing-bg-white      { background: #fff; }
+.heco-portal .landing-impact-lead   { max-width: 600px; opacity: 0.85; }
+
+/* Hero background-image trigger (replaces inline style on experience-detail). */
+.heco-portal [data-bg] { background-size: cover; background-position: center; }
+
+/* Data-deletion page heading style. */
+.heco-portal .data-deletion-heading {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--heco-primary-900);
+    margin: var(--space-4) 0 var(--space-2);
+}
+
+/* Guidelines CTA button (white-on-secondary). */
+.heco-portal .guidelines-cta-btn { color: white; border-color: white; }
+
+/* SP calendar day modifier classes (replace inline style + border concat). */
+.heco-portal .cursor-pointer    { cursor: pointer; }
+.heco-portal .cursor-not-allowed { cursor: not-allowed; }
+.heco-portal .sp-cal-day        { border: 1px solid transparent; }
+.heco-portal .sp-cal-day--selected { border: 2px solid var(--heco-primary-700); }
+
+/* ============================================================
+   Homepage / journey utility classes (retiring 30+ inline
+   style= attributes on JS-built strings + a few server-side
+   patterns). Kept in one block for findability.
+   ============================================================ */
+
+.heco-portal .grid-full-row        { grid-column: 1 / -1; }
+.heco-portal .heco-icon-15-primary { font-size: 1.5rem; color: var(--heco-primary-500); }
+.heco-portal .heco-icon-15-danger  { font-size: 1.5rem; color: #dc3545; }
+.heco-portal .heco-text-mute-sm    { font-size: 0.875rem; color: #6c757d; }
+.heco-portal .heco-text-mute-sm-mt { font-size: 0.875rem; color: #6c757d; margin-top: 8px; }
+.heco-portal .heco-spinner-label   { font-size: 0.875rem; color: #6c757d; vertical-align: middle; }
+.heco-portal .heco-text-error-icon { color: #dc3545; }
+.heco-portal .heco-icon-warn-13    { color: var(--heco-warning); font-size: 13px; }
+.heco-portal .heco-day-text        { font-size: 0.7rem; color: var(--heco-neutral-600, #475569); }
+.heco-portal .heco-tl-empty-text   { font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6); }
+.heco-portal .heco-empty-day       { text-align: center; padding: var(--space-3); }
+.heco-portal .heco-empty-day-label { font-size: var(--text-sm); color: var(--heco-green, #79a09f); font-weight: 600; margin: 0; }
+.heco-portal .heco-empty-day-desc  { font-size: 0.75rem; color: var(--color-text-muted); margin: 4px 0 0; }
+.heco-portal .heco-icon-mr         { margin-right: 4px; }
+.heco-portal .heco-cta-inline      { display: inline-flex; padding: var(--space-4) var(--space-8); }
+.heco-portal .heco-cta-inline-sm   { display: inline-flex; padding: var(--space-3) var(--space-6); margin-top: var(--space-3); }
+.heco-portal .heco-day-meta-row    { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.heco-portal .heco-text-center-pad { padding: var(--space-6); }

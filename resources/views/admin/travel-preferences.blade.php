@@ -32,11 +32,11 @@
                     <table class="table table-hover table-sm mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th style="width: 40px;">#</th>
+                                <th class="w-id">#</th>
                                 <th>Option name</th>
-                                <th style="width: 90px;">Sort</th>
-                                <th style="width: 90px;">Status</th>
-                                <th style="width: 130px;">Actions</th>
+                                <th class="w-status">Sort</th>
+                                <th class="w-status">Status</th>
+                                <th class="w-actions-lg">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="pref-items">
@@ -46,10 +46,10 @@
                 </div>
                 <div class="pref-add-row">
                     <form class="pref-add-form d-flex flex-wrap gap-2 align-items-end mb-0" data-type="{{ $s['type'] }}">
-                        <div class="flex-grow-1" style="min-width: 220px;">
+                        <div class="flex-grow-1 tp-leftcol">
                             <input type="text" class="form-control form-control-sm pref-new-name" required>
                         </div>
-                        <div style="width: 90px;">
+                        <div class="tp-rightcol">
                             <input type="number" class="form-control form-control-sm pref-new-sort" value="0" min="0">
                         </div>
                         <button type="submit" class="btn btn-sm btn-success">

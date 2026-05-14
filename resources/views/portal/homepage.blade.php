@@ -129,7 +129,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                         {{-- Grid View (always visible) --}}
                         <div id="gridViewPanel">
                             <div id="experienceGrid" class="experience-grid experience-grid-split">
-                                <div class="loading-state" style="grid-column: 1 / -1;">
+                                <div class="loading-state grid-full-row">
                                     <div class="loading-spinner"></div>
                                     <p class="loading-text">Loading experiences...</p>
                                 </div>
@@ -151,17 +151,17 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="row g-2 align-items-end">
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Continent</label>
-                                    <select class="form-select form-select-sm" id="filterContinent">
+                                    <select class="form-select form-select-sm custom-select" id="filterContinent">
                                     </select>
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Country</label>
-                                    <select class="form-select form-select-sm" id="filterCountry">
+                                    <select class="form-select form-select-sm custom-select" id="filterCountry">
                                     </select>
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Region</label>
-                                    <select class="form-select form-select-sm" id="filterRegion">
+                                    <select class="form-select form-select-sm custom-select" id="filterRegion">
                                         @foreach($regions as $region)
                                             <option value="{{ $region->id }}" @if($region->name === 'Tirthan Valley') selected @endif>{{ $region->name }}</option>
                                         @endforeach
@@ -169,7 +169,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Experience Type</label>
-                                    <select class="form-select form-select-sm" id="filterType">
+                                    <select class="form-select form-select-sm custom-select" id="filterType">
                                         <option value="">All Types</option>
                                         @foreach($experienceTypes as $type)
                                             <option value="{{ $type }}">{{ $type }}</option>
@@ -178,7 +178,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Difficulty</label>
-                                    <select class="form-select form-select-sm" id="filterDifficulty">
+                                    <select class="form-select form-select-sm custom-select" id="filterDifficulty">
                                         <option value="">All Levels</option>
                                         @foreach($difficultyLevels as $level)
                                             <option value="{{ $level }}">{{ ucfirst($level) }}</option>
@@ -187,7 +187,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Month</label>
-                                    <select class="form-select form-select-sm" id="filterMonth">
+                                    <select class="form-select form-select-sm custom-select" id="filterMonth">
                                         <option value="">Any Month</option>
                                         <option value="1">January</option>
                                         <option value="2">February</option>
@@ -271,7 +271,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                         </div>
                         <h3 class="journey-empty-title">Your journey starts here</h3>
                         <p class="journey-empty-desc">Add experiences from the Discover tab or chat with our AI assistant to begin planning your perfect adventure.</p>
-                        <button class="exp-btn exp-btn-primary" style="display: inline-flex; padding: var(--space-4) var(--space-8);" onclick="jQuery('#tab-discover').click();">
+                        <button class="exp-btn exp-btn-primary heco-cta-inline" onclick="jQuery('#tab-discover').click();">
                             <i class="bi bi-compass"></i> Explore Experiences
                         </button>
                     </div>
@@ -362,7 +362,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 <div class="detail-card-body">
                                     <div class="mb-3">
                                         <label class="form-label">Accommodation</label>
-                                        <select class="form-select pref-input pref-priced" id="prefAccommodation" data-pricing-key="accommodation">
+                                        <select class="form-select pref-input pref-priced custom-select" id="prefAccommodation" data-pricing-key="accommodation">
                                             @foreach($prefLists['accommodation_comfort'] ?? [] as $item)
                                                 <option value="{{ $item->name }}" data-name="{{ $item->name }}" data-multiplier="{{ $multiplierMap['accommodation_comfort'][$item->name] ?? 1 }}" @selected($pAccom == $item->name)>{{ $item->name }}</option>
                                             @endforeach
@@ -370,7 +370,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Vehicle</label>
-                                        <select class="form-select pref-input pref-priced" id="prefVehicle" data-pricing-key="transport">
+                                        <select class="form-select pref-input pref-priced custom-select" id="prefVehicle" data-pricing-key="transport">
                                             @foreach($prefLists['vehicle_comfort'] ?? [] as $item)
                                                 <option value="{{ $item->name }}" data-name="{{ $item->name }}" data-multiplier="{{ $multiplierMap['vehicle_comfort'][$item->name] ?? 1 }}" @selected($pVehicle == $item->name)>{{ $item->name }}</option>
                                             @endforeach
@@ -378,7 +378,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Guide</label>
-                                        <select class="form-select pref-input pref-priced" id="prefGuide" data-pricing-key="guide">
+                                        <select class="form-select pref-input pref-priced custom-select" id="prefGuide" data-pricing-key="guide">
                                             @foreach($prefLists['guide_preference'] ?? [] as $item)
                                                 <option value="{{ $item->name }}" data-name="{{ $item->name }}" data-multiplier="{{ $multiplierMap['guide_preference'][$item->name] ?? 1 }}" @selected($pGuide == $item->name)>{{ $item->name }}</option>
                                             @endforeach
@@ -386,7 +386,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Travel Pace</label>
-                                        <select class="form-select pref-input" id="prefPace">
+                                        <select class="form-select pref-input custom-select" id="prefPace">
                                             @foreach($prefLists['travel_pace'] ?? [] as $item)
                                                 <option value="{{ $item->name }}" @selected($pPace == $item->name)>{{ $item->name }}</option>
                                             @endforeach
@@ -394,7 +394,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     </div>
                                     <div class="mb-0">
                                         <label class="form-label">Budget Sensitivity</label>
-                                        <select class="form-select pref-input" id="prefBudget">
+                                        <select class="form-select pref-input custom-select" id="prefBudget">
                                             @foreach($prefLists['budget_sensitivity'] ?? [] as $item)
                                                 <option value="{{ $item->name }}" @selected($pBudget == $item->name)>{{ $item->name }}</option>
                                             @endforeach
@@ -428,7 +428,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 
                             {{-- Pay Now --}}
                             @auth
-                            <div class="detail-card" id="paymentCard" style="display:none;">
+                            <div class="detail-card d-none" id="paymentCard">
                                 <div class="detail-card-header"><i class="bi bi-credit-card"></i> Make Payment</div>
                                 <div class="detail-card-body">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
@@ -504,7 +504,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <h3 class="impact-section-title">Your Impact Breakdown</h3>
                         </div>
                         <div class="impact-cards-grid" id="impactCards">
-                            <div class="loading-state" style="grid-column: 1 / -1;">
+                            <div class="loading-state grid-full-row">
                                 <div class="loading-spinner"></div>
                                 <p class="loading-text">Calculating your impact...</p>
                             </div>
@@ -523,7 +523,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
     <i class="bi bi-robot"></i>
     <span class="chatbot-fab-pulse"></span>
 </div>
-<div class="chatbot-popup" id="chatbotPopup" style="display:none;">
+<div class="chatbot-popup d-none" id="chatbotPopup">
     ...
 </div>
 --}}
@@ -799,10 +799,7 @@ jQuery(function() {
         className: 'hue-rotate-marker'
     });
 
-    // Add CSS for red marker tint
-    var markerStyle = document.createElement('style');
-    markerStyle.textContent = '.hue-rotate-marker { filter: hue-rotate(140deg) saturate(1.5); }';
-    document.head.appendChild(markerStyle);
+    // (`.hue-rotate-marker` styling lives in public/css/portal.css.)
 
     function initMap() {
         if (mapInitialized) return;
@@ -978,8 +975,8 @@ jQuery(function() {
         if (missing.length) {
             jQuery('#timelineContainer').html(
                 '<div class="text-center py-4">' +
-                '<i class="bi bi-exclamation-circle" style="font-size:1.5rem; color:var(--heco-primary-500);"></i>' +
-                '<p style="font-size:0.875rem; color:#6c757d; margin-top:8px;">Please set ' + missing.join(' and ') + ' to generate the itinerary.</p>' +
+                '<i class="bi bi-exclamation-circle heco-icon-15-primary"></i>' +
+                '<p class="heco-text-mute-sm-mt">Please set ' + missing.join(' and ') + ' to generate the itinerary.</p>' +
                 '</div>'
             );
             return;
@@ -994,8 +991,8 @@ jQuery(function() {
 
         jQuery('#timelineContainer').html(
             '<div class="text-center py-4">' +
-            '<div style="width:24px; height:24px; border:3px solid #e9ecef; border-top-color:#6c757d; border-radius:50%; animation:spinIcon 0.8s linear infinite; display:inline-block; vertical-align:middle; margin-right:10px;"></div>' +
-            '<span style="font-size:0.875rem; color:#6c757d; vertical-align:middle;">Regenerating your itinerary...</span>' +
+            '<div class="heco-inline-spinner"></div>' +
+            '<span class="heco-spinner-label">Regenerating your itinerary...</span>' +
             '</div>'
         );
 
@@ -1249,7 +1246,7 @@ jQuery(function() {
 
         if (!append) {
             allDiscoverExps = [];
-            jQuery('#experienceGrid').html('<div class="loading-state" style="grid-column: 1 / -1;"><div class="loading-spinner"></div><p class="loading-text">Loading experiences...</p></div>');
+            jQuery('#experienceGrid').html('<div class="loading-state grid-full-row"><div class="loading-spinner"></div><p class="loading-text">Loading experiences...</p></div>');
         }
 
         ajaxPost(params, function(resp) {
@@ -1259,7 +1256,7 @@ jQuery(function() {
             var html = '';
 
             if (items.length === 0 && !append) {
-                html = '<div class="journey-empty-state" style="grid-column: 1 / -1;">';
+                html = '<div class="journey-empty-state grid-full-row">';
                 html += '<div class="journey-empty-icon"><i class="bi bi-search"></i></div>';
                 html += '<h3 class="journey-empty-title">No experiences found</h3>';
                 html += '<p class="journey-empty-desc">Try adjusting your filters or selecting a different region.</p>';
@@ -1289,11 +1286,11 @@ jQuery(function() {
             updateMapMarkers(allDiscoverExps);
         }, function(xhr) {
             discoverLoading = false;
-            var errorHtml = '<div class="journey-empty-state" style="grid-column: 1 / -1;">';
-            errorHtml += '<div class="journey-empty-icon"><i class="bi bi-exclamation-circle" style="color:#dc3545;"></i></div>';
+            var errorHtml = '<div class="journey-empty-state grid-full-row">';
+            errorHtml += '<div class="journey-empty-icon"><i class="bi bi-exclamation-circle heco-text-error-icon"></i></div>';
             errorHtml += '<h3 class="journey-empty-title">Failed to load experiences</h3>';
             errorHtml += '<p class="journey-empty-desc">Something went wrong. Please refresh the page and try again.</p>';
-            errorHtml += '<button class="exp-btn exp-btn-primary" style="display:inline-flex; padding:var(--space-3) var(--space-6); margin-top:var(--space-3);" onclick="loadExperiences(false)"><i class="bi bi-arrow-clockwise me-2"></i>Retry</button>';
+            errorHtml += '<button class="exp-btn exp-btn-primary heco-cta-inline-sm" onclick="loadExperiences(false)"><i class="bi bi-arrow-clockwise me-2"></i>Retry</button>';
             errorHtml += '</div>';
             jQuery('#experienceGrid').html(errorHtml);
         });
@@ -1494,7 +1491,7 @@ jQuery(function() {
                 loadTimeline();
                 loadPricing();
             } else {
-                jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);">Days will appear here when experiences are added</p>');
+                jQuery('#timelineContainer').html('<p class="text-center heco-tl-empty-text">Days will appear here when experiences are added</p>');
                 loadPricing();
             }
         });
@@ -1615,17 +1612,17 @@ jQuery(function() {
     function loadTimeline() {
         jQuery('#timelineContainer').html(
             '<div class="text-center py-4">' +
-            '<div style="width:24px; height:24px; border:3px solid #e9ecef; border-top-color:#6c757d; border-radius:50%; animation:spinIcon 0.8s linear infinite; display:inline-block; vertical-align:middle; margin-right:10px;"></div>' +
-            '<span style="font-size:0.875rem; color:#6c757d; vertical-align:middle;">Processing...</span>' +
+            '<div class="heco-inline-spinner"></div>' +
+            '<span class="heco-spinner-label">Processing...</span>' +
             '</div>'
         );
         ajaxPost({ get_trip_timeline: 1, trip_id: tripId }, function(resp) {
             renderTimelineData(resp);
         }, function() {
             jQuery('#timelineContainer').html(
-                '<div class="text-center" style="padding:var(--space-6);">' +
-                '<i class="bi bi-exclamation-circle" style="font-size:1.5rem; color:#dc3545;"></i>' +
-                '<p class="mt-2" style="font-size:0.875rem; color:#6c757d;">Failed to load timeline. Please try again.</p>' +
+                '<div class="text-center heco-text-center-pad">' +
+                '<i class="bi bi-exclamation-circle heco-icon-15-danger"></i>' +
+                '<p class="mt-2 heco-text-mute-sm">Failed to load timeline. Please try again.</p>' +
                 '</div>'
             );
         });
@@ -1647,7 +1644,7 @@ jQuery(function() {
                 return;
             }
             if (selectedExpIds.length > 0) {
-                jQuery('#timelineContainer').html('<p class="text-center" style="font-size: var(--text-sm); color: var(--color-text-muted); padding: var(--space-6);" id="emptyTimeline">Could not generate itinerary. Please click "Regenerate" or try again later.</p>');
+                jQuery('#timelineContainer').html('<p class="text-center heco-tl-empty-text" id="emptyTimeline">Could not generate itinerary. Please click "Regenerate" or try again later.</p>');
             } else {
                 jQuery('#timelineContainer').empty();
             }
@@ -1837,9 +1834,9 @@ jQuery(function() {
             // Header row (title on left, time + actions on right)
             html += '<div class="timeline-day-header">';
             if (dayTitle) html += '<span class="timeline-day-title" title="' + dayTitle + '">' + dayTitle + '</span>';
-            html += '<div style="display:flex;align-items:center;gap:8px;margin-left:auto;">';
+            html += '<div class="heco-day-meta-row">';
             if (dayTime) html += '<span class="timeline-day-time"><i class="bi bi-clock"></i> ' + dayTime + '</span>';
-            if (day.is_locked) html += '<i class="bi bi-lock" style="color: var(--heco-warning); font-size: 13px;" title="Locked"></i>';
+            if (day.is_locked) html += '<i class="bi bi-lock heco-icon-warn-13" title="Locked"></i>';
             if (!day.experiences || !day.experiences.length) {
                 html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
             }
@@ -1870,7 +1867,7 @@ jQuery(function() {
                         var edNum = de._expDayNum || 1;
                         var ed = exp.days.length === 1 ? exp.days[0] : exp.days.find(function(d) { return d.day_number === edNum; }) || exp.days[0];
                         if (ed && ed.short_description) {
-                            html += '<div style="font-size:0.7rem; color:var(--heco-neutral-600, #475569);">' + toBulletHtml(ed.short_description) + '</div>';
+                            html += '<div class="heco-day-text">' + toBulletHtml(ed.short_description) + '</div>';
                         }
                     } else if (de.notes) {
                         html += '<div class="timeline-exp-notes">' + toBulletHtml(de.notes) + '</div>';
@@ -1895,9 +1892,9 @@ jQuery(function() {
                 var dt = dayTypeMap[day.day_type] || dayTypeMap['travel'];
                 var emptyDayText = day.title || dt.label;
                 var emptyDayDesc = day.description || day.notes || dt.desc;
-                html += '<div style="text-align: center; padding: var(--space-3);">';
-                html += '<p style="font-size: var(--text-sm); color: var(--heco-green, #79a09f); font-weight: 600; margin: 0;"><i class="bi ' + dt.icon + '"></i> ' + emptyDayText + '</p>';
-                html += '<p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 4px 0 0;">' + emptyDayDesc + '</p>';
+                html += '<div class="heco-empty-day">';
+                html += '<p class="heco-empty-day-label"><i class="bi ' + dt.icon + '"></i> ' + emptyDayText + '</p>';
+                html += '<p class="heco-empty-day-desc">' + emptyDayDesc + '</p>';
                 html += '</div>';
             }
 
@@ -1965,6 +1962,8 @@ jQuery(function() {
             updatePricedOptions(jQuery('#prefAccommodation'), p.accommodation_base);
             updatePricedOptions(jQuery('#prefVehicle'),       p.transport_base);
             updatePricedOptions(jQuery('#prefGuide'),         p.guide_base);
+            // Refresh custom-dropdown text so the price-suffixed labels show.
+            jQuery('#prefAccommodation, #prefVehicle, #prefGuide').each(function() { buildCustomDropdown(this); });
             jQuery('#prActivities').text(fmtPriceRow(p.activity_cost));
             jQuery('#prExtraDays').text(fmtPriceRow(p.extra_day_cost));
             jQuery('#prOther').text(fmtPriceRow(p.other_cost));
@@ -2010,7 +2009,7 @@ jQuery(function() {
         if (!tripId || !pendingRemoveExpId) return;
         jQuery('#removeExpModalSubtitle').text(pendingRemoveExpName);
         jQuery('#removeExpModalMsg').html('Are you sure you want to remove <strong>' + pendingRemoveExpName + '</strong> from your trip?');
-        var modal = new bootstrap.Modal(document.getElementById('removeExpModal'));
+        var modal = new bootstrap.Modal(jQuery('#removeExpModal')[0]);
         modal.show();
     });
     jQuery('#removeExpConfirmBtn').on('click', function() {
@@ -2020,8 +2019,8 @@ jQuery(function() {
         var expName = pendingRemoveExpName;
         btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Removing...');
         ajaxPost({ remove_experience_from_trip: 1, trip_id: tripId, experience_id: expId }, function() {
-            bootstrap.Modal.getInstance(document.getElementById('removeExpModal')).hide();
-            btn.prop('disabled', false).html('<i class="bi bi-trash3" style="margin-right:4px"></i> Remove');
+            bootstrap.Modal.getInstance(jQuery('#removeExpModal')[0]).hide();
+            btn.prop('disabled', false).html('<i class="bi bi-trash3 heco-icon-mr"></i> Remove');
             selectedExpIds = selectedExpIds.filter(function(id) { return parseInt(id) !== expId; });
             if (selectedExpIds.length === 0) { tripRegionId = null; tripRegionName = null; }
             updateJourneyBadge();
@@ -2037,14 +2036,14 @@ jQuery(function() {
             pendingRemoveExpId = null;
             pendingRemoveExpName = '';
         }, function() {
-            btn.prop('disabled', false).html('<i class="bi bi-trash3" style="margin-right:4px"></i> Remove');
+            btn.prop('disabled', false).html('<i class="bi bi-trash3 heco-icon-mr"></i> Remove');
             showAlert('Failed to remove experience. Please try again.', 'danger');
         });
     });
 
     // Drag and reorder
     function initDragReorder() {
-        var listEl = document.getElementById('selectedExpList');
+        var listEl = jQuery('#selectedExpList')[0];
         if (!listEl) return;
         var dragItem = null;
 
@@ -2099,7 +2098,7 @@ jQuery(function() {
         // Reset day type selector
         jQuery('.day-type-btn').removeClass('active');
         jQuery('.day-type-btn[data-type="rest"]').addClass('active');
-        var modal = new bootstrap.Modal(document.getElementById('addDayModal'));
+        var modal = new bootstrap.Modal(jQuery('#addDayModal')[0]);
         modal.show();
         setTimeout(function() { jQuery('#addDayDescription').focus(); }, 300);
     });
@@ -2124,8 +2123,8 @@ jQuery(function() {
             day_note: desc,
             day_type: dayType
         }, function(resp) {
-            bootstrap.Modal.getInstance(document.getElementById('addDayModal')).hide();
-            btn.prop('disabled', false).html('<i class="bi bi-plus-lg" style="margin-right:4px"></i> Add Day');
+            bootstrap.Modal.getInstance(jQuery('#addDayModal')[0]).hide();
+            btn.prop('disabled', false).html('<i class="bi bi-plus-lg heco-icon-mr"></i> Add Day');
             showAlert('Day added successfully!', 'success');
             loadTimeline();
             loadPricing();
@@ -2135,7 +2134,7 @@ jQuery(function() {
             scrollChat();
             pendingInsertAfterDay = null;
         }, function() {
-            btn.prop('disabled', false).html('<i class="bi bi-plus-lg" style="margin-right:4px"></i> Add Day');
+            btn.prop('disabled', false).html('<i class="bi bi-plus-lg heco-icon-mr"></i> Add Day');
             showAlert('Failed to add day. Please try again.', 'danger');
         });
     });
@@ -2149,7 +2148,7 @@ jQuery(function() {
         pendingRemoveDayLabel = dayEl.find('.timeline-day-number').text() || 'this day';
         jQuery('#removeDayModalSubtitle').text(pendingRemoveDayLabel);
         jQuery('#removeDayModalMsg').html('Are you sure you want to remove <strong>' + pendingRemoveDayLabel + '</strong> from your trip? This action cannot be undone.');
-        var modal = new bootstrap.Modal(document.getElementById('removeDayModal'));
+        var modal = new bootstrap.Modal(jQuery('#removeDayModal')[0]);
         modal.show();
     });
     jQuery('#removeDayConfirmBtn').on('click', function() {
@@ -2158,8 +2157,8 @@ jQuery(function() {
         var dayLabel = pendingRemoveDayLabel;
         btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Removing...');
         ajaxPost({ remove_day_from_trip: 1, trip_id: tripId, day_id: pendingRemoveDayId }, function() {
-            bootstrap.Modal.getInstance(document.getElementById('removeDayModal')).hide();
-            btn.prop('disabled', false).html('<i class="bi bi-trash3" style="margin-right:4px"></i> Remove');
+            bootstrap.Modal.getInstance(jQuery('#removeDayModal')[0]).hide();
+            btn.prop('disabled', false).html('<i class="bi bi-trash3 heco-icon-mr"></i> Remove');
             showAlert('Day removed.', 'success');
             loadTimeline();
             loadPricing();
@@ -2169,7 +2168,7 @@ jQuery(function() {
             pendingRemoveDayId = null;
             pendingRemoveDayLabel = '';
         }, function() {
-            btn.prop('disabled', false).html('<i class="bi bi-trash3" style="margin-right:4px"></i> Remove');
+            btn.prop('disabled', false).html('<i class="bi bi-trash3 heco-icon-mr"></i> Remove');
             showAlert('Failed to remove day. Please try again.', 'danger');
         });
     });
@@ -2345,10 +2344,11 @@ jQuery(function() {
     }
 
     function scrollChat() {
-        var c1 = document.getElementById('collapseChatMessages');
-        var c2 = document.getElementById('journeyChatMessages');
-        if (c1) c1.scrollTop = c1.scrollHeight;
-        if (c2) c2.scrollTop = c2.scrollHeight;
+        // Use jQuery selectors but read scrollHeight off the raw DOM node ([0]),
+        // since scrollHeight is only exposed on the element itself.
+        jQuery('#collapseChatMessages, #journeyChatMessages').each(function() {
+            this.scrollTop = this.scrollHeight;
+        });
     }
 
     function loadChatHistory() {
@@ -2629,8 +2629,9 @@ jQuery(function() {
             outer.css('height', outer.outerHeight() + 'px');
             panel.addClass('expanded');
             jQuery('#chatCollapseBtn').removeClass('d-none');
-            var msgs = document.getElementById('collapseChatMessages');
-            if (msgs) msgs.scrollTop = msgs.scrollHeight;
+            jQuery('#collapseChatMessages').each(function() {
+                this.scrollTop = this.scrollHeight;
+            });
         }
     });
 
@@ -2654,8 +2655,9 @@ jQuery(function() {
             outer.css('height', outer.outerHeight() + 'px');
             panel.addClass('expanded');
             jQuery('#journeyChatCollapseBtn').removeClass('d-none');
-            var msgs = document.getElementById('journeyChatMessages');
-            if (msgs) msgs.scrollTop = msgs.scrollHeight;
+            jQuery('#journeyChatMessages').each(function() {
+                this.scrollTop = this.scrollHeight;
+            });
         }
     });
 

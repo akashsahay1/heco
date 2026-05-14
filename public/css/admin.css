@@ -1207,3 +1207,91 @@ body.admin-login-page {
 
 /* ---- Email test page ---- */
 .heco-admin .email-test-card { max-width: 680px; }
+
+/* ============================================================
+   Utility classes (used to retire inline style= attributes
+   per project coding rules — Rule 2: no inline CSS).
+   ============================================================ */
+
+/* Generic cursor + visibility helpers (Bootstrap's d-none covers display:none). */
+.heco-admin .cursor-pointer { cursor: pointer; }
+
+/* Table column widths used across admin list pages. */
+.heco-admin .w-check     { width: 34px; }
+.heco-admin .w-id        { width: 40px; }
+.heco-admin .w-img-thumb { width: 60px; }
+.heco-admin .w-sort      { width: 80px; }
+.heco-admin .w-active    { width: 80px; }
+.heco-admin .w-status    { width: 90px; }
+.heco-admin .w-rate      { width: 150px; }
+.heco-admin .w-paper     { width: 90px; }
+.heco-admin .w-orient    { width: 110px; }
+.heco-admin .w-actions   { width: 110px; }
+.heco-admin .w-actions-md { width: 120px; }
+.heco-admin .w-actions-lg { width: 140px; }
+.heco-admin .w-cell-label { width: 140px; }
+.heco-admin .w-cell-label-md { width: 160px; }
+.heco-admin .w-when      { width: 150px; }
+.heco-admin .w-user      { width: 160px; }
+.heco-admin .w-key-col   { width: 35%; }
+.heco-admin .w-day-col   { width: 14.28%; }
+
+/* Calendar cell shell. */
+.heco-admin .cal-cell { height: 100px; vertical-align: top; padding: 4px; }
+
+/* Currency-flag image. */
+.heco-admin .img-flag { width: 24px; height: 16px; object-fit: cover; border-radius: 2px; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.heco-admin .img-flag-plain { width: 24px; height: 16px; object-fit: cover; }
+
+/* List-row gallery thumbnail (image:50x35, used on experiences index). */
+.heco-admin .img-thumb-list { width: 50px; height: 35px; object-fit: cover; }
+
+/* Edit-form gallery thumbnail (60x80, used on experience/regen edit forms). */
+.heco-admin .img-thumb-gallery { width: 80px; height: 60px; object-fit: cover; }
+
+/* Preview-image sizing on edit forms + JS-driven previews. */
+.heco-admin .img-preview-md  { max-height: 120px; }
+.heco-admin .img-preview-sm  { max-height: 100px; }
+.heco-admin .img-preview-lg  { max-height: 180px; }
+
+/* Scrollable inner panels used on dashboard / control panel / experience form. */
+.heco-admin .scroll-panel-sm { max-height: 180px; overflow-y: auto; }
+.heco-admin .scroll-panel-md { max-height: 300px; overflow-y: auto; }
+.heco-admin .scroll-panel-lg { max-height: 400px; overflow-y: auto; }
+
+/* Misc admin inline-style retirements. */
+.heco-admin .month-label    { min-width: 140px; text-align: center; }
+.heco-admin .input-pct      { width: 70px; }
+.heco-admin .input-trip-search { width: 250px; }
+.heco-admin .tp-leftcol     { min-width: 220px; }
+.heco-admin .tp-rightcol    { width: 90px; }
+
+/* Calendar trip badges inside cells. */
+.heco-admin .cal-trip-badge {
+    font-size: 0.65rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Day-card styling on the experience edit form (used by JS-built day rows). */
+.heco-admin .day-card-shell      { border-left: 3px solid var(--admin-primary); background: #f0fdf4; }
+.heco-admin .day-card-header     { background: rgba(255,255,255,0.6); border-bottom: 1px solid var(--admin-border); }
+.heco-admin .day-card-badge      { background: var(--admin-primary); }
+.heco-admin .day-card-textarea   { background: rgba(255,255,255,0.7); }
+
+/* Extra-small badge font size (used for day-type chips in trip manager). */
+.heco-admin .badge-xs { font-size: 10px; }
+
+/* Admin SP calendar cell — selection/border + cursor states. */
+.heco-admin .cursor-not-allowed { cursor: not-allowed; }
+.heco-admin .admin-cal-day { border: 1px solid transparent; }
+.heco-admin .admin-cal-day--selected { border: 2px solid #0d6efd; }
+
+/* Experience inclusion chip row in the experiences list. */
+.heco-admin .exp-inc-row  { display: flex; flex-wrap: wrap; gap: 2px; }
+.heco-admin .exp-inc-chip {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; margin: 1px; border-radius: 5px;
+    font-size: 0.85rem; color: var(--heco-primary-700, #79a09f);
+}
