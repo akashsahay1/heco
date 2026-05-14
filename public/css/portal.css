@@ -6023,16 +6023,25 @@
     text-overflow: ellipsis;
     min-height: 42px;
 }
-/* Compact variant — match Bootstrap form-control-sm dimensions whenever the
-   wrapped <select> uses form-select-sm. Without this, sm dropdowns render at
-   42px while sibling form-control-sm inputs are ~31px, creating an obvious
-   height mismatch in rows like Room Category / Total Rooms. */
+/* Form-control-sm — provider/SP pricing forms use the small Bootstrap input
+   variant. Override the default so inputs are slightly taller (~39px),
+   matching the compact dropdown height defined below. */
+.heco-portal .form-control-sm {
+    min-height: calc(1.5em + .5rem + calc(var(--bs-border-width) * 2));
+    padding: 0.50rem .5rem;
+    font-size: .875rem;
+    border-radius: var(--bs-border-radius-sm);
+}
+
+/* Compact variant — match the form-control-sm dimensions above whenever the
+   wrapped <select> uses form-select-sm. Without this, sm dropdowns and
+   sm inputs render at different heights in the same row. */
 .custom-select-wrap:has(select.form-select-sm) .custom-select-trigger {
-    padding: 0.25rem 1.75rem 0.25rem 0.5rem;
+    padding: 0.50rem 1.75rem 0.50rem 0.5rem;
     font-size: 0.875rem;
     line-height: 1.5;
-    min-height: 31px;
-    border-radius: 4px;
+    min-height: calc(1.5em + .5rem + calc(var(--bs-border-width) * 2));
+    border-radius: var(--bs-border-radius-sm);
 }
 .custom-select-wrap:has(select.form-select-sm) .custom-select-trigger .caret {
     font-size: 0.65rem;

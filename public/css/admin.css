@@ -1349,3 +1349,20 @@ body.admin-login-page {
     margin-top: auto;
     min-height: 1.1em;
 }
+
+/* Form-control-sm — provider/SP pricing forms use the small Bootstrap input
+   variant. Bump padding slightly so inputs render at ~39px, matching the
+   compact custom-select dropdown height beside them. */
+.heco-admin .form-control-sm {
+    min-height: calc(1.5em + .5rem + calc(var(--bs-border-width) * 2));
+    padding: 0.50rem .5rem;
+    font-size: .875rem;
+    border-radius: var(--bs-border-radius-sm);
+}
+.heco-admin .custom-select-wrap:has(select.form-select-sm) .custom-select-trigger {
+    padding: 0.50rem 1.75rem 0.50rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    min-height: calc(1.5em + .5rem + calc(var(--bs-border-width) * 2));
+    border-radius: var(--bs-border-radius-sm);
+}
