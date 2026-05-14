@@ -7697,3 +7697,18 @@
 /* Experience-detail Stay options card. */
 .heco-portal .exp-detail-card .stay-table th { font-size: 0.8rem; }
 .heco-portal .stay-results { min-height: 30px; }
+
+/* SP pricing modal — keep paired columns the same visual height regardless
+   of which one carries a data-desc help line. Each column is a flex-column
+   and the trailing .form-help-text is pushed to the bottom with margin-top:
+   auto, so the bottoms of paired columns align. min-height on the help-text
+   reserves one line of space so empty slots don't collapse. */
+.heco-portal .sp-field-row { align-items: stretch; }
+.heco-portal .sp-field-row > [class*="col-"] {
+    display: flex;
+    flex-direction: column;
+}
+.heco-portal .sp-field-row .form-help-text {
+    margin-top: auto;
+    min-height: 1.1em;
+}

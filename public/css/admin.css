@@ -1335,3 +1335,17 @@ body.admin-login-page {
 .heco-admin .cal-room-row--ok      { color: var(--heco-primary-800, #496767); }
 .heco-admin .cal-room-row--partial { color: #b45309; }
 .heco-admin .cal-room-row--sold    { color: #b91c1c; }
+
+/* SP pricing modal — keep paired columns the same visual height regardless
+   of which one carries a data-desc help line. Each column is a flex-column
+   and the trailing .form-help-text is pushed to the bottom with margin-top:
+   auto. min-height reserves one line so empty slots don't collapse. */
+.heco-admin .sp-field-row { align-items: stretch; }
+.heco-admin .sp-field-row > [class*="col-"] {
+    display: flex;
+    flex-direction: column;
+}
+.heco-admin .sp-field-row .form-help-text {
+    margin-top: auto;
+    min-height: 1.1em;
+}

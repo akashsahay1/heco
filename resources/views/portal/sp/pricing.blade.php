@@ -166,7 +166,7 @@
 
         {{-- ACCOMMODATION --}}
         <div class="svc-fields" data-svc="accommodation">
-            <div class="row g-2 mb-2">
+            <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-7">
                     <label class="form-label small">Room Category <span class="text-danger">*</span></label>
                     <select class="form-select form-select-sm custom-select" name="room_category" data-list-type="room_category">
@@ -180,12 +180,14 @@
                 <div class="col-md-5">
                     <label class="form-label small">Total Rooms <span class="text-danger">*</span></label>
                     <input type="number" min="1" max="500" class="form-control form-control-sm" name="total_rooms" placeholder="e.g. 4">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
             </div>
-            <div class="row g-2 mb-2">
+            <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-5">
                     <label class="form-label small">Rate per night (₹) <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_accommodation" placeholder="e.g. 2500">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
                 <div class="col-md-7">
                     <label class="form-label small">Meal Plan</label>
@@ -203,7 +205,7 @@
 
         {{-- TRANSPORT --}}
         <div class="svc-fields d-none" data-svc="transport">
-            <div class="row g-2 mb-2">
+            <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-7">
                     <label class="form-label small">Vehicle Type <span class="text-danger">*</span></label>
                     <select class="form-select form-select-sm custom-select" name="vehicle_type" data-list-type="vehicle_type">
@@ -217,12 +219,14 @@
                 <div class="col-md-5">
                     <label class="form-label small">Seating Capacity</label>
                     <input type="number" min="1" max="80" class="form-control form-control-sm" name="vehicle_capacity" placeholder="e.g. 7">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
             </div>
-            <div class="row g-2 mb-2">
+            <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-5">
                     <label class="form-label small">Rate (₹) <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_transport" placeholder="e.g. 25">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small">Unit <span class="text-danger">*</span></label>
@@ -232,17 +236,19 @@
                         <option value="per day">per day</option>
                         <option value="per trip">per trip</option>
                     </select>
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small">Driver Allowance (₹/day)</label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="driver_allowance" placeholder="optional">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
             </div>
         </div>
 
         {{-- GUIDE --}}
         <div class="svc-fields d-none" data-svc="guide">
-            <div class="row g-2 mb-2">
+            <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-7">
                     <label class="form-label small">Guide Type / Language <span class="text-danger">*</span></label>
                     <select class="form-select form-select-sm custom-select" name="category_guide" data-list-type="guide_preference">
@@ -256,6 +262,7 @@
                 <div class="col-md-5">
                     <label class="form-label small">Rate per day (₹) <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_guide" placeholder="e.g. 3000">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
             </div>
             <div class="mb-2">
@@ -267,7 +274,7 @@
 
         {{-- ACTIVITY --}}
         <div class="svc-fields d-none" data-svc="activity">
-            <div class="row g-2 mb-2">
+            <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-7">
                     <label class="form-label small">Activity Type <span class="text-danger">*</span></label>
                     <select class="form-select form-select-sm custom-select" name="category_activity" data-list-type="activity_type">
@@ -281,9 +288,10 @@
                 <div class="col-md-5">
                     <label class="form-label small">Rate (₹) <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_activity" placeholder="e.g. 800">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
             </div>
-            <div class="row g-2 mb-2">
+            <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-4">
                     <label class="form-label small">Unit <span class="text-danger">*</span></label>
                     <select class="form-select form-select-sm custom-select" name="unit_activity">
@@ -293,14 +301,17 @@
                         <option value="per day">per day</option>
                         <option value="per person per day">per person per day</option>
                     </select>
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small">Min group size</label>
                     <input type="number" min="1" max="500" class="form-control form-control-sm" name="min_group" placeholder="e.g. 2">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label small">Max group size</label>
                     <input type="number" min="1" max="500" class="form-control form-control-sm" name="max_group" placeholder="e.g. 12">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
             </div>
             <div class="mb-2">
@@ -311,14 +322,16 @@
 
         {{-- OTHER --}}
         <div class="svc-fields d-none" data-svc="other">
-            <div class="row g-2 mb-2">
+            <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-7">
                     <label class="form-label small">Service Name <span class="text-danger">*</span></label>
                     <input type="text" class="form-control form-control-sm" name="category_other" placeholder="e.g. Permit fee, Camera fee, Equipment rental">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
                 <div class="col-md-5">
                     <label class="form-label small">Rate (₹) <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_other" placeholder="e.g. 500">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
             </div>
             <div class="mb-2">
