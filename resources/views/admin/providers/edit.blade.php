@@ -130,11 +130,11 @@
 
                     @php
                         $caps = [
-                            ['name' => 'services_offered',         'label' => 'Services Offered',         'options' => $serviceTypes,            'current' => $provider->services_offered ?? []],
-                            ['name' => 'accommodation_categories', 'label' => 'Accommodation Categories', 'options' => $accommodationCategories, 'current' => $provider->accommodation_categories ?? []],
-                            ['name' => 'vehicle_types',            'label' => 'Vehicle Types',            'options' => $vehicleTypes,            'current' => $provider->vehicle_types ?? []],
-                            ['name' => 'guide_types',              'label' => 'Guide Types',              'options' => $guideTypes,              'current' => $provider->guide_types ?? []],
-                            ['name' => 'activity_types',           'label' => 'Activity Types',           'options' => $activityTypes,           'current' => $provider->activity_types ?? []],
+                            ['name' => 'services_offered',         'label' => 'Services Offered',         'help' => null,                                                                                       'options' => $serviceTypes,            'current' => $provider->services_offered ?? []],
+                            ['name' => 'accommodation_categories', 'label' => 'Comfort Tiers Offered',    'help' => 'Property-level comfort levels (e.g. Luxury / Standard). Used to match traveller comfort preferences. Individual room types are set under Services, Rooms & Pricing.', 'options' => $accommodationCategories, 'current' => $provider->accommodation_categories ?? []],
+                            ['name' => 'vehicle_types',            'label' => 'Vehicle Types',            'help' => null,                                                                                       'options' => $vehicleTypes,            'current' => $provider->vehicle_types ?? []],
+                            ['name' => 'guide_types',              'label' => 'Guide Types',              'help' => null,                                                                                       'options' => $guideTypes,              'current' => $provider->guide_types ?? []],
+                            ['name' => 'activity_types',           'label' => 'Activity Types',           'help' => null,                                                                                       'options' => $activityTypes,           'current' => $provider->activity_types ?? []],
                         ];
                     @endphp
 
@@ -157,6 +157,9 @@
                                     @endforelse
                                 </div>
                             </div>
+                            @if(!empty($cap['help']))
+                                <small class="text-muted d-block mt-1"><i class="bi bi-info-circle me-1"></i>{{ $cap['help'] }}</small>
+                            @endif
                         </div>
                     @endforeach
                 </div>
