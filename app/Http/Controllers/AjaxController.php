@@ -2600,6 +2600,8 @@ class AjaxController extends Controller
         // Confirm the trip but keep the stage open — closing the stage is an
         // explicit HCT action (matches the C2 guard against silent downgrades).
         $trip->update(["status" => "confirmed"]);
+        // Promote any held SP room bookings → confirmed.
+        app(\App\Services\RoomAvailabilityService::class)->confirmForTrip($trip->id);
         return response()->json(["success" => true, "status" => "confirmed"]);
     }
 
@@ -2619,6 +2621,8 @@ class AjaxController extends Controller
             ], 422);
         }
         $trip->update(["status" => "cancelled", "stage" => "closed"]);
+        // Free up any held room bookings.
+        app(\App\Services\RoomAvailabilityService::class)->releaseForTrip($trip->id);
         return response()->json(["success" => true]);
     }
 
@@ -3792,6 +3796,16 @@ class AjaxController extends Controller
         // and what the leads-page "Mark Won" button does.
         if ($newStatus === 'confirmed' && $trip->lead && $trip->lead->stage === 'follow_up') {
             app(\App\Services\LeadService::class)->markWon($trip->lead);
+        }
+
+        // SP room bookings lifecycle:
+        // - confirmed → flip held bookings to confirmed (rooms reserved hard)
+        // - cancelled → release all active bookings (rooms freed)
+        $room = app(\App\Services\RoomAvailabilityService::class);
+        if ($newStatus === 'confirmed') {
+            $room->confirmForTrip($trip->id);
+        } elseif ($newStatus === 'cancelled') {
+            $room->releaseForTrip($trip->id);
         }
 
         return response()->json(["success" => true]);
@@ -5273,6 +5287,8 @@ class AjaxController extends Controller
             "day_id" => "required|integer|exists:trip_days,id",
             "service_type" => "required|in:accommodation,transport,guide,activity,meal,other",
             "service_provider_id" => "nullable|integer|exists:service_providers,id",
+            "sp_pricing_id" => "nullable|integer|exists:sp_pricing,id",
+            "room_quantity" => "nullable|integer|min:1|max:500",
             "cost" => "nullable|numeric|min:0",
         ]);
         if ($validator->fails()) {
@@ -5282,6 +5298,8 @@ class AjaxController extends Controller
         $service = TripDayService::create([
             "trip_day_id" => $request->day_id,
             "service_provider_id" => $request->service_provider_id,
+            "sp_pricing_id" => $request->sp_pricing_id,
+            "room_quantity" => $request->room_quantity,
             "service_type" => $request->service_type,
             "description" => $request->description,
             "from_location" => $request->from_location,
@@ -5290,6 +5308,11 @@ class AjaxController extends Controller
             "is_included" => $request->boolean("is_included", false),
             "notes" => $request->notes,
         ]);
+
+        // If this accommodation service was tied to a specific room category,
+        // allocate held rooms in sp_room_bookings for the day's date.
+        $this->allocateRoomsForTripService($service);
+
         return response()->json(["success" => true, "service" => $service]);
     }
 
@@ -5299,6 +5322,8 @@ class AjaxController extends Controller
             "service_id" => "required|integer|exists:trip_day_services,id",
             "service_type" => "nullable|in:accommodation,transport,guide,activity,meal,other",
             "service_provider_id" => "nullable|integer|exists:service_providers,id",
+            "sp_pricing_id" => "nullable|integer|exists:sp_pricing,id",
+            "room_quantity" => "nullable|integer|min:1|max:500",
             "cost" => "nullable|numeric|min:0",
         ]);
         if ($validator->fails()) {
@@ -5306,17 +5331,57 @@ class AjaxController extends Controller
         }
 
         $service = TripDayService::findOrFail($request->service_id);
+        $oldPricingId = $service->sp_pricing_id;
+        $oldQty = $service->room_quantity;
+
         $service->update($request->only([
-            "service_provider_id", "service_type", "description",
+            "service_provider_id", "sp_pricing_id", "room_quantity",
+            "service_type", "description",
             "from_location", "to_location", "cost", "is_included", "notes",
         ]));
+
+        // Room booking sync: if the room category or quantity changed, release the
+        // old allocation and create a new one. (Same pricing/qty = no-op.)
+        $service->refresh();
+        if ($oldPricingId !== $service->sp_pricing_id || $oldQty !== $service->room_quantity) {
+            app(\App\Services\RoomAvailabilityService::class)->releaseForTripDayService($service->id);
+            $this->allocateRoomsForTripService($service);
+        }
+
         return response()->json(["success" => true]);
     }
 
     protected function removeDayService(Request $request): JsonResponse
     {
+        // Free up any held room bookings before deleting the service.
+        app(\App\Services\RoomAvailabilityService::class)->releaseForTripDayService((int) $request->service_id);
         TripDayService::destroy($request->service_id);
         return response()->json(["success" => true]);
+    }
+
+    /**
+     * If a TripDayService is an Accommodation tied to a specific sp_pricing
+     * row (room category), create sp_room_bookings rows for the trip day's
+     * date with the requested quantity. Held = trip not yet confirmed;
+     * promoted to confirmed when trip status flips.
+     */
+    protected function allocateRoomsForTripService(TripDayService $service): void
+    {
+        if ($service->service_type !== 'accommodation' || !$service->sp_pricing_id) return;
+        $qty = (int) ($service->room_quantity ?: 1);
+        $day = TripDay::with('trip')->find($service->trip_day_id);
+        if (!$day || !$day->date) return;
+        $tripStatus = $day->trip?->status;
+        $bookingStatus = $tripStatus === 'confirmed' ? 'confirmed' : 'held';
+        app(\App\Services\RoomAvailabilityService::class)->book(
+            spPricingId: $service->sp_pricing_id,
+            tripId: $day->trip_id,
+            tripDayServiceId: $service->id,
+            date: $day->date,
+            quantity: $qty,
+            status: $bookingStatus,
+            source: 'trip_manager'
+        );
     }
 
     protected function changeDayServiceProvider(Request $request): JsonResponse
@@ -5327,6 +5392,9 @@ class AjaxController extends Controller
         $trip = $service->tripDay->trip;
 
         $availabilityService = new SpAvailabilityService();
+
+        // Release any per-room bookings under the old SP for this service.
+        app(\App\Services\RoomAvailabilityService::class)->releaseForTripDayService($service->id);
 
         // Release old booking if the service had an SP
         if ($service->service_provider_id) {
