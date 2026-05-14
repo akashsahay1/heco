@@ -742,6 +742,14 @@ jQuery(function() {
         $f.find('[name=price_other]').val(r && r.service_type === 'other' ? r.price : '');
         $f.find('[name=unit_other]').val(r && r.service_type === 'other' ? (r.unit || '') : '');
 
+        // Refresh searchable dropdowns so the visible label reflects the new
+        // underlying value (custom-select only updates its label on click /
+        // initial build, not on programmatic .val()).
+        $f.find('.custom-select').each(function() {
+            if (window.buildCustomDropdown) window.buildCustomDropdown(this);
+            jQuery(this).trigger('change');
+        });
+
         showServiceFields(t);
     }
 
