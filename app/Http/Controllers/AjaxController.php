@@ -1553,6 +1553,37 @@ class AjaxController extends Controller
         $tripContextArr = json_decode($tripContext, true) ?: [];
         $tripContextArr['active_region_id'] = $activeRegionId;
         $tripContextArr['available_regions'] = $availableRegions;
+
+        // Inject stay options grounded to real SP room inventory + bookings.
+        // Resolve dates from (priority order):
+        //   1. trip.start_date / end_date (already saved on the trip)
+        //   2. dates the user just typed in this message (regex-extracted) —
+        //      so first-turn "from 15-09 to 17-09" still gets real rooms.
+        // If still no dates, leave stay_options empty and the prompt rule
+        // will instruct the AI to ask for dates instead of inventing.
+        $tripContextArr['stay_options_for_dates'] = [];
+        $startDate = $tripContextArr['start_date'] ?? null;
+        $endDate = $tripContextArr['end_date'] ?? $startDate;
+        if (!$startDate) {
+            [$startDate, $endDate] = $this->extractDatesFromMessage($request->message ?? '') + [null, null];
+            if ($startDate) {
+                $tripContextArr['inferred_start_date'] = $startDate;
+                $tripContextArr['inferred_end_date'] = $endDate ?: $startDate;
+            }
+        }
+        if ($activeRegionId && $startDate) {
+            try {
+                $stayOptions = app(\App\Services\RoomAvailabilityService::class)
+                    ->stayOptionsForRegion($activeRegionId, $startDate, $endDate ?: $startDate)
+                    ->take(20) // keep the list bounded — AI doesn't need 100 rooms
+                    ->values()
+                    ->toArray();
+                $tripContextArr['stay_options_for_dates'] = $stayOptions;
+            } catch (\Throwable $e) {
+                \Log::warning('chatWithAi: stay_options query failed: ' . $e->getMessage());
+            }
+        }
+
         $tripContext = json_encode($tripContextArr);
 
         $promptBuilder = app(PromptBuilderService::class);
@@ -1590,7 +1621,7 @@ class AjaxController extends Controller
             }
         }
 
-        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only).\n2. Destination: ask Continent then Country then Region step by step. The ONLY valid regions are in CURRENT_TRIP_CONTEXT.available_regions (when that field is present). NEVER name a region or country not in that list. NEVER mention Nepal, Tibet, Bhutan, Pakistan, or any country that's not represented in available_regions.\n3. Experience type & difficulty preference.\n4. Travel date, group size, starting city — ask 2 at a time max.\n5. ABSOLUTE RULE on experience names + IDs:\n   • You may ONLY name an experience that appears (by exact name) in AVAILABLE EXPERIENCES.\n   • You may ONLY put an id in RECOMMEND_IDS or ADD_TO_TRIP that appears (by exact id) in AVAILABLE EXPERIENCES.\n   • If AVAILABLE EXPERIENCES is `[]` (empty), you have NO catalog yet. In that case your response must NOT contain ANY of: trek names, peak names, route names, sample itineraries, mountain names, fictional experience names, or RECOMMEND_IDS. Even if the traveller asks for specific trek suggestions, you must respond with: 'I'd love to suggest specific treks — first, let's pick a region so I show you only experiences we actually run.' Then present 3-5 region NAMES from CURRENT_TRIP_CONTEXT.available_regions (group by continent if helpful), ask the traveller to pick one, and emit [SET_FILTERS:{\"region_id\":N}] with the chosen region's id. Do NOT proceed to recommend treks/experiences until the next turn (when AVAILABLE EXPERIENCES will be populated).\n   • Famous Himalayan names you must NEVER mention unless they're literally in AVAILABLE EXPERIENCES by exact name: Annapurna, Everest, Manaslu, Markha, Pin Parvati, Hampta Pass, Roopkund, Kuari Pass, Kilimanjaro, Poon Hill, Tilicho.\n\nIf filters already selected (see CURRENT FILTERS), skip the region question. Only ask MISSING details. Single region per trip — all selections must come from the same region (active_region_id).\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
+        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only).\n2. Destination: ask Continent then Country then Region step by step. The ONLY valid regions are in CURRENT_TRIP_CONTEXT.available_regions (when that field is present). NEVER name a region or country not in that list. NEVER mention Nepal, Tibet, Bhutan, Pakistan, or any country that's not represented in available_regions.\n3. Experience type & difficulty preference.\n4. Travel date, group size, starting city — ask 2 at a time max.\n5. ABSOLUTE RULE on experience names + IDs:\n   • You may ONLY name an experience that appears (by exact name) in AVAILABLE EXPERIENCES.\n   • You may ONLY put an id in RECOMMEND_IDS or ADD_TO_TRIP that appears (by exact id) in AVAILABLE EXPERIENCES.\n   • If AVAILABLE EXPERIENCES is `[]` (empty), you have NO catalog yet. In that case your response must NOT contain ANY of: trek names, peak names, route names, sample itineraries, mountain names, fictional experience names, or RECOMMEND_IDS. Even if the traveller asks for specific trek suggestions, you must respond with: 'I'd love to suggest specific treks — first, let's pick a region so I show you only experiences we actually run.' Then present 3-5 region NAMES from CURRENT_TRIP_CONTEXT.available_regions (group by continent if helpful), ask the traveller to pick one, and emit [SET_FILTERS:{\"region_id\":N}] with the chosen region's id. Do NOT proceed to recommend treks/experiences until the next turn (when AVAILABLE EXPERIENCES will be populated).\n   • Famous Himalayan names you must NEVER mention unless they're literally in AVAILABLE EXPERIENCES by exact name: Annapurna, Everest, Manaslu, Markha, Pin Parvati, Hampta Pass, Roopkund, Kuari Pass, Kilimanjaro, Poon Hill, Tilicho.\n6. ABSOLUTE RULE on accommodation / stay suggestions:\n   • Recommend stays/rooms ONLY from CURRENT_TRIP_CONTEXT.stay_options_for_dates (this is the live inventory for the active region + trip dates).\n   • Never invent hotel names, room types, or per-night rates. Never say 'we have a charming guesthouse' unless it appears by exact name in stay_options_for_dates.\n   • If stay_options_for_dates is empty: either dates aren't set yet (ask the traveller for start/end date) OR the active region has no rooms available for those dates (say so and offer alternatives from available_regions). Never fabricate stays.\n   • When stay_options_for_dates has entries, list rooms as: '**[sp_name]** — [room_category] (₹[rate_per_night]/night [meal_plan]) · [rooms_available] left'.\n\nIf filters already selected (see CURRENT FILTERS), skip the region question. Only ask MISSING details. Single region per trip — all selections must come from the same region (active_region_id).\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
 
         $allInstructions = $currentDateInstruction . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $confirmationRule . $conversationFlowInstruction;
 
@@ -5641,6 +5672,41 @@ class AjaxController extends Controller
             'ical_url' => $sp->ical_url,
             'ical_last_synced_at' => $sp->ical_last_synced_at?->format('d M Y H:i'),
         ]);
+    }
+
+    /**
+     * Best-effort date extraction from a free-text user message. Used by
+     * chatWithAi so first-turn "from 15-09 to 17-09" can ground stay
+     * options without waiting for the AI to round-trip [TRIP_DETAILS].
+     *
+     * Returns [start_date, end_date] as YYYY-MM-DD strings (or nulls).
+     */
+    protected function extractDatesFromMessage(string $message): array
+    {
+        if ($message === '') return [null, null];
+        $msg = ' ' . $message . ' ';
+        // Match YYYY-MM-DD pairs first.
+        if (preg_match_all('/(\d{4})-(\d{1,2})-(\d{1,2})/', $msg, $matches)) {
+            $found = [];
+            foreach ($matches[0] as $d) {
+                try {
+                    $found[] = \Carbon\Carbon::parse($d)->format('Y-m-d');
+                } catch (\Throwable) {}
+            }
+            if (count($found) >= 1) {
+                return [$found[0], $found[1] ?? null];
+            }
+        }
+        // Fall back to "DD Month" / "Month DD" forms — best effort, single date.
+        if (preg_match('/(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s*(\d{2,4})?/i', $msg, $m)) {
+            try {
+                $year = $m[3] ?? null;
+                $year = $year && strlen($year) <= 2 ? '20' . $year : $year;
+                $parsed = \Carbon\Carbon::parse($m[1] . ' ' . $m[2] . ' ' . ($year ?: now()->year))->format('Y-m-d');
+                return [$parsed, null];
+            } catch (\Throwable) {}
+        }
+        return [null, null];
     }
 
     /**
