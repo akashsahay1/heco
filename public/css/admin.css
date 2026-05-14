@@ -1295,3 +1295,13 @@ body.admin-login-page {
     width: 26px; height: 26px; margin: 1px; border-radius: 5px;
     font-size: 0.85rem; color: var(--heco-primary-700, #79a09f);
 }
+
+/* Service-type pill on the SP pricing table. */
+.heco-admin .sp-type-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: var(--heco-primary-50, #eef5f5);
+    font-size: 0.78rem;
+    font-weight: 600;
+}

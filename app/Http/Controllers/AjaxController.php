@@ -3395,9 +3395,33 @@ class AjaxController extends Controller
         return response()->json($logs);
     }
 
+    /**
+     * Enforce ownership: HCT can read any provider; an approved SP can only
+     * read its own. Returns the provider_id to use or a 403 JsonResponse.
+     */
+    protected function resolveSpPricingProviderId(Request $request): int|JsonResponse
+    {
+        $user = Auth::user();
+        $requested = (int) $request->input('provider_id');
+
+        if ($user && $user->isHct()) {
+            return $requested ?: 0;
+        }
+        if ($user && $user->isServiceProvider()) {
+            $sp = ServiceProvider::where('user_id', $user->id)->where('status', 'approved')->first();
+            if (!$sp) return response()->json(['error' => 'Unauthorized'], 403);
+            // SP can only act on its own pricing; ignore any provider_id they send.
+            return $sp->id;
+        }
+        return response()->json(['error' => 'Unauthorized'], 403);
+    }
+
     protected function getSpPricing(Request $request): JsonResponse
     {
-        $rows = SpPricing::where("service_provider_id", $request->provider_id)
+        $providerId = $this->resolveSpPricingProviderId($request);
+        if ($providerId instanceof JsonResponse) return $providerId;
+
+        $rows = SpPricing::where("service_provider_id", $providerId)
             ->orderBy("service_type")
             ->get();
         return response()->json(["rows" => $rows]);
@@ -3405,26 +3429,83 @@ class AjaxController extends Controller
 
     protected function saveSpPricing(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        // Resolve and enforce ownership. SP can only save against own id.
+        $providerId = $this->resolveSpPricingProviderId($request);
+        if ($providerId instanceof JsonResponse) return $providerId;
+        $request->merge(['provider_id' => $providerId]);
+
+        // If editing an existing row, ensure it belongs to this provider.
+        if ($request->filled('id')) {
+            $existing = SpPricing::find($request->id);
+            if (!$existing || (int) $existing->service_provider_id !== $providerId) {
+                return response()->json(['error' => 'Not your pricing row.'], 403);
+            }
+        }
+
+        // Per-service-type validation. The dynamic modal in the UI only shows
+        // the relevant fields for each service_type, but server-side we still
+        // enforce the right combination.
+        $serviceType = $request->input('service_type');
+        $baseRules = [
             "provider_id"  => "required|exists:service_providers,id",
             "service_type" => "required|in:accommodation,transport,guide,activity,other",
-            "unit"         => "required|string|max:50",
             "price"        => "required|numeric|min:0",
-        ]);
+        ];
+
+        $rulesByType = [
+            'accommodation' => [
+                "room_category"     => "required|string|max:100",
+                "total_rooms"       => "required|integer|min:1|max:500",
+                "default_occupancy" => "nullable|string|max:50",
+                "meal_plan"         => "nullable|string|max:100",
+                "unit"              => "nullable|string|max:50",
+            ],
+            'transport' => [
+                "vehicle_type"      => "required|string|max:100",
+                "vehicle_capacity"  => "nullable|integer|min:1|max:80",
+                "driver_allowance"  => "nullable|numeric|min:0",
+                "unit"              => "required|string|max:50",
+            ],
+            'guide' => [
+                "specialties"       => "nullable|string|max:500",
+                "unit"              => "required|string|max:50",
+            ],
+            'activity' => [
+                "category"          => "nullable|string|max:100",
+                "min_group"         => "nullable|integer|min:1|max:500",
+                "max_group"         => "nullable|integer|min:1|max:500",
+                "unit"              => "required|string|max:50",
+            ],
+            'other' => [
+                "unit"              => "required|string|max:50",
+            ],
+        ];
+
+        $rules = array_merge($baseRules, $rulesByType[$serviceType] ?? []);
+        $validator = Validator::make($request->all(), $rules);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
         $data = [
             "service_provider_id" => $request->provider_id,
-            "service_type"        => $request->service_type,
+            "service_type"        => $serviceType,
             "category"            => $request->input("category") ?: null,
             "description"         => $request->input("description") ?: null,
-            "unit"                => $request->unit,
+            "unit"                => $request->input("unit") ?: null,
             "price"               => $request->price,
             "meal_plan"           => $request->input("meal_plan") ?: null,
             "vehicle_type"        => $request->input("vehicle_type") ?: null,
             "notes"               => $request->input("notes") ?: null,
+            // new fields
+            "room_category"       => $request->input("room_category") ?: null,
+            "total_rooms"         => $request->filled("total_rooms") ? (int) $request->total_rooms : null,
+            "default_occupancy"   => $request->input("default_occupancy") ?: null,
+            "vehicle_capacity"    => $request->filled("vehicle_capacity") ? (int) $request->vehicle_capacity : null,
+            "driver_allowance"    => $request->filled("driver_allowance") ? (float) $request->driver_allowance : null,
+            "min_group"           => $request->filled("min_group") ? (int) $request->min_group : null,
+            "max_group"           => $request->filled("max_group") ? (int) $request->max_group : null,
+            "specialties"         => $request->input("specialties") ?: null,
         ];
         if ($request->has("is_active")) {
             $data["is_active"] = $request->boolean("is_active");
@@ -3441,11 +3522,19 @@ class AjaxController extends Controller
 
     protected function deleteSpPricing(Request $request): JsonResponse
     {
+        // Resolve owning provider; SPs can only delete their own rows.
+        $providerId = $this->resolveSpPricingProviderId($request);
+        if ($providerId instanceof JsonResponse) return $providerId;
+
         $ids = $request->input("ids");
         if (is_array($ids) && count($ids)) {
-            SpPricing::whereIn("id", $ids)->delete();
+            SpPricing::whereIn("id", $ids)
+                ->where("service_provider_id", $providerId)
+                ->delete();
         } elseif ($request->filled("id")) {
-            SpPricing::where("id", $request->id)->delete();
+            SpPricing::where("id", $request->id)
+                ->where("service_provider_id", $providerId)
+                ->delete();
         } else {
             return response()->json(["error" => "Nothing to delete"], 422);
         }

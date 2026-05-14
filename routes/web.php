@@ -163,6 +163,7 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::middleware(['auth', 'sp'])->group(function () {
         Route::get('/sp/dashboard', [SpController::class, 'dashboard'])->name('sp.dashboard');
         Route::get('/sp/profile/edit', [SpController::class, 'editProfile'])->name('sp.profile.edit');
+        Route::get('/sp/pricing', [SpController::class, 'pricing'])->name('sp.pricing');
     });
 
     // AJAX

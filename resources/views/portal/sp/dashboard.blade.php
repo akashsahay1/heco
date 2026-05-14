@@ -205,8 +205,11 @@
 
             {{-- Services & Pricing --}}
             <div class="card mb-3">
-                <div class="card-header py-2">
-                    <h6 class="mb-0"><i class="bi bi-list-check"></i> Services & Pricing</h6>
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-list-check"></i> Services, Rooms &amp; Pricing</h6>
+                    <a href="{{ route('sp.pricing') }}" class="btn btn-sm sp-btn-primary">
+                        <i class="bi bi-pencil-square me-1"></i> Manage
+                    </a>
                 </div>
                 <div class="card-body">
                     {{-- Services Offered (for OSP) --}}
@@ -245,30 +248,40 @@
                         </div>
                     @endif
 
-                    {{-- Pricing Table --}}
+                    {{-- Pricing summary (compact preview — full management on /sp/pricing) --}}
                     @if($provider->pricing && $provider->pricing->count())
                         <div class="table-responsive mt-2">
                             <table class="table table-sm table-bordered mb-0">
                                 <thead class="table-light">
                                     <tr>
-                                        <th class="small">Service</th>
-                                        <th class="small">Category</th>
-                                        <th class="small">Description</th>
-                                        <th class="small">Unit</th>
-                                        <th class="small text-end">Price</th>
-                                        <th class="small">Meal Plan</th>
+                                        <th class="small">Type</th>
+                                        <th class="small">Details</th>
+                                        <th class="small">Rate</th>
+                                        <th class="small">Inventory</th>
                                         <th class="small text-center">Active</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach($provider->pricing as $price)
+                                        @php
+                                            $typeIcons = ['accommodation' => '🛏', 'transport' => '🚙', 'guide' => '👤', 'activity' => '🏔', 'other' => '📦'];
+                                            $icon = $typeIcons[$price->service_type] ?? '·';
+                                            $details = $price->room_category ?: $price->vehicle_type ?: $price->category ?: '—';
+                                            if ($price->meal_plan) $details .= ' · ' . $price->meal_plan;
+                                            if ($price->vehicle_capacity) $details .= ' · ' . $price->vehicle_capacity . ' seats';
+                                            if ($price->specialties) $details .= ' · ' . $price->specialties;
+                                        @endphp
                                         <tr class="{{ !$price->is_active ? 'text-muted' : '' }}">
-                                            <td class="small">{{ $price->service_type ? \Str::title(str_replace('_', ' ', $price->service_type)) : '-' }}</td>
-                                            <td class="small">{{ ucfirst($price->category ?? '-') }}</td>
-                                            <td class="small">{{ $price->description ?? '-' }}</td>
-                                            <td class="small">{{ $price->unit ?? '-' }}</td>
-                                            <td class="small text-end text-success">&#8377;{{ number_format($price->price ?? 0, 2) }}</td>
-                                            <td class="small">{{ $price->meal_plan ?? '-' }}</td>
+                                            <td class="small">{!! $icon !!} <span class="text-capitalize">{{ $price->service_type }}</span></td>
+                                            <td class="small">{{ $details }}</td>
+                                            <td class="small text-success">&#8377;{{ number_format($price->price ?? 0, 2) }} <span class="text-muted">{{ $price->unit }}</span></td>
+                                            <td class="small">
+                                                @if($price->service_type === 'accommodation' && $price->total_rooms)
+                                                    {{ $price->total_rooms }} rooms
+                                                @else
+                                                    —
+                                                @endif
+                                            </td>
                                             <td class="small text-center">
                                                 @if($price->is_active)
                                                     <i class="bi bi-check-circle-fill text-success"></i>
@@ -282,7 +295,10 @@
                             </table>
                         </div>
                     @else
-                        <p class="text-muted small text-center mb-0">No pricing records found. HCT will set up your pricing.</p>
+                        <p class="text-muted small text-center mb-0">
+                            No services or rooms set up yet.
+                            <a href="{{ route('sp.pricing') }}">Click here to add the first one →</a>
+                        </p>
                     @endif
                 </div>
             </div>

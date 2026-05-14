@@ -96,6 +96,20 @@ class SystemListSeeder extends Seeder
                 ['MAP - Modified American Plan', 'Breakfast + lunch OR dinner (traveller picks).'],
                 ['AP - All Inclusive', 'All meals + snacks + non-alcoholic drinks included.'],
             ],
+
+            // ─── room categories for hotel-style accommodation inventory ───
+            'room_category' => [
+                ['Single Room',    'One bed for one person. Smallest, cheapest. Best for solo travellers.'],
+                ['Double Room',    'One double bed for two people sharing. Standard hotel default.'],
+                ['Twin Sharing',   'Two separate single beds — two people sharing the room but not the bed. Friends / colleagues.'],
+                ['Triple Room',    'Three beds in one room (or one double + one single). For families / groups of 3.'],
+                ['Quad Room',      'Four beds in one room. Family rooms or small group dorms.'],
+                ['Family Suite',   'Multi-room suite — living area + 1-2 bedrooms. For families with kids.'],
+                ['Dormitory Bed',  'One bed in a shared dormitory (4-12 beds). Cheapest option, suits solo backpackers.'],
+                ['Deluxe Room',    'Upgraded room — better view, larger size, premium amenities.'],
+                ['Suite',          'Full suite — separate bedroom + living area, top-tier service.'],
+                ['Camping Tent',   'Pre-pitched tent for 2 — sleeping bags + camp kitchen access. For trek-based stays.'],
+            ],
         ];
 
         foreach ($lists as $type => $items) {

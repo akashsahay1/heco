@@ -41,4 +41,28 @@ class SpController extends Controller
             "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes"
         ));
     }
+
+    /**
+     * SP self-service "Services, Rooms & Pricing" page — mirrors the admin
+     * /providers/{id}/edit pricing card so SPs can manage their own room
+     * inventory + rates without going through HCT.
+     */
+    public function pricing()
+    {
+        $user = auth()->user();
+        $provider = ServiceProvider::where("user_id", $user->id)->firstOrFail();
+        $serviceTypes            = SystemList::ofType("service_type")->get();
+        $accommodationCategories = SystemList::ofType("accommodation_category")->get();
+        $vehicleTypes            = SystemList::ofType("vehicle_type")->get();
+        $guideTypes              = SystemList::ofType("guide_preference")->get();
+        $activityTypes           = SystemList::ofType("activity_type")->get();
+        $occupancyUnits          = SystemList::ofType("occupancy_unit")->get();
+        $mealPlans               = SystemList::ofType("meal_plan")->get();
+        $roomCategories          = SystemList::ofType("room_category")->get();
+        return view("portal.sp.pricing", compact(
+            "provider",
+            "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes",
+            "occupancyUnits", "mealPlans", "roomCategories"
+        ));
+    }
 }
