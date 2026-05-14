@@ -212,15 +212,14 @@
 
         {{-- Step 1: Service type (always visible) --}}
         <div class="mb-3">
-            <label class="form-label fw-bold">What kind of service / room is this? <span class="text-danger">*</span></label>
+            <label class="form-label fw-bold">Service type <span class="text-danger">*</span></label>
             <select class="form-select custom-select" name="service_type" id="spServiceType" required>
-                <option value="accommodation">🛏 Accommodation (a room category — set how many rooms you have)</option>
-                <option value="transport">🚙 Transport (a vehicle type — rate per km / day)</option>
-                <option value="guide">👤 Guide (rate per day)</option>
-                <option value="activity">🏔 Activity (rate per person / group / day)</option>
-                <option value="other">📦 Other (permits, equipment, etc.)</option>
+                <option value="accommodation">🛏 Accommodation</option>
+                <option value="transport">🚙 Transport</option>
+                <option value="guide">👤 Guide</option>
+                <option value="activity">🏔 Activity</option>
+                <option value="other">📦 Other</option>
             </select>
-            <small class="text-muted">The form below changes based on what you pick.</small>
         </div>
 
         {{-- Add-mode tabs (only visible for Accommodation / Transport, hidden on Edit) --}}
@@ -324,8 +323,6 @@
 
         {{-- ============= ACCOMMODATION FIELDS ============= --}}
         <div class="svc-fields" data-svc="accommodation">
-            <div class="alert alert-light border small mb-3"><i class="bi bi-info-circle me-1"></i> Each accommodation row represents <strong>one room category</strong>. If you have 4 Single Rooms and 6 Double Rooms, that's <strong>two rows</strong>.</div>
-
             <div class="row g-2 mb-2">
                 <div class="col-md-7">
                     <label class="form-label small">Room Category <span class="text-danger">*</span></label>
@@ -338,9 +335,8 @@
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
                 <div class="col-md-5">
-                    <label class="form-label small">Total Rooms of this category <span class="text-danger">*</span></label>
+                    <label class="form-label small">Total Rooms <span class="text-danger">*</span></label>
                     <input type="number" min="1" max="500" class="form-control form-control-sm" name="total_rooms" placeholder="e.g. 4" data-required-for="accommodation">
-                    <small class="text-muted">How many of this room type do you have in total?</small>
                 </div>
             </div>
 
