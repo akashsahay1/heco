@@ -113,7 +113,7 @@ class HctController extends Controller
 
     public function providerShow($id)
     {
-        $provider = ServiceProvider::with(["region", "user", "lastUpdatedBy", "approvedBy"])
+        $provider = ServiceProvider::with(["region", "user", "lastUpdatedBy", "approvedBy", "pricing"])
             ->findOrFail($id);
         return view("admin.providers.show", compact("provider"));
     }

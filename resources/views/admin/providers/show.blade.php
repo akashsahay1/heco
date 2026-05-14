@@ -152,6 +152,33 @@
         <div class="card">
             <div class="card-body">
                 <h6 class="border-bottom pb-2"><i class="bi bi-calendar3"></i> Availability Calendar</h6>
+
+                {{-- iCal Sync status — read-only for admin --}}
+                <div class="alert alert-light border small mb-3 py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                        <div>
+                            <strong><i class="bi bi-arrow-down-up me-1"></i>iCal Sync (inbound from Booking.com / Airbnb / etc.)</strong>
+                            <div class="mt-1">
+                                @if($provider->ical_url)
+                                    <span class="text-muted">URL:</span>
+                                    <code class="small">{{ \Illuminate\Support\Str::limit($provider->ical_url, 80) }}</code>
+                                @else
+                                    <span class="text-muted">No external calendar connected — availability comes only from HECO trip bookings + manual blocks.</span>
+                                @endif
+                            </div>
+                            <div class="mt-1">
+                                <span class="text-muted">Last synced:</span>
+                                @if($provider->ical_last_synced_at)
+                                    <strong>{{ $provider->ical_last_synced_at->format('d M Y H:i') }}</strong>
+                                @else
+                                    <em class="text-muted">never</em>
+                                @endif
+                            </div>
+                        </div>
+                        <small class="text-muted">SP manages this from their own dashboard. Admin view-only.</small>
+                    </div>
+                </div>
+
                 <div class="d-flex align-items-center gap-2 mb-2">
                     <button class="btn btn-sm btn-outline-secondary" id="adminCalPrev"><i class="bi bi-chevron-left"></i></button>
                     <span class="small fw-bold" id="adminCalMonthLabel"></span>
@@ -168,6 +195,50 @@
             </div>
         </div>
     </div>
+
+    {{-- Room inventory snapshot — for accommodation SPs --}}
+    @php
+        $accommodationRows = $provider->pricing->where('service_type', 'accommodation')->where('is_active', true)->values();
+    @endphp
+    @if($accommodationRows->count())
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="border-bottom pb-2"><i class="bi bi-door-closed"></i> Room Inventory</h6>
+                <p class="text-muted small mb-2">All active accommodation rows from Services &amp; Pricing — what this property offers and how many rooms of each.</p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Room Category</th>
+                                <th class="w-status text-end">Total Rooms</th>
+                                <th class="w-status text-end">Rate / night</th>
+                                <th>Meal Plan</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($accommodationRows as $r)
+                                <tr>
+                                    <td><strong>{{ $r->room_category ?: $r->category ?: '—' }}</strong></td>
+                                    <td class="text-end"><span class="badge bg-info-subtle text-info-emphasis">{{ $r->total_rooms ?? '—' }}</span></td>
+                                    <td class="text-end fw-semibold">&#8377;{{ number_format($r->price, 2) }}</td>
+                                    <td class="small">{{ $r->meal_plan ?: '—' }}</td>
+                                    <td class="small text-muted">{{ $r->description ?: '—' }}</td>
+                                </tr>
+                            @endforeach
+                            <tr class="table-light">
+                                <td class="fw-bold">Total inventory</td>
+                                <td class="text-end fw-bold">{{ $accommodationRows->sum('total_rooms') }} rooms</td>
+                                <td colspan="3"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 </div>
 
 @endsection
