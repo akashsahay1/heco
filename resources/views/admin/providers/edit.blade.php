@@ -129,14 +129,38 @@
                     <h6 class="border-bottom pb-2"><i class="bi bi-gear"></i> Capabilities</h6>
 
                     @php
+                        // Comfort tiers are now per-row on sp_pricing.comfort_tier;
+                        // derive a read-only summary from the provider's current rows.
+                        $derivedComfortTiers = \App\Models\SpPricing::where('service_provider_id', $provider->id)
+                            ->where('service_type', 'accommodation')
+                            ->where('is_active', true)
+                            ->whereNotNull('comfort_tier')
+                            ->where('comfort_tier', '!=', '')
+                            ->pluck('comfort_tier')
+                            ->unique()
+                            ->values()
+                            ->all();
+
                         $caps = [
                             ['name' => 'services_offered',         'label' => 'Services Offered',         'help' => null,                                                                                       'options' => $serviceTypes,            'current' => $provider->services_offered ?? []],
-                            ['name' => 'accommodation_categories', 'label' => 'Comfort Tiers Offered',    'help' => 'Property-level comfort levels (e.g. Luxury / Standard). Used to match traveller comfort preferences. Individual room types are set under Services, Rooms & Pricing.', 'options' => $accommodationCategories, 'current' => $provider->accommodation_categories ?? []],
                             ['name' => 'vehicle_types',            'label' => 'Vehicle Types',            'help' => null,                                                                                       'options' => $vehicleTypes,            'current' => $provider->vehicle_types ?? []],
                             ['name' => 'guide_types',              'label' => 'Guide Types',              'help' => null,                                                                                       'options' => $guideTypes,              'current' => $provider->guide_types ?? []],
                             ['name' => 'activity_types',           'label' => 'Activity Types',           'help' => null,                                                                                       'options' => $activityTypes,           'current' => $provider->activity_types ?? []],
                         ];
                     @endphp
+
+                    {{-- Read-only comfort-tier summary, auto-derived from sp_pricing rows --}}
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Comfort Tiers Offered <span class="badge bg-light text-dark border ms-1 auto-pill">auto</span></label>
+                        <div class="form-control form-control-sm bg-light comfort-tier-summary">
+                            @forelse($derivedComfortTiers as $tier)
+                                <span class="badge bg-secondary me-1">{{ $tier }}</span>
+                            @empty
+                                <span class="text-muted small">No accommodation rows yet — set per row under Services, Rooms & Pricing.</span>
+                            @endforelse
+                        </div>
+                        <small class="text-muted d-block mt-1"><i class="bi bi-info-circle me-1"></i>Derived from each accommodation row's Comfort Tier. Edit under Services, Rooms & Pricing to change.</small>
+                    </div>
 
                     @foreach($caps as $idx => $cap)
                         <div class="{{ $idx === count($caps) - 1 ? 'mb-0' : 'mb-2' }}">
@@ -244,7 +268,7 @@
         <template id="bulkRowTplAccommodation">
             <div class="bulk-row card border p-2 mb-2" data-bulk-svc="accommodation">
                 <div class="row g-2 align-items-end">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label small mb-1">Room Category <span class="text-danger">*</span></label>
                         <select class="form-select form-select-sm custom-select bulk-field" data-field="room_category" data-list-type="room_category">
                             <option value="">Pick...</option>
@@ -252,9 +276,17 @@
                                 <option value="{{ $r->name }}" data-desc="{{ $r->description }}">{{ $r->name }}</option>
                             @endforeach
                         </select>
-                        <small class="form-help-text text-muted d-block mt-1"></small>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Comfort Tier <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="comfort_tier" data-list-type="accommodation_category">
+                            <option value="">Pick...</option>
+                            @foreach($accommodationCategories as $c)
+                                <option value="{{ $c->name }}" data-desc="{{ $c->description }}">{{ $c->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-1">
                         <label class="form-label small mb-1">Total <span class="text-danger">*</span></label>
                         <input type="number" class="form-control form-control-sm bulk-field" data-field="total_rooms" min="1" max="500" placeholder="4">
                     </div>
@@ -262,7 +294,7 @@
                         <label class="form-label small mb-1">Rate/night ₹ <span class="text-danger">*</span></label>
                         <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="2500">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small mb-1">Meal Plan</label>
                         <select class="form-select form-select-sm custom-select bulk-field" data-field="meal_plan" data-list-type="meal_plan">
                             <option value="">— none —</option>
@@ -345,12 +377,25 @@
             </div>
 
             <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-7">
+                    <label class="form-label small">Comfort Tier <span class="text-danger">*</span></label>
+                    <select class="form-select form-select-sm custom-select" name="comfort_tier" data-list-type="accommodation_category" data-required-for="accommodation">
+                        <option value="">Select tier...</option>
+                        @foreach($accommodationCategories as $c)
+                            <option value="{{ $c->name }}" data-desc="{{ $c->description }}">{{ $c->name }}</option>
+                        @endforeach
+                    </select>
+                    <small class="form-help-text text-muted d-block mt-1"></small>
+                </div>
                 <div class="col-md-5">
                     <label class="form-label small">Rate per night (₹) <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_accommodation" placeholder="e.g. 2500" data-price-for="accommodation">
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
-                <div class="col-md-7">
+            </div>
+
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-12">
                     <label class="form-label small">Meal Plan</label>
                     <select class="form-select form-select-sm custom-select" name="meal_plan" data-list-type="meal_plan">
                         <option value="">— no meals (room only) —</option>
@@ -579,10 +624,12 @@ jQuery('#providerEditForm').on('submit', function(e) {
     var data = {
         edit_provider: 1,
         services_offered:         getDdValues('services_offered'),
-        accommodation_categories: getDdValues('accommodation_categories'),
         vehicle_types:            getDdValues('vehicle_types'),
         guide_types:              getDdValues('guide_types'),
         activity_types:           getDdValues('activity_types')
+        // accommodation_categories: now per-row on sp_pricing.comfort_tier;
+        // do NOT send so the AjaxController preserves whatever legacy value
+        // is already on the provider row.
     };
     jQuery(this).find('input, textarea, select').each(function() {
         if (this.name) data[this.name] = jQuery(this).val();
@@ -629,6 +676,7 @@ jQuery(function() {
                     var parts = [];
                     if (r.room_category) parts.push('<strong>' + spEscape(r.room_category) + '</strong>');
                     else if (r.category)  parts.push('<strong>' + spEscape(r.category) + '</strong>');
+                    if (r.comfort_tier)   parts.push('<span class="badge bg-light text-dark border">' + spEscape(r.comfort_tier) + '</span>');
                     if (r.meal_plan)      parts.push('<span class="text-muted">' + spEscape(r.meal_plan) + '</span>');
                     if (r.default_occupancy) parts.push('<small class="text-muted">' + spEscape(r.default_occupancy) + '</small>');
                     details = parts.join(' · ');
@@ -724,6 +772,7 @@ jQuery(function() {
 
         // Accommodation
         $f.find('[name=room_category]').val(r ? (r.room_category || r.category || '') : '');
+        $f.find('[name=comfort_tier]').val(r ? (r.comfort_tier || '') : '');
         $f.find('[name=total_rooms]').val(r ? (r.total_rooms || '') : '');
         $f.find('[name=meal_plan]').val(r ? (r.meal_plan || '') : '');
         $f.find('[name=price_accommodation]').val(r && r.service_type === 'accommodation' ? r.price : '');
@@ -938,6 +987,7 @@ jQuery(function() {
 
         if (type === 'accommodation') {
             data.room_category    = jQuery(this).find('[name=room_category]').val();
+            data.comfort_tier     = jQuery(this).find('[name=comfort_tier]').val();
             data.total_rooms      = jQuery(this).find('[name=total_rooms]').val();
             data.meal_plan        = jQuery(this).find('[name=meal_plan]').val();
             data.price            = jQuery(this).find('[name=price_accommodation]').val();

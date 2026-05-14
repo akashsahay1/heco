@@ -167,22 +167,33 @@ class HomepageController extends Controller
     }
 
     /**
-     * Union of SP-offered accommodation categories and vehicle types
-     * across approved providers in the given regions.
+     * Union of SP-offered comfort tiers, vehicle types, and guide types
+     * across approved providers in the given regions. Accommodation tiers
+     * are derived from sp_pricing.comfort_tier (per-row source of truth)
+     * rather than service_providers.accommodation_categories (legacy).
      */
     protected function resolveAvailableCapabilities(array $regionIds): array
     {
-        $sps = ServiceProvider::where('status', 'approved')
+        $approvedSpIds = ServiceProvider::where('status', 'approved')
             ->whereIn('region_id', $regionIds)
-            ->get(['accommodation_categories', 'vehicle_types', 'guide_types']);
+            ->pluck('id');
 
-        $accom = [];
+        $accom = \App\Models\SpPricing::whereIn('service_provider_id', $approvedSpIds)
+            ->where('service_type', 'accommodation')
+            ->where('is_active', true)
+            ->whereNotNull('comfort_tier')
+            ->where('comfort_tier', '!=', '')
+            ->pluck('comfort_tier')
+            ->unique()
+            ->values()
+            ->all();
+
+        $sps = ServiceProvider::whereIn('id', $approvedSpIds)
+            ->get(['vehicle_types', 'guide_types']);
+
         $vehicle = [];
         $guide = [];
         foreach ($sps as $sp) {
-            if (is_array($sp->accommodation_categories)) {
-                $accom = array_merge($accom, $sp->accommodation_categories);
-            }
             if (is_array($sp->vehicle_types)) {
                 $vehicle = array_merge($vehicle, $sp->vehicle_types);
             }
@@ -191,7 +202,7 @@ class HomepageController extends Controller
             }
         }
         return [
-            'accommodation' => array_values(array_unique($accom)),
+            'accommodation' => $accom,
             'vehicle'       => array_values(array_unique($vehicle)),
             'guide'         => array_values(array_unique($guide)),
         ];

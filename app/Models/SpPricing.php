@@ -12,7 +12,7 @@ class SpPricing extends Model
         'service_provider_id', 'service_type', 'category', 'description',
         'unit', 'price', 'meal_plan', 'vehicle_type', 'notes', 'is_active',
         // hotel-style room inventory
-        'room_category', 'total_rooms', 'default_occupancy',
+        'room_category', 'comfort_tier', 'total_rooms', 'default_occupancy',
         // transport extras
         'vehicle_capacity', 'driver_allowance',
         // activity / guide extras

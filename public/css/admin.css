@@ -1350,6 +1350,10 @@ body.admin-login-page {
     min-height: 1.1em;
 }
 
+/* Comfort-tier auto-derived summary on provider edit. */
+.heco-admin .auto-pill { font-weight: 400; font-size: 0.7rem; }
+.heco-admin .comfort-tier-summary { min-height: 38px; }
+
 /* Form-control-sm — provider/SP pricing forms use the small Bootstrap input
    variant. Bump padding slightly so inputs render at ~39px, matching the
    compact custom-select dropdown height beside them. */

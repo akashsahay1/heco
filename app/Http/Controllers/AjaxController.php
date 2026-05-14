@@ -3493,6 +3493,7 @@ class AjaxController extends Controller
         $rulesByType = [
             'accommodation' => [
                 "room_category"     => "required|string|max:100",
+                "comfort_tier"      => "nullable|string|max:80",
                 "total_rooms"       => "required|integer|min:1|max:500",
                 "default_occupancy" => "nullable|string|max:50",
                 "meal_plan"         => "nullable|string|max:100",
@@ -3537,6 +3538,7 @@ class AjaxController extends Controller
             "notes"               => $request->input("notes") ?: null,
             // new fields
             "room_category"       => $request->input("room_category") ?: null,
+            "comfort_tier"        => $request->input("comfort_tier") ?: null,
             "total_rooms"         => $request->filled("total_rooms") ? (int) $request->total_rooms : null,
             "default_occupancy"   => $request->input("default_occupancy") ?: null,
             "vehicle_capacity"    => $request->filled("vehicle_capacity") ? (int) $request->vehicle_capacity : null,

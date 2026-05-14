@@ -85,7 +85,7 @@
         <template id="bulkRowTplAccommodation">
             <div class="bulk-row card border p-2 mb-2" data-bulk-svc="accommodation">
                 <div class="row g-2 align-items-end">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label small mb-1">Room Category <span class="text-danger">*</span></label>
                         <select class="form-select form-select-sm custom-select bulk-field" data-field="room_category" data-list-type="room_category">
                             <option value="">Pick...</option>
@@ -93,9 +93,17 @@
                                 <option value="{{ $r->name }}" data-desc="{{ $r->description }}">{{ $r->name }}</option>
                             @endforeach
                         </select>
-                        <small class="form-help-text text-muted d-block mt-1"></small>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Comfort Tier <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="comfort_tier" data-list-type="accommodation_category">
+                            <option value="">Pick...</option>
+                            @foreach($accommodationCategories as $c)
+                                <option value="{{ $c->name }}" data-desc="{{ $c->description }}">{{ $c->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-1">
                         <label class="form-label small mb-1">Total <span class="text-danger">*</span></label>
                         <input type="number" class="form-control form-control-sm bulk-field" data-field="total_rooms" min="1" max="500" placeholder="4">
                     </div>
@@ -103,7 +111,7 @@
                         <label class="form-label small mb-1">Rate/night ₹ <span class="text-danger">*</span></label>
                         <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="2500">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small mb-1">Meal Plan</label>
                         <select class="form-select form-select-sm custom-select bulk-field" data-field="meal_plan" data-list-type="meal_plan">
                             <option value="">— none —</option>
@@ -184,12 +192,24 @@
                 </div>
             </div>
             <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-7">
+                    <label class="form-label small">Comfort Tier <span class="text-danger">*</span></label>
+                    <select class="form-select form-select-sm custom-select" name="comfort_tier" data-list-type="accommodation_category">
+                        <option value="">Select tier...</option>
+                        @foreach($accommodationCategories as $c)
+                            <option value="{{ $c->name }}" data-desc="{{ $c->description }}">{{ $c->name }}</option>
+                        @endforeach
+                    </select>
+                    <small class="form-help-text text-muted d-block mt-1"></small>
+                </div>
                 <div class="col-md-5">
                     <label class="form-label small">Rate per night (₹) <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_accommodation" placeholder="e.g. 2500">
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
-                <div class="col-md-7">
+            </div>
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-12">
                     <label class="form-label small">Meal Plan</label>
                     <select class="form-select form-select-sm custom-select" name="meal_plan" data-list-type="meal_plan">
                         <option value="">— no meals (room only) —</option>
@@ -391,6 +411,7 @@ jQuery(function() {
                     var parts = [];
                     if (r.room_category) parts.push('<strong>' + spEscape(r.room_category) + '</strong>');
                     else if (r.category)  parts.push('<strong>' + spEscape(r.category) + '</strong>');
+                    if (r.comfort_tier)   parts.push('<span class="badge bg-light text-dark border">' + spEscape(r.comfort_tier) + '</span>');
                     if (r.meal_plan)      parts.push('<span class="text-muted">' + spEscape(r.meal_plan) + '</span>');
                     details = parts.join(' · ');
                 } else if (r.service_type === 'transport') {
@@ -458,6 +479,7 @@ jQuery(function() {
         $f.find('[name=is_active]').prop('checked', r ? !!r.is_active : true);
 
         $f.find('[name=room_category]').val(r ? (r.room_category || r.category || '') : '');
+        $f.find('[name=comfort_tier]').val(r ? (r.comfort_tier || '') : '');
         $f.find('[name=total_rooms]').val(r ? (r.total_rooms || '') : '');
         $f.find('[name=meal_plan]').val(r ? (r.meal_plan || '') : '');
         $f.find('[name=price_accommodation]').val(r && r.service_type === 'accommodation' ? r.price : '');
@@ -651,6 +673,7 @@ jQuery(function() {
 
         if (type === 'accommodation') {
             data.room_category = jQuery(this).find('[name=room_category]').val();
+            data.comfort_tier  = jQuery(this).find('[name=comfort_tier]').val();
             data.total_rooms   = jQuery(this).find('[name=total_rooms]').val();
             data.meal_plan     = jQuery(this).find('[name=meal_plan]').val();
             data.price         = jQuery(this).find('[name=price_accommodation]').val();
