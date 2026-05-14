@@ -127,9 +127,12 @@ class HctController extends Controller
         $vehicleTypes            = SystemList::ofType("vehicle_type")->get();
         $guideTypes              = SystemList::ofType("guide_preference")->get();
         $activityTypes           = SystemList::ofType("activity_type")->get();
+        $occupancyUnits          = SystemList::ofType("occupancy_unit")->get();
+        $mealPlans               = SystemList::ofType("meal_plan")->get();
         return view("admin.providers.edit", compact(
             "provider", "regions",
-            "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes"
+            "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes",
+            "occupancyUnits", "mealPlans"
         ));
     }
 

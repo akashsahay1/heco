@@ -3284,7 +3284,7 @@ class AjaxController extends Controller
 
     protected function saveSystemListItem(Request $request): JsonResponse
     {
-        $data = $request->only(["list_type", "name", "sort_order"]);
+        $data = $request->only(["list_type", "name", "sort_order", "description"]);
         if ($request->has("is_active")) {
             $data["is_active"] = $request->boolean("is_active");
         }

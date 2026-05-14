@@ -148,4 +148,38 @@
             buildCustomDropdown(this);
         });
     });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Help-text rendering: when a <select> has options with data-desc, show
+    // the selected option's description in the nearest .form-help-text
+    // sibling. Lets admins/SPs/travellers see "what does Cat A mean" without
+    // looking it up. Listens on both native change AND the custom dropdown's
+    // selection (which dispatches change on the underlying <select>).
+    // Used wherever a system_list-backed dropdown carries data-desc on each
+    // <option>.
+    // ─────────────────────────────────────────────────────────────────────
+    function renderHelpText($select) {
+        var $help = $select.siblings('.form-help-text');
+        if (!$help.length) {
+            // also check parent — custom-select wraps the <select>
+            $help = $select.closest('.custom-select-wrap').siblings('.form-help-text');
+        }
+        if (!$help.length) return;
+        var $opt = $select.find('option:selected');
+        var desc = $opt.length ? ($opt.attr('data-desc') || '') : '';
+        if (desc) {
+            $help.html('<i class="bi bi-info-circle me-1"></i>' + $('<div>').text(desc).html()).show();
+        } else {
+            $help.empty().hide();
+        }
+    }
+
+    $(document).on('change', 'select[data-list-type]', function () {
+        renderHelpText($(this));
+    });
+
+    $(function () {
+        // Initial render for any selects already populated on page load.
+        $('select[data-list-type]').each(function () { renderHelpText($(this)); });
+    });
 })(jQuery);

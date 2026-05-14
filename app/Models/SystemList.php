@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class SystemList extends Model
 {
-    protected $fillable = ['list_type', 'name', 'is_active', 'sort_order'];
+    protected $fillable = ['list_type', 'name', 'description', 'is_active', 'sort_order'];
 
     protected function casts(): array
     {

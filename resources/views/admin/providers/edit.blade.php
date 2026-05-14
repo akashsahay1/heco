@@ -217,22 +217,45 @@
         <div class="row g-2 mb-2">
             <div class="col-md-7"><label class="form-label small">Rate (₹)</label><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price" required></div>
             <div class="col-md-5"><label class="form-label small">Unit</label>
-                <select class="form-select form-select-sm custom-select" name="unit" required>
-                    <option value="per night">per night</option>
-                    <option value="per day">per day</option>
-                    <option value="per person">per person</option>
-                    <option value="per trip">per trip</option>
-                    <option value="per km">per km</option>
-                    <option value="per activity">per activity</option>
+                <select class="form-select form-select-sm custom-select" name="unit" data-list-type="occupancy_unit" required>
+                    <option value="">Select unit...</option>
+                    @foreach($occupancyUnits as $u)
+                        <option value="{{ $u->name }}" data-desc="{{ $u->description }}">{{ $u->name }}</option>
+                    @endforeach
                 </select>
+                <small class="form-help-text text-muted d-block mt-1"></small>
             </div>
         </div>
-        <div class="mb-2"><label class="form-label small">Category (optional)</label><input type="text" class="form-control form-control-sm" name="category"></div>
-        <div class="row g-2 mb-2">
-            <div class="col-md-6"><label class="form-label small">Vehicle type (optional)</label><input type="text" class="form-control form-control-sm" name="vehicle_type"></div>
-            <div class="col-md-6"><label class="form-label small">Meal plan (optional)</label><input type="text" class="form-control form-control-sm" name="meal_plan"></div>
+        <div class="mb-2"><label class="form-label small">Category (for Accommodation — pick if applicable)</label>
+            <select class="form-select form-select-sm custom-select" name="category" data-list-type="accommodation_category">
+                <option value="">— none —</option>
+                @foreach($accommodationCategories as $c)
+                    <option value="{{ $c->name }}" data-desc="{{ $c->description }}">{{ $c->name }}</option>
+                @endforeach
+            </select>
+            <small class="form-help-text text-muted d-block mt-1"></small>
         </div>
-        <div class="mb-2"><label class="form-label small">Description (optional)</label><input type="text" class="form-control form-control-sm" name="description"></div>
+        <div class="row g-2 mb-2">
+            <div class="col-md-6"><label class="form-label small">Vehicle type (for Transport)</label>
+                <select class="form-select form-select-sm custom-select" name="vehicle_type" data-list-type="vehicle_type">
+                    <option value="">— none —</option>
+                    @foreach($vehicleTypes as $v)
+                        <option value="{{ $v->name }}" data-desc="{{ $v->description }}">{{ $v->name }}</option>
+                    @endforeach
+                </select>
+                <small class="form-help-text text-muted d-block mt-1"></small>
+            </div>
+            <div class="col-md-6"><label class="form-label small">Meal plan (for Accommodation)</label>
+                <select class="form-select form-select-sm custom-select" name="meal_plan" data-list-type="meal_plan">
+                    <option value="">— none —</option>
+                    @foreach($mealPlans as $m)
+                        <option value="{{ $m->name }}" data-desc="{{ $m->description }}">{{ $m->name }}</option>
+                    @endforeach
+                </select>
+                <small class="form-help-text text-muted d-block mt-1"></small>
+            </div>
+        </div>
+        <div class="mb-2"><label class="form-label small">Description / Notes for this rate (optional)</label><input type="text" class="form-control form-control-sm" name="description" placeholder="e.g. 'Off-season rate', 'Includes river-view room'"></div>
         <div class="mb-2"><label class="form-label small">Notes (optional)</label><textarea class="form-control form-control-sm" name="notes" rows="2"></textarea></div>
         <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" name="is_active" value="1" checked id="spPriceActive"><label class="form-check-label small" for="spPriceActive">Active</label></div>
         <button type="submit" class="btn btn-sm btn-success w-100">Save Rate</button>

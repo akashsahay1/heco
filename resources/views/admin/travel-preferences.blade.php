@@ -34,13 +34,14 @@
                             <tr>
                                 <th class="w-id">#</th>
                                 <th>Option name</th>
+                                <th>Description (what this means)</th>
                                 <th class="w-status">Sort</th>
                                 <th class="w-status">Status</th>
                                 <th class="w-actions-lg">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="pref-items">
-                            <tr><td colspan="5" class="text-center text-muted small">Loading...</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted small">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -75,11 +76,11 @@
 
     function loadList(type) {
         var $tbody = jQuery('.pref-list[data-type="' + type + '"] .pref-items');
-        $tbody.html('<tr><td colspan="5" class="text-center text-muted small">Loading...</td></tr>');
+        $tbody.html('<tr><td colspan="6" class="text-center text-muted small">Loading...</td></tr>');
         ajaxPost({ get_system_lists: 1, list_type: type }, function(resp) {
             var items = resp.items || [];
             if (!items.length) {
-                $tbody.html('<tr><td colspan="5" class="text-center text-muted small">No options yet. Add the first one below.</td></tr>');
+                $tbody.html('<tr><td colspan="6" class="text-center text-muted small">No options yet. Add the first one below.</td></tr>');
                 return;
             }
             var html = '';
@@ -88,6 +89,7 @@
                 html += '<tr data-id="' + item.id + '" data-name="' + escapeHtml(item.name) + '" data-sort="' + (item.sort_order || 0) + '">';
                 html += '<td class="text-muted">' + (idx + 1) + '</td>';
                 html += '<td><strong class="' + nameClass + '">' + escapeHtml(item.name) + '</strong></td>';
+                html += '<td><small class="text-muted">' + escapeHtml(item.description || '—') + '</small></td>';
                 html += '<td><small>' + (item.sort_order || 0) + '</small></td>';
                 html += '<td>';
                 if (item.is_active) {

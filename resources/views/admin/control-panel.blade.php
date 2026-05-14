@@ -48,6 +48,7 @@
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#cpPrompts" type="button">AI Prompts</button></li>
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#cpLogs" type="button">Activity Logs</button></li>
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#cpPdf" type="button">PDF Templates</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#cpGlossary" type="button">Glossary</button></li>
 </ul>
 
 <div class="tab-content border border-top-0 p-3 cp-tabwrap">
@@ -90,12 +91,13 @@
                         <th class="w-check"><i class="bi bi-check2-square cp-list-selall" role="button" title="Select all"></i></th>
                         <th class="w-id">#</th>
                         <th>Name</th>
+                        <th>Description</th>
                         <th class="w-sort">Sort</th>
                         <th class="w-status">Status</th>
                         <th class="w-actions-md">Actions</th>
                     </tr>
                 </thead>
-                <tbody id="cpListBody"><tr><td colspan="6" class="text-center text-muted small">Loading...</td></tr></tbody>
+                <tbody id="cpListBody"><tr><td colspan="7" class="text-center text-muted small">Loading...</td></tr></tbody>
             </table>
         </div>
         <div class="d-flex gap-2">
@@ -144,6 +146,17 @@
         </div>
     </div>
 
+    {{-- ---- Glossary ---- --}}
+    <div class="tab-pane fade" id="cpGlossary">
+        <p class="text-muted small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Reference of every option used across the platform — Accommodation categories, vehicle types,
+            travel preferences, meal plans, occupancy units, etc. Edit any item via the
+            <strong>System Lists</strong> tab or the <a href="{{ url('/travel-preferences') }}">Travel Preferences</a> page.
+        </p>
+        <div id="cpGlossaryBody"><p class="text-muted text-center small">Loading…</p></div>
+    </div>
+
     {{-- ---- PDF Templates ---- --}}
     <div class="tab-pane fade" id="cpPdf">
         <div class="table-responsive">
@@ -163,6 +176,7 @@
         <input type="hidden" name="id">
         <input type="hidden" name="list_type">
         <div class="mb-2"><label class="form-label small">Name</label><input type="text" class="form-control form-control-sm" name="name" required></div>
+        <div class="mb-2"><label class="form-label small">Description <span class="text-muted">(what this option means — shown as help-text)</span></label><textarea class="form-control form-control-sm" name="description" rows="3" maxlength="500" placeholder="1-2 lines explaining what this option includes — amenities, price band, who it suits."></textarea></div>
         <div class="mb-2"><label class="form-label small">Sort order</label><input type="number" class="form-control form-control-sm" name="sort_order" value="0" min="0"></div>
         <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" name="is_active" value="1" checked id="cpListActive"><label class="form-check-label small" for="cpListActive">Active</label></div>
         <button type="submit" class="btn btn-sm btn-success w-100">Save</button>
@@ -288,16 +302,18 @@ jQuery(function() {
     }
     function loadList() {
         var type = jQuery('#cpListType').val();
-        jQuery('#cpListBody').html('<tr><td colspan="6" class="text-center text-muted small">Loading...</td></tr>');
+        jQuery('#cpListBody').html('<tr><td colspan="7" class="text-center text-muted small">Loading...</td></tr>');
         ajaxPost({ get_system_lists: 1, list_type: type }, function(resp) {
             var items = resp.items || [];
-            if (!items.length) { jQuery('#cpListBody').html('<tr><td colspan="6" class="text-center text-muted small">No items. Add the first one.</td></tr>'); refreshListBulkBtn(); return; }
+            if (!items.length) { jQuery('#cpListBody').html('<tr><td colspan="7" class="text-center text-muted small">No items. Add the first one.</td></tr>'); refreshListBulkBtn(); return; }
             var html = '';
             items.forEach(function(item, idx) {
-                html += '<tr data-id="' + item.id + '" data-name="' + escapeHtml(item.name) + '" data-sort="' + (item.sort_order || 0) + '" data-active="' + (item.is_active ? 1 : 0) + '">';
+                var desc = item.description || '';
+                html += '<tr data-id="' + item.id + '" data-name="' + escapeHtml(item.name) + '" data-desc="' + escapeHtml(desc) + '" data-sort="' + (item.sort_order || 0) + '" data-active="' + (item.is_active ? 1 : 0) + '">';
                 html += '<td><i class="bi bi-square cp-list-check" role="button" data-id="' + item.id + '"></i></td>';
                 html += '<td class="text-muted small">' + (idx + 1) + '</td>';
                 html += '<td>' + escapeHtml(item.name) + '</td>';
+                html += '<td class="small text-muted">' + escapeHtml(desc || '—') + '</td>';
                 html += '<td class="small">' + (item.sort_order || 0) + '</td>';
                 html += '<td>' + (item.is_active ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>') + '</td>';
                 html += '<td>';
@@ -340,6 +356,7 @@ jQuery(function() {
         jQuery('#cpListForm [name=id]').val($tr.data('id'));
         jQuery('#cpListForm [name=list_type]').val(jQuery('#cpListType').val());
         jQuery('#cpListForm [name=name]').val($tr.data('name'));
+        jQuery('#cpListForm [name=description]').val($tr.data('desc') || '');
         jQuery('#cpListForm [name=sort_order]').val($tr.data('sort'));
         jQuery('#cpListForm [name=is_active]').prop('checked', String($tr.data('active')) === '1');
         new bootstrap.Modal('#cpListModal').show();
@@ -517,6 +534,73 @@ jQuery(function() {
     });
     var pdfLoaded = false;
     jQuery('button[data-bs-target="#cpPdf"]').on('shown.bs.tab', function() { if (!pdfLoaded) { pdfLoaded = true; loadPdf(); } });
+
+    // ===== Glossary tab (read-only reference of every system_list) =====
+    var glossaryLoaded = false;
+    function loadGlossary() {
+        var $box = jQuery('#cpGlossaryBody');
+        $box.html('<p class="text-muted text-center small">Loading…</p>');
+
+        // List types to display + friendly section labels.
+        var types = [
+            ['service_type',          'Service Types'],
+            ['accommodation_category','Accommodation Categories (SP-side)'],
+            ['accommodation_comfort', 'Accommodation Comfort (Traveller preference)'],
+            ['vehicle_type',          'Vehicle Types (SP-side)'],
+            ['vehicle_comfort',       'Vehicle Comfort (Traveller preference)'],
+            ['guide_preference',      'Guide Preferences'],
+            ['activity_type',         'Activity Types'],
+            ['experience_type',       'Experience Types'],
+            ['occupancy_unit',        'Occupancy Units (used in SP pricing)'],
+            ['meal_plan',             'Meal Plans (used in SP pricing)'],
+            ['travel_pace',           'Travel Pace'],
+            ['budget_sensitivity',    'Budget Sensitivity'],
+            ['payment_mode',          'Payment Modes'],
+        ];
+
+        // Fire one AJAX per type, render as a section. Sequential to keep
+        // the markup ordered.
+        var html = '';
+        var remaining = types.length;
+        types.forEach(function(tuple, idx) {
+            (function(listType, label, position) {
+                ajaxPost({ get_system_lists: 1, list_type: listType }, function(resp) {
+                    var items = resp.items || [];
+                    var section = '<div class="cp-glossary-section mb-4" data-pos="' + position + '">';
+                    section += '<h6 class="fw-bold text-primary mb-2">' + escapeHtml(label) + ' <span class="text-muted small fw-normal">(' + items.length + ')</span></h6>';
+                    if (!items.length) {
+                        section += '<p class="text-muted small mb-0 ms-2">No options.</p>';
+                    } else {
+                        section += '<table class="table table-sm table-bordered mb-0">';
+                        section += '<thead class="table-light"><tr><th class="w-status">Option</th><th>Description</th><th class="w-status">Status</th></tr></thead>';
+                        section += '<tbody>';
+                        items.forEach(function(item) {
+                            section += '<tr>';
+                            section += '<td class="fw-semibold">' + escapeHtml(item.name) + '</td>';
+                            section += '<td><small class="text-muted">' + escapeHtml(item.description || '— (no description set)') + '</small></td>';
+                            section += '<td>' + (item.is_active ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>') + '</td>';
+                            section += '</tr>';
+                        });
+                        section += '</tbody></table>';
+                    }
+                    section += '</div>';
+                    // Stash on the box keyed by position so we can re-order.
+                    $box.data('section-' + position, section);
+                    remaining--;
+                    if (remaining === 0) {
+                        var ordered = '';
+                        for (var i = 0; i < types.length; i++) {
+                            ordered += $box.data('section-' + i) || '';
+                        }
+                        $box.html(ordered);
+                    }
+                });
+            })(tuple[0], tuple[1], idx);
+        });
+    }
+    jQuery('button[data-bs-target="#cpGlossary"]').on('shown.bs.tab', function() {
+        if (!glossaryLoaded) { glossaryLoaded = true; loadGlossary(); }
+    });
 });
 </script>
 @endsection

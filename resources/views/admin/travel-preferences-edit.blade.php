@@ -41,6 +41,12 @@
                 <small class="text-muted">This is the label shown to travellers and saved on every Trip that selects it.</small>
             </div>
 
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Description <span class="text-muted small">(what this option means)</span></label>
+                <textarea class="form-control" name="description" rows="3" maxlength="500" placeholder="1-2 lines explaining what this option includes — amenities, price band, who it suits, etc. Shown as help-text under the dropdown.">{{ $item->description }}</textarea>
+                <small class="text-muted">Shown as help-text below the dropdown wherever this option appears. Keep it concrete (price range, what's included, who it suits).</small>
+            </div>
+
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label fw-semibold">Sort order</label>
@@ -93,6 +99,7 @@ jQuery(function() {
             id: jQuery('input[name=id]').val(),
             list_type: jQuery('input[name=list_type]').val(),
             name: jQuery('input[name=name]').val().trim(),
+            description: jQuery('textarea[name=description]').val(),
             sort_order: parseInt(jQuery('input[name=sort_order]').val(), 10) || 0,
             is_active: jQuery('#isActiveSwitch').is(':checked') ? 1 : 0
         };
