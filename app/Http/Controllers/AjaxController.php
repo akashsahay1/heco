@@ -3492,8 +3492,12 @@ class AjaxController extends Controller
 
         $rulesByType = [
             'accommodation' => [
-                "room_category"     => "required|string|max:100",
-                "comfort_tier"      => "nullable|string|max:80",
+                // Comfort tier is now the primary axis — required.
+                // Room category (Single, Double, Twin, …) is optional and may
+                // be a comma-separated list of types offered at this tier
+                // (e.g. "Single Room, Double Room").
+                "comfort_tier"      => "required|string|max:80",
+                "room_category"     => "nullable|string|max:255",
                 "total_rooms"       => "required|integer|min:1|max:500",
                 "default_occupancy" => "nullable|string|max:50",
                 "meal_plan"         => "nullable|string|max:100",

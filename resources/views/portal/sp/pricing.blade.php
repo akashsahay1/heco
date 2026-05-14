@@ -196,25 +196,10 @@
 
         <div class="add-mode-pane add-mode-single">
 
-        {{-- ACCOMMODATION --}}
+        {{-- ACCOMMODATION — pricing is per comfort tier, not per room category.
+             One row = one comfort tier. Room types (Single / Double / etc.) are
+             stored as an optional comma-separated list under room_category. --}}
         <div class="svc-fields" data-svc="accommodation">
-            <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-7">
-                    <label class="form-label small">Room Category <span class="text-danger">*</span></label>
-                    <select class="form-select form-select-sm custom-select" name="room_category" data-list-type="room_category">
-                        <option value="">Select category...</option>
-                        @foreach($roomCategories as $r)
-                            <option value="{{ $r->name }}" data-desc="{{ $r->description }}">{{ $r->name }}</option>
-                        @endforeach
-                    </select>
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-                <div class="col-md-5">
-                    <label class="form-label small">Total Rooms <span class="text-danger">*</span></label>
-                    <input type="number" min="1" max="500" class="form-control form-control-sm" name="total_rooms" placeholder="e.g. 4">
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-            </div>
             <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-7">
                     <label class="form-label small">Comfort Tier <span class="text-danger">*</span></label>
@@ -233,7 +218,12 @@
                 </div>
             </div>
             <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-12">
+                <div class="col-md-5">
+                    <label class="form-label small">Total Rooms at this tier <span class="text-danger">*</span></label>
+                    <input type="number" min="1" max="500" class="form-control form-control-sm" name="total_rooms" placeholder="e.g. 4">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
+                </div>
+                <div class="col-md-7">
                     <label class="form-label small">Meal Plan</label>
                     <select class="form-select form-select-sm custom-select" name="meal_plan" data-list-type="meal_plan">
                         <option value="">— no meals (room only) —</option>
@@ -243,6 +233,19 @@
                     </select>
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
+            </div>
+            <div class="mb-2">
+                <label class="form-label small mb-1">Room Types Offered <span class="text-muted small">(optional)</span></label>
+                <div class="room-type-checklist border rounded p-2 bg-light">
+                    @foreach($roomCategories as $r)
+                        <label class="room-type-chip me-2 d-inline-flex align-items-center">
+                            <input type="checkbox" class="form-check-input me-1 room-type-cb" value="{{ $r->name }}">
+                            <span class="small">{{ $r->name }}</span>
+                        </label>
+                    @endforeach
+                </div>
+                <small class="text-muted d-block mt-1"><i class="bi bi-info-circle me-1"></i>Tick whichever room types you offer at this comfort tier. Leave all blank if a single mixed inventory.</small>
+                <input type="hidden" name="room_category" value="">
             </div>
             <input type="hidden" name="unit_accommodation" value="per night">
         </div>
@@ -433,10 +436,11 @@ jQuery(function() {
                 var details = '';
                 if (r.service_type === 'accommodation') {
                     var parts = [];
-                    if (r.room_category) parts.push('<strong>' + spEscape(r.room_category) + '</strong>');
-                    else if (r.category)  parts.push('<strong>' + spEscape(r.category) + '</strong>');
-                    if (r.comfort_tier)   parts.push('<span class="badge bg-light text-dark border">' + spEscape(r.comfort_tier) + '</span>');
-                    if (r.meal_plan)      parts.push('<span class="text-muted">' + spEscape(r.meal_plan) + '</span>');
+                    // Comfort tier is now the primary label
+                    if (r.comfort_tier)   parts.push('<strong>' + spEscape(r.comfort_tier) + '</strong>');
+                    var rooms = r.room_category || r.category || '';
+                    if (rooms)            parts.push('<span class="text-muted small">' + spEscape(rooms) + '</span>');
+                    if (r.meal_plan)      parts.push('<span class="badge bg-light text-dark border">' + spEscape(r.meal_plan) + '</span>');
                     details = parts.join(' · ');
                 } else if (r.service_type === 'transport') {
                     var parts = [];
@@ -505,11 +509,18 @@ jQuery(function() {
         $f.find('[name=description]').val(r ? (r.description || '') : '');
         $f.find('[name=is_active]').prop('checked', r ? !!r.is_active : true);
 
-        $f.find('[name=room_category]').val(r ? (r.room_category || r.category || '') : '');
+        var roomCatStr = r ? (r.room_category || r.category || '') : '';
+        $f.find('[name=room_category]').val(roomCatStr);
         $f.find('[name=comfort_tier]').val(r ? (r.comfort_tier || '') : '');
         $f.find('[name=total_rooms]').val(r ? (r.total_rooms || '') : '');
         $f.find('[name=meal_plan]').val(r ? (r.meal_plan || '') : '');
         $f.find('[name=price_accommodation]').val(r && r.service_type === 'accommodation' ? r.price : '');
+
+        // Room Types checklist — derive from the comma-separated room_category
+        var picked = (roomCatStr || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        $f.find('.room-type-cb').each(function() {
+            jQuery(this).prop('checked', picked.indexOf(jQuery(this).val()) !== -1);
+        });
 
         $f.find('[name=vehicle_type]').val(r ? (r.vehicle_type || '') : '');
         $f.find('[name=vehicle_capacity]').val(r ? (r.vehicle_capacity || '') : '');
@@ -781,7 +792,11 @@ jQuery(function() {
         };
 
         if (type === 'accommodation') {
-            data.room_category = jQuery(this).find('[name=room_category]').val();
+            // Comma-join the Room Types checklist into the room_category string.
+            var picked = jQuery(this).find('.room-type-cb:checked').map(function() {
+                return jQuery(this).val();
+            }).get().join(', ');
+            data.room_category = picked;
             data.comfort_tier  = jQuery(this).find('[name=comfort_tier]').val();
             data.total_rooms   = jQuery(this).find('[name=total_rooms]').val();
             data.meal_plan     = jQuery(this).find('[name=meal_plan]').val();

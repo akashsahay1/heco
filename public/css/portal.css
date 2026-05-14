@@ -7723,6 +7723,10 @@
 .heco-portal .exp-detail-card .stay-table th { font-size: 0.8rem; }
 .heco-portal .stay-results { min-height: 30px; }
 
+/* Room Types checklist — tier-first accommodation form. */
+.heco-portal .room-type-checklist { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.heco-portal .room-type-chip      { margin: 0; cursor: pointer; }
+
 /* SP pricing modal — keep paired columns the same visual height regardless
    of which one carries a data-desc help line. Each column is a flex-column
    and the trailing .form-help-text is pushed to the bottom with margin-top:
