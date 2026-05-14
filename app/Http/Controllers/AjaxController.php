@@ -4034,6 +4034,8 @@ class AjaxController extends Controller
             return response()->json(["error" => "Unauthorized"], 403);
         }
         $provider = ServiceProvider::findOrFail($request->provider_id);
+        $wasApproved = $provider->status === 'approved';
+
         $data = $request->only([
             "name", "contact_person", "email", "phone_1", "phone_2",
             "address", "region_id", "provider_type",
@@ -4043,14 +4045,85 @@ class AjaxController extends Controller
             "notes", "status",
         ]);
         // Track approval timestamp when status flips to approved for the first time
-        if (($data['status'] ?? null) === 'approved' && $provider->status !== 'approved') {
+        if (($data['status'] ?? null) === 'approved' && !$wasApproved) {
             $data['approved_at'] = now();
             $data['approved_by'] = Auth::id();
         }
         $data['last_updated_by'] = Auth::id();
         $data['last_updated_by_role'] = 'admin';
         $provider->update($data);
+
+        // If status flipped to approved here (not just via the Provider Applications
+        // tab), run the same side-effects as approveProvider: ensure the SP has a
+        // User account and email them the set-password link. Without this, the SP
+        // can't log in and never knows they were approved.
+        if (($data['status'] ?? null) === 'approved' && !$wasApproved) {
+            $this->finalizeApproval($provider->fresh());
+        }
+
         return response()->json(["success" => true]);
+    }
+
+    /**
+     * Side-effects of approving an SP — runs from approveProvider AND from
+     * editProvider when status flips to approved.
+     *
+     * 1. Ensures the SP has a linked User account (creates one if missing,
+     *    finds an existing one by email, or updates the role on an existing
+     *    user with a different email-matching).
+     * 2. Generates a password-reset token and emails the SP a set-password
+     *    link via SpApplicationApprovedEmail.
+     *
+     * Idempotent — if the SP already has user_id, skips creation. If the
+     * mail send fails, logs it and continues (non-fatal).
+     */
+    protected function finalizeApproval(ServiceProvider $provider): void
+    {
+        // 1. Ensure linked User exists.
+        if (!$provider->user_id && $provider->email) {
+            $user = User::where('email', $provider->email)->first();
+            if (!$user) {
+                $user = User::create([
+                    'full_name' => $provider->name,
+                    'email'     => $provider->email,
+                    'password'  => Str::random(40),
+                    'auth_type' => 'email',
+                    'user_role' => $provider->provider_type,
+                ]);
+            } else {
+                $user->update(['user_role' => $provider->provider_type]);
+            }
+            $provider->forceFill(['user_id' => $user->id])->save();
+        }
+
+        // 2. Email the SP a set-password link so they can log in.
+        $user = $provider->user_id ? User::find($provider->user_id) : null;
+        if (!$user || !$user->email) {
+            Log::warning('finalizeApproval: SP has no linked user/email; skipping mail', ['provider_id' => $provider->id]);
+            return;
+        }
+
+        $providerLabel = match ($provider->provider_type) {
+            'hrp' => 'Himalayan Regenerative Partner (HRP)',
+            'hlh' => 'Homestay Local Host (HLH)',
+            'osp' => 'Other Service Provider (OSP)',
+            default => 'Partner',
+        };
+        try {
+            $token = Password::createToken($user);
+            $setPasswordUrl = route('password.reset', [
+                'token' => $token,
+                'email' => $user->email,
+            ]);
+            $contactName = $provider->contact_person ?: $provider->name;
+            $this->sendMail(
+                $user->email,
+                new SpApplicationApprovedEmail($contactName, $providerLabel, $setPasswordUrl),
+                'sp_approved:' . $provider->id
+            );
+        } catch (\Throwable $e) {
+            Log::error('SP approval email failed [' . $provider->id . ']: ' . $e->getMessage());
+        }
     }
 
     protected function updateSpProfile(Request $request): JsonResponse
@@ -4257,56 +4330,17 @@ class AjaxController extends Controller
     protected function approveProvider(Request $request): JsonResponse
     {
         $provider = ServiceProvider::findOrFail($request->provider_id);
-
-        if (!$provider->user_id) {
-            $user = User::where("email", $provider->email)->first();
-            if (!$user) {
-                $user = User::create([
-                    "full_name" => $provider->name,
-                    "email" => $provider->email,
-                    "password" => Str::random(40),
-                    "auth_type" => "email",
-                    "user_role" => $provider->provider_type,
-                ]);
-            } else {
-                $user->update(["user_role" => $provider->provider_type]);
-            }
-            $provider->user_id = $user->id;
-        }
+        $wasApproved = $provider->status === 'approved';
 
         $provider->update([
             "status" => "approved",
-            "approved_at" => now(),
-            "approved_by" => Auth::id(),
-            "user_id" => $provider->user_id,
+            "approved_at" => $wasApproved ? $provider->approved_at : now(),
+            "approved_by" => $wasApproved ? $provider->approved_by : Auth::id(),
         ]);
 
-        // Email the SP an approval notice with a set-password link so they can
-        // actually log in (the account was created with a random password they
-        // were never told). Failure here is logged, not fatal.
-        $user = User::find($provider->user_id);
-        if ($user && $user->email) {
-            $providerLabel = match ($provider->provider_type) {
-                'hrp' => 'Himalayan Regenerative Partner (HRP)',
-                'hlh' => 'Homestay Local Host (HLH)',
-                'osp' => 'Other Service Provider (OSP)',
-                default => 'Partner',
-            };
-            try {
-                $token = Password::createToken($user);
-                $setPasswordUrl = route('password.reset', [
-                    'token' => $token,
-                    'email' => $user->email,
-                ]);
-                $contactName = $provider->contact_person ?: $provider->name;
-                $this->sendMail(
-                    $user->email,
-                    new SpApplicationApprovedEmail($contactName, $providerLabel, $setPasswordUrl),
-                    'sp_approved:' . $provider->id
-                );
-            } catch (\Throwable $e) {
-                Log::error('SP approval email failed [' . $provider->id . ']: ' . $e->getMessage());
-            }
+        // First-time approval → ensure linked user + send set-password email.
+        if (!$wasApproved) {
+            $this->finalizeApproval($provider->fresh());
         }
 
         return response()->json(["success" => true]);
