@@ -1485,29 +1485,75 @@ class AjaxController extends Controller
             $userName = $user->full_name ?? "Traveller";
         }
 
-        // Send only the experiences the traveller has selected — 1 plan per selection.
-        // No full catalog / no destination hierarchy / no region summary — keeps the
-        // prompt size proportional to selection count instead of bundling all data.
+        // Three-stage catalog scoping (keeps tokens bounded while preventing
+        // the AI from hallucinating experiences):
+        //   A) Selections exist  → send only the selected experiences.
+        //   B) No selections, but a region is resolvable from page filters or
+        //      the trip's regions → send a lightweight catalog for THAT region.
+        //   C) Nothing in scope → send an empty catalog AND a region list so
+        //      the AI asks the traveller which region first instead of inventing.
+        $expCols = ['id', 'name', 'type', 'region_id', 'duration_type', 'duration_days', 'difficulty_level', 'base_cost_per_person', 'available_months'];
+        $expMap = fn($e) => [
+            'id' => $e->id,
+            'name' => $e->name,
+            'type' => $e->type,
+            'region' => $e->region->name ?? '',
+            'region_id' => $e->region_id,
+            'duration' => $e->duration_type === 'multi_day' ? ($e->duration_days ?? 1) . 'd' : '1d',
+            'difficulty' => $e->difficulty_level,
+            'price' => $e->base_cost_per_person,
+            'months' => $e->available_months,
+        ];
+
+        $activeRegionId = null;
+        $availableRegions = [];
+
         if (!empty($selectedExpIds)) {
+            // (A) Send the selected experiences as-is.
             $experiencesJson = Experience::whereIn('id', $selectedExpIds)
-                ->select('id', 'name', 'type', 'region_id', 'duration_type', 'duration_days', 'difficulty_level', 'base_cost_per_person', 'available_months')
-                ->with('region:id,name,continent,country')
-                ->get()
-                ->map(fn($e) => [
-                    'id' => $e->id,
-                    'name' => $e->name,
-                    'type' => $e->type,
-                    'region' => $e->region->name ?? '',
-                    'region_id' => $e->region_id,
-                    'duration' => $e->duration_type === 'multi_day' ? ($e->duration_days ?? 1) . 'd' : '1d',
-                    'difficulty' => $e->difficulty_level,
-                    'price' => $e->base_cost_per_person,
-                    'months' => $e->available_months,
-                ])
-                ->toJson();
+                ->select($expCols)->with('region:id,name,continent,country')
+                ->get()->map($expMap)->toJson();
+            $activeRegionId = (int) Experience::whereIn('id', $selectedExpIds)->value('region_id') ?: null;
         } else {
-            $experiencesJson = '[]';
+            // Resolve an active region from (in priority order): the discover-tab
+            // filter the user posted with this request, the trip's tripRegions
+            // table, or the landing-preferences session bag.
+            $currentFilters = $request->get('current_filters') ? json_decode($request->get('current_filters'), true) : [];
+            if (!empty($currentFilters['region_id'])) {
+                $activeRegionId = (int) $currentFilters['region_id'];
+            } elseif ($trip && $trip->tripRegions()->exists()) {
+                $activeRegionId = (int) $trip->tripRegions()->value('region_id');
+            } elseif (!empty(session('landing_preferences')['region_id'] ?? null)) {
+                $activeRegionId = (int) session('landing_preferences')['region_id'];
+            }
+
+            if ($activeRegionId) {
+                // (B) Region is in scope — send only that region's active experiences.
+                $experiencesJson = Experience::where('region_id', $activeRegionId)
+                    ->where('is_active', true)
+                    ->select($expCols)->with('region:id,name,continent,country')
+                    ->get()->map($expMap)->toJson();
+            } else {
+                // (C) No region in scope — empty experiences list, and a region list
+                // so the AI can present options instead of inventing names.
+                $experiencesJson = '[]';
+                $availableRegions = Region::where('is_active', true)
+                    ->select('id', 'name', 'continent', 'country')
+                    ->orderBy('continent')->orderBy('country')->orderBy('name')
+                    ->get()->map(fn($r) => [
+                        'id' => $r->id, 'name' => $r->name,
+                        'continent' => $r->continent, 'country' => $r->country,
+                    ])->toArray();
+            }
         }
+
+        // Inject active region + available regions into the existing trip_context
+        // JSON (already passed to the prompt) so the AI sees the single source of
+        // truth without needing a new prompt placeholder.
+        $tripContextArr = json_decode($tripContext, true) ?: [];
+        $tripContextArr['active_region_id'] = $activeRegionId;
+        $tripContextArr['available_regions'] = $availableRegions;
+        $tripContext = json_encode($tripContextArr);
 
         $promptBuilder = app(PromptBuilderService::class);
         $promptData = $promptBuilder->build("traveller_chat", [
@@ -1544,7 +1590,7 @@ class AjaxController extends Controller
             }
         }
 
-        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only)\n2. Destination: ask Continent → Country → Region step by step. Use the SET_FILTERS tag when the traveller picks each one — do not invent destination lists.\n3. Experience type & difficulty preference.\n4. Travel date, group size, starting city — ask 2 at a time max.\n5. Recommend ONLY from the AVAILABLE EXPERIENCES list (the traveller's currently selected experiences). If that list is empty, ask the traveller to use the page filters to add experiences first — never invent experience names or IDs.\n\nIf filters already selected (see CURRENT FILTERS), skip those steps. Only ask MISSING details. Single region per trip — all selections must come from the same region.\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
+        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only).\n2. Destination: ask Continent then Country then Region step by step. The ONLY valid regions are in CURRENT_TRIP_CONTEXT.available_regions (when that field is present). NEVER name a region or country not in that list. NEVER mention Nepal, Tibet, Bhutan, Pakistan, or any country that's not represented in available_regions.\n3. Experience type & difficulty preference.\n4. Travel date, group size, starting city — ask 2 at a time max.\n5. ABSOLUTE RULE on experience names + IDs:\n   • You may ONLY name an experience that appears (by exact name) in AVAILABLE EXPERIENCES.\n   • You may ONLY put an id in RECOMMEND_IDS or ADD_TO_TRIP that appears (by exact id) in AVAILABLE EXPERIENCES.\n   • If AVAILABLE EXPERIENCES is `[]` (empty), you have NO catalog yet. In that case your response must NOT contain ANY of: trek names, peak names, route names, sample itineraries, mountain names, fictional experience names, or RECOMMEND_IDS. Even if the traveller asks for specific trek suggestions, you must respond with: 'I'd love to suggest specific treks — first, let's pick a region so I show you only experiences we actually run.' Then present 3-5 region NAMES from CURRENT_TRIP_CONTEXT.available_regions (group by continent if helpful), ask the traveller to pick one, and emit [SET_FILTERS:{\"region_id\":N}] with the chosen region's id. Do NOT proceed to recommend treks/experiences until the next turn (when AVAILABLE EXPERIENCES will be populated).\n   • Famous Himalayan names you must NEVER mention unless they're literally in AVAILABLE EXPERIENCES by exact name: Annapurna, Everest, Manaslu, Markha, Pin Parvati, Hampta Pass, Roopkund, Kuari Pass, Kilimanjaro, Poon Hill, Tilicho.\n\nIf filters already selected (see CURRENT FILTERS), skip the region question. Only ask MISSING details. Single region per trip — all selections must come from the same region (active_region_id).\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
 
         $allInstructions = $currentDateInstruction . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $confirmationRule . $conversationFlowInstruction;
 
@@ -1575,11 +1621,27 @@ class AjaxController extends Controller
             $responseText = trim(preg_replace('/\s*\[SET_FILTERS:\{.+?\}\]/s', '', $responseText));
         }
 
-        // Parse recommended experience IDs
+        // Parse recommended experience IDs. Validate against real catalog so
+        // fabricated IDs (which Gemini/Groq sometimes invent in discovery mode)
+        // never reach the UI. Scope to the active region when one is set.
         $recommendedIds = [];
         if (preg_match('/\[RECOMMEND_IDS:([\d,]+)\]/', $responseText, $matches)) {
-            $recommendedIds = array_map("intval", explode(",", $matches[1]));
+            $rawIds = array_map("intval", explode(",", $matches[1]));
             $responseText = trim(preg_replace('/\s*\[RECOMMEND_IDS:[\d,]+\]/', '', $responseText));
+            if (!empty($rawIds)) {
+                $q = Experience::where('is_active', true)->whereIn('id', $rawIds);
+                if ($activeRegionId) {
+                    $q->where('region_id', $activeRegionId);
+                }
+                $recommendedIds = $q->pluck('id')->all();
+                if (count($recommendedIds) !== count($rawIds)) {
+                    \Log::info('chatWithAi: dropped fabricated RECOMMEND_IDS', [
+                        'raw' => $rawIds,
+                        'kept' => $recommendedIds,
+                        'active_region_id' => $activeRegionId,
+                    ]);
+                }
+            }
         }
 
         // Parse trip details from AI response
