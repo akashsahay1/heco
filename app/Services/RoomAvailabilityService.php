@@ -73,6 +73,7 @@ class RoomAvailabilityService
                 return [
                     'sp_pricing_id' => $row->id,
                     'room_category' => $row->room_category ?: $row->category,
+                    'comfort_tier'  => $row->comfort_tier,
                     'total'         => (int) $row->total_rooms,
                     'booked'        => $booked,
                     'available'     => max(0, ((int) $row->total_rooms) - $booked),

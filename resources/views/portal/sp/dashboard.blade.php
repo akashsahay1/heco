@@ -549,14 +549,18 @@ jQuery(function() {
         var cats = roomCalendar[dateStr] || [];
         if (!cats.length) return '';
         var lines = cats.map(function(c) {
-            // Use 3-letter code from category name so cells stay compact.
-            var code = (c.room_category || '').split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 3).toUpperCase() || '?';
             var color = c.available === 0
                 ? 'cal-room-row--sold'
                 : (c.available < c.total ? 'cal-room-row--partial' : 'cal-room-row--ok');
-            return '<div class="sp-cal-room-row ' + color + '">' + code + ' ' + c.available + '/' + c.total + '</div>';
+            var tier = c.comfort_tier ? '<span class="sp-cal-room-tier">' + c.comfort_tier + '</span>' : '';
+            var room = c.room_category || '—';
+            return '<div class="sp-cal-room-row ' + color + '">' +
+                   tier +
+                   '<span class="sp-cal-room-name">' + room + '</span>' +
+                   '<span class="sp-cal-room-avail">' + c.available + '/' + c.total + '</span>' +
+                   '</div>';
         });
-        return '<div class="sp-cal-rooms">' + lines.join('') + '</div>';
+        return '<div class="sp-cal-rooms"><div class="sp-cal-rooms-title">Room availability</div>' + lines.join('') + '</div>';
     }
 
     function roomTooltip(dateStr) {
@@ -647,11 +651,10 @@ jQuery(function() {
 
             var isSelected = selectedDates.indexOf(dateStr) !== -1;
             var selectedClass = isSelected ? 'sp-cal-day--selected' : '';
-            var roomTip = roomTooltip(dateStr);
-            var fullTitle = title + (roomTip ? '\n\n' + roomTip : '');
-
+            // Native title shows just the status; the room breakdown lives in
+            // a styled CSS hover popover so cells stay clean and readable.
             html += '<div class="col p-1">';
-            html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day ' + cursorClass + ' ' + selectedClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '" title="' + fullTitle + '">';
+            html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day ' + cursorClass + ' ' + selectedClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '" title="' + title + '">';
             html += '<small>' + d + '</small>';
             html += roomBreakdownHtml(dateStr);
             html += '</div></div>';

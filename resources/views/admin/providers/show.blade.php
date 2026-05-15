@@ -365,13 +365,18 @@ function adminRoomBreakdown(dateStr) {
     var cats = adminRoomCalendar[dateStr] || [];
     if (!cats.length) return '';
     var lines = cats.map(function(c) {
-        var code = (c.room_category || '').split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 3).toUpperCase() || '?';
         var color = c.available === 0
             ? 'cal-room-row--sold'
             : (c.available < c.total ? 'cal-room-row--partial' : 'cal-room-row--ok');
-        return '<div class="admin-cal-room-row ' + color + '">' + code + ' ' + c.available + '/' + c.total + '</div>';
+        var tier = c.comfort_tier ? '<span class="admin-cal-room-tier">' + c.comfort_tier + '</span>' : '';
+        var room = c.room_category || '—';
+        return '<div class="admin-cal-room-row ' + color + '">' +
+               tier +
+               '<span class="admin-cal-room-name">' + room + '</span>' +
+               '<span class="admin-cal-room-avail">' + c.available + '/' + c.total + '</span>' +
+               '</div>';
     });
-    return '<div class="admin-cal-rooms">' + lines.join('') + '</div>';
+    return '<div class="admin-cal-rooms"><div class="admin-cal-rooms-title">Room availability</div>' + lines.join('') + '</div>';
 }
 
 function adminRoomTooltip(dateStr) {
@@ -409,8 +414,9 @@ function renderAdminCalendar() {
         else if (info.status === 'blocked') { bgClass = 'cal-cell-blocked'; cursorClass = 'cursor-pointer'; }
         var isSelected = adminSelectedDates.indexOf(dateStr) !== -1;
         var selClass = isSelected ? 'admin-cal-day--selected' : '';
-        var tip = adminRoomTooltip(dateStr);
-        html += '<div class="col p-1"><div class="rounded-2 p-1 ' + bgClass + ' admin-cal-day ' + cursorClass + ' ' + selClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" title="' + tip + '"><small>' + d + '</small>' + adminRoomBreakdown(dateStr) + '</div></div>';
+        // Room breakdown lives inside the cell as a hidden CSS hover popover;
+        // the native title shows just the status so the two don't clash.
+        html += '<div class="col p-1"><div class="rounded-2 p-1 ' + bgClass + ' admin-cal-day ' + cursorClass + ' ' + selClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" title="' + (info.status || 'available') + '"><small>' + d + '</small>' + adminRoomBreakdown(dateStr) + '</div></div>';
         if ((firstDay + d) % 7 === 0) html += '</div><div class="row g-0 text-center">';
     }
     html += '</div>';
