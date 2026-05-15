@@ -7700,6 +7700,8 @@
     transform: translateX(-50%);
     min-width: 260px;
     max-width: 320px;
+    max-height: 60vh;
+    overflow-y: auto;
     background: #fff;
     color: #1f2937;
     border: 1px solid var(--heco-primary-200, #dceae9);
@@ -7709,8 +7711,11 @@
     line-height: 1.3;
     box-shadow: 0 6px 16px rgba(0,0,0,0.12);
     text-align: left;
-    pointer-events: none;
+    /* pointer-events: auto so the user can scroll inside long lists; the
+       popover is a child of the cell so hovering it keeps the cell hovered. */
+    pointer-events: auto;
     white-space: normal;
+    scrollbar-width: thin;
 }
 /* Flipped variant — used when the cell sits near the bottom of the viewport. */
 .heco-portal .sp-cal-day .sp-cal-rooms.sp-cal-rooms--above {
@@ -7718,6 +7723,13 @@
     bottom: calc(100% + 4px);
 }
 .heco-portal .sp-cal-day:hover .sp-cal-rooms { display: block; }
+/* Sticky title so it stays visible while the user scrolls a long list. */
+.heco-portal .sp-cal-day .sp-cal-rooms-title {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 1;
+}
 .heco-portal .sp-cal-day .sp-cal-rooms-title {
     font-size: 10px;
     font-weight: 700;

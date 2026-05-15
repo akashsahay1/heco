@@ -746,16 +746,20 @@ jQuery(function() {
     }
 
     // Smart positioning: flip the room popover above the cell when there
-    // isn't enough room below (otherwise the bottom rows of the calendar
-    // clip the popover off-screen).
+    // isn't enough room below. We make the popover briefly visible (with
+    // opacity 0 + visibility hidden) so we can measure its real height
+    // rather than relying on a hardcoded estimate.
     jQuery('#spCalendarGrid').on('mouseenter', '.sp-cal-day', function() {
         var $cell = jQuery(this);
         var $rooms = $cell.find('.sp-cal-rooms');
         if (!$rooms.length) return;
+        // Temporarily render off-screen to measure
+        $rooms.css({ display: 'block', visibility: 'hidden', opacity: 0 });
+        var popoverH = $rooms.outerHeight();
+        $rooms.css({ display: '', visibility: '', opacity: '' });
         var cellTop = $cell.offset().top - jQuery(window).scrollTop();
         var cellBottom = cellTop + $cell.outerHeight();
         var viewportH = jQuery(window).height();
-        var popoverH = 220;  // upper bound; the real height adapts
         var spaceBelow = viewportH - cellBottom;
         if (spaceBelow < popoverH + 16 && cellTop > popoverH + 16) {
             $rooms.addClass('sp-cal-rooms--above');

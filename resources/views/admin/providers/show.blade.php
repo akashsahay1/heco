@@ -425,16 +425,19 @@ function renderAdminCalendar() {
     $('#adminBtnUnblock').prop('disabled', !adminSelectedDates.length);
 }
 
-// Smart positioning: flip the room popover above the cell when the cell
-// sits near the bottom of the viewport.
+// Smart positioning: flip the room popover above the cell when there
+// isn't enough room below. Briefly render the popover invisibly to
+// measure its real height instead of guessing.
 $(document).on('mouseenter', '.admin-cal-day', function() {
     var $cell = $(this);
     var $rooms = $cell.find('.admin-cal-rooms');
     if (!$rooms.length) return;
+    $rooms.css({ display: 'block', visibility: 'hidden', opacity: 0 });
+    var popoverH = $rooms.outerHeight();
+    $rooms.css({ display: '', visibility: '', opacity: '' });
     var cellTop = $cell.offset().top - $(window).scrollTop();
     var cellBottom = cellTop + $cell.outerHeight();
     var viewportH = $(window).height();
-    var popoverH = 220;
     var spaceBelow = viewportH - cellBottom;
     if (spaceBelow < popoverH + 16 && cellTop > popoverH + 16) {
         $rooms.addClass('admin-cal-rooms--above');
