@@ -88,6 +88,25 @@ jQuery(function() {
                 jQuery('#pendingList').html('<div class="text-center text-muted small py-4"><i class="bi bi-check2-circle me-1"></i> No pending pricing changes.</div>');
                 return;
             }
+            // Build a one-line identity string so the admin can see which row
+            // is being changed, even when only one field differs.
+            function rowIdentity(r) {
+                var parts = [];
+                if (r.service_type === 'accommodation') {
+                    if (r.comfort_tier)   parts.push('<span class="badge bg-light text-dark border me-1">' + escapeHtml(r.comfort_tier) + '</span>');
+                    if (r.room_category)  parts.push('<strong>' + escapeHtml(r.room_category) + '</strong>');
+                    if (r.meal_plan)      parts.push('<span class="text-muted small">' + escapeHtml(r.meal_plan) + '</span>');
+                } else if (r.service_type === 'transport') {
+                    if (r.vehicle_type)   parts.push('<strong>' + escapeHtml(r.vehicle_type) + '</strong>');
+                    if (r.vehicle_capacity) parts.push('<span class="text-muted small">' + r.vehicle_capacity + ' seats</span>');
+                } else if (r.service_type === 'guide' || r.service_type === 'activity' || r.service_type === 'other') {
+                    if (r.category)       parts.push('<strong>' + escapeHtml(r.category) + '</strong>');
+                    if (r.specialties)    parts.push('<span class="text-muted small">' + escapeHtml(r.specialties) + '</span>');
+                }
+                if (r.total_rooms)        parts.push('<span class="text-muted small">' + r.total_rooms + ' rooms total</span>');
+                return parts.join(' · ') || '<span class="text-muted small">(no details yet)</span>';
+            }
+
             var html = '';
             rows.forEach(function(r) {
                 var isEdit = !!r.pending_for_id;
@@ -98,6 +117,11 @@ jQuery(function() {
                 var modeBadge = isEdit
                     ? '<span class="badge bg-warning text-dark">EDIT</span>'
                     : '<span class="badge bg-info text-dark">NEW</span>';
+                // For EDITS, identity comes from the live (pending_for) row so the
+                // admin sees the row's actual identity in the system. For NEW
+                // rows, identity is the pending row itself.
+                var identity = rowIdentity(isEdit ? (r.pending_for || r) : r);
+
                 html += '<div class="card border mb-3" data-id="' + r.id + '">';
                 html += '  <div class="card-header py-2 d-flex align-items-center">';
                 html += '    ' + modeBadge;
@@ -107,6 +131,7 @@ jQuery(function() {
                 html += '    <span class="ms-auto small text-muted">Submitted ' + escapeHtml(r.submitted_at || '') + ' by ' + escapeHtml(submitter.full_name || submitter.email || '?') + '</span>';
                 html += '  </div>';
                 html += '  <div class="card-body">';
+                html += '    <div class="mb-2 small"><span class="text-muted me-2">' + (isEdit ? 'Editing row:' : 'New entry:') + '</span>' + identity + '</div>';
                 html += '    <table class="table table-sm mb-3"><tbody>' + diff + '</tbody></table>';
                 html += '    <div class="d-flex gap-2">';
                 html += '      <button class="btn btn-sm btn-success btn-approve"><i class="bi bi-check-lg me-1"></i> Approve</button>';
