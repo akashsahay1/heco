@@ -7776,6 +7776,23 @@
 .heco-portal .room-type-checklist { display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .heco-portal .room-type-chip      { margin: 0; cursor: pointer; }
 
+/* SP dashboard: services-rooms-pricing accordion. Compact, brand-coloured. */
+.heco-portal .sp-pricing-accordion .accordion-item { border-color: var(--heco-primary-100, #e8f0ef); }
+.heco-portal .sp-pricing-accordion .accordion-button {
+    font-size: 0.875rem;
+    background: #fff;
+    color: var(--heco-primary-800, #496767);
+    box-shadow: none;
+}
+.heco-portal .sp-pricing-accordion .accordion-button:not(.collapsed) {
+    background: var(--heco-primary-100, #e8f0ef);
+    color: var(--heco-primary-800, #496767);
+}
+.heco-portal .sp-pricing-accordion .accordion-button:focus { box-shadow: none; }
+.heco-portal .sp-pricing-accordion .accordion-body { background: #fafafa; }
+.heco-portal .sp-pricing-accordion .accordion-body table th,
+.heco-portal .sp-pricing-accordion .accordion-body table td { padding: 6px 10px; }
+
 /* SP pricing modal — keep paired columns the same visual height regardless
    of which one carries a data-desc help line. Each column is a flex-column
    and the trailing .form-help-text is pushed to the bottom with margin-top:

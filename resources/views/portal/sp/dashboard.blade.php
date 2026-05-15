@@ -248,51 +248,121 @@
                         </div>
                     @endif
 
-                    {{-- Pricing summary (compact preview — full management on /sp/pricing) --}}
+                    {{-- Pricing summary — grouped accordion so a long row list
+                         stays scannable. Accommodation rows are grouped by
+                         comfort tier; other service types each get their own
+                         collapsible section. All start collapsed. --}}
                     @if($provider->pricing && $provider->pricing->count())
-                        <div class="table-responsive mt-2">
-                            <table class="table table-sm table-bordered mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="small">Type</th>
-                                        <th class="small">Details</th>
-                                        <th class="small">Rate</th>
-                                        <th class="small">Inventory</th>
-                                        <th class="small text-center">Active</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($provider->pricing as $price)
-                                        @php
-                                            $typeIcons = ['accommodation' => '🛏', 'transport' => '🚙', 'guide' => '👤', 'activity' => '🏔', 'other' => '📦'];
-                                            $icon = $typeIcons[$price->service_type] ?? '·';
-                                            $details = $price->room_category ?: $price->vehicle_type ?: $price->category ?: '—';
-                                            if ($price->meal_plan) $details .= ' · ' . $price->meal_plan;
-                                            if ($price->vehicle_capacity) $details .= ' · ' . $price->vehicle_capacity . ' seats';
-                                            if ($price->specialties) $details .= ' · ' . $price->specialties;
-                                        @endphp
-                                        <tr class="{{ !$price->is_active ? 'text-muted' : '' }}">
-                                            <td class="small">{!! $icon !!} <span class="text-capitalize">{{ $price->service_type }}</span></td>
-                                            <td class="small">{{ $details }}</td>
-                                            <td class="small text-success">&#8377;{{ number_format($price->price ?? 0, 2) }} <span class="text-muted">{{ $price->unit }}</span></td>
-                                            <td class="small">
-                                                @if($price->service_type === 'accommodation' && $price->total_rooms)
-                                                    {{ $price->total_rooms }} rooms
-                                                @else
-                                                    —
-                                                @endif
-                                            </td>
-                                            <td class="small text-center">
-                                                @if($price->is_active)
-                                                    <i class="bi bi-check-circle-fill text-success"></i>
-                                                @else
-                                                    <i class="bi bi-x-circle text-muted"></i>
-                                                @endif
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
+                        @php
+                            $typeIcons = ['accommodation' => '🛏', 'transport' => '🚙', 'guide' => '👤', 'activity' => '🏔', 'other' => '📦'];
+                            $accomGroups = $provider->pricing
+                                ->where('service_type', 'accommodation')
+                                ->sortBy(['comfort_tier', 'room_category'])
+                                ->groupBy(fn($r) => $r->comfort_tier ?: '— Untiered —');
+                            $otherGroups = $provider->pricing
+                                ->where('service_type', '!=', 'accommodation')
+                                ->groupBy('service_type');
+                        @endphp
+                        <div class="accordion sp-pricing-accordion mt-2" id="spPricingAccordion">
+                            @foreach($accomGroups as $tier => $rows)
+                                @php
+                                    $tierSlug = 'tier-' . \Illuminate\Support\Str::slug($tier);
+                                    $totalRooms = $rows->sum('total_rooms');
+                                @endphp
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#{{ $tierSlug }}">
+                                            <span class="me-2">🛏</span>
+                                            <strong class="small">{{ $tier }}</strong>
+                                            <span class="ms-auto me-2 small text-muted">
+                                                {{ $rows->count() }} {{ \Illuminate\Support\Str::plural('room type', $rows->count()) }}
+                                                · {{ $totalRooms }} {{ \Illuminate\Support\Str::plural('room', $totalRooms) }}
+                                            </span>
+                                        </button>
+                                    </h2>
+                                    <div id="{{ $tierSlug }}" class="accordion-collapse collapse" data-bs-parent="#spPricingAccordion">
+                                        <div class="accordion-body p-0">
+                                            <table class="table table-sm mb-0">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th class="small">Room Category</th>
+                                                        <th class="small">Meal Plan</th>
+                                                        <th class="small">Rate</th>
+                                                        <th class="small">Inventory</th>
+                                                        <th class="small text-center">Active</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($rows as $price)
+                                                        <tr class="{{ !$price->is_active ? 'text-muted' : '' }}">
+                                                            <td class="small">{{ $price->room_category ?: '—' }}</td>
+                                                            <td class="small">{{ $price->meal_plan ?: '—' }}</td>
+                                                            <td class="small text-success">&#8377;{{ number_format($price->price ?? 0, 2) }} <span class="text-muted">{{ $price->unit }}</span></td>
+                                                            <td class="small">{{ $price->total_rooms ? $price->total_rooms . ' rooms' : '—' }}</td>
+                                                            <td class="small text-center">
+                                                                @if($price->is_active)
+                                                                    <i class="bi bi-check-circle-fill text-success"></i>
+                                                                @else
+                                                                    <i class="bi bi-x-circle text-muted"></i>
+                                                                @endif
+                                                            </td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+
+                            @foreach($otherGroups as $svcType => $rows)
+                                @php
+                                    $svcSlug = 'svc-' . \Illuminate\Support\Str::slug($svcType);
+                                    $icon = $typeIcons[$svcType] ?? '·';
+                                @endphp
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#{{ $svcSlug }}">
+                                            <span class="me-2">{!! $icon !!}</span>
+                                            <strong class="small text-capitalize">{{ $svcType }}</strong>
+                                            <span class="ms-auto me-2 small text-muted">{{ $rows->count() }} {{ \Illuminate\Support\Str::plural('entry', $rows->count()) }}</span>
+                                        </button>
+                                    </h2>
+                                    <div id="{{ $svcSlug }}" class="accordion-collapse collapse" data-bs-parent="#spPricingAccordion">
+                                        <div class="accordion-body p-0">
+                                            <table class="table table-sm mb-0">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th class="small">Details</th>
+                                                        <th class="small">Rate</th>
+                                                        <th class="small text-center">Active</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($rows as $price)
+                                                        @php
+                                                            $details = $price->vehicle_type ?: $price->category ?: '—';
+                                                            if ($price->vehicle_capacity) $details .= ' · ' . $price->vehicle_capacity . ' seats';
+                                                            if ($price->specialties) $details .= ' · ' . $price->specialties;
+                                                        @endphp
+                                                        <tr class="{{ !$price->is_active ? 'text-muted' : '' }}">
+                                                            <td class="small">{{ $details }}</td>
+                                                            <td class="small text-success">&#8377;{{ number_format($price->price ?? 0, 2) }} <span class="text-muted">{{ $price->unit }}</span></td>
+                                                            <td class="small text-center">
+                                                                @if($price->is_active)
+                                                                    <i class="bi bi-check-circle-fill text-success"></i>
+                                                                @else
+                                                                    <i class="bi bi-x-circle text-muted"></i>
+                                                                @endif
+                                                            </td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
                         </div>
                     @else
                         <p class="text-muted small text-center mb-0">
