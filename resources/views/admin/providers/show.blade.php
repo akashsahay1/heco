@@ -415,8 +415,8 @@ function renderAdminCalendar() {
         var isSelected = adminSelectedDates.indexOf(dateStr) !== -1;
         var selClass = isSelected ? 'admin-cal-day--selected' : '';
         // Room breakdown lives inside the cell as a hidden CSS hover popover;
-        // the native title shows just the status so the two don't clash.
-        html += '<div class="col p-1"><div class="rounded-2 p-1 ' + bgClass + ' admin-cal-day ' + cursorClass + ' ' + selClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" title="' + (info.status || 'available') + '"><small>' + d + '</small>' + adminRoomBreakdown(dateStr) + '</div></div>';
+        // no native title attribute so the two tooltips don't compete.
+        html += '<div class="col p-1"><div class="rounded-2 p-1 ' + bgClass + ' admin-cal-day ' + cursorClass + ' ' + selClass + '" data-date="' + dateStr + '" data-status="' + info.status + '"><small>' + d + '</small>' + adminRoomBreakdown(dateStr) + '</div></div>';
         if ((firstDay + d) % 7 === 0) html += '</div><div class="row g-0 text-center">';
     }
     html += '</div>';
@@ -424,6 +424,24 @@ function renderAdminCalendar() {
     $('#adminBtnBlock').prop('disabled', !adminSelectedDates.length);
     $('#adminBtnUnblock').prop('disabled', !adminSelectedDates.length);
 }
+
+// Smart positioning: flip the room popover above the cell when the cell
+// sits near the bottom of the viewport.
+$(document).on('mouseenter', '.admin-cal-day', function() {
+    var $cell = $(this);
+    var $rooms = $cell.find('.admin-cal-rooms');
+    if (!$rooms.length) return;
+    var cellTop = $cell.offset().top - $(window).scrollTop();
+    var cellBottom = cellTop + $cell.outerHeight();
+    var viewportH = $(window).height();
+    var popoverH = 220;
+    var spaceBelow = viewportH - cellBottom;
+    if (spaceBelow < popoverH + 16 && cellTop > popoverH + 16) {
+        $rooms.addClass('admin-cal-rooms--above');
+    } else {
+        $rooms.removeClass('admin-cal-rooms--above');
+    }
+});
 
 $(document).on('click', '.admin-cal-day', function() {
     if ($(this).data('status') === 'booked') return;

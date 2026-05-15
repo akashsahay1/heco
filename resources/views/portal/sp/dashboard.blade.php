@@ -721,10 +721,11 @@ jQuery(function() {
 
             var isSelected = selectedDates.indexOf(dateStr) !== -1;
             var selectedClass = isSelected ? 'sp-cal-day--selected' : '';
-            // Native title shows just the status; the room breakdown lives in
-            // a styled CSS hover popover so cells stay clean and readable.
+            // No native title attribute — the styled CSS hover popover carries
+            // both the status and the room breakdown; two tooltips firing at
+            // once is messy. The popover itself shows the status as its header.
             html += '<div class="col p-1">';
-            html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day ' + cursorClass + ' ' + selectedClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '" title="' + title + '">';
+            html += '<div class="rounded-2 p-1 ' + bgClass + ' sp-cal-day ' + cursorClass + ' ' + selectedClass + '" data-date="' + dateStr + '" data-status="' + info.status + '" data-source="' + (info.source || '') + '">';
             html += '<small>' + d + '</small>';
             html += roomBreakdownHtml(dateStr);
             html += '</div></div>';
@@ -743,6 +744,25 @@ jQuery(function() {
         jQuery('#btnBlockSelected').prop('disabled', !hasSelected);
         jQuery('#btnUnblockSelected').prop('disabled', !hasSelected);
     }
+
+    // Smart positioning: flip the room popover above the cell when there
+    // isn't enough room below (otherwise the bottom rows of the calendar
+    // clip the popover off-screen).
+    jQuery('#spCalendarGrid').on('mouseenter', '.sp-cal-day', function() {
+        var $cell = jQuery(this);
+        var $rooms = $cell.find('.sp-cal-rooms');
+        if (!$rooms.length) return;
+        var cellTop = $cell.offset().top - jQuery(window).scrollTop();
+        var cellBottom = cellTop + $cell.outerHeight();
+        var viewportH = jQuery(window).height();
+        var popoverH = 220;  // upper bound; the real height adapts
+        var spaceBelow = viewportH - cellBottom;
+        if (spaceBelow < popoverH + 16 && cellTop > popoverH + 16) {
+            $rooms.addClass('sp-cal-rooms--above');
+        } else {
+            $rooms.removeClass('sp-cal-rooms--above');
+        }
+    });
 
     jQuery('#spCalendarGrid').on('click', '.sp-cal-day', function() {
         var status = jQuery(this).data('status');

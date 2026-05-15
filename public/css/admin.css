@@ -1315,8 +1315,8 @@ body.admin-login-page {
     top: calc(100% + 4px);
     left: 50%;
     transform: translateX(-50%);
-    min-width: 220px;
-    max-width: 300px;
+    min-width: 260px;
+    max-width: 320px;
     background: #fff;
     color: #1f2937;
     border: 1px solid var(--heco-primary-200, #dceae9);
@@ -1328,6 +1328,11 @@ body.admin-login-page {
     text-align: left;
     pointer-events: none;
     white-space: normal;
+}
+/* Flipped variant — used when the cell sits near the bottom of the viewport. */
+.heco-admin .admin-cal-day .admin-cal-rooms.admin-cal-rooms--above {
+    top: auto;
+    bottom: calc(100% + 4px);
 }
 .heco-admin .admin-cal-day:hover .admin-cal-rooms { display: block; }
 .heco-admin .admin-cal-day .admin-cal-rooms-title {

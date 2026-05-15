@@ -7698,8 +7698,8 @@
     top: calc(100% + 4px);
     left: 50%;
     transform: translateX(-50%);
-    min-width: 220px;
-    max-width: 300px;
+    min-width: 260px;
+    max-width: 320px;
     background: #fff;
     color: #1f2937;
     border: 1px solid var(--heco-primary-200, #dceae9);
@@ -7711,6 +7711,11 @@
     text-align: left;
     pointer-events: none;
     white-space: normal;
+}
+/* Flipped variant — used when the cell sits near the bottom of the viewport. */
+.heco-portal .sp-cal-day .sp-cal-rooms.sp-cal-rooms--above {
+    top: auto;
+    bottom: calc(100% + 4px);
 }
 .heco-portal .sp-cal-day:hover .sp-cal-rooms { display: block; }
 .heco-portal .sp-cal-day .sp-cal-rooms-title {

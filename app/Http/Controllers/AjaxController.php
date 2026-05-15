@@ -5820,6 +5820,7 @@ class AjaxController extends Controller
             $cats = $svc->categoriesForDate($spId, $key)
                 ->map(fn($c) => [
                     'room_category' => $c['room_category'],
+                    'comfort_tier'  => $c['comfort_tier'] ?? null,
                     'total'         => $c['total'],
                     'available'     => $c['available'],
                     'booked'        => $c['booked'],
