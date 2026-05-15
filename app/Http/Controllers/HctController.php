@@ -174,6 +174,12 @@ class HctController extends Controller
         return view("admin.provider-applications");
     }
 
+    public function pendingPricing()
+    {
+        $pendingCount = \App\Models\SpPricing::where('approval_status', 'pending')->count();
+        return view("admin.pending-pricing", compact('pendingCount'));
+    }
+
     public function regions()
     {
         return view("admin.regions.index");

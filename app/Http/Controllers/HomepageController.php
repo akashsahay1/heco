@@ -181,6 +181,7 @@ class HomepageController extends Controller
         $accom = \App\Models\SpPricing::whereIn('service_provider_id', $approvedSpIds)
             ->where('service_type', 'accommodation')
             ->where('is_active', true)
+            ->where('approval_status', 'approved')
             ->whereNotNull('comfort_tier')
             ->where('comfort_tier', '!=', '')
             ->pluck('comfort_tier')
@@ -226,6 +227,7 @@ class HomepageController extends Controller
             $hostHasRooms = \App\Models\SpPricing::where('service_provider_id', $experience->hlh->id)
                 ->where('service_type', 'accommodation')
                 ->where('is_active', true)
+                ->where('approval_status', 'approved')
                 ->whereNotNull('total_rooms')
                 ->exists();
         }

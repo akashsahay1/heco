@@ -490,8 +490,17 @@ jQuery(function() {
                     inventory = '<span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-door-closed"></i> ' + r.total_rooms + ' rooms</span>';
                 }
 
+                // Approval status badge — show only on non-approved rows
+                var statusBadge = '';
+                if (r.approval_status === 'pending') {
+                    var label = r.pending_for_id ? 'pending edit' : 'pending review';
+                    statusBadge = '<span class="badge bg-warning text-dark ms-1" title="Awaiting HCT admin approval — not yet visible to travellers"><i class="bi bi-hourglass-split me-1"></i>' + label + '</span>';
+                } else if (r.approval_status === 'rejected') {
+                    var rejTitle = r.rejection_reason ? 'Rejected: ' + r.rejection_reason : 'Rejected by admin';
+                    statusBadge = '<span class="badge bg-danger ms-1" title="' + spEscape(rejTitle) + '"><i class="bi bi-x-circle me-1"></i>rejected</span>';
+                }
                 html += '<tr data-id="' + r.id + '">';
-                html += '<td><span class="sp-type-badge">' + (typeIcons[r.service_type] || '·') + ' <span class="text-capitalize">' + spEscape(r.service_type) + '</span></span></td>';
+                html += '<td><span class="sp-type-badge">' + (typeIcons[r.service_type] || '·') + ' <span class="text-capitalize">' + spEscape(r.service_type) + '</span></span>' + statusBadge + '</td>';
                 html += '<td>' + details + '</td>';
                 html += '<td class="small fw-bold">&#8377;' + Number(r.price).toLocaleString('en-IN') + ' <span class="text-muted fw-normal small">' + spEscape(r.unit || '') + '</span></td>';
                 html += '<td>' + inventory + '</td>';

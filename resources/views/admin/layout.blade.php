@@ -69,6 +69,13 @@
             <a href="{{ url('/provider-applications') }}" class="hct-nav-link {{ request()->routeIs('hct.provider-applications') ? 'active' : '' }}">
                 <i class="bi bi-envelope-paper"></i> Applications
             </a>
+            @php $pendingPricingCount = \App\Models\SpPricing::where('approval_status', 'pending')->count(); @endphp
+            <a href="{{ url('/pending-pricing') }}" class="hct-nav-link {{ request()->routeIs('hct.pending-pricing') ? 'active' : '' }}">
+                <i class="bi bi-cash-stack"></i> Pending Rates
+                @if($pendingPricingCount > 0)
+                    <span class="badge bg-danger ms-auto">{{ $pendingPricingCount }}</span>
+                @endif
+            </a>
 
             <div class="hct-nav-section">CONTENT</div>
             <a href="{{ url('/regions') }}" class="hct-nav-link {{ request()->routeIs('hct.regions*') ? 'active' : '' }}">

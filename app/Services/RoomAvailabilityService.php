@@ -35,6 +35,10 @@ class RoomAvailabilityService
         if (!$row || $row->service_type !== 'accommodation' || !$row->total_rooms) {
             return 0;
         }
+        // Pending / rejected / inactive rows are not bookable.
+        if ($row->approval_status !== 'approved' || !$row->is_active) {
+            return 0;
+        }
         $day = Carbon::parse($date)->startOfDay();
 
         if ($this->spIsBlockedOnDate($row->service_provider_id, $day)) {
@@ -62,6 +66,7 @@ class RoomAvailabilityService
         return SpPricing::where('service_provider_id', $spId)
             ->where('service_type', 'accommodation')
             ->where('is_active', true)
+            ->where('approval_status', 'approved')
             ->whereNotNull('total_rooms')
             ->orderBy('id')
             ->get()
@@ -106,6 +111,7 @@ class RoomAvailabilityService
             $categories = SpPricing::where('service_provider_id', $sp->id)
                 ->where('service_type', 'accommodation')
                 ->where('is_active', true)
+                ->where('approval_status', 'approved')
                 ->whereNotNull('total_rooms')
                 ->orderBy('id')
                 ->get();
@@ -167,11 +173,50 @@ class RoomAvailabilityService
             'trip_day_service_id' => $tripDayServiceId,
             'date'                => $day,
         ];
-        return SpRoomBooking::updateOrCreate($attrs, [
+        // updateOrCreate returns the existing row when one matches the attrs,
+        // so we need wasRecentlyCreated to know whether to send the email.
+        $booking = SpRoomBooking::updateOrCreate($attrs, [
             'quantity' => $quantity,
             'status'   => $status,
             'source'   => $source,
         ]);
+        if ($booking->wasRecentlyCreated) {
+            $this->notifySpOfBooking($booking);
+        }
+        return $booking;
+    }
+
+    /**
+     * Email the SP whenever a NEW booking row is created against one of their
+     * pricing rows. Failures are logged but never block the booking itself.
+     */
+    protected function notifySpOfBooking(SpRoomBooking $booking): void
+    {
+        try {
+            $pricing = SpPricing::with('serviceProvider.user')->find($booking->sp_pricing_id);
+            if (!$pricing || !$pricing->serviceProvider) return;
+            $sp = $pricing->serviceProvider;
+            $email = optional($sp->user)->email ?: $sp->email;
+            if (!$email) return;
+
+            $trip = \App\Models\Trip::with('user')->find($booking->trip_id);
+
+            \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\SpBookingReceivedEmail(
+                spName:        $sp->name ?: 'there',
+                roomCategory:  $pricing->room_category ?: ($pricing->category ?: 'Room'),
+                comfortTier:   $pricing->comfort_tier,
+                quantity:      (int) $booking->quantity,
+                date:          $booking->date->format('D, d M Y'),
+                tripId:        (string) ($trip?->trip_id ?: $booking->trip_id),
+                travellerName: optional($trip?->user)->name,
+                status:        $booking->status,
+            ));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Failed to send SP booking email', [
+                'booking_id' => $booking->id,
+                'error'      => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

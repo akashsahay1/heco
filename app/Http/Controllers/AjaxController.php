@@ -627,6 +627,15 @@ class AjaxController extends Controller
             if ($request->has('delete_sp_pricing')) {
                 return $this->deleteSpPricing($request);
             }
+            if ($request->has('get_pending_pricing')) {
+                return $this->getPendingPricing($request);
+            }
+            if ($request->has('approve_pricing')) {
+                return $this->approvePricing($request);
+            }
+            if ($request->has('reject_pricing')) {
+                return $this->rejectPricing($request);
+            }
             if ($request->has('get_room_availability')) {
                 return $this->getRoomAvailability($request);
             }
@@ -3555,13 +3564,133 @@ class AjaxController extends Controller
             $data["is_active"] = $request->boolean("is_active");
         }
 
+        // Approval workflow:
+        //   - HCT admins save directly approved (no self-review needed).
+        //   - SPs submit pending: NEW rows are created as pending+inactive;
+        //     EDITS create a SEPARATE pending row pointing at the live one,
+        //     leaving the live row untouched until admin approves.
+        $user = Auth::user();
+        $isAdmin = $user && $user->isHct();
+
         if ($request->filled("id")) {
-            $row = SpPricing::findOrFail($request->id);
-            $row->update($data);
+            $existing = SpPricing::findOrFail($request->id);
+            if ($isAdmin) {
+                $row = $existing;
+                $row->update($data);
+            } else {
+                // Drop any prior pending edit for this row so the SP doesn't
+                // stack multiple pending changes on the same live row.
+                SpPricing::where('pending_for_id', $existing->id)
+                    ->where('approval_status', 'pending')
+                    ->delete();
+                $row = SpPricing::create(array_merge($data, [
+                    'is_active'        => false,
+                    'approval_status'  => 'pending',
+                    'pending_for_id'   => $existing->id,
+                    'submitted_at'     => now(),
+                    'submitted_by'     => $user->id,
+                ]));
+            }
         } else {
-            $row = SpPricing::create($data);
+            if ($isAdmin) {
+                $row = SpPricing::create($data);
+            } else {
+                $row = SpPricing::create(array_merge($data, [
+                    'is_active'        => false,
+                    'approval_status'  => 'pending',
+                    'submitted_at'     => now(),
+                    'submitted_by'     => $user->id,
+                ]));
+            }
         }
-        return response()->json(["success" => true, "row" => $row]);
+        return response()->json(["success" => true, "row" => $row, "pending" => $row->approval_status === 'pending']);
+    }
+
+    /**
+     * HCT admin: list every pending pricing row across all providers, with
+     * the live row it would replace (for edits) so the admin sees the diff.
+     */
+    protected function getPendingPricing(Request $request): JsonResponse
+    {
+        if (!Auth::user() || !Auth::user()->isHct()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $rows = SpPricing::pending()
+            ->with(['serviceProvider:id,name,provider_type', 'pendingFor', 'submitter:id,name,email'])
+            ->orderBy('submitted_at', 'desc')
+            ->get();
+        return response()->json(['rows' => $rows]);
+    }
+
+    /**
+     * HCT admin: approve a pending pricing row.
+     *   - NEW row (pending_for_id null): flip status → approved + activate.
+     *   - EDIT row: squash submitted fields into the live row, then delete
+     *     the pending row. The live row's id (and any sp_room_bookings
+     *     pointing at it) stays intact.
+     */
+    protected function approvePricing(Request $request): JsonResponse
+    {
+        if (!Auth::user() || !Auth::user()->isHct()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $pending = SpPricing::pending()->findOrFail($request->id);
+
+        if ($pending->pending_for_id) {
+            $target = SpPricing::find($pending->pending_for_id);
+            if ($target) {
+                // Copy the substantive fields the SP wanted to change.
+                $target->update([
+                    'service_type'      => $pending->service_type,
+                    'category'          => $pending->category,
+                    'description'       => $pending->description,
+                    'unit'              => $pending->unit,
+                    'price'             => $pending->price,
+                    'meal_plan'         => $pending->meal_plan,
+                    'vehicle_type'      => $pending->vehicle_type,
+                    'room_category'     => $pending->room_category,
+                    'comfort_tier'      => $pending->comfort_tier,
+                    'total_rooms'       => $pending->total_rooms,
+                    'default_occupancy' => $pending->default_occupancy,
+                    'vehicle_capacity'  => $pending->vehicle_capacity,
+                    'driver_allowance'  => $pending->driver_allowance,
+                    'min_group'         => $pending->min_group,
+                    'max_group'         => $pending->max_group,
+                    'specialties'       => $pending->specialties,
+                    'approved_at'       => now(),
+                    'approved_by'       => Auth::id(),
+                ]);
+            }
+            $pending->delete();
+            return response()->json(['success' => true, 'mode' => 'edit_merged', 'row_id' => $target?->id]);
+        }
+
+        // New row → activate in place.
+        $pending->update([
+            'approval_status' => 'approved',
+            'is_active'       => true,
+            'approved_at'     => now(),
+            'approved_by'     => Auth::id(),
+        ]);
+        return response()->json(['success' => true, 'mode' => 'created', 'row_id' => $pending->id]);
+    }
+
+    /** HCT admin: reject a pending pricing row with a reason. */
+    protected function rejectPricing(Request $request): JsonResponse
+    {
+        if (!Auth::user() || !Auth::user()->isHct()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $request->validate(['id' => 'required|integer', 'reason' => 'nullable|string|max:500']);
+        $pending = SpPricing::pending()->findOrFail($request->id);
+        $pending->update([
+            'approval_status'   => 'rejected',
+            'is_active'         => false,
+            'approved_at'       => now(),
+            'approved_by'       => Auth::id(),
+            'rejection_reason'  => $request->input('reason'),
+        ]);
+        return response()->json(['success' => true]);
     }
 
     protected function deleteSpPricing(Request $request): JsonResponse
@@ -5455,6 +5584,7 @@ class AjaxController extends Controller
             $pricing = SpPricing::where('service_provider_id', $newSpId)
                 ->where('service_type', $service->service_type)
                 ->where('is_active', true)
+                ->where('approval_status', 'approved')
                 ->first();
             if ($pricing) {
                 $updateData['cost'] = $pricing->price;
@@ -5733,6 +5863,7 @@ class AjaxController extends Controller
         $rows = SpPricing::where('service_provider_id', $sp->id)
             ->where('service_type', 'accommodation')
             ->where('is_active', true)
+            ->where('approval_status', 'approved')
             ->whereNotNull('total_rooms')
             ->orderBy('id')
             ->get();

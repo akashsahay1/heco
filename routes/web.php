@@ -39,6 +39,7 @@ Route::domain(config('app.admin_domain'))->group(function () {
         Route::get('/providers/{id}/edit', [HctController::class, 'providerEdit'])->name('hct.providers.edit');
         Route::get('/travelers', [HctController::class, 'travelers'])->name('hct.travelers');
         Route::get('/provider-applications', [HctController::class, 'providerApplications'])->name('hct.provider-applications');
+        Route::get('/pending-pricing', [HctController::class, 'pendingPricing'])->name('hct.pending-pricing');
 
         // Region Management
         Route::get('/regions', [HctController::class, 'regions'])->name('hct.regions');
