@@ -3616,7 +3616,7 @@ class AjaxController extends Controller
             return response()->json(['error' => 'Unauthorized'], 403);
         }
         $rows = SpPricing::pending()
-            ->with(['serviceProvider:id,name,provider_type', 'pendingFor', 'submitter:id,name,email'])
+            ->with(['serviceProvider:id,name,provider_type', 'pendingFor', 'submitter:id,full_name,email'])
             ->orderBy('submitted_at', 'desc')
             ->get();
         return response()->json(['rows' => $rows]);

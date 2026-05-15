@@ -104,7 +104,7 @@ jQuery(function() {
                 html += '    <span class="ms-2">' + icon + ' <strong>' + escapeHtml(sp.name || '?') + '</strong></span>';
                 html += '    <span class="ms-2 small text-muted">(' + escapeHtml(sp.provider_type || '?').toUpperCase() + ')</span>';
                 html += '    <span class="ms-3 small text-muted">' + escapeHtml(r.service_type) + '</span>';
-                html += '    <span class="ms-auto small text-muted">Submitted ' + escapeHtml(r.submitted_at || '') + ' by ' + escapeHtml(submitter.name || submitter.email || '?') + '</span>';
+                html += '    <span class="ms-auto small text-muted">Submitted ' + escapeHtml(r.submitted_at || '') + ' by ' + escapeHtml(submitter.full_name || submitter.email || '?') + '</span>';
                 html += '  </div>';
                 html += '  <div class="card-body">';
                 html += '    <table class="table table-sm mb-3"><tbody>' + diff + '</tbody></table>';
