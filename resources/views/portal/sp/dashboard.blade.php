@@ -745,27 +745,41 @@ jQuery(function() {
         jQuery('#btnUnblockSelected').prop('disabled', !hasSelected);
     }
 
-    // Smart positioning: flip the room popover above the cell when there
-    // isn't enough room below. We make the popover briefly visible (with
-    // opacity 0 + visibility hidden) so we can measure its real height
-    // rather than relying on a hardcoded estimate.
+    // Position the room popover in viewport coords (it's position: fixed so
+    // it escapes any ancestor with overflow: hidden). Measure real width/
+    // height first, then anchor below the cell — or above if there's no
+    // space. Visibility stays hidden until the final position is set so
+    // there's no flash at the (0,0) measuring spot.
     jQuery('#spCalendarGrid').on('mouseenter', '.sp-cal-day', function() {
         var $cell = jQuery(this);
         var $rooms = $cell.find('.sp-cal-rooms');
         if (!$rooms.length) return;
-        // Temporarily render off-screen to measure
-        $rooms.css({ display: 'block', visibility: 'hidden', opacity: 0 });
+
+        $rooms.css({ display: 'block', visibility: 'hidden', left: 0, top: 0 });
         var popoverH = $rooms.outerHeight();
-        $rooms.css({ display: '', visibility: '', opacity: '' });
-        var cellTop = $cell.offset().top - jQuery(window).scrollTop();
-        var cellBottom = cellTop + $cell.outerHeight();
+        var popoverW = $rooms.outerWidth();
+
+        var cellRect = $cell[0].getBoundingClientRect();
+        var viewportW = jQuery(window).width();
         var viewportH = jQuery(window).height();
-        var spaceBelow = viewportH - cellBottom;
-        if (spaceBelow < popoverH + 16 && cellTop > popoverH + 16) {
-            $rooms.addClass('sp-cal-rooms--above');
+        var gap = 6;
+
+        // Centre horizontally on the cell, clamped inside the viewport
+        var left = cellRect.left + (cellRect.width / 2) - (popoverW / 2);
+        left = Math.max(8, Math.min(left, viewportW - popoverW - 8));
+
+        // Anchor below by default; flip above if there's no space below
+        var spaceBelow = viewportH - cellRect.bottom;
+        var spaceAbove = cellRect.top;
+        var top;
+        if (spaceBelow >= popoverH + gap || spaceBelow >= spaceAbove) {
+            top = cellRect.bottom + gap;
         } else {
-            $rooms.removeClass('sp-cal-rooms--above');
+            top = cellRect.top - popoverH - gap;
         }
+        top = Math.max(8, Math.min(top, viewportH - popoverH - 8));
+
+        $rooms.css({ left: left + 'px', top: top + 'px', display: '', visibility: '' });
     });
 
     jQuery('#spCalendarGrid').on('click', '.sp-cal-day', function() {

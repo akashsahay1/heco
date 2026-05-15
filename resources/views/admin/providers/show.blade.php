@@ -425,25 +425,37 @@ function renderAdminCalendar() {
     $('#adminBtnUnblock').prop('disabled', !adminSelectedDates.length);
 }
 
-// Smart positioning: flip the room popover above the cell when there
-// isn't enough room below. Briefly render the popover invisibly to
-// measure its real height instead of guessing.
+// Position the room popover in viewport coords (position: fixed so it
+// escapes ancestors with overflow: hidden). Measure real width/height
+// first, then anchor below the cell — or above if there's no space.
 $(document).on('mouseenter', '.admin-cal-day', function() {
     var $cell = $(this);
     var $rooms = $cell.find('.admin-cal-rooms');
     if (!$rooms.length) return;
-    $rooms.css({ display: 'block', visibility: 'hidden', opacity: 0 });
+
+    $rooms.css({ display: 'block', visibility: 'hidden', left: 0, top: 0 });
     var popoverH = $rooms.outerHeight();
-    $rooms.css({ display: '', visibility: '', opacity: '' });
-    var cellTop = $cell.offset().top - $(window).scrollTop();
-    var cellBottom = cellTop + $cell.outerHeight();
+    var popoverW = $rooms.outerWidth();
+
+    var cellRect = $cell[0].getBoundingClientRect();
+    var viewportW = $(window).width();
     var viewportH = $(window).height();
-    var spaceBelow = viewportH - cellBottom;
-    if (spaceBelow < popoverH + 16 && cellTop > popoverH + 16) {
-        $rooms.addClass('admin-cal-rooms--above');
+    var gap = 6;
+
+    var left = cellRect.left + (cellRect.width / 2) - (popoverW / 2);
+    left = Math.max(8, Math.min(left, viewportW - popoverW - 8));
+
+    var spaceBelow = viewportH - cellRect.bottom;
+    var spaceAbove = cellRect.top;
+    var top;
+    if (spaceBelow >= popoverH + gap || spaceBelow >= spaceAbove) {
+        top = cellRect.bottom + gap;
     } else {
-        $rooms.removeClass('admin-cal-rooms--above');
+        top = cellRect.top - popoverH - gap;
     }
+    top = Math.max(8, Math.min(top, viewportH - popoverH - 8));
+
+    $rooms.css({ left: left + 'px', top: top + 'px', display: '', visibility: '' });
 });
 
 $(document).on('click', '.admin-cal-day', function() {

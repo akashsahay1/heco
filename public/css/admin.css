@@ -1308,13 +1308,12 @@ body.admin-login-page {
 
 /* Admin SP calendar — per-room-category breakdown as a hover popover. */
 .heco-admin .admin-cal-day { position: relative; }
+/* Popover uses position: fixed so it escapes any ancestor with
+   overflow: hidden; JS sets the actual top/left on hover. */
 .heco-admin .admin-cal-day .admin-cal-rooms {
     display: none;
-    position: absolute;
-    z-index: 50;
-    top: calc(100% + 4px);
-    left: 50%;
-    transform: translateX(-50%);
+    position: fixed;
+    z-index: 1080;
     min-width: 260px;
     max-width: 320px;
     max-height: 60vh;
@@ -1331,11 +1330,6 @@ body.admin-login-page {
     pointer-events: auto;
     white-space: normal;
     scrollbar-width: thin;
-}
-/* Flipped variant — used when the cell sits near the bottom of the viewport. */
-.heco-admin .admin-cal-day .admin-cal-rooms.admin-cal-rooms--above {
-    top: auto;
-    bottom: calc(100% + 4px);
 }
 .heco-admin .admin-cal-day:hover .admin-cal-rooms { display: block; }
 .heco-admin .admin-cal-day .admin-cal-rooms-title {
