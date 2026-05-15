@@ -1410,6 +1410,34 @@ body.admin-login-page {
 .heco-admin .auto-pill { font-weight: 400; font-size: 0.7rem; }
 .heco-admin .comfort-tier-summary { min-height: 38px; }
 
+/* Pending-pricing diff layout — left-aligned, compact, narrow label column. */
+.heco-admin .pending-identity {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--heco-primary-100, #e8f0ef);
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+}
+.heco-admin .diff-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.heco-admin .diff-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 4px 0;
+    font-size: 0.875rem;
+}
+.heco-admin .diff-label {
+    flex: 0 0 140px;
+    color: var(--color-text-muted, #6c757d);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 600;
+}
+.heco-admin .diff-value { flex: 1; text-align: left; }
+
 /* Room Types checklist — tier-first accommodation form. */
 .heco-admin .room-type-checklist { display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .heco-admin .room-type-chip      { margin: 0; cursor: pointer; }

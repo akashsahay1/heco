@@ -63,22 +63,26 @@ jQuery(function() {
             var key = f[0], label = f[1];
             var oldVal = original ? original[key] : null;
             var newVal = pending[key];
-            // Skip rows where both sides are empty/null
             if ((oldVal === null || oldVal === '' || oldVal === undefined) &&
                 (newVal === null || newVal === '' || newVal === undefined)) return;
             var changed = String(oldVal ?? '') !== String(newVal ?? '');
             if (!original) {
-                // NEW row → show only the new value, highlighted
-                rows += '<tr><td class="small text-muted">' + label + '</td>'
-                     + '<td class="small fw-bold text-success">' + fmt(newVal) + '</td></tr>';
+                rows += '<div class="diff-row">'
+                     +   '<span class="diff-label">' + label + '</span>'
+                     +   '<span class="diff-value fw-bold text-success">' + fmt(newVal) + '</span>'
+                     + '</div>';
             } else if (changed) {
-                rows += '<tr><td class="small text-muted">' + label + '</td>'
-                     + '<td class="small"><span class="text-decoration-line-through text-muted me-2">' + fmt(oldVal) + '</span>'
-                     + '<i class="bi bi-arrow-right text-muted mx-1"></i>'
-                     + '<span class="fw-bold text-success">' + fmt(newVal) + '</span></td></tr>';
+                rows += '<div class="diff-row">'
+                     +   '<span class="diff-label">' + label + '</span>'
+                     +   '<span class="diff-value">'
+                     +     '<span class="text-decoration-line-through text-muted me-2">' + fmt(oldVal) + '</span>'
+                     +     '<i class="bi bi-arrow-right text-muted mx-1"></i>'
+                     +     '<span class="fw-bold text-success">' + fmt(newVal) + '</span>'
+                     +   '</span>'
+                     + '</div>';
             }
         });
-        return rows || '<tr><td colspan="2" class="small text-muted">No field changes</td></tr>';
+        return rows || '<div class="small text-muted">No field changes</div>';
     }
 
     function load() {
@@ -131,8 +135,11 @@ jQuery(function() {
                 html += '    <span class="ms-auto small text-muted">Submitted ' + escapeHtml(r.submitted_at || '') + ' by ' + escapeHtml(submitter.full_name || submitter.email || '?') + '</span>';
                 html += '  </div>';
                 html += '  <div class="card-body">';
-                html += '    <div class="mb-2 small"><span class="text-muted me-2">' + (isEdit ? 'Editing row:' : 'New entry:') + '</span>' + identity + '</div>';
-                html += '    <table class="table table-sm mb-3"><tbody>' + diff + '</tbody></table>';
+                html += '    <div class="pending-identity">'
+                     +    '<span class="diff-label">' + (isEdit ? 'Editing row' : 'New entry') + '</span>'
+                     +    '<span class="diff-value">' + identity + '</span>'
+                     +  '</div>';
+                html += '    <div class="diff-list">' + diff + '</div>';
                 html += '    <div class="d-flex gap-2">';
                 html += '      <button class="btn btn-sm btn-success btn-approve"><i class="bi bi-check-lg me-1"></i> Approve</button>';
                 html += '      <button class="btn btn-sm btn-outline-danger btn-reject"><i class="bi bi-x-lg me-1"></i> Reject</button>';
