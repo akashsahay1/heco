@@ -429,15 +429,26 @@ jQuery(function() {
                 jQuery('#spPriceBody').html('<tr><td colspan="6" class="text-center text-muted small">No rates yet. Click <strong>Add Service / Room</strong> to set up the first one.</td></tr>');
                 return;
             }
+            // Count comfort_tier on active accommodation rows so we can flag
+            // duplicates (the tier-first model expects one row per tier).
+            var tierCounts = {};
+            rows.forEach(function(r) {
+                if (r.service_type !== 'accommodation' || !r.is_active || !r.comfort_tier) return;
+                tierCounts[r.comfort_tier] = (tierCounts[r.comfort_tier] || 0) + 1;
+            });
             var html = '';
             rows.forEach(function(r) {
                 priceCache[r.id] = r;
+                var isDupTier = r.service_type === 'accommodation'
+                    && r.comfort_tier
+                    && tierCounts[r.comfort_tier] > 1;
 
                 var details = '';
                 if (r.service_type === 'accommodation') {
                     var parts = [];
                     // Comfort tier is now the primary label
                     if (r.comfort_tier)   parts.push('<strong>' + spEscape(r.comfort_tier) + '</strong>');
+                    if (isDupTier)        parts.push('<span class="badge bg-warning text-dark" title="This comfort tier appears on more than one row. Keep one row per tier."><i class="bi bi-exclamation-triangle me-1"></i>duplicate tier</span>');
                     var rooms = r.room_category || r.category || '';
                     if (rooms)            parts.push('<span class="text-muted small">' + spEscape(rooms) + '</span>');
                     if (r.meal_plan)      parts.push('<span class="badge bg-light text-dark border">' + spEscape(r.meal_plan) + '</span>');

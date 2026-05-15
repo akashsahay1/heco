@@ -287,25 +287,62 @@ STEP 11.  OSPs  (Other Service Providers — optional at boot)
 
 
 ----------------------------------------------------------------
-STEP 12.  SP PRICING ROWS
+STEP 12.  SP PRICING + ROOM INVENTORY  (updated 2026-05-14)
 ----------------------------------------------------------------
   WHY HERE
     Each approved SP needs per-service rates. The pricing engine
-    consults sp_pricing when an experience involves a specific SP.
-    Without rates, calculations fall back to settings defaults.
+    consults sp_pricing when a trip uses that SP. Accommodation
+    rows also drive the live room-availability calendar and the
+    "Stay Options" widget on every experience-detail page.
 
   HOW
-    /providers/<sp_id>/edit → SP Pricing section → Add Row
+    SP self-service:  /sp/pricing  →  Add Service / Room
+    Admin:            /providers/<sp_id>/edit  →  Services, Rooms
+                      & Pricing section
+
     Per-service-type fields:
-      - Accommodation:  per category × per occupancy (single /
-        double / triple) — e.g. "Cat C - Standard" × "double" = ₹1800
-      - Transport:      per km × per vehicle type — e.g.
-        "SUV (Innova/Crysta)" = ₹25/km
-      - Guide:          per day — e.g. "English-speaking" = ₹3000/day
-      - Activity:       per person / per group / per day
+
+    Accommodation (TIER-FIRST — one row per comfort tier):
+      - Comfort Tier *      Cat A / B / C / D - Luxury/Comfort/Standard/Basic
+      - Rate per night *    flat ₹, no multipliers
+      - Total Rooms *       inventory at this tier
+      - Meal Plan           BB / HB / FB / AI / "no meals"
+      - Room Types Offered  optional checklist (Single / Double /
+                            Twin / Triple / Family) — stored as
+                            comma-list under room_category
+      Helpers:
+       • "Quick Setup" in Bulk-Add mode auto-generates one row
+         per comfort tier (SP only types rate + total rooms).
+       • "All tiers" icon on each row opens a matrix view to edit
+         every tier's price for that property in one modal.
+
+    Transport:
+      - Vehicle Type *      from system_lists (Sedan / SUV / etc.)
+      - Rate *              with Unit (per km / per day / per trip)
+      - Seating Capacity, Driver Allowance (optional)
+
+    Guide:
+      - Guide Type *        from system_lists (English-speaking /
+                            Local / Certified / etc.)
+      - Rate per day *
+      - Specialties         optional free-text
+
+    Activity:
+      - Activity Type *, Rate *, Unit *
+      - Min / Max group size, Specialties (optional)
+
+    Other:
+      - Service Name, Rate *, Unit *
+
+  ROOM AVAILABILITY (automatic once accommodation rows exist)
+    - sp_room_bookings table tracks held / confirmed / released
+      allocations per (sp_pricing row × date).
+    - SP and Admin calendars show per-tier daily availability.
+    - Travellers see live availability on experience-detail page.
+    - AI chat reads real inventory before suggesting stays.
 
   TABLES TOUCHED
-    sp_pricing
+    sp_pricing, sp_room_bookings (auto, via trip lifecycle hooks)
 
 
 ----------------------------------------------------------------

@@ -149,10 +149,13 @@
                         ];
                     @endphp
 
-                    {{-- Read-only comfort-tier summary, auto-derived from sp_pricing rows --}}
+                    {{-- Read-only comfort-tier summary, auto-derived from sp_pricing rows.
+                         The badges inside #comfortTierBadges are re-rendered by JS each
+                         time the pricing list reloads, so admins see live updates after
+                         adding/removing rows without needing to refresh the page. --}}
                     <div class="mb-2">
                         <label class="form-label small text-muted">Comfort Tiers Offered <span class="badge bg-light text-dark border ms-1 auto-pill">auto</span></label>
-                        <div class="form-control form-control-sm bg-light comfort-tier-summary">
+                        <div class="form-control form-control-sm bg-light comfort-tier-summary" id="comfortTierBadges">
                             @forelse($derivedComfortTiers as $tier)
                                 <span class="badge bg-secondary me-1">{{ $tier }}</span>
                             @empty
@@ -687,15 +690,54 @@ jQuery(function() {
         accommodation: '🛏', transport: '🚙', guide: '👤', activity: '🏔', other: '📦'
     };
 
+    // Rebuild the read-only "Comfort Tiers Offered" badge list from the live
+    // pricing rows so the summary stays in sync without a page reload.
+    function refreshComfortTierBadges(rows) {
+        var $box = jQuery('#comfortTierBadges');
+        if (!$box.length) return;
+        var seen = {};
+        var tiers = [];
+        (rows || []).forEach(function(r) {
+            if (r.service_type !== 'accommodation' || !r.is_active || !r.comfort_tier) return;
+            if (!seen[r.comfort_tier]) {
+                seen[r.comfort_tier] = true;
+                tiers.push(r.comfort_tier);
+            }
+        });
+        if (!tiers.length) {
+            $box.html('<span class="text-muted small">No accommodation rows yet — set per row under Services, Rooms &amp; Pricing.</span>');
+            return;
+        }
+        $box.html(tiers.map(function(t) {
+            return '<span class="badge bg-secondary me-1">' + spEscape(t) + '</span>';
+        }).join(''));
+    }
+
     function loadPricing() {
         jQuery('#spPriceBody').html('<tr><td colspan="7" class="text-center text-muted small">Loading...</td></tr>');
         ajaxPost({ get_sp_pricing: 1, provider_id: providerId }, function(resp) {
             var rows = resp.rows || [];
             priceCache = {};
+            // Refresh the auto-derived Comfort Tiers badges so admins don't
+            // have to reload the page after adding/removing accommodation rows.
+            refreshComfortTierBadges(rows);
             if (!rows.length) { jQuery('#spPriceBody').html('<tr><td colspan="7" class="text-center text-muted small">No rates yet. Click <strong>Add Service / Room</strong> below to set up the first one.</td></tr>'); refreshBulkBtn(); return; }
+
+            // First pass: count comfort_tier occurrences on active accommodation
+            // rows so we can flag duplicates (one tier should map to one row in
+            // the tier-first model).
+            var tierCounts = {};
+            rows.forEach(function(r) {
+                if (r.service_type !== 'accommodation' || !r.is_active || !r.comfort_tier) return;
+                tierCounts[r.comfort_tier] = (tierCounts[r.comfort_tier] || 0) + 1;
+            });
+
             var html = '';
             rows.forEach(function(r) {
                 priceCache[r.id] = r;
+                var isDupTier = r.service_type === 'accommodation'
+                    && r.comfort_tier
+                    && tierCounts[r.comfort_tier] > 1;
 
                 // Build a service-type-specific "Details" cell
                 var details = '';
@@ -703,6 +745,7 @@ jQuery(function() {
                     var parts = [];
                     // Comfort tier is now the primary label
                     if (r.comfort_tier)   parts.push('<strong>' + spEscape(r.comfort_tier) + '</strong>');
+                    if (isDupTier)        parts.push('<span class="badge bg-warning text-dark" title="This comfort tier appears on more than one row. Keep one row per tier."><i class="bi bi-exclamation-triangle me-1"></i>duplicate tier</span>');
                     var rooms = r.room_category || r.category || '';
                     if (rooms)            parts.push('<span class="text-muted small">' + spEscape(rooms) + '</span>');
                     if (r.meal_plan)      parts.push('<span class="badge bg-light text-dark border">' + spEscape(r.meal_plan) + '</span>');
