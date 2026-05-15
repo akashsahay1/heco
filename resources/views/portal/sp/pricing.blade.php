@@ -196,9 +196,12 @@
 
         <div class="add-mode-pane add-mode-single">
 
-        {{-- ACCOMMODATION — pricing is per comfort tier, not per room category.
-             One row = one comfort tier. Room types (Single / Double / etc.) are
-             stored as an optional comma-separated list under room_category. --}}
+        {{-- ACCOMMODATION — one row per (comfort_tier × room_category) pair so
+             a hotel can carry different inventory + price for Cat A Single
+             (e.g. 2 rooms @ ₹4500) vs Cat A Double (3 rooms @ ₹5500). Comfort
+             Tier is the primary visual axis; Room Category is a single pick
+             per row. To list 4 tiers × 2 room types, the SP adds 8 rows
+             (the Quick-tier helper and "All tiers" matrix make this fast). --}}
         <div class="svc-fields" data-svc="accommodation">
             <div class="row g-2 mb-2 sp-field-row">
                 <div class="col-md-7">
@@ -212,18 +215,30 @@
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
                 <div class="col-md-5">
+                    <label class="form-label small">Room Category <span class="text-danger">*</span></label>
+                    <select class="form-select form-select-sm custom-select" name="room_category" data-list-type="room_category">
+                        <option value="">Select category...</option>
+                        @foreach($roomCategories as $r)
+                            <option value="{{ $r->name }}" data-desc="{{ $r->description }}">{{ $r->name }}</option>
+                        @endforeach
+                    </select>
+                    <small class="form-help-text text-muted d-block mt-1"></small>
+                </div>
+            </div>
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-5">
+                    <label class="form-label small">Total Rooms <span class="text-danger">*</span></label>
+                    <input type="number" min="1" max="500" class="form-control form-control-sm" name="total_rooms" placeholder="e.g. 4">
+                    <small class="form-help-text text-muted d-block mt-1"></small>
+                </div>
+                <div class="col-md-7">
                     <label class="form-label small">Rate per night (₹) <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_accommodation" placeholder="e.g. 2500">
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
             </div>
             <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-5">
-                    <label class="form-label small">Total Rooms at this tier <span class="text-danger">*</span></label>
-                    <input type="number" min="1" max="500" class="form-control form-control-sm" name="total_rooms" placeholder="e.g. 4">
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-                <div class="col-md-7">
+                <div class="col-md-12">
                     <label class="form-label small">Meal Plan</label>
                     <select class="form-select form-select-sm custom-select" name="meal_plan" data-list-type="meal_plan">
                         <option value="">— no meals (room only) —</option>
@@ -233,19 +248,6 @@
                     </select>
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
-            </div>
-            <div class="mb-2">
-                <label class="form-label small mb-1">Room Types Offered <span class="text-muted small">(optional)</span></label>
-                <div class="room-type-checklist border rounded p-2 bg-light">
-                    @foreach($roomCategories as $r)
-                        <label class="room-type-chip me-2 d-inline-flex align-items-center">
-                            <input type="checkbox" class="form-check-input me-1 room-type-cb" value="{{ $r->name }}">
-                            <span class="small">{{ $r->name }}</span>
-                        </label>
-                    @endforeach
-                </div>
-                <small class="text-muted d-block mt-1"><i class="bi bi-info-circle me-1"></i>Tick whichever room types you offer at this comfort tier. Leave all blank if a single mixed inventory.</small>
-                <input type="hidden" name="room_category" value="">
             </div>
             <input type="hidden" name="unit_accommodation" value="per night">
         </div>
@@ -429,26 +431,31 @@ jQuery(function() {
                 jQuery('#spPriceBody').html('<tr><td colspan="6" class="text-center text-muted small">No rates yet. Click <strong>Add Service / Room</strong> to set up the first one.</td></tr>');
                 return;
             }
-            // Count comfort_tier on active accommodation rows so we can flag
-            // duplicates (the tier-first model expects one row per tier).
-            var tierCounts = {};
+            // Count (comfort_tier × room_category) on active accommodation rows
+            // so we can flag duplicates. The same (tier, room) pair on two
+            // active rows is a mistake — different rooms at the same tier
+            // should each have their own row (and that's fine), but two rows
+            // for the same room at the same tier means the SP saved twice.
+            var pairCounts = {};
             rows.forEach(function(r) {
                 if (r.service_type !== 'accommodation' || !r.is_active || !r.comfort_tier) return;
-                tierCounts[r.comfort_tier] = (tierCounts[r.comfort_tier] || 0) + 1;
+                var key = r.comfort_tier + '|' + (r.room_category || r.category || '');
+                pairCounts[key] = (pairCounts[key] || 0) + 1;
             });
             var html = '';
             rows.forEach(function(r) {
                 priceCache[r.id] = r;
+                var pairKey = (r.comfort_tier || '') + '|' + (r.room_category || r.category || '');
                 var isDupTier = r.service_type === 'accommodation'
                     && r.comfort_tier
-                    && tierCounts[r.comfort_tier] > 1;
+                    && pairCounts[pairKey] > 1;
 
                 var details = '';
                 if (r.service_type === 'accommodation') {
                     var parts = [];
                     // Comfort tier is now the primary label
                     if (r.comfort_tier)   parts.push('<strong>' + spEscape(r.comfort_tier) + '</strong>');
-                    if (isDupTier)        parts.push('<span class="badge bg-warning text-dark" title="This comfort tier appears on more than one row. Keep one row per tier."><i class="bi bi-exclamation-triangle me-1"></i>duplicate tier</span>');
+                    if (isDupTier)        parts.push('<span class="badge bg-warning text-dark" title="This tier + room combination appears on more than one row. Keep one row per (tier, room) pair."><i class="bi bi-exclamation-triangle me-1"></i>duplicate</span>');
                     var rooms = r.room_category || r.category || '';
                     if (rooms)            parts.push('<span class="text-muted small">' + spEscape(rooms) + '</span>');
                     if (r.meal_plan)      parts.push('<span class="badge bg-light text-dark border">' + spEscape(r.meal_plan) + '</span>');
@@ -520,18 +527,15 @@ jQuery(function() {
         $f.find('[name=description]').val(r ? (r.description || '') : '');
         $f.find('[name=is_active]').prop('checked', r ? !!r.is_active : true);
 
+        // For legacy data where room_category may carry a comma-list, pick the
+        // first value so the single-select dropdown has a valid match.
         var roomCatStr = r ? (r.room_category || r.category || '') : '';
-        $f.find('[name=room_category]').val(roomCatStr);
+        var firstCat = roomCatStr.split(',')[0].trim();
+        $f.find('[name=room_category]').val(firstCat);
         $f.find('[name=comfort_tier]').val(r ? (r.comfort_tier || '') : '');
         $f.find('[name=total_rooms]').val(r ? (r.total_rooms || '') : '');
         $f.find('[name=meal_plan]').val(r ? (r.meal_plan || '') : '');
         $f.find('[name=price_accommodation]').val(r && r.service_type === 'accommodation' ? r.price : '');
-
-        // Room Types checklist — derive from the comma-separated room_category
-        var picked = (roomCatStr || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-        $f.find('.room-type-cb').each(function() {
-            jQuery(this).prop('checked', picked.indexOf(jQuery(this).val()) !== -1);
-        });
 
         $f.find('[name=vehicle_type]').val(r ? (r.vehicle_type || '') : '');
         $f.find('[name=vehicle_capacity]').val(r ? (r.vehicle_capacity || '') : '');
@@ -803,11 +807,7 @@ jQuery(function() {
         };
 
         if (type === 'accommodation') {
-            // Comma-join the Room Types checklist into the room_category string.
-            var picked = jQuery(this).find('.room-type-cb:checked').map(function() {
-                return jQuery(this).val();
-            }).get().join(', ');
-            data.room_category = picked;
+            data.room_category = jQuery(this).find('[name=room_category]').val();
             data.comfort_tier  = jQuery(this).find('[name=comfort_tier]').val();
             data.total_rooms   = jQuery(this).find('[name=total_rooms]').val();
             data.meal_plan     = jQuery(this).find('[name=meal_plan]').val();
