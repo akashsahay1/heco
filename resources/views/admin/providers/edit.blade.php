@@ -816,7 +816,14 @@ jQuery(function() {
         var ids = jQuery('.sp-price-check.sp-price-checked').map(function() { return jQuery(this).data('id'); }).get();
         if (!ids.length) return;
         confirmAction('Delete ' + ids.length + ' rate(s)? This is permanent.', function() {
-            ajaxPost({ delete_sp_pricing: 1, ids: ids }, function() { loadPricing(); showAlert('Deleted.', 'success'); });
+            // provider_id is required: resolveSpPricingProviderId on the backend
+            // returns 0 for HCT admins when no provider_id is sent, which makes
+            // the WHERE service_provider_id = 0 clause match nothing and the
+            // delete silently no-ops.
+            ajaxPost({ delete_sp_pricing: 1, ids: ids, provider_id: providerId }, function() {
+                loadPricing();
+                showAlert('Deleted.', 'success');
+            });
         });
     });
     // Show only the fields relevant to the selected service type.
