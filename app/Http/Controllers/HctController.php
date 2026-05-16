@@ -105,10 +105,43 @@ class HctController extends Controller
         return view("admin.gst");
     }
 
-    public function providers()
+    public function providers(\Illuminate\Http\Request $request)
     {
         $regions = Region::where("is_active", true)->orderBy("name")->get();
-        return view("admin.providers", compact("regions"));
+
+        // Server-side filters (Travelers-style pattern — explicit Apply,
+        // GET form, full-page reload). See feedback memory entry
+        // 'feedback-server-side-listings'.
+        $status        = $request->get('status', '');
+        $providerType  = $request->get('provider_type', '');
+        $regionId      = $request->get('region_id', '');
+        $search        = trim($request->get('search', ''));
+
+        $query = \App\Models\ServiceProvider::with(['region', 'lastUpdatedBy']);
+
+        // Default scope hides 'removed' unless explicitly requested.
+        if ($status === 'all') {
+            // no filter
+        } elseif ($status !== '') {
+            $query->where('status', $status);
+        } else {
+            $query->where('status', '!=', 'removed');
+        }
+        if ($providerType !== '') $query->where('provider_type', $providerType);
+        if ($regionId !== '')     $query->where('region_id', $regionId);
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('phone_1', 'like', "%{$search}%");
+            });
+        }
+
+        $providers = $query->orderBy('name')->paginate(20)->withQueryString();
+
+        return view('admin.providers', compact(
+            'regions', 'providers', 'status', 'providerType', 'regionId', 'search'
+        ));
     }
 
     public function providerShow($id)
