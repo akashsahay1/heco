@@ -103,9 +103,37 @@ class HctController extends Controller
         return view('admin.leads', compact('hctUsers', 'leads', 'stage', 'search'));
     }
 
-    public function trips()
+    public function trips(\Illuminate\Http\Request $request)
     {
-        return view("admin.trips");
+        // Server-side filters (Travelers-style). Mirrors getUpcomingTrips AJAX
+        // logic so the existing endpoint stays usable for the dashboard widget.
+        $status   = $request->get('status', '');
+        $dateFrom = $request->get('date_from', '');
+        $dateTo   = $request->get('date_to', '');
+        $search   = trim($request->get('search', ''));
+
+        $query = \App\Models\Trip::with(['user', 'regions']);
+        $allowedStatuses = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
+        if (in_array($status, $allowedStatuses, true)) {
+            $query->where('status', $status);
+        }
+        if ($dateFrom !== '') $query->whereDate('start_date', '>=', $dateFrom);
+        if ($dateTo !== '')   $query->whereDate('start_date', '<=', $dateTo);
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('trip_id', 'like', "%{$search}%")
+                  ->orWhereHas('user', fn($u) =>
+                      $u->where('full_name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                  );
+            });
+        }
+
+        $trips = $query->orderByRaw('start_date IS NULL, start_date ASC')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('admin.trips', compact('trips', 'status', 'dateFrom', 'dateTo', 'search'));
     }
 
     public function calendar()
