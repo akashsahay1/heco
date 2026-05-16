@@ -927,7 +927,10 @@ jQuery(function() {
     }
 
     function addMultiSvcRow(svc) {
-        var tpl = document.getElementById('multiSvcRowTpl-' + svc);
+        // jQuery('#x')[0] bridges to the raw DOM element so we can access
+        // <template>.content — the project's coding-rules-approved pattern
+        // for the rare cases where the API needs a DOM node.
+        var tpl = jQuery('#multiSvcRowTpl-' + svc)[0];
         if (!tpl) return;
         var $container = jQuery('#spMultiForm .multi-svc-rows[data-svc="' + svc + '"]');
         var $frag = jQuery(tpl.content.cloneNode(true));

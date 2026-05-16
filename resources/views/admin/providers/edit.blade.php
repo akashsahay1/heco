@@ -1392,7 +1392,9 @@ jQuery(function() {
         jQuery('#spMultiForm .multi-svc-rows').empty();
     }
     function addMultiSvcRow(svc) {
-        var tpl = document.getElementById('multiSvcRowTpl-' + svc);
+        // jQuery('#x')[0] bridges to the raw DOM element so we can access
+        // <template>.content — coding-rules-approved bridge pattern.
+        var tpl = jQuery('#multiSvcRowTpl-' + svc)[0];
         if (!tpl) return;
         var $container = jQuery('#spMultiForm .multi-svc-rows[data-svc="' + svc + '"]');
         $container.append(jQuery(tpl.content.cloneNode(true)));
