@@ -946,6 +946,15 @@ body.admin-login-page {
 .hct-content .card:has(.ms-dropdown),
 .hct-content .card:has(.ms-dropdown) .card-body { overflow: visible; }
 
+/* Filter-card forms (Travelers-style server-side filter pattern) host
+   searchable .custom-select dropdowns. .hct-content .card has overflow:
+   hidden, which would clip the dropdown panel below the card edge. Allow
+   filter forms (and only filter forms — narrow scope so we don't break
+   table cards with .table-responsive inside) to render their dropdown
+   panels outside their own bounds. */
+.hct-content form.card,
+.hct-content form.card > .card-body { overflow: visible; }
+
 /* ============================================
    CUSTOM CHECKBOX — Font Awesome check icon (mirrors portal.css).
    Used in row-select, bulk-delete patterns, terms checkboxes etc.
