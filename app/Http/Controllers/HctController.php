@@ -155,9 +155,9 @@ class HctController extends Controller
     {
         $regions = Region::where("is_active", true)->orderBy("name")->get();
 
-        // Server-side filters (Travelers-style pattern — explicit Apply,
-        // GET form, full-page reload). See feedback memory entry
-        // 'feedback-server-side-listings'.
+        // Server-side filters (Travelers-style — explicit Apply, GET form).
+        // Empty status = show all (including removed) by default. Specific
+        // status values filter to that one status.
         $status        = $request->get('status', '');
         $providerType  = $request->get('provider_type', '');
         $regionId      = $request->get('region_id', '');
@@ -165,13 +165,9 @@ class HctController extends Controller
 
         $query = \App\Models\ServiceProvider::with(['region', 'lastUpdatedBy']);
 
-        // Default scope hides 'removed' unless explicitly requested.
-        if ($status === 'all') {
-            // no filter
-        } elseif ($status !== '') {
+        $allowedStatuses = ['approved', 'pending', 'rejected', 'removed'];
+        if (in_array($status, $allowedStatuses, true)) {
             $query->where('status', $status);
-        } else {
-            $query->where('status', '!=', 'removed');
         }
         if ($providerType !== '') $query->where('provider_type', $providerType);
         if ($regionId !== '')     $query->where('region_id', $regionId);

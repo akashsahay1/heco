@@ -36,12 +36,11 @@
             <div class="col-md-2">
                 <label class="form-label small text-muted mb-1">Status</label>
                 <select class="form-select form-select-sm custom-select" name="status">
-                    <option value=""         {{ $status === ''         ? 'selected' : '' }}>Active (default)</option>
+                    <option value=""         {{ $status === ''         ? 'selected' : '' }}>All statuses</option>
                     <option value="approved" {{ $status === 'approved' ? 'selected' : '' }}>Approved</option>
                     <option value="pending"  {{ $status === 'pending'  ? 'selected' : '' }}>Pending</option>
                     <option value="rejected" {{ $status === 'rejected' ? 'selected' : '' }}>Rejected</option>
                     <option value="removed"  {{ $status === 'removed'  ? 'selected' : '' }}>Removed</option>
-                    <option value="all"      {{ $status === 'all'      ? 'selected' : '' }}>All (incl. removed)</option>
                 </select>
             </div>
             <div class="col-md-3">
