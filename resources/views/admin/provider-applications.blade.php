@@ -110,21 +110,41 @@ $('#appStatusFilter').on('change', function() { loadApplications(); });
 
 $(document).on('click', '.approve-app', function() {
     var id = $(this).data('id');
-    if (!confirm('Approve this provider application? A user account will be created for the provider.')) return;
-    var btn = $(this);
-    btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Processing...');
-    ajaxPost({ approve_provider: 1, provider_id: id }, function(resp) {
-        loadApplications();
+    var $btn = $(this);
+    Swal.fire({
+        title: 'Approve this provider application?',
+        text: 'A user account will be created for the provider and a set-password email will be sent.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, approve',
+        confirmButtonColor: '#79a09f',
+    }).then(function(res) {
+        if (!res.isConfirmed) return;
+        $btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Processing...');
+        ajaxPost({ approve_provider: 1, provider_id: id }, function(resp) {
+            showAlert('Application approved.', 'success');
+            loadApplications();
+        });
     });
 });
 
 $(document).on('click', '.reject-app', function() {
     var id = $(this).data('id');
-    if (!confirm('Reject this provider application? This action can be reversed later.')) return;
-    var btn = $(this);
-    btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Processing...');
-    ajaxPost({ reject_provider: 1, provider_id: id }, function(resp) {
-        loadApplications();
+    var $btn = $(this);
+    Swal.fire({
+        title: 'Reject this provider application?',
+        text: 'You can reverse this later by re-approving the application.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, reject',
+        confirmButtonColor: '#b54a4a',
+    }).then(function(res) {
+        if (!res.isConfirmed) return;
+        $btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Processing...');
+        ajaxPost({ reject_provider: 1, provider_id: id }, function(resp) {
+            showAlert('Application rejected.', 'info');
+            loadApplications();
+        });
     });
 });
 </script>
