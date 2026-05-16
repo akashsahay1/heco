@@ -209,9 +209,27 @@ class HctController extends Controller
         return view('admin.travelers', compact('travelers', 'segment', 'search'));
     }
 
-    public function providerApplications()
+    public function providerApplications(\Illuminate\Http\Request $request)
     {
-        return view("admin.provider-applications");
+        $status = $request->get('status', 'pending');   // Pending by default — that's what admin acts on most
+        $search = trim($request->get('search', ''));
+
+        $query = \App\Models\ServiceProvider::with('region');
+        if ($status === 'all') {
+            // no filter
+        } elseif ($status !== '') {
+            $query->where('status', $status);
+        }
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('phone_1', 'like', "%{$search}%");
+            });
+        }
+        $applications = $query->orderBy('created_at', 'desc')->paginate(24)->withQueryString();
+
+        return view('admin.provider-applications', compact('applications', 'status', 'search'));
     }
 
     public function pendingPricing()
