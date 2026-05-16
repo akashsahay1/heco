@@ -202,6 +202,42 @@
     </div>
 </form>
 
+{{-- ===== Danger zone — Remove / Restore provider ===== --}}
+@php
+    $activePricingCount = \App\Models\SpPricing::where('service_provider_id', $provider->id)->count();
+    $activeBookingsCount = \App\Models\SpRoomBooking::whereIn('sp_pricing_id',
+        \App\Models\SpPricing::where('service_provider_id', $provider->id)->pluck('id'))
+        ->whereIn('status', ['held', 'confirmed'])->count();
+    $hostedExperiencesCount = \App\Models\Experience::where('hlh_id', $provider->id)->count();
+    $isRemoved = $provider->status === 'removed';
+@endphp
+<div class="card mb-5 border-danger-subtle" id="providerDangerZone">
+    <div class="card-body">
+        <h6 class="border-bottom pb-2 text-danger"><i class="bi bi-exclamation-triangle"></i> Danger zone</h6>
+
+        @if($isRemoved)
+            <p class="mb-2 small">This provider is currently <strong>removed</strong> — they cannot log in, their pricing is inactive, and their inventory is hidden from Trip Manager &amp; travellers. Historical trips and references are preserved.</p>
+            <button type="button" class="btn btn-sm btn-success" id="btnRestoreProvider" data-provider-id="{{ $provider->id }}">
+                <i class="bi bi-arrow-counterclockwise me-1"></i> Restore Provider
+            </button>
+        @else
+            <p class="mb-1 small">Removing a provider does the following <em>(reversible — admin can restore later)</em>:</p>
+            <ul class="small text-muted mb-2">
+                <li>Provider status set to <strong>removed</strong></li>
+                <li>Linked user account marked <strong>inactive</strong> (can't log in)</li>
+                <li><strong>{{ $activePricingCount }}</strong> pricing {{ \Illuminate\Support\Str::plural('row', $activePricingCount) }} marked inactive (hidden from Trip Manager / travellers)</li>
+                <li><strong>{{ $activeBookingsCount }}</strong> active room {{ \Illuminate\Support\Str::plural('booking', $activeBookingsCount) }} released (no longer reserve inventory)</li>
+                @if($hostedExperiencesCount > 0)
+                    <li class="text-warning"><i class="bi bi-info-circle me-1"></i><strong>{{ $hostedExperiencesCount }}</strong> hosted {{ \Illuminate\Support\Str::plural('experience', $hostedExperiencesCount) }} will lose this provider as host — experiences stay but show no host until reassigned.</li>
+                @endif
+            </ul>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="btnRemoveProvider" data-provider-id="{{ $provider->id }}">
+                <i class="bi bi-trash me-1"></i> Remove Provider
+            </button>
+        @endif
+    </div>
+</div>
+
 {{-- ===== Services & Pricing — hotel-style inventory for accommodation, rates for everything else ===== --}}
 <div class="card mb-5" id="spPricingCard" data-provider-id="{{ $provider->id }}">
     <div class="card-body">
@@ -851,6 +887,43 @@ jQuery(function() {
         if (!jQuery(e.target).closest('.ms-dropdown').length) {
             jQuery('.ms-panel').addClass('d-none');
         }
+    });
+});
+
+// ─── Danger zone: Remove / Restore provider ──────────────────────────
+jQuery('#btnRemoveProvider').on('click', function() {
+    var id = jQuery(this).data('provider-id');
+    Swal.fire({
+        title: 'Remove this provider?',
+        text: 'They will not be able to log in. Their pricing and bookings will be deactivated. You can restore them later.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, remove',
+        confirmButtonColor: '#b54a4a',
+    }).then(function(res) {
+        if (!res.isConfirmed) return;
+        ajaxPost({ remove_provider: 1, provider_id: id }, function() {
+            showAlert('Provider removed.', 'success');
+            setTimeout(function() { location.reload(); }, 700);
+        });
+    });
+});
+
+jQuery('#btnRestoreProvider').on('click', function() {
+    var id = jQuery(this).data('provider-id');
+    Swal.fire({
+        title: 'Restore this provider?',
+        text: 'Their account will be reactivated (status: approved). Pricing rows stay inactive — re-enable individually as needed.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, restore',
+        confirmButtonColor: '#79a09f',
+    }).then(function(res) {
+        if (!res.isConfirmed) return;
+        ajaxPost({ restore_provider: 1, provider_id: id }, function() {
+            showAlert('Provider restored.', 'success');
+            setTimeout(function() { location.reload(); }, 700);
+        });
     });
 });
 

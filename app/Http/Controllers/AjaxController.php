@@ -720,6 +720,12 @@ class AjaxController extends Controller
             if ($request->has('reject_provider')) {
                 return $this->rejectProvider($request);
             }
+            if ($request->has('remove_provider')) {
+                return $this->removeProvider($request);
+            }
+            if ($request->has('restore_provider')) {
+                return $this->restoreProvider($request);
+            }
 
             // ===== REGION MANAGEMENT =====
             if ($request->has('get_regions_list')) {
@@ -4188,10 +4194,13 @@ class AjaxController extends Controller
     {
         $query = ServiceProvider::with(["region", "lastUpdatedBy:id,full_name,email"]);
 
-        // Status filter — blank / "all" means no filter; otherwise honour it.
+        // Status filter — blank means hide removed (default), "all" means
+        // include removed too, anything else is honoured as-is.
         $status = $request->get("status", "");
         if (!empty($status) && $status !== "all") {
             $query->where("status", $status);
+        } elseif (empty($status)) {
+            $query->where("status", "!=", "removed");
         }
         if ($request->filled("provider_type")) {
             $query->where("provider_type", $request->provider_type);
@@ -4534,6 +4543,69 @@ class AjaxController extends Controller
         $provider = ServiceProvider::findOrFail($request->provider_id);
         $provider->update(["status" => "rejected"]);
         return response()->json(["success" => true]);
+    }
+
+    /**
+     * Soft-archive a service provider. HCT admin only.
+     * Side effects:
+     *   - provider.status        → 'removed'
+     *   - linked user.status     → 'inactive' (so they can't log in)
+     *   - sp_pricing.is_active   → false   (so trip-manager/traveller skip them)
+     *   - sp_room_bookings.status → 'released' on any held/confirmed rows
+     *
+     * The provider row is kept (NOT hard-deleted) so historical trips,
+     * payments, and references stay intact. Admin can flip back to approved
+     * via restoreProvider().
+     */
+    protected function removeProvider(Request $request): JsonResponse
+    {
+        if (!Auth::user() || !Auth::user()->isHctAdmin()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $provider = ServiceProvider::findOrFail($request->provider_id);
+
+        $provider->update([
+            'status'             => 'removed',
+            'last_updated_by'    => Auth::id(),
+            'last_updated_by_role' => 'admin',
+        ]);
+        if ($provider->user_id) {
+            \App\Models\User::where('id', $provider->user_id)->update(['status' => 'inactive']);
+        }
+        SpPricing::where('service_provider_id', $provider->id)->update(['is_active' => false]);
+        // Release every active room booking against this SP's pricing rows.
+        $pricingIds = SpPricing::where('service_provider_id', $provider->id)->pluck('id');
+        if ($pricingIds->isNotEmpty()) {
+            \App\Models\SpRoomBooking::whereIn('sp_pricing_id', $pricingIds)
+                ->whereIn('status', ['held', 'confirmed'])
+                ->update(['status' => 'released']);
+        }
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Reverse a removeProvider() — admin only. Flips status back to 'approved'
+     * and reactivates the linked user. Pricing rows stay inactive so the
+     * admin can review and re-enable individual rates intentionally.
+     */
+    protected function restoreProvider(Request $request): JsonResponse
+    {
+        if (!Auth::user() || !Auth::user()->isHctAdmin()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $provider = ServiceProvider::findOrFail($request->provider_id);
+        if ($provider->status !== 'removed') {
+            return response()->json(['error' => 'Provider is not in removed state'], 422);
+        }
+        $provider->update([
+            'status'             => 'approved',
+            'last_updated_by'    => Auth::id(),
+            'last_updated_by_role' => 'admin',
+        ]);
+        if ($provider->user_id) {
+            \App\Models\User::where('id', $provider->user_id)->update(['status' => 'active']);
+        }
+        return response()->json(['success' => true]);
     }
 
     // ===========================
