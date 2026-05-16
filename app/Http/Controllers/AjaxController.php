@@ -726,6 +726,9 @@ class AjaxController extends Controller
             if ($request->has('restore_provider')) {
                 return $this->restoreProvider($request);
             }
+            if ($request->has('permanently_delete_provider')) {
+                return $this->permanentlyDeleteProvider($request);
+            }
 
             // ===== REGION MANAGEMENT =====
             if ($request->has('get_regions_list')) {
@@ -4580,6 +4583,66 @@ class AjaxController extends Controller
                 ->whereIn('status', ['held', 'confirmed'])
                 ->update(['status' => 'released']);
         }
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Hard-delete a provider. HCT admin only. Requires the provider to already
+     * be in 'removed' state (so admins always go through the soft-archive
+     * step first and can't accidentally nuke a live provider).
+     *
+     * Blocked if:
+     *   - any sp_payments rows reference this provider (financial history)
+     *   - any experiences are still hosted by this provider
+     * Both must be cleaned up manually by the admin before hard delete.
+     *
+     * Cascades automatically via DB FKs:
+     *   - sp_pricing            → cascadeOnDelete
+     *   - sp_availability       → cascadeOnDelete
+     *   - sp_room_bookings      → cascade via sp_pricing
+     *   - trip_day_services     → service_provider_id set NULL (history kept)
+     *   - trip_day_services     → sp_pricing_id set NULL via sp_pricing FK
+     *
+     * Linked user row is deleted explicitly.
+     */
+    protected function permanentlyDeleteProvider(Request $request): JsonResponse
+    {
+        if (!Auth::user() || !Auth::user()->isHctAdmin()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $provider = ServiceProvider::findOrFail($request->provider_id);
+        if ($provider->status !== 'removed') {
+            return response()->json([
+                'error' => 'Provider must be in "removed" state before permanent deletion. Use Remove first.',
+            ], 422);
+        }
+
+        // Blockers — these have hard FK constraints (RESTRICT) on the
+        // service_providers row and would throw a DB error if we tried to
+        // delete. Surface a friendly message instead.
+        $paymentCount    = \App\Models\SpPayment::where('service_provider_id', $provider->id)->count();
+        $experienceCount = \App\Models\Experience::where('hlh_id', $provider->id)->count();
+        if ($paymentCount > 0 || $experienceCount > 0) {
+            $blockers = [];
+            if ($paymentCount > 0)    $blockers[] = "$paymentCount payment record(s)";
+            if ($experienceCount > 0) $blockers[] = "$experienceCount hosted experience(s)";
+            return response()->json([
+                'error' => 'Cannot permanently delete — provider has ' . implode(' + ', $blockers)
+                    . '. Reassign or archive those first.',
+                'blockers' => [
+                    'sp_payments' => $paymentCount,
+                    'experiences' => $experienceCount,
+                ],
+            ], 422);
+        }
+
+        $userId = $provider->user_id;
+        \DB::transaction(function () use ($provider, $userId) {
+            $provider->delete();
+            if ($userId) {
+                \App\Models\User::where('id', $userId)->delete();
+            }
+        });
         return response()->json(['success' => true]);
     }
 

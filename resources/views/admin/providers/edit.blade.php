@@ -216,10 +216,34 @@
         <h6 class="border-bottom pb-2 text-danger"><i class="bi bi-exclamation-triangle"></i> Danger zone</h6>
 
         @if($isRemoved)
+            @php
+                $blockerPayments = \App\Models\SpPayment::where('service_provider_id', $provider->id)->count();
+                $blockerExperiences = \App\Models\Experience::where('hlh_id', $provider->id)->count();
+                $canHardDelete = $blockerPayments === 0 && $blockerExperiences === 0;
+            @endphp
             <p class="mb-2 small">This provider is currently <strong>removed</strong> — they cannot log in, their pricing is inactive, and their inventory is hidden from Trip Manager &amp; travellers. Historical trips and references are preserved.</p>
-            <button type="button" class="btn btn-sm btn-success" id="btnRestoreProvider" data-provider-id="{{ $provider->id }}">
-                <i class="bi bi-arrow-counterclockwise me-1"></i> Restore Provider
-            </button>
+            <div class="d-flex gap-2 flex-wrap mb-2">
+                <button type="button" class="btn btn-sm btn-success" id="btnRestoreProvider" data-provider-id="{{ $provider->id }}">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i> Restore Provider
+                </button>
+                <button type="button" class="btn btn-sm btn-danger" id="btnPermanentDeleteProvider" data-provider-id="{{ $provider->id }}"
+                    {{ $canHardDelete ? '' : 'disabled' }}>
+                    <i class="bi bi-trash3 me-1"></i> Permanently Delete
+                </button>
+            </div>
+            @if(!$canHardDelete)
+                <small class="text-muted d-block"><i class="bi bi-info-circle me-1"></i>
+                    Permanent delete blocked —
+                    @if($blockerPayments > 0) {{ $blockerPayments }} payment {{ \Illuminate\Support\Str::plural('record', $blockerPayments) }} @endif
+                    @if($blockerPayments > 0 && $blockerExperiences > 0) and @endif
+                    @if($blockerExperiences > 0) {{ $blockerExperiences }} hosted {{ \Illuminate\Support\Str::plural('experience', $blockerExperiences) }} @endif
+                    reference this provider. Reassign or archive those first.
+                </small>
+            @else
+                <small class="text-muted d-block"><i class="bi bi-exclamation-triangle me-1"></i>
+                    Permanent delete <strong>cannot be undone</strong>. All pricing, availability blocks, and room bookings will be wiped from the database. Historical trip lines stay but lose the provider link.
+                </small>
+            @endif
         @else
             <p class="mb-1 small">Removing a provider does the following <em>(reversible — admin can restore later)</em>:</p>
             <ul class="small text-muted mb-2">
@@ -905,6 +929,31 @@ jQuery('#btnRemoveProvider').on('click', function() {
         ajaxPost({ remove_provider: 1, provider_id: id }, function() {
             showAlert('Provider removed.', 'success');
             setTimeout(function() { location.reload(); }, 700);
+        });
+    });
+});
+
+jQuery('#btnPermanentDeleteProvider').on('click', function() {
+    var id = jQuery(this).data('provider-id');
+    Swal.fire({
+        title: 'Permanently delete this provider?',
+        html: '<strong>This cannot be undone.</strong><br><br>'
+            + 'All pricing rows, availability blocks, and active room bookings will be wiped from the database. '
+            + 'Historical trip lines remain but lose the link to this provider. '
+            + 'The linked user account will also be deleted.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, permanently delete',
+        confirmButtonColor: '#b54a4a',
+        focusCancel: true,
+    }).then(function(res) {
+        if (!res.isConfirmed) return;
+        ajaxPost({ permanently_delete_provider: 1, provider_id: id }, function() {
+            showAlert('Provider permanently deleted.', 'success');
+            setTimeout(function() { window.location.href = '/providers'; }, 700);
+        }, function(xhr) {
+            var msg = (xhr.responseJSON || {}).error || 'Delete failed.';
+            window.showError && window.showError(msg);
         });
     });
 });

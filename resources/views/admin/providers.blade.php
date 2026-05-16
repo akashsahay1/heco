@@ -37,6 +37,9 @@
         <button type="button" class="btn btn-sm btn-danger d-none" id="providersBulkRemove">
             <i class="bi bi-trash me-1"></i> Remove <span id="providersBulkCount">0</span>
         </button>
+        <button type="button" class="btn btn-sm btn-danger d-none" id="providersBulkPermDelete">
+            <i class="bi bi-trash3 me-1"></i> Permanently delete <span id="providersBulkPermCount">0</span>
+        </button>
     </div>
 </div>
 
@@ -103,13 +106,12 @@ function loadProviders() {
             else statusBadge = '<span class="badge bg-secondary">' + (p.status || '-') + '</span>';
 
             html += '<tr data-id="' + p.id + '" data-status="' + (p.status || '') + '" class="' + (p.status === 'removed' ? 'text-muted' : '') + '">';
-            // Checkbox cell — only show on non-removed rows (those are the
-            // only ones that can be bulk-removed; already-removed rows are
-            // excluded from selection).
+            // Checkbox cell — always rendered. The bulk action button is
+            // mode-aware: non-removed selected → 'Remove'; removed selected
+            // → 'Permanently delete'. Mixed selections show both buttons,
+            // each operating only on the matching subset.
             html += '<td>';
-            if (p.status !== 'removed') {
-                html += '<i class="bi bi-square provider-check" role="button" data-id="' + p.id + '"></i>';
-            }
+            html += '<i class="bi bi-square provider-check" role="button" data-id="' + p.id + '" data-status="' + (p.status || '') + '"></i>';
             html += '</td>';
             html += '<td>' + (p.name || '-') + '</td>';
             html += '<td>' + typeBadge + '</td>';
@@ -132,9 +134,13 @@ function loadProviders() {
 }
 
 function refreshBulkBtn() {
-    var checked = $('.provider-check.provider-checked').length;
-    $('#providersBulkCount').text(checked);
-    $('#providersBulkRemove').toggleClass('d-none', checked === 0);
+    var $checked = $('.provider-check.provider-checked');
+    var removedSelected = $checked.filter('[data-status="removed"]').length;
+    var nonRemovedSelected = $checked.length - removedSelected;
+    $('#providersBulkCount').text(nonRemovedSelected);
+    $('#providersBulkPermCount').text(removedSelected);
+    $('#providersBulkRemove').toggleClass('d-none', nonRemovedSelected === 0);
+    $('#providersBulkPermDelete').toggleClass('d-none', removedSelected === 0);
 }
 
 $(function() {
@@ -161,13 +167,15 @@ $(document).on('click', '.providers-selall', function() {
     refreshBulkBtn();
 });
 
-// Bulk remove — loops through the selected IDs and calls remove_provider
+// Bulk remove — only acts on currently-non-removed selected rows.
 $('#providersBulkRemove').on('click', function() {
-    var ids = $('.provider-check.provider-checked').map(function() { return $(this).data('id'); }).get();
+    var ids = $('.provider-check.provider-checked').filter(function() {
+        return $(this).data('status') !== 'removed';
+    }).map(function() { return $(this).data('id'); }).get();
     if (!ids.length) return;
     Swal.fire({
         title: 'Remove ' + ids.length + ' provider(s)?',
-        text: 'Each provider will be archived (status: removed). Their user accounts will be deactivated, pricing inactivated, active room bookings released. Reversible — admin can restore individually later.',
+        text: 'Each provider will be archived (status: removed). User accounts deactivated, pricing inactivated, active bookings released. Reversible.',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Yes, remove ' + ids.length,
@@ -186,6 +194,57 @@ $('#providersBulkRemove').on('click', function() {
             ajaxPost({ remove_provider: 1, provider_id: ids[i] },
                 function() { done++; next(i + 1); },
                 function() { failed++; next(i + 1); }
+            );
+        }
+        next(0);
+    });
+});
+
+// Bulk permanent delete — only acts on currently-removed selected rows.
+// Each call goes through the per-provider blocker check (sp_payments,
+// hosted experiences); per-row failures are reported in the final toast.
+$('#providersBulkPermDelete').on('click', function() {
+    var ids = $('.provider-check.provider-checked').filter(function() {
+        return $(this).data('status') === 'removed';
+    }).map(function() { return $(this).data('id'); }).get();
+    if (!ids.length) return;
+    Swal.fire({
+        title: 'Permanently delete ' + ids.length + ' provider(s)?',
+        html: '<strong>This cannot be undone.</strong><br>'
+            + 'All pricing, availability blocks, and active bookings will be wiped from the database. '
+            + 'Providers with payment records or hosted experiences will be skipped automatically.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, permanently delete',
+        confirmButtonColor: '#b54a4a',
+        focusCancel: true,
+    }).then(function(res) {
+        if (!res.isConfirmed) return;
+        var $btn = $('#providersBulkPermDelete').prop('disabled', true).html('<i class="bi bi-hourglass-split me-1"></i> Deleting...');
+        var done = 0, blocked = 0, failed = 0;
+        var blockedMsgs = [];
+        function next(i) {
+            if (i >= ids.length) {
+                $btn.prop('disabled', false).html('<i class="bi bi-trash3 me-1"></i> Permanently delete <span id="providersBulkPermCount">0</span>');
+                var summary = done + ' deleted';
+                if (blocked) summary += ', ' + blocked + ' blocked: ' + blockedMsgs.join('; ');
+                if (failed) summary += ', ' + failed + ' failed';
+                showAlert(summary, (blocked || failed) ? 'warning' : 'success');
+                loadProviders();
+                return;
+            }
+            ajaxPost({ permanently_delete_provider: 1, provider_id: ids[i] },
+                function() { done++; next(i + 1); },
+                function(xhr) {
+                    var resp = xhr.responseJSON || {};
+                    if (xhr.status === 422 && resp.blockers) {
+                        blocked++;
+                        blockedMsgs.push('#' + ids[i] + ': ' + (resp.error || 'blocked'));
+                    } else {
+                        failed++;
+                    }
+                    next(i + 1);
+                }
             );
         }
         next(0);
