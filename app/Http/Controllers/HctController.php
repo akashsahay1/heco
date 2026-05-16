@@ -76,13 +76,31 @@ class HctController extends Controller
         return view("admin.control-panel", compact("settingGroups", "systemListTypes"));
     }
 
-    public function leads()
+    public function leads(\Illuminate\Http\Request $request)
     {
         $hctUsers = User::whereIn("user_role", ["hct_admin", "hct_collaborator"])
             ->where("status", "active")
             ->orderBy("full_name")
             ->get(["id", "full_name", "email"]);
-        return view("admin.leads", compact("hctUsers"));
+
+        // Server-side filters (Travelers-style — explicit Apply, GET form,
+        // full-page reload). See feedback memory 'feedback-server-side-listings'.
+        $stage  = $request->get('stage', '');
+        $search = trim($request->get('search', ''));
+
+        $query = \App\Models\Lead::with(['user', 'trip', 'assignedHct']);
+        if ($stage !== '') $query->where('stage', $stage);
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', fn($u) =>
+                    $u->where('full_name', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%")
+                )->orWhereHas('trip', fn($t) => $t->where('trip_id', 'like', "%{$search}%"));
+            });
+        }
+        $leads = $query->orderBy('enquiry_date', 'desc')->paginate(20)->withQueryString();
+
+        return view('admin.leads', compact('hctUsers', 'leads', 'stage', 'search'));
     }
 
     public function trips()

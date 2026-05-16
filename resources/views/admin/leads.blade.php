@@ -3,30 +3,108 @@
 @section('content')
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h5 class="mb-0">Leads Management</h5>
-    <div class="d-flex gap-2">
-        <select class="form-select form-select-sm custom-select heco-filter-md" id="leadStageFilter">
-            <option value="" selected>All Stages</option>
-            <option value="follow_up">Follow Up</option>
-            <option value="won">Won</option>
-            <option value="lost">Lost</option>
-        </select>
-        <input type="text" class="form-control form-control-sm heco-filter-lg" id="leadSearch">
-    </div>
+    <h5 class="mb-0">
+        Leads Management
+        <span class="badge bg-secondary ms-2" title="Total in current view">{{ number_format($leads->total()) }}</span>
+    </h5>
 </div>
+
+{{-- Server-side filter card (Travelers-style). --}}
+<form method="GET" action="{{ url('/leads') }}" class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">Stage</label>
+                <select class="form-select form-select-sm custom-select" name="stage">
+                    <option value=""          {{ $stage === ''          ? 'selected' : '' }}>All stages</option>
+                    <option value="follow_up" {{ $stage === 'follow_up' ? 'selected' : '' }}>Follow Up</option>
+                    <option value="won"       {{ $stage === 'won'       ? 'selected' : '' }}>Won</option>
+                    <option value="lost"      {{ $stage === 'lost'      ? 'selected' : '' }}>Lost</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small text-muted mb-1">Search (traveller name / email / trip ID)</label>
+                <input type="text" name="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="Type to search...">
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-funnel"></i> Apply
+                </button>
+                @if($stage !== '' || $search !== '')
+                    <a href="{{ url('/leads') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </a>
+                @endif
+            </div>
+        </div>
+    </div>
+</form>
 
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover table-sm mb-0">
                 <thead class="table-light">
-                    <tr><th>Traveller</th><th>Trip</th><th>Stage</th><th>Enquiry Date</th><th>Last Contact</th><th>Assigned To</th><th>Actions</th></tr>
+                    <tr>
+                        <th>Traveller</th>
+                        <th>Trip</th>
+                        <th>Stage</th>
+                        <th>Enquiry Date</th>
+                        <th>Last Contact</th>
+                        <th>Assigned To</th>
+                        <th>Actions</th>
+                    </tr>
                 </thead>
-                <tbody id="leadsTable"><tr><td colspan="7" class="text-center text-muted">Loading...</td></tr></tbody>
+                <tbody>
+                    @forelse($leads as $l)
+                        @php
+                            $stageClass = match($l->stage) {
+                                'won'  => 'success',
+                                'lost' => 'danger',
+                                default => 'warning text-dark',
+                            };
+                        @endphp
+                        <tr>
+                            <td>{{ $l->user ? ($l->user->full_name ?: $l->user->email) : '-' }}</td>
+                            <td>
+                                @if($l->trip)
+                                    <a href="{{ url('/trip-manager/'.$l->trip_id) }}" target="_blank">{{ $l->trip->trip_id }}</a>
+                                @else
+                                    -
+                                @endif
+                            </td>
+                            <td><span class="badge bg-{{ $stageClass }}">{{ str_replace('_', ' ', $l->stage) }}</span></td>
+                            <td><small>{{ optional($l->enquiry_date)->format('Y-m-d') ?: '-' }}</small></td>
+                            <td><small>{{ optional($l->last_interaction_date)->format('Y-m-d') ?: '-' }}</small></td>
+                            <td>
+                                @if($l->assignedHct)
+                                    {{ $l->assignedHct->full_name }}
+                                @else
+                                    <em class="text-muted">Unassigned</em>
+                                @endif
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary view-lead" data-id="{{ $l->id }}"><i class="bi bi-eye"></i></button>
+                                @if($l->stage === 'follow_up')
+                                    <button class="btn btn-sm btn-outline-success mark-won" data-id="{{ $l->id }}" title="Mark Won"><i class="bi bi-check"></i></button>
+                                    <button class="btn btn-sm btn-outline-danger mark-lost" data-id="{{ $l->id }}" title="Mark Lost"><i class="bi bi-x"></i></button>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="text-center text-muted py-4">No leads found.</td></tr>
+                    @endforelse
+                </tbody>
             </table>
         </div>
     </div>
 </div>
+
+@if($leads->hasPages())
+    <div class="mt-3 d-flex justify-content-center">
+        {{ $leads->links() }}
+    </div>
+@endif
 
 <div class="modal fade" id="leadModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -43,49 +121,25 @@
 <script>
 var hctUsers = @json($hctUsers);
 
-function loadLeads() {
-    ajaxPost({
-        get_leads: 1,
-        stage: $('#leadStageFilter').val(),
-        search: $('#leadSearch').val()
-    }, function(resp) {
-        var html = '';
-        var items = resp.data || [];
-        if (!items.length) { html = '<tr><td colspan="7" class="text-center text-muted">No leads found</td></tr>'; }
-        items.forEach(function(l) {
-            var stageClass = l.stage === 'won' ? 'success' : (l.stage === 'lost' ? 'danger' : 'warning text-dark');
-            html += '<tr>';
-            html += '<td>' + (l.user ? l.user.full_name || l.user.email : '') + '</td>';
-            html += '<td><a href="/trip-manager/' + l.trip_id + '" target="_blank">' + (l.trip ? l.trip.trip_id : '') + '</a></td>';
-            html += '<td><span class="badge bg-' + stageClass + '">' + l.stage.replace('_', ' ') + '</span></td>';
-            html += '<td><small>' + (l.enquiry_date ? l.enquiry_date.substring(0, 10) : '') + '</small></td>';
-            html += '<td><small>' + (l.last_interaction_date ? l.last_interaction_date.substring(0, 10) : '-') + '</small></td>';
-            html += '<td>' + (l.assigned_hct ? l.assigned_hct.full_name : '<em class="text-muted">Unassigned</em>') + '</td>';
-            html += '<td>';
-            html += '<button class="btn btn-sm btn-outline-primary view-lead" data-id="' + l.id + '"><i class="bi bi-eye"></i></button> ';
-            if (l.stage === 'follow_up') {
-                html += '<button class="btn btn-sm btn-outline-success mark-won" data-id="' + l.id + '" title="Mark Won"><i class="bi bi-check"></i></button> ';
-                html += '<button class="btn btn-sm btn-outline-danger mark-lost" data-id="' + l.id + '" title="Mark Lost"><i class="bi bi-x"></i></button>';
-            }
-            html += '</td></tr>';
-        });
-        $('#leadsTable').html(html);
-    });
-}
-
-$(function() { loadLeads(); });
-$('#leadStageFilter, #leadSearch').on('change keyup', function() { loadLeads(); });
-
+// Lead-detail modal stays AJAX (read+write inside the modal). The list
+// itself is server-rendered; write actions reload the page to pick up
+// the new state with the current filters preserved.
 $(document).on('click', '.mark-won', function() {
     var id = $(this).data('id');
     confirmAction('Mark this lead as Won? This will confirm the trip.', function() {
-        ajaxPost({ update_lead: 1, lead_id: id, stage: 'won' }, function() { loadLeads(); });
+        ajaxPost({ update_lead: 1, lead_id: id, stage: 'won' }, function() {
+            showAlert('Lead marked as Won.', 'success');
+            location.reload();
+        });
     });
 });
 $(document).on('click', '.mark-lost', function() {
     var id = $(this).data('id');
     confirmAction('Mark this lead as Lost?', function() {
-        ajaxPost({ update_lead: 1, lead_id: id, stage: 'lost' }, function() { loadLeads(); });
+        ajaxPost({ update_lead: 1, lead_id: id, stage: 'lost' }, function() {
+            showAlert('Lead marked as Lost.', 'info');
+            location.reload();
+        });
     });
 });
 $(document).on('click', '.view-lead', function() {
@@ -114,7 +168,7 @@ $(document).on('click', '.view-lead', function() {
             buildCustomDropdown($('#leadAssignedHct')[0]);
             buildCustomDropdown($('#leadInteraction')[0]);
         }
-        new bootstrap.Modal('#leadModal').show();
+        new bootstrap.Modal(jQuery('#leadModal')[0]).show();
     });
 });
 
@@ -123,8 +177,9 @@ function updateLead(id) {
     var mode = $('#leadInteraction').val();
     if (mode) data.interaction_mode = mode;
     ajaxPost(data, function() {
-        bootstrap.Modal.getInstance('#leadModal').hide();
-        loadLeads();
+        bootstrap.Modal.getInstance(jQuery('#leadModal')[0]).hide();
+        showAlert('Lead updated.', 'success');
+        location.reload();
     });
 }
 </script>
