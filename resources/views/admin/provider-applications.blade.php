@@ -13,6 +13,7 @@
                 <option value="rejected">Rejected</option>
             </select>
         </div>
+        <input type="text" class="form-control form-control-sm heco-filter-lg" id="appSearch" placeholder="Search name / email / phone">
     </div>
 </div>
 
@@ -27,7 +28,8 @@
 function loadApplications() {
     ajaxPost({
         get_provider_applications: 1,
-        status: $('#appStatusFilter').val()
+        status: $('#appStatusFilter').val(),
+        search: $('#appSearch').val()
     }, function(resp) {
         var html = '';
         var items = resp.data || [];
@@ -107,6 +109,7 @@ function loadApplications() {
 $(function() { loadApplications(); });
 
 $('#appStatusFilter').on('change', function() { loadApplications(); });
+$('#appSearch').on('keyup', function() { loadApplications(); });
 
 $(document).on('click', '.approve-app', function() {
     var id = $(this).data('id');

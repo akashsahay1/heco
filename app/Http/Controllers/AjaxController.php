@@ -4517,6 +4517,15 @@ class AjaxController extends Controller
         if (!empty($status) && $status !== "all") {
             $query->where("status", $status);
         }
+        // Search across name / email / phone.
+        $search = trim((string) $request->get("search", ""));
+        if ($search !== "") {
+            $query->where(function ($q) use ($search) {
+                $q->where("name", "like", "%{$search}%")
+                  ->orWhere("email", "like", "%{$search}%")
+                  ->orWhere("phone_1", "like", "%{$search}%");
+            });
+        }
 
         $applications = $query->orderBy("created_at", "desc")->paginate(20);
         return response()->json($applications);
