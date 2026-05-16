@@ -4617,33 +4617,38 @@ class AjaxController extends Controller
             ], 422);
         }
 
-        // Blockers — these have hard FK constraints (RESTRICT) on the
-        // service_providers row and would throw a DB error if we tried to
-        // delete. Surface a friendly message instead.
-        $paymentCount    = \App\Models\SpPayment::where('service_provider_id', $provider->id)->count();
-        $experienceCount = \App\Models\Experience::where('hlh_id', $provider->id)->count();
-        if ($paymentCount > 0 || $experienceCount > 0) {
-            $blockers = [];
-            if ($paymentCount > 0)    $blockers[] = "$paymentCount payment record(s)";
-            if ($experienceCount > 0) $blockers[] = "$experienceCount hosted experience(s)";
+        // Only sp_payments still hard-blocks — financial history must be
+        // archived separately. Experiences are auto-detached: hlh_id set to
+        // NULL (now nullable as of 2026_05_16_140000) and the experience
+        // deactivated so it stops appearing in active listings.
+        $paymentCount = \App\Models\SpPayment::where('service_provider_id', $provider->id)->count();
+        if ($paymentCount > 0) {
             return response()->json([
-                'error' => 'Cannot permanently delete — provider has ' . implode(' + ', $blockers)
-                    . '. Reassign or archive those first.',
-                'blockers' => [
-                    'sp_payments' => $paymentCount,
-                    'experiences' => $experienceCount,
-                ],
+                'error' => "Cannot permanently delete — provider has {$paymentCount} payment record(s). Archive those first.",
+                'blockers' => ['sp_payments' => $paymentCount],
             ], 422);
         }
 
         $userId = $provider->user_id;
+        $detachedExperiences = \App\Models\Experience::where('hlh_id', $provider->id)->count();
+
         \DB::transaction(function () use ($provider, $userId) {
-            $provider->delete();
+            // Detach hosted experiences (hlh_id → NULL, is_active → false)
+            // so traveller listings stop surfacing them. Admin can reassign
+            // them to a new HLH later if needed.
+            \App\Models\Experience::where('hlh_id', $provider->id)->update([
+                'hlh_id'    => null,
+                'is_active' => false,
+            ]);
+            $provider->delete();  // cascades to sp_pricing, sp_availability, sp_room_bookings
             if ($userId) {
                 \App\Models\User::where('id', $userId)->delete();
             }
         });
-        return response()->json(['success' => true]);
+        return response()->json([
+            'success' => true,
+            'detached_experiences' => $detachedExperiences,
+        ]);
     }
 
     /**

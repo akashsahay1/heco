@@ -218,8 +218,8 @@
         @if($isRemoved)
             @php
                 $blockerPayments = \App\Models\SpPayment::where('service_provider_id', $provider->id)->count();
-                $blockerExperiences = \App\Models\Experience::where('hlh_id', $provider->id)->count();
-                $canHardDelete = $blockerPayments === 0 && $blockerExperiences === 0;
+                $hostedExperiencesNow = \App\Models\Experience::where('hlh_id', $provider->id)->count();
+                $canHardDelete = $blockerPayments === 0;
             @endphp
             <p class="mb-2 small">This provider is currently <strong>removed</strong> — they cannot log in, their pricing is inactive, and their inventory is hidden from Trip Manager &amp; travellers. Historical trips and references are preserved.</p>
             <div class="d-flex gap-2 flex-wrap mb-2">
@@ -227,21 +227,23 @@
                     <i class="bi bi-arrow-counterclockwise me-1"></i> Restore Provider
                 </button>
                 <button type="button" class="btn btn-sm btn-danger" id="btnPermanentDeleteProvider" data-provider-id="{{ $provider->id }}"
+                    data-hosted-count="{{ $hostedExperiencesNow }}"
                     {{ $canHardDelete ? '' : 'disabled' }}>
                     <i class="bi bi-trash3 me-1"></i> Permanently Delete
                 </button>
             </div>
             @if(!$canHardDelete)
                 <small class="text-muted d-block"><i class="bi bi-info-circle me-1"></i>
-                    Permanent delete blocked —
-                    @if($blockerPayments > 0) {{ $blockerPayments }} payment {{ \Illuminate\Support\Str::plural('record', $blockerPayments) }} @endif
-                    @if($blockerPayments > 0 && $blockerExperiences > 0) and @endif
-                    @if($blockerExperiences > 0) {{ $blockerExperiences }} hosted {{ \Illuminate\Support\Str::plural('experience', $blockerExperiences) }} @endif
-                    reference this provider. Reassign or archive those first.
+                    Permanent delete blocked — {{ $blockerPayments }} payment {{ \Illuminate\Support\Str::plural('record', $blockerPayments) }} reference this provider. Archive those first.
                 </small>
             @else
                 <small class="text-muted d-block"><i class="bi bi-exclamation-triangle me-1"></i>
-                    Permanent delete <strong>cannot be undone</strong>. All pricing, availability blocks, and room bookings will be wiped from the database. Historical trip lines stay but lose the provider link.
+                    Permanent delete <strong>cannot be undone</strong>. All pricing, availability blocks, and room bookings will be wiped.
+                    @if($hostedExperiencesNow > 0)
+                        <strong>{{ $hostedExperiencesNow }} hosted {{ \Illuminate\Support\Str::plural('experience', $hostedExperiencesNow) }}</strong> will be auto-detached (host set to none, deactivated). Historical trip lines stay but lose the provider link.
+                    @else
+                        Historical trip lines stay but lose the provider link.
+                    @endif
                 </small>
             @endif
         @else
@@ -934,11 +936,18 @@ jQuery('#btnRemoveProvider').on('click', function() {
 });
 
 jQuery('#btnPermanentDeleteProvider').on('click', function() {
-    var id = jQuery(this).data('provider-id');
+    var $btn = jQuery(this);
+    var id = $btn.data('provider-id');
+    var hosted = parseInt($btn.data('hosted-count') || 0, 10);
+    var hostedLine = hosted > 0
+        ? '<strong>' + hosted + ' hosted experience' + (hosted === 1 ? '' : 's')
+            + '</strong> will be auto-detached (host set to none, deactivated).<br>'
+        : '';
     Swal.fire({
         title: 'Permanently delete this provider?',
         html: '<strong>This cannot be undone.</strong><br><br>'
-            + 'All pricing rows, availability blocks, and active room bookings will be wiped from the database. '
+            + 'All pricing rows, availability blocks, and room bookings will be wiped.<br>'
+            + hostedLine
             + 'Historical trip lines remain but lose the link to this provider. '
             + 'The linked user account will also be deleted.',
         icon: 'warning',
@@ -948,9 +957,13 @@ jQuery('#btnPermanentDeleteProvider').on('click', function() {
         focusCancel: true,
     }).then(function(res) {
         if (!res.isConfirmed) return;
-        ajaxPost({ permanently_delete_provider: 1, provider_id: id }, function() {
-            showAlert('Provider permanently deleted.', 'success');
-            setTimeout(function() { window.location.href = '/providers'; }, 700);
+        ajaxPost({ permanently_delete_provider: 1, provider_id: id }, function(resp) {
+            var detached = resp && resp.detached_experiences ? resp.detached_experiences : 0;
+            var msg = detached
+                ? 'Provider deleted. ' + detached + ' experience' + (detached === 1 ? '' : 's') + ' detached.'
+                : 'Provider permanently deleted.';
+            showAlert(msg, 'success');
+            setTimeout(function() { window.location.href = '/providers'; }, 900);
         }, function(xhr) {
             var msg = (xhr.responseJSON || {}).error || 'Delete failed.';
             window.showError && window.showError(msg);
