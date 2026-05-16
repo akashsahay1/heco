@@ -113,14 +113,21 @@ class HctController extends Controller
 
     public function providerShow($id)
     {
-        $provider = ServiceProvider::with(["region", "user", "lastUpdatedBy", "approvedBy", "pricing"])
-            ->findOrFail($id);
+        $provider = ServiceProvider::with(["region", "user", "lastUpdatedBy", "approvedBy", "pricing"])->find($id);
+        if (!$provider) {
+            return redirect()->route('hct.providers')
+                ->with('flash', "Provider #{$id} no longer exists.");
+        }
         return view("admin.providers.show", compact("provider"));
     }
 
     public function providerEdit($id)
     {
-        $provider = ServiceProvider::with(["region", "lastUpdatedBy"])->findOrFail($id);
+        $provider = ServiceProvider::with(["region", "lastUpdatedBy"])->find($id);
+        if (!$provider) {
+            return redirect()->route('hct.providers')
+                ->with('flash', "Provider #{$id} no longer exists.");
+        }
         $regions = Region::where("is_active", true)->orderBy("name")->get();
         $serviceTypes            = SystemList::ofType("service_type")->get();
         $accommodationCategories = SystemList::ofType("accommodation_category")->get();

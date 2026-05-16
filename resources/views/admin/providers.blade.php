@@ -145,6 +145,18 @@ function refreshBulkBtn() {
 
 $(function() {
     loadProviders();
+    // Pick up a toast from the prior page (set via sessionStorage or
+    // session()->with('flash') after a redirect from edit-provider).
+    try {
+        var clientFlash = sessionStorage.getItem('heco_flash');
+        if (clientFlash) {
+            sessionStorage.removeItem('heco_flash');
+            showAlert(clientFlash, 'success');
+        }
+    } catch (e) {}
+    @if(session('flash'))
+        showAlert(@json(session('flash')), 'info');
+    @endif
 });
 
 $('#providerTypeFilter, #regionFilter, #statusFilter').on('change', function() { loadProviders(); });

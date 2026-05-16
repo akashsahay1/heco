@@ -962,8 +962,11 @@ jQuery('#btnPermanentDeleteProvider').on('click', function() {
             var msg = detached
                 ? 'Provider deleted. ' + detached + ' experience' + (detached === 1 ? '' : 's') + ' detached.'
                 : 'Provider permanently deleted.';
-            showAlert(msg, 'success');
-            setTimeout(function() { window.location.href = '/providers'; }, 900);
+            // Stash the toast for the providers listing to pick up after
+            // navigation. Redirect immediately so the user can't refresh
+            // the now-orphan edit URL during a delay window and trip a 404.
+            try { sessionStorage.setItem('heco_flash', msg); } catch (e) {}
+            window.location.href = '/providers';
         }, function(xhr) {
             var msg = (xhr.responseJSON || {}).error || 'Delete failed.';
             window.showError && window.showError(msg);
