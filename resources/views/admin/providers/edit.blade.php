@@ -675,158 +675,167 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
     </div>
     <div class="modal-body"><form id="spMultiForm">
-        <p class="small text-muted mb-3">Tick the service types this provider offers, fill in one entry per type. Each ticked section creates one row.</p>
+        <p class="small text-muted mb-3">Tick the service types this provider offers. Within each ticked section you can add as many rows as you need — each row becomes one rate entry.</p>
 
-        <div class="multi-svc-section card border mb-2" data-svc="accommodation">
-            <div class="card-header py-2 d-flex align-items-center">
-                <div class="form-check m-0">
-                    <input class="form-check-input multi-svc-toggle" type="checkbox" id="multiSvcAccom" data-svc="accommodation">
-                    <label class="form-check-label fw-semibold small" for="multiSvcAccom">🛏 Accommodation</label>
+        @php
+            $sections = [
+                ['svc' => 'accommodation', 'id' => 'multiSvcAccom',    'label' => '🛏 Accommodation',                         'addLabel' => 'Add another room'],
+                ['svc' => 'transport',     'id' => 'multiSvcTransport','label' => '🚙 Transport',                              'addLabel' => 'Add another vehicle'],
+                ['svc' => 'guide',         'id' => 'multiSvcGuide',    'label' => '👤 Guide',                                  'addLabel' => 'Add another guide'],
+                ['svc' => 'activity',      'id' => 'multiSvcActivity', 'label' => '🏔 Activity',                               'addLabel' => 'Add another activity'],
+                ['svc' => 'other',         'id' => 'multiSvcOther',    'label' => '📦 Other (permits, fees, equipment, etc.)', 'addLabel' => 'Add another item'],
+            ];
+        @endphp
+        @foreach($sections as $s)
+            <div class="multi-svc-section card border mb-2" data-svc="{{ $s['svc'] }}">
+                <div class="card-header py-2 d-flex align-items-center">
+                    <div class="form-check m-0">
+                        <input class="form-check-input multi-svc-toggle" type="checkbox" id="{{ $s['id'] }}" data-svc="{{ $s['svc'] }}">
+                        <label class="form-check-label fw-semibold small" for="{{ $s['id'] }}">{{ $s['label'] }}</label>
+                    </div>
+                </div>
+                <div class="card-body multi-svc-body d-none">
+                    <div class="multi-svc-rows mb-2" data-svc="{{ $s['svc'] }}"></div>
+                    <button type="button" class="btn btn-sm btn-outline-success multi-svc-add-row" data-svc="{{ $s['svc'] }}">
+                        <i class="bi bi-plus-lg me-1"></i> {{ $s['addLabel'] }}
+                    </button>
                 </div>
             </div>
-            <div class="card-body multi-svc-body d-none">
-                <div class="row g-2 mb-2">
-                    <div class="col-md-6">
-                        <label class="form-label small">Comfort Tier <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm custom-select" data-field="comfort_tier" data-list-type="accommodation_category">
-                            <option value="">Select tier...</option>
+        @endforeach
+
+        {{-- Row templates — Blade renders options server-side, JS clones a
+             fresh copy whenever the user adds a row. --}}
+        <template id="multiSvcRowTpl-accommodation">
+            <div class="bulk-row card border p-2 mb-2">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Comfort Tier <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="comfort_tier" data-list-type="accommodation_category">
+                            <option value="">Pick...</option>
                             @foreach($accommodationCategories as $c)
                                 <option value="{{ $c->name }}">{{ $c->name }}</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label small">Room Category <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm custom-select" data-field="room_category" data-list-type="room_category">
-                            <option value="">Select category...</option>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Room Category <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="room_category" data-list-type="room_category">
+                            <option value="">Pick...</option>
                             @foreach($roomCategories as $r)
                                 <option value="{{ $r->name }}">{{ $r->name }}</option>
                             @endforeach
                         </select>
                     </div>
-                </div>
-                <div class="row g-2 mb-2">
-                    <div class="col-md-4">
-                        <label class="form-label small">Total Rooms <span class="text-danger">*</span></label>
-                        <input type="number" min="1" max="500" class="form-control form-control-sm" data-field="total_rooms" placeholder="4">
+                    <div class="col-md-1">
+                        <label class="form-label small mb-1">Total <span class="text-danger">*</span></label>
+                        <input type="number" min="1" max="500" class="form-control form-control-sm bulk-field" data-field="total_rooms" placeholder="4">
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label small">Rate / night (₹) <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0" class="form-control form-control-sm" data-field="price" placeholder="2500">
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Rate/night ₹ <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="2500">
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label small">Meal Plan</label>
-                        <select class="form-select form-select-sm custom-select" data-field="meal_plan" data-list-type="meal_plan">
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Meal Plan</label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="meal_plan" data-list-type="meal_plan">
                             <option value="">— none —</option>
                             @foreach($mealPlans as $m)
                                 <option value="{{ $m->name }}">{{ $m->name }}</option>
                             @endforeach
                         </select>
                     </div>
+                    <div class="col-md-1 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger multi-svc-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
+                    </div>
                 </div>
             </div>
-        </div>
+        </template>
 
-        <div class="multi-svc-section card border mb-2" data-svc="transport">
-            <div class="card-header py-2 d-flex align-items-center">
-                <div class="form-check m-0">
-                    <input class="form-check-input multi-svc-toggle" type="checkbox" id="multiSvcTransport" data-svc="transport">
-                    <label class="form-check-label fw-semibold small" for="multiSvcTransport">🚙 Transport</label>
-                </div>
-            </div>
-            <div class="card-body multi-svc-body d-none">
-                <div class="row g-2 mb-2">
-                    <div class="col-md-5">
-                        <label class="form-label small">Vehicle Type <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm custom-select" data-field="vehicle_type" data-list-type="vehicle_type">
-                            <option value="">Select vehicle...</option>
+        <template id="multiSvcRowTpl-transport">
+            <div class="bulk-row card border p-2 mb-2">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Vehicle Type <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="vehicle_type" data-list-type="vehicle_type">
+                            <option value="">Pick...</option>
                             @foreach($vehicleTypes as $v)
                                 <option value="{{ $v->name }}">{{ $v->name }}</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label small">Rate (₹) <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0" class="form-control form-control-sm" data-field="price" placeholder="25">
+                    <div class="col-md-1">
+                        <label class="form-label small mb-1">Seats</label>
+                        <input type="number" min="1" max="80" class="form-control form-control-sm bulk-field" data-field="vehicle_capacity" placeholder="7">
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label small">Unit <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm custom-select" data-field="unit">
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Rate ₹ <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="25">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Unit <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="unit">
                             <option value="">Pick...</option>
                             <option value="per km">per km</option>
                             <option value="per day">per day</option>
                             <option value="per trip">per trip</option>
                         </select>
                     </div>
-                </div>
-                <div class="row g-2 mb-2">
-                    <div class="col-md-4">
-                        <label class="form-label small">Seating Capacity</label>
-                        <input type="number" min="1" max="80" class="form-control form-control-sm" data-field="vehicle_capacity" placeholder="7">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Driver ₹/day</label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="driver_allowance" placeholder="optional">
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label small">Driver Allowance (₹/day)</label>
-                        <input type="number" step="0.01" min="0" class="form-control form-control-sm" data-field="driver_allowance" placeholder="optional">
+                    <div class="col-md-1 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger multi-svc-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
                     </div>
                 </div>
             </div>
-        </div>
+        </template>
 
-        <div class="multi-svc-section card border mb-2" data-svc="guide">
-            <div class="card-header py-2 d-flex align-items-center">
-                <div class="form-check m-0">
-                    <input class="form-check-input multi-svc-toggle" type="checkbox" id="multiSvcGuide" data-svc="guide">
-                    <label class="form-check-label fw-semibold small" for="multiSvcGuide">👤 Guide</label>
-                </div>
-            </div>
-            <div class="card-body multi-svc-body d-none">
-                <div class="row g-2 mb-2">
-                    <div class="col-md-6">
-                        <label class="form-label small">Guide Type / Language <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm custom-select" data-field="category" data-list-type="guide_preference">
-                            <option value="">Select guide type...</option>
+        <template id="multiSvcRowTpl-guide">
+            <div class="bulk-row card border p-2 mb-2">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">Guide Type / Language <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="category" data-list-type="guide_preference">
+                            <option value="">Pick...</option>
                             @foreach($guideTypes as $g)
                                 <option value="{{ $g->name }}">{{ $g->name }}</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label small">Rate per day (₹) <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0" class="form-control form-control-sm" data-field="price" placeholder="3000">
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Rate/day ₹ <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="3000">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label small mb-1">Specialties</label>
+                        <input type="text" class="form-control form-control-sm bulk-field" data-field="specialties" placeholder="optional">
+                    </div>
+                    <div class="col-md-1 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger multi-svc-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
                     </div>
                 </div>
-                <div class="mb-2">
-                    <label class="form-label small">Specialties (optional)</label>
-                    <input type="text" class="form-control form-control-sm" data-field="specialties" placeholder="e.g. Bird-watching, Hindi + English">
-                </div>
             </div>
-        </div>
+        </template>
 
-        <div class="multi-svc-section card border mb-2" data-svc="activity">
-            <div class="card-header py-2 d-flex align-items-center">
-                <div class="form-check m-0">
-                    <input class="form-check-input multi-svc-toggle" type="checkbox" id="multiSvcActivity" data-svc="activity">
-                    <label class="form-check-label fw-semibold small" for="multiSvcActivity">🏔 Activity</label>
-                </div>
-            </div>
-            <div class="card-body multi-svc-body d-none">
-                <div class="row g-2 mb-2">
-                    <div class="col-md-5">
-                        <label class="form-label small">Activity Type <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm custom-select" data-field="category" data-list-type="activity_type">
-                            <option value="">Select activity...</option>
+        <template id="multiSvcRowTpl-activity">
+            <div class="bulk-row card border p-2 mb-2">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">Activity Type <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="category" data-list-type="activity_type">
+                            <option value="">Pick...</option>
                             @foreach($activityTypes as $a)
                                 <option value="{{ $a->name }}">{{ $a->name }}</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label small">Rate (₹) <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0" class="form-control form-control-sm" data-field="price" placeholder="800">
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Rate ₹ <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="800">
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label small">Unit <span class="text-danger">*</span></label>
-                        <select class="form-select form-select-sm custom-select" data-field="unit">
+                    <div class="col-md-5">
+                        <label class="form-label small mb-1">Unit <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="unit">
                             <option value="">Pick...</option>
                             <option value="per person">per person</option>
                             <option value="per group">per group</option>
@@ -834,34 +843,34 @@
                             <option value="per person per day">per person per day</option>
                         </select>
                     </div>
+                    <div class="col-md-1 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger multi-svc-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
+                    </div>
                 </div>
             </div>
-        </div>
+        </template>
 
-        <div class="multi-svc-section card border mb-2" data-svc="other">
-            <div class="card-header py-2 d-flex align-items-center">
-                <div class="form-check m-0">
-                    <input class="form-check-input multi-svc-toggle" type="checkbox" id="multiSvcOther" data-svc="other">
-                    <label class="form-check-label fw-semibold small" for="multiSvcOther">📦 Other (permits, fees, equipment, etc.)</label>
-                </div>
-            </div>
-            <div class="card-body multi-svc-body d-none">
-                <div class="row g-2 mb-2">
-                    <div class="col-md-5">
-                        <label class="form-label small">Service Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control form-control-sm" data-field="category" placeholder="e.g. Permit fee">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label small">Rate (₹) <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0" class="form-control form-control-sm" data-field="price" placeholder="500">
-                    </div>
+        <template id="multiSvcRowTpl-other">
+            <div class="bulk-row card border p-2 mb-2">
+                <div class="row g-2 align-items-end">
                     <div class="col-md-4">
-                        <label class="form-label small">Unit <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control form-control-sm" data-field="unit" placeholder="per item / per day / per trip">
+                        <label class="form-label small mb-1">Service Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm bulk-field" data-field="category" placeholder="e.g. Permit fee">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Rate ₹ <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="500">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label small mb-1">Unit <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm bulk-field" data-field="unit" placeholder="per item / per day / per trip">
+                    </div>
+                    <div class="col-md-1 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger multi-svc-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
                     </div>
                 </div>
             </div>
-        </div>
+        </template>
 
         <div class="d-flex justify-content-end gap-2 mt-3">
             <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -1379,9 +1388,18 @@ jQuery(function() {
     // ─── Multi-service-type "add many in one go" flow ─────────────────────
     function resetMultiServiceModal() {
         jQuery('#spMultiForm .multi-svc-toggle').prop('checked', false);
-        jQuery('#spMultiForm .multi-svc-body').addClass('d-none').find('input, select').val('');
-        jQuery('#spMultiForm .custom-select').each(function() {
-            if (window.buildCustomDropdown) window.buildCustomDropdown(this);
+        jQuery('#spMultiForm .multi-svc-body').addClass('d-none');
+        jQuery('#spMultiForm .multi-svc-rows').empty();
+    }
+    function addMultiSvcRow(svc) {
+        var tpl = document.getElementById('multiSvcRowTpl-' + svc);
+        if (!tpl) return;
+        var $container = jQuery('#spMultiForm .multi-svc-rows[data-svc="' + svc + '"]');
+        $container.append(jQuery(tpl.content.cloneNode(true)));
+        $container.find('.bulk-row:last .custom-select').each(function() {
+            if (!jQuery(this).closest('.custom-select-wrap').length && window.buildCustomDropdown) {
+                window.buildCustomDropdown(this);
+            }
         });
     }
     jQuery('#spMultiServiceAdd').on('click', function() {
@@ -1389,10 +1407,27 @@ jQuery(function() {
         new bootstrap.Modal(jQuery('#spMultiServiceModal')[0]).show();
     });
     jQuery(document).on('change', '.multi-svc-toggle', function() {
+        var svc = jQuery(this).data('svc');
         var $section = jQuery(this).closest('.multi-svc-section');
         $section.find('.multi-svc-body').toggleClass('d-none', !this.checked);
         if (this.checked) {
-            $section.find('.custom-select').each(function() {
+            var $rows = $section.find('.multi-svc-rows');
+            if ($rows.children('.bulk-row').length === 0) addMultiSvcRow(svc);
+        } else {
+            $section.find('.multi-svc-rows').empty();
+        }
+    });
+    jQuery(document).on('click', '.multi-svc-add-row', function() {
+        addMultiSvcRow(jQuery(this).data('svc'));
+    });
+    jQuery(document).on('click', '.multi-svc-row-remove', function() {
+        var $row = jQuery(this).closest('.bulk-row');
+        var $container = $row.parent();
+        if ($container.children('.bulk-row').length > 1) {
+            $row.remove();
+        } else {
+            $row.find('input').val('');
+            $row.find('select').val('').each(function() {
                 if (window.buildCustomDropdown) window.buildCustomDropdown(this);
             });
         }
@@ -1404,27 +1439,31 @@ jQuery(function() {
             var $section = jQuery(this);
             if (!$section.find('.multi-svc-toggle').is(':checked')) return;
             var svc = $section.data('svc');
-            var row = { service_type: svc };
-            $section.find('[data-field]').each(function() {
-                var field = jQuery(this).data('field');
-                var val = jQuery(this).val();
-                if (val !== null && val !== '') row[field] = val;
+            var rowIdx = 0;
+            $section.find('.multi-svc-rows .bulk-row').each(function() {
+                rowIdx++;
+                var row = { service_type: svc };
+                jQuery(this).find('.bulk-field').each(function() {
+                    var field = jQuery(this).data('field');
+                    var val = jQuery(this).val();
+                    if (val !== null && val !== '') row[field] = val;
+                });
+                var required = {
+                    accommodation: ['comfort_tier', 'room_category', 'total_rooms', 'price'],
+                    transport:     ['vehicle_type', 'price', 'unit'],
+                    guide:         ['category', 'price'],
+                    activity:      ['category', 'price', 'unit'],
+                    other:         ['category', 'price', 'unit'],
+                }[svc] || [];
+                var missing = required.filter(function(k) { return !row[k]; });
+                if (missing.length) {
+                    errors.push(svc + ' row ' + rowIdx + ': missing ' + missing.join(', '));
+                    return;
+                }
+                if (svc === 'accommodation') { row.unit = 'per night'; row.category = row.room_category; }
+                else if (svc === 'guide')    { row.unit = 'per day'; }
+                payloads.push(row);
             });
-            var required = {
-                accommodation: ['comfort_tier', 'room_category', 'total_rooms', 'price'],
-                transport:     ['vehicle_type', 'price', 'unit'],
-                guide:         ['category', 'price'],
-                activity:      ['category', 'price', 'unit'],
-                other:         ['category', 'price', 'unit'],
-            }[svc] || [];
-            var missing = required.filter(function(k) { return !row[k]; });
-            if (missing.length) {
-                errors.push(svc + ': missing ' + missing.join(', '));
-                return;
-            }
-            if (svc === 'accommodation') { row.unit = 'per night'; row.category = row.room_category; }
-            else if (svc === 'guide')    { row.unit = 'per day'; }
-            payloads.push(row);
         });
         return { payloads: payloads, errors: errors };
     }
