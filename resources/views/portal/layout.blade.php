@@ -252,6 +252,7 @@
     <script src="{{ url('js/air-datepicker.min.js') }}"></script>
     <script src="{{ url('js/air-datepicker-en.js') }}"></script>
     <script src="{{ url('js/custom-select.js') }}?v={{ time() }}"></script>
+    <script src="{{ url('js/app.js') }}"></script>
     <script>
     jQuery(function() {
         // CSRF Setup
