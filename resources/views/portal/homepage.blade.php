@@ -1991,10 +1991,11 @@ jQuery(function() {
             var balanceDue = parseFloat(p.balance_due) || parseFloat(p.final_price) || 0;
             if (balanceDue > 0 && tripId && tripId !== 'guest') {
                 jQuery('#payAmountDue').text(fmtCurrency(balanceDue));
-                jQuery('#payAmountInput').attr('max', balanceDue).val(Math.round(balanceDue));
-                jQuery('#paymentCard').show();
+                var displayBalance = Math.round(balanceDue);
+                jQuery('#payAmountInput').attr('max', displayBalance).val(displayBalance);
+                jQuery('#paymentCard').removeClass('d-none');
             } else {
-                jQuery('#paymentCard').hide();
+                jQuery('#paymentCard').addClass('d-none');
             }
         });
     }
