@@ -115,4 +115,17 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Notification Address
+    |--------------------------------------------------------------------------
+    |
+    | Recipient for system-generated admin alerts (new newsletter signups,
+    | provider applications, etc.). Falls back to MAIL_FROM_ADDRESS when
+    | MAIL_ADMIN_ADDRESS is not set.
+    |
+    */
+
+    'admin_address' => env('MAIL_ADMIN_ADDRESS', env('MAIL_FROM_ADDRESS', 'hello@example.com')),
+
 ];

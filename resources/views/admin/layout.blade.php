@@ -66,6 +66,9 @@
             <a href="{{ url('/travelers') }}" class="hct-nav-link {{ request()->routeIs('hct.travelers') ? 'active' : '' }}">
                 <i class="bi bi-person-lines-fill"></i> Travelers
             </a>
+            <a href="{{ url('/newsletter') }}" class="hct-nav-link {{ request()->routeIs('hct.newsletter') ? 'active' : '' }}">
+                <i class="bi bi-envelope-heart"></i> Newsletter
+            </a>
             <a href="{{ url('/provider-applications') }}" class="hct-nav-link {{ request()->routeIs('hct.provider-applications') ? 'active' : '' }}">
                 <i class="bi bi-envelope-paper"></i> Applications
             </a>

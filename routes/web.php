@@ -38,6 +38,7 @@ Route::domain(config('app.admin_domain'))->group(function () {
         Route::get('/providers/{id}', [HctController::class, 'providerShow'])->name('hct.providers.show');
         Route::get('/providers/{id}/edit', [HctController::class, 'providerEdit'])->name('hct.providers.edit');
         Route::get('/travelers', [HctController::class, 'travelers'])->name('hct.travelers');
+        Route::get('/newsletter', [HctController::class, 'newsletter'])->name('hct.newsletter');
         Route::get('/provider-applications', [HctController::class, 'providerApplications'])->name('hct.provider-applications');
         Route::get('/pending-pricing', [HctController::class, 'pendingPricing'])->name('hct.pending-pricing');
 

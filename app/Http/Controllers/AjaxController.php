@@ -33,6 +33,7 @@ use App\Models\SystemList;
 use App\Models\Setting;
 use App\Models\Currency;
 use App\Models\ActivityLog;
+use App\Models\NewsletterSubscriber;
 use App\Models\PdfTemplate;
 use App\Models\Review;
 use App\Models\SpAvailability;
@@ -47,6 +48,9 @@ use App\Services\ImpactCalculatorService;
 use App\Services\SpAvailabilityService;
 use App\Services\RazorpayService;
 use App\Mail\WelcomeEmail;
+use App\Mail\NewsletterWelcomeEmail;
+use App\Mail\AdminNewSubscriberEmail;
+use App\Mail\NewsletterCampaignEmail;
 use App\Mail\BookingConfirmationEmail;
 use App\Mail\PaymentReceivedEmail;
 use App\Mail\SpApplicationReceivedEmail;
@@ -617,6 +621,15 @@ class AjaxController extends Controller
             }
             if ($request->has('get_activity_logs')) {
                 return $this->getActivityLogs($request);
+            }
+            if ($request->has('get_newsletter_send_count')) {
+                return $this->getNewsletterSendCount($request);
+            }
+            if ($request->has('send_newsletter_campaign')) {
+                return $this->sendNewsletterCampaign($request);
+            }
+            if ($request->has('set_subscriber_status')) {
+                return $this->setSubscriberStatus($request);
             }
             if ($request->has('get_sp_pricing')) {
                 return $this->getSpPricing($request);
@@ -2595,12 +2608,49 @@ class AjaxController extends Controller
             $user->update(["newsletter_optin" => true]);
         }
 
+        // Upsert into the canonical subscribers table. If the email was
+        // previously unsubscribed, re-subscribe them.
+        $subscriber = NewsletterSubscriber::firstOrNew(["email" => $email]);
+        $isNew = !$subscriber->exists;
+        $subscriber->fill([
+            "user_id"         => $user?->id,
+            "is_customer"     => (bool) $user,
+            "source"          => $subscriber->source ?: ($request->input("source") ?: "landing"),
+            "ip_address"      => $request->ip(),
+            "unsubscribed_at" => null,
+        ]);
+        if ($isNew) {
+            $subscriber->subscribed_at = now();
+        }
+        $subscriber->save();
+
         ActivityLog::create([
             "user_id" => $user?->id,
             "action" => "newsletter_subscribe",
             "details" => $email,
             "ip_address" => $request->ip(),
         ]);
+
+        // Only fire welcome + admin notification on the first real subscribe.
+        // Re-subscribes (after unsubscribe) and dedupe submits stay quiet.
+        if ($isNew) {
+            try {
+                \Illuminate\Support\Facades\Mail::to($email)
+                    ->send(new NewsletterWelcomeEmail($email, url('/home')));
+            } catch (\Throwable $e) {
+                \Log::warning("Newsletter welcome mail failed for {$email}: " . $e->getMessage());
+            }
+
+            $adminAddress = config('mail.admin_address');
+            if ($adminAddress) {
+                try {
+                    \Illuminate\Support\Facades\Mail::to($adminAddress)
+                        ->send(new AdminNewSubscriberEmail($subscriber));
+                } catch (\Throwable $e) {
+                    \Log::warning("Admin new-subscriber mail failed: " . $e->getMessage());
+                }
+            }
+        }
 
         return response()->json(["success" => true, "message" => "Thanks for subscribing!"]);
     }
@@ -3449,6 +3499,122 @@ class AjaxController extends Controller
         });
 
         return response()->json($logs);
+    }
+
+    /**
+     * Build the same query the admin newsletter view uses, applying segment +
+     * customer + search filters. Always scoped to active subscribers when
+     * targeting sends (unsubscribed rows are excluded).
+     */
+    protected function buildNewsletterQuery(Request $request, bool $activeOnly = false)
+    {
+        $segment  = $request->input('segment', 'subscribed');
+        $customer = $request->input('customer', 'any');
+        $search   = trim((string) $request->input('search', ''));
+
+        $query = NewsletterSubscriber::query();
+
+        if ($activeOnly) {
+            $query->whereNull('unsubscribed_at');
+        } else {
+            if ($segment === 'subscribed')   $query->whereNull('unsubscribed_at');
+            if ($segment === 'unsubscribed') $query->whereNotNull('unsubscribed_at');
+        }
+
+        if ($customer === 'yes') $query->where('is_customer', true);
+        if ($customer === 'no')  $query->where('is_customer', false);
+
+        if ($search !== '') {
+            $query->where('email', 'like', "%{$search}%");
+        }
+
+        return $query;
+    }
+
+    protected function getNewsletterSendCount(Request $request): JsonResponse
+    {
+        $count = $this->buildNewsletterQuery($request, activeOnly: true)->count();
+        return response()->json(['count' => $count]);
+    }
+
+    protected function sendNewsletterCampaign(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'subject' => 'required|string|max:180',
+            'body'    => 'required|string|max:200000',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        $subject = trim($request->input('subject'));
+        $body    = $request->input('body'); // raw HTML, rendered via {!! !!} in the template
+
+        $subscribers = $this->buildNewsletterQuery($request, activeOnly: true)->get();
+        if ($subscribers->isEmpty()) {
+            return response()->json(['error' => 'No active subscribers match this filter.'], 422);
+        }
+
+        $sent = 0;
+        $failed = 0;
+        $now = now();
+
+        foreach ($subscribers as $sub) {
+            try {
+                \Illuminate\Support\Facades\Mail::to($sub->email)
+                    ->send(new NewsletterCampaignEmail($subject, $body, $sub->email));
+                $sub->last_emailed_at = $now;
+                $sub->save();
+                $sent++;
+            } catch (\Throwable $e) {
+                $failed++;
+                \Log::warning("Newsletter campaign send failed for {$sub->email}: " . $e->getMessage());
+            }
+        }
+
+        ActivityLog::create([
+            'user_id'    => Auth::id(),
+            'action'     => 'newsletter_campaign_sent',
+            'details'    => json_encode([
+                'subject' => $subject,
+                'sent'    => $sent,
+                'failed'  => $failed,
+                'filter'  => [
+                    'segment'  => $request->input('segment'),
+                    'customer' => $request->input('customer'),
+                    'search'   => $request->input('search'),
+                ],
+            ]),
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'sent'    => $sent,
+            'failed'  => $failed,
+        ]);
+    }
+
+    protected function setSubscriberStatus(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'id'           => 'required|integer|exists:newsletter_subscribers,id',
+            'unsubscribed' => 'required|boolean',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        $sub = NewsletterSubscriber::findOrFail($request->id);
+        if ($request->boolean('unsubscribed')) {
+            $sub->unsubscribed_at = now();
+        } else {
+            $sub->unsubscribed_at = null;
+            if (!$sub->subscribed_at) $sub->subscribed_at = now();
+        }
+        $sub->save();
+
+        return response()->json(['success' => true]);
     }
 
     /**

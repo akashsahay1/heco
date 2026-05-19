@@ -227,6 +227,48 @@ class HctController extends Controller
         return view("admin.provider-applications");
     }
 
+    public function newsletter(Request $request)
+    {
+        // Server-side filters (Travelers-style). Mirrors the AJAX endpoint
+        // so a deep-linked URL renders the same view.
+        $segment = $request->get('segment', 'subscribed');
+        if (!in_array($segment, ['subscribed', 'unsubscribed', 'all'], true)) {
+            $segment = 'subscribed';
+        }
+
+        $customer = $request->get('customer', 'any');
+        if (!in_array($customer, ['any', 'yes', 'no'], true)) {
+            $customer = 'any';
+        }
+
+        $search = trim((string) $request->get('search', ''));
+
+        $query = \App\Models\NewsletterSubscriber::with('user');
+
+        if ($segment === 'subscribed')   $query->whereNull('unsubscribed_at');
+        if ($segment === 'unsubscribed') $query->whereNotNull('unsubscribed_at');
+
+        if ($customer === 'yes') $query->where('is_customer', true);
+        if ($customer === 'no')  $query->where('is_customer', false);
+
+        if ($search !== '') {
+            $query->where('email', 'like', "%{$search}%");
+        }
+
+        $subscribers = $query->orderBy('subscribed_at', 'desc')
+            ->paginate(30)
+            ->withQueryString();
+
+        $stats = [
+            'total'        => \App\Models\NewsletterSubscriber::whereNull('unsubscribed_at')->count(),
+            'customers'    => \App\Models\NewsletterSubscriber::whereNull('unsubscribed_at')->where('is_customer', true)->count(),
+            'non_customers'=> \App\Models\NewsletterSubscriber::whereNull('unsubscribed_at')->where('is_customer', false)->count(),
+            'unsubscribed' => \App\Models\NewsletterSubscriber::whereNotNull('unsubscribed_at')->count(),
+        ];
+
+        return view('admin.newsletter', compact('subscribers', 'segment', 'customer', 'search', 'stats'));
+    }
+
     public function pendingPricing()
     {
         $pendingCount = \App\Models\SpPricing::where('approval_status', 'pending')->count();
