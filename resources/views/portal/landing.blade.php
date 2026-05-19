@@ -126,12 +126,11 @@
                 <div class="col-md-4 col-6">
                     <a href="/home?region_id={{ $region->id }}" class="text-decoration-none">
                         <div class="landing-region-card">
-                            <div class="landing-region-image" data-bg="{{ $regionImages[$idx % count($regionImages)] }}">
-                                <div class="landing-region-overlay"></div>
-                                <div class="landing-region-content">
-                                    <div class="landing-region-name">{{ $region->name }}</div>
-                                    <div class="landing-region-state">{{ $region->country ?? '' }}</div>
-                                </div>
+                            <img src="{{ $regionImages[$idx % count($regionImages)] }}" alt="{{ $region->name }}" class="landing-region-image">
+                            <div class="landing-region-overlay"></div>
+                            <div class="landing-region-content">
+                                <div class="landing-region-name">{{ $region->name }}</div>
+                                <div class="landing-region-state">{{ $region->country ?? '' }}</div>
                             </div>
                         </div>
                     </a>
@@ -149,21 +148,21 @@
         <p class="landing-section-subtitle">Choose from diverse experience categories</p>
         <div class="row g-3">
             @php
-                // Icons + blurbs keyed by the real experience-type strings stored in
-                // the DB; any type without a mapping falls back to a generic icon.
+                // Fixed 8-category marketing grid (4x2). The /home filter handles each
+                // type — if no experiences exist yet under one, the listing is empty
+                // but the category remains visible as a "what we cover" advertisement.
                 $catMeta = [
-                    'Trek' => ['icon' => 'fa-solid fa-mountain', 'desc' => 'Alpine trails & mountain passes'],
-                    'Cultural Immersion' => ['icon' => 'fa-solid fa-landmark', 'desc' => 'Traditions & heritage'],
-                    'Nature' => ['icon' => 'fa-solid fa-leaf', 'desc' => 'Landscapes & ecology'],
-                    'Wildlife' => ['icon' => 'fa-solid fa-paw', 'desc' => 'Birds & wildlife encounters'],
-                    'Adventure' => ['icon' => 'fa-solid fa-person-hiking', 'desc' => 'Thrills & challenges'],
-                    'Wellness' => ['icon' => 'fa-solid fa-spa', 'desc' => 'Healing & rejuvenation'],
-                    'Culinary' => ['icon' => 'fa-solid fa-utensils', 'desc' => 'Local cuisine & cooking'],
-                    'Volunteering' => ['icon' => 'fa-solid fa-hand-holding-heart', 'desc' => 'Give back to communities'],
+                    'Adventure'          => ['icon' => 'fa-solid fa-person-hiking',     'desc' => 'Thrills & challenges'],
+                    'Culinary'           => ['icon' => 'fa-solid fa-utensils',          'desc' => 'Local cuisine & cooking'],
+                    'Cultural Immersion' => ['icon' => 'fa-solid fa-landmark',          'desc' => 'Traditions & heritage'],
+                    'Nature'             => ['icon' => 'fa-solid fa-leaf',              'desc' => 'Landscapes & ecology'],
+                    'Trek'               => ['icon' => 'fa-solid fa-mountain',          'desc' => 'Alpine trails & mountain passes'],
+                    'Volunteering'       => ['icon' => 'fa-solid fa-hand-holding-heart','desc' => 'Give back to communities'],
+                    'Wellness'           => ['icon' => 'fa-solid fa-spa',               'desc' => 'Healing & rejuvenation'],
+                    'Wildlife'           => ['icon' => 'fa-solid fa-paw',               'desc' => 'Birds & wildlife encounters'],
                 ];
             @endphp
-            @foreach($experienceTypes as $type)
-                @php $meta = $catMeta[$type] ?? ['icon' => 'fa-solid fa-compass', 'desc' => 'Explore experiences']; @endphp
+            @foreach($catMeta as $type => $meta)
                 <div class="col-6 col-md-3">
                     <a href="/home?type={{ urlencode($type) }}" class="text-decoration-none">
                         <div class="landing-category-card">
@@ -242,8 +241,6 @@
 @section('js')
 <script>
 jQuery(function() {
-    // (Background-image hydration for [data-bg] elements lives in app.js.)
-
     jQuery('#newsletterForm').on('submit', function(e) {
         e.preventDefault();
         var form = jQuery(this);
