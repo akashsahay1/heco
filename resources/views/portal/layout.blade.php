@@ -109,8 +109,14 @@
             <a href="/join" class="mobile-nav-link">Become a Partner</a>
             @auth
                 <div class="mobile-nav-divider"></div>
-                <a href="/my-itineraries" class="mobile-nav-link">My Trips</a>
+                <a href="/profile" class="mobile-nav-link"><i class="bi bi-person-circle"></i> My Profile</a>
+                <a href="/my-itineraries" class="mobile-nav-link"><i class="bi bi-journal-bookmark"></i> My Trips</a>
                 <a href="/wishlist" class="mobile-nav-link"><i class="bi bi-heart"></i> My Wishlist</a>
+                <div class="mobile-nav-divider"></div>
+                <form method="POST" action="/logout" class="m-0">
+                    @csrf
+                    <button type="submit" class="mobile-nav-link text-danger"><i class="bi bi-box-arrow-right"></i> Logout</button>
+                </form>
             @endauth
             @guest
                 <div class="mobile-nav-divider"></div>
