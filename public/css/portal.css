@@ -1351,19 +1351,6 @@
     }
 }
 
-/* iPad landscape / small laptop: compact header — hide separate auth buttons
-   (Login / Get Started / My Trips / Wishlist / Dashboard) and the user name.
-   Desktop nav + currency + avatar dropdown remain. */
-@media (max-width: 1199px) {
-    .header-actions .btn {
-        display: none;
-    }
-
-    .user-name {
-        display: none;
-    }
-}
-
 @media (max-width: 991px) {
     .header-nav {
         display: none;
@@ -1373,13 +1360,19 @@
         display: flex;
     }
 
+    .header-actions .btn {
+        display: none;
+    }
+
     .header-actions #btnCurrencySelector {
         display: inline-flex;
     }
 
-    /* On mobile, the avatar dropdown is replaced by the hamburger menu —
-       Profile / My Trips / Wishlist / Logout live inside .mobile-nav. */
     .user-dropdown {
+        display: flex;
+    }
+
+    .user-name {
         display: none;
     }
 

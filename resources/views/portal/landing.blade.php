@@ -214,10 +214,10 @@
         <div class="row justify-content-center">
             <div class="col-md-6">
                 <div class="d-flex gap-3 justify-content-center flex-wrap mb-4">
-                    <a href="/home" class="btn sp-btn-primary btn-lg px-4 fw-semibold">
+                    <a href="/home" class="btn sp-btn-primary btn-lg px-5 fw-semibold">
                         <i class="bi bi-compass me-2"></i> Start Exploring
                     </a>
-                    <a href="/join" class="btn btn-outline-secondary btn-lg px-4 fw-semibold">
+                    <a href="/join" class="btn btn-outline-secondary btn-lg px-5 fw-semibold">
                         <i class="bi bi-people me-2"></i> Partner With Us
                     </a>
                 </div>
