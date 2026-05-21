@@ -5435,19 +5435,22 @@ class AjaxController extends Controller
                 return response()->json(["error" => "Trip not found."], 404);
             }
 
-            // Only fall back to the trip's final price when no amount was sent at all;
-            // an explicit amount of 0 / blank is a bad request, not "charge me everything".
-            if ($request->filled('amount')) {
-                $amountInRupees = (float) $request->amount;
-            } elseif ($request->has('amount')) {
-                // amount key present but null/empty/0 → reject
-                $amountInRupees = 0.0;
-            } else {
-                $amountInRupees = (float) $trip->final_price;
+            // Payment amount is server-authoritative: always charge the full
+            // outstanding balance, computed here from the canonical pricing —
+            // never a client-supplied figure. This stops a tampered request
+            // (e.g. amount=1 POSTed directly to /ajax) from "confirming" a trip
+            // on a token payment. Any `amount` in the request is ignored.
+            $pricing = app(CostCalculatorService::class)->calculate($trip);
+            $totalPaid = (float) $trip->travellerPayments()
+                ->where('payment_status', 'paid')
+                ->sum('amount');
+            $balanceDue = round(max(0, ((float) ($pricing['final_price'] ?? 0)) - $totalPaid), 2);
+
+            if ($balanceDue <= 0) {
+                return response()->json(["error" => "This trip is already paid in full."], 422);
             }
-            if ($amountInRupees <= 0) {
-                return response()->json(["error" => "Invalid payment amount."], 422);
-            }
+
+            $amountInRupees = $balanceDue;
 
             $amountInPaise = (int) round($amountInRupees * 100);
             \Log::info('Razorpay createOrder', [
@@ -5578,7 +5581,13 @@ class AjaxController extends Controller
                 }
             }
 
-            return response()->json(['success' => true, 'message' => 'Payment verified successfully!']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment verified successfully!',
+                // Return the payment's own (numeric) trip id so the client redirects to
+                // the correct /trip/{id}/thank-you without relying on a stale window.tripId.
+                'trip_id' => $payment->trip_id,
+            ]);
         }
 
         $payment->update(['payment_status' => 'failed']);

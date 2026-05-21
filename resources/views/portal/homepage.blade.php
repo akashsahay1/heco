@@ -437,7 +437,9 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     </div>
                                     <div class="mb-3">
                                         <label class="small fw-semibold text-muted d-block mb-1">Pay Amount (INR)</label>
-                                        <input type="number" id="payAmountInput" class="form-control" min="1" step="0.01">
+                                        {{-- Amount is locked to the full outstanding balance and re-validated
+                                             server-side; rendered as static text (no input) so it cannot be edited. --}}
+                                        <div id="payAmountValue" class="form-control bg-light">--</div>
                                     </div>
                                     <button id="btnPayNow" class="w-100 btn-pay-now">
                                         <i class="bi bi-shield-lock me-1"></i> Pay Now
@@ -636,6 +638,9 @@ jQuery(function() {
     var isLoggedIn = {{ auth()->check() ? 'true' : 'false' }};
     var tripId = {!! json_encode($tripId) !!};
     window.tripId = tripId;
+    // Keep window.tripId (read by the separate Razorpay <script> block) in sync with
+    // the local tripId so payment and the post-payment redirect target the right trip.
+    function setTripId(v) { tripId = v; window.tripId = v; }
     var selectedExpIds = {!! json_encode($selectedExpIds) !!};
     var preferredExpIds = {!! json_encode($preferredExpIds) !!};
     var tripRegionId = {!! json_encode($tripRegionId) !!};
@@ -1029,7 +1034,7 @@ jQuery(function() {
             callback(tripId);
         } else if (!isLoggedIn) {
             // Guest: no DB call, just use session via "guest" pseudo-ID
-            tripId = 'guest';
+            setTripId('guest');
             jQuery('#noTripMessage').addClass('d-none');
             jQuery('#journeyPanels').removeClass('d-none');
             jQuery('#noImpactMessage').addClass('d-none');
@@ -1037,7 +1042,7 @@ jQuery(function() {
             callback(tripId);
         } else {
             ajaxPost({ create_trip: 1 }, function(resp) {
-                tripId = resp.trip_id;
+                setTripId(resp.trip_id);
                 jQuery('#noTripMessage').addClass('d-none');
                 jQuery('#journeyPanels').removeClass('d-none');
                 jQuery('#noImpactMessage').addClass('d-none');
@@ -1136,7 +1141,7 @@ jQuery(function() {
                 jQuery('#journeyPanels').removeClass('d-none');
                 jQuery('#noImpactMessage').addClass('d-none');
                 jQuery('#impactData').removeClass('d-none');
-                tripId = resp.trip_id;
+                setTripId(resp.trip_id);
             }
             if (resp.recommended_experience_ids && resp.recommended_experience_ids.length > 0) {
                 highlightRecommendedExperiences(resp.recommended_experience_ids);
@@ -1415,7 +1420,7 @@ jQuery(function() {
                 updateJourneyBadge();
                 showAlert('"' + expName + '" added to your journey!', 'success');
                 if (resp.trip_id && !tripId) {
-                    tripId = resp.trip_id;
+                    setTripId(resp.trip_id);
                 }
                 jQuery('#noTripMessage').addClass('d-none');
                 jQuery('#journeyPanels').removeClass('d-none');
@@ -1450,7 +1455,7 @@ jQuery(function() {
                     .attr('title', 'Remove from Journey')
                     .html('<i class="bi bi-check-lg"></i>');
                 updateJourneyBadge();
-                if (resp.trip_id && !tripId) tripId = resp.trip_id;
+                if (resp.trip_id && !tripId) setTripId(resp.trip_id);
                 jQuery('#noTripMessage').addClass('d-none');
                 jQuery('#journeyPanels').removeClass('d-none');
                 loadSelectedExperiences();
@@ -1507,9 +1512,27 @@ jQuery(function() {
         if (mapInitialized && map) setTimeout(function() { map.invalidateSize(); }, 100);
     });
 
-    // Load journey data on tab show. Guests get a read-only view of their
-    // session journey; a "Sign in to continue" CTA gates the account-only
-    // actions (full AI itinerary, checkout).
+    // Journey & Impact are account-only. For guests, intercept the tab switch
+    // BEFORE it opens (show.bs.tab is cancelable) and prompt login instead of
+    // revealing the tab content.
+    jQuery('#tab-journey, #tab-impact').on('show.bs.tab', function(e) {
+        if (!isLoggedIn) {
+            e.preventDefault();
+            Swal.fire({
+                title: 'Login required',
+                text: 'Please log in to view your journey and impact.',
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonText: 'Log in',
+                cancelButtonText: 'Not now',
+                confirmButtonColor: '#79a09f'
+            }).then(function(res) {
+                if (res.isConfirmed) window.location.href = '/login';
+            });
+        }
+    });
+
+    // Load journey data on tab show (logged-in users only — guests are gated above).
     jQuery('button[data-bs-target="#pane-journey"]').on('shown.bs.tab', function() {
         if (!isLoggedIn && !tripId) {
             // Open the guest session journey so the panels populate.
@@ -1986,15 +2009,17 @@ jQuery(function() {
             jQuery('#prHCTNote').text(fmtPct(p.commission_hct_percent));
             jQuery('#prGSTNote').text(fmtPct(p.gst_percent));
 
-            // Show payment card if balance due. Pre-fill the full balance — Razorpay
-            // enforces its own per-account limit and returns a clear error if exceeded.
-            var balanceDue = parseFloat(p.balance_due) || parseFloat(p.final_price) || 0;
+            // Balance due is computed server-side in getTripPricing; the frontend
+            // only renders it and performs no amount math of its own. balance_due is
+            // always present in the response, and a 0 balance keeps the card hidden.
+            var balanceDue = parseFloat(p.balance_due) || 0;
+
             if (balanceDue > 0 && tripId && tripId !== 'guest') {
                 jQuery('#payAmountDue').text(fmtCurrency(balanceDue));
-                jQuery('#payAmountInput').attr('max', balanceDue).val(Math.round(balanceDue));
-                jQuery('#paymentCard').show();
+                jQuery('#payAmountValue').text(fmtCurrency(balanceDue));
+                jQuery('#paymentCard').removeClass("d-none");
             } else {
-                jQuery('#paymentCard').hide();
+                jQuery('#paymentCard').addClass("d-none");
             }
         });
     }
@@ -2431,7 +2456,7 @@ jQuery(function() {
                     jQuery('#noImpactMessage').addClass('d-none');
                     jQuery('#impactData').removeClass('d-none');
                 }
-                tripId = resp.trip_id;
+                setTripId(resp.trip_id);
             }
 
             if (resp.trip_updated) {
@@ -2678,17 +2703,15 @@ jQuery(function() {
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
 jQuery(document).on('click', '#btnPayNow', function() {
-    var amount = parseFloat(jQuery('#payAmountInput').val());
-    if (!amount || amount <= 0) {
-        Swal.fire({ title: 'Invalid amount', text: 'Please enter a valid payment amount.', icon: 'warning', confirmButtonColor: '#79a09f' });
-        return;
-    }
-
     var btn = jQuery(this);
     if (btn.prop('disabled')) return;
     btn.prop('disabled', true).html('<i class="bi bi-hourglass-split me-1"></i> Processing...');
 
-    ajaxPost({ create_razorpay_order: 1, trip_id: window.tripId, amount: amount }, function(resp) {
+    // The payable amount is computed entirely on the server. We request an order
+    // for this trip and embed the server-returned figure into Razorpay — the
+    // frontend never sends or calculates the amount itself.
+    ajaxPost({ create_razorpay_order: 1, trip_id: window.tripId }, function(resp) {
+            var amountInr = (parseFloat(resp.amount) || 0) / 100; // paise → INR, for logging/messaging only
             var options = {
                 key: resp.key_id,
                 amount: resp.amount,
@@ -2710,8 +2733,10 @@ jQuery(document).on('click', '#btnPayNow', function() {
                         razorpay_payment_id: response.razorpay_payment_id,
                         razorpay_signature: response.razorpay_signature
                     }, function(vResp) {
-                        // Redirect to dedicated thank-you page (View Itinerary lives there)
-                        window.location.href = '/trip/' + window.tripId + '/thank-you';
+                        // Use the server-confirmed trip id (the payment's own trip) so the
+                        // redirect never relies on a possibly-stale client-side window.tripId.
+                        var thankYouTrip = (vResp && vResp.trip_id) ? vResp.trip_id : window.tripId;
+                        window.location.href = '/trip/' + thankYouTrip + '/thank-you';
                     }, function(err) {
                         btn.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i> Pay Now');
                         Swal.fire({ title: 'Verification failed', text: 'Payment verification failed. Please contact support.', icon: 'error', confirmButtonColor: '#79a09f' });
@@ -2740,7 +2765,7 @@ jQuery(document).on('click', '#btnPayNow', function() {
                     data: {
                         log_razorpay_failure: 1,
                         order_id: resp.order_id,
-                        amount_inr: amount,
+                        amount_inr: amountInr,
                         code: code,
                         reason: reason,
                         description: desc,
@@ -2754,7 +2779,7 @@ jQuery(document).on('click', '#btnPayNow', function() {
                 var userMsg = desc;
                 if (/exceeds maximum amount/i.test(desc)) {
                     userMsg = 'Your Razorpay account has a per-transaction cap below â‚¹' +
-                              amount.toLocaleString('en-IN') + '. ' +
+                              amountInr.toLocaleString('en-IN') + '. ' +
                               'Raise it in Razorpay Dashboard â†’ Account & Settings â†’ Configuration â†’ ' +
                               'Maximum Payment Amount, or pay this trip in smaller installments.';
                 } else if (/international/i.test(desc)) {

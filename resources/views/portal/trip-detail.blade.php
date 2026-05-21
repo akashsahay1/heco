@@ -289,7 +289,12 @@ jQuery(function() {
             var dateStr = d ? d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() : '';
             var status = pay.payment_status || 'pending';
             html += '<div class="td-pay-item">';
-            html += '<div><strong>' + fmtCurrency(pay.amount) + '</strong><br><span class="td-pay-meta">' + dateStr + ' &middot; ' + (pay.mode || '') + '</span></div>';
+            html += '<div><strong>' + fmtCurrency(pay.amount) + '</strong><br><span class="td-pay-meta">' + dateStr + ' &middot; ' + (pay.mode || '') + '</span>';
+            // Show the payment gateway transaction ID when present (Razorpay payments).
+            if (pay.reference) {
+                html += '<br><span class="td-pay-meta">Txn: <span class="font-monospace">' + pay.reference + '</span></span>';
+            }
+            html += '</div>';
             html += '<span class="td-pay-status ' + status + '">' + status.charAt(0).toUpperCase() + status.slice(1) + '</span>';
             html += '</div>';
         });

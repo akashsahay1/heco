@@ -72,6 +72,8 @@
                 // Show "No results" placeholder if all are hidden
                 var visible = $body.find('.custom-select-option:not(.hidden)').length;
                 $body.find('.custom-select-empty').toggle(visible === 0);
+                // Height changed as options filter — keep the fixed panel anchored.
+                positionPanel($w);
             });
             // Stop propagation so opening the dropdown doesn't close it on input click
             $search.on('click', function (e) { e.stopPropagation(); });
@@ -89,12 +91,17 @@
         // Toggle open
         $trigger.on('click', function (e) {
             e.stopPropagation();
-            $('.custom-select-wrap').not($w).removeClass('open');
+            $('.custom-select-wrap').not($w).removeClass('open').each(function () { resetPanel($(this)); });
             $w.toggleClass('open');
-            if ($w.hasClass('open') && searchable) {
-                // Reset and focus search
-                var $input = $w.find('.custom-select-search-input');
-                $input.val('').trigger('input').focus();
+            if ($w.hasClass('open')) {
+                positionPanel($w);
+                if (searchable) {
+                    // Reset and focus search
+                    var $input = $w.find('.custom-select-search-input');
+                    $input.val('').trigger('input').focus();
+                }
+            } else {
+                resetPanel($w);
             }
         });
 
@@ -107,6 +114,7 @@
             $(this).addClass('selected');
             updateTriggerLabel($sel, $w);
             $w.removeClass('open');
+            resetPanel($w);
         });
     };
 
@@ -137,10 +145,50 @@
         return String(s == null ? '' : s).replace(/"/g, '&quot;');
     }
 
+    // Position the open panel using fixed coordinates derived from the trigger so
+    // it escapes ANY ancestor overflow:hidden (cards, modals, scroll areas) instead
+    // of being clipped at the container edge. Shared by portal + admin.
+    function positionPanel($w) {
+        var trigger = $w.find('.custom-select-trigger')[0];
+        var $body = $w.find('.custom-select-body');
+        if (!trigger || !$body.length) return;
+        var r = trigger.getBoundingClientRect();
+        $body.css({ position: 'fixed', left: r.left + 'px', width: r.width + 'px',
+            right: 'auto', bottom: 'auto', margin: '0', top: '0px' });
+        var bodyH = $body.outerHeight();
+        var gap = 2;
+        var spaceBelow = window.innerHeight - r.bottom;
+        // Drop down by default; flip up only when there's no room below but room above.
+        var top = (spaceBelow >= bodyH + gap || spaceBelow >= r.top)
+            ? r.bottom + gap
+            : Math.max(gap, r.top - bodyH - gap);
+        $body.css('top', top + 'px');
+    }
+
+    function resetPanel($w) {
+        $w.find('.custom-select-body').css({
+            position: '', left: '', width: '', right: '', bottom: '', margin: '', top: ''
+        });
+    }
+
     // Close all open dropdowns on outside click
     $(document).on('click', function () {
-        $('.custom-select-wrap').removeClass('open');
+        $('.custom-select-wrap.open').removeClass('open').each(function () { resetPanel($(this)); });
     });
+
+    // Reposition open panels on resize. Close them when ANY ancestor scrolls
+    // (capture phase — jQuery can't bind capture, so this one listener is native
+    // by necessity) so the fixed panel never detaches from its trigger. Scrolls
+    // inside the panel's own options list are ignored so browsing isn't interrupted.
+    $(window).on('resize', function () {
+        $('.custom-select-wrap.open').each(function () { positionPanel($(this)); });
+    });
+    window.addEventListener('scroll', function (e) {
+        var $open = $('.custom-select-wrap.open');
+        if (!$open.length) return;
+        if (e.target && $(e.target).closest('.custom-select-body').length) return;
+        $open.removeClass('open').each(function () { resetPanel($(this)); });
+    }, true);
 
     // Auto-init any element with .custom-select on DOM ready
     $(function () {

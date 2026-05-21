@@ -77,7 +77,7 @@ $(function() {
             var regions = trip.regions || [];
             var regionBadges = '';
             regions.forEach(function(r) {
-                regionBadges += '<span class="badge bg-success bg-opacity-25 text-success me-1">' + r.name + '</span>';
+                regionBadges += '<span class="badge trip-region-badge me-1">' + r.name + '</span>';
             });
 
             var dateInfo = '';

@@ -313,12 +313,13 @@ $(document).on('click', '.traveller-row', function() {
         } else {
             html += '<h6 class="small fw-bold">Payment History</h6>';
             html += '<div class="table-responsive"><table class="table table-sm table-bordered mb-0">';
-            html += '<thead class="table-light"><tr><th>Date</th><th class="text-end">Amount</th><th>Mode</th><th>Status</th><th>Recorded By</th></tr></thead><tbody>';
+            html += '<thead class="table-light"><tr><th>Date</th><th class="text-end">Amount</th><th>Mode</th><th>Transaction ID</th><th>Status</th><th>Recorded By</th></tr></thead><tbody>';
             payments.forEach(function(p) {
                 html += '<tr>';
                 html += '<td><small>' + (p.payment_date ? String(p.payment_date).substring(0, 10) : '-') + '</small></td>';
                 html += '<td class="text-end fw-semibold"><small>₹' + Number(p.amount || 0).toLocaleString() + '</small></td>';
                 html += '<td><small>' + (p.mode ? p.mode.replace(/_/g, ' ') : '-') + '</small></td>';
+                html += '<td><small class="font-monospace text-break">' + (p.reference ? p.reference : '<span class="text-muted">—</span>') + '</small></td>';
                 html += '<td>' + travellerPaymentStatusBadge(p.payment_status || p.status) + '</td>';
                 html += '<td><small>' + (p.recorder ? (p.recorder.full_name || p.recorder.email || '-') : '-') + '</small></td>';
                 html += '</tr>';

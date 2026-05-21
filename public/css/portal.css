@@ -1343,7 +1343,7 @@
     }
 }
 
-@media (max-width: 991px) {
+@media (max-width:  1080px) {
     .header-nav {
         display: none;
     }
@@ -3247,12 +3247,6 @@
         display: flex;
         flex-direction: column;
         min-width: 0;
-    }
-
-    .discover-map-panel {
-        position: sticky;
-        top: 120px;
-        height: calc(100vh - 280px);
     }
 
     .discover-map-panel #mapViewPanel {
@@ -6415,6 +6409,14 @@
 .trip-status.badge-completed { background-color: #6c757d; }
 .trip-status.badge-cancelled { background-color: #dc3545; }
 .trip-regions .badge { font-size: 0.7rem; }
+/* Dedicated class: the HECO brand override forces .bg-success/.text-success to the
+   same solid teal (and breaks bg-opacity-25), making the region name invisible.
+   Use a light tint with dark teal text for a readable pill. */
+.trip-region-badge {
+    background-color: var(--heco-primary-50, #eef4f3);
+    color: var(--heco-primary-800, #496767);
+    font-weight: 500;
+}
 .empty-state { padding: 80px 20px; }
 .empty-state i { font-size: 5rem; color: #dee2e6; }
 
