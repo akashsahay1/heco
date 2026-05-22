@@ -119,7 +119,11 @@
       "Bash(git lfs *)",
       "Bash(git clone *)",
       "Bash(cmd //c \"del /f /q E:\\\\heco\\\\storage\\\\framework\\\\views\\\\e87481761b59f385088da080d1d6ccdd.php E:\\\\heco\\\\storage\\\\framework\\\\views\\\\edc1388e93823f2f26f888206754a634.php\")",
-      "PowerShell(Rename-Item *)"
+      "PowerShell(Rename-Item *)",
+      "Bash(node --check \"E:\\\\heco\\\\public\\\\js\\\\custom-select.js\")",
+      "Bash(awk -F: '$1 > 3100 && $1 < 3500 {print}')",
+      "Bash(awk -F: '$1 > 2900 && $1 < 3260 {print}')",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }

@@ -3240,7 +3240,9 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: var(--space-5);
-        min-height: calc(100vh - 280px);
+        /* +60px taller than the old calc(100vh - 280px): the map column
+           stretches to this row height, so the map gains ~60px. */
+        min-height: calc(100vh - 220px);
     }
 
     .discover-cards-panel {
@@ -3249,14 +3251,25 @@
         min-width: 0;
     }
 
+    /* Map panel is a flex column: the filter bar keeps its natural height and
+       the map fills only the space beneath it. Previously #mapViewPanel was
+       height:100% of the whole panel, so it rendered below the filter bar and
+       overflowed the panel's bottom edge by the filter bar's height. */
+    .discover-map-panel {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+    }
+
     .discover-map-panel #mapViewPanel {
         display: block !important;
-        height: 100%;
+        flex: 1 1 auto;
+        min-height: 0;
     }
 
     .discover-map-panel #discoverMap {
         height: 100%;
-        min-height: 400px;
         border-radius: 12px;
         box-shadow: var(--shadow-md);
     }
@@ -3462,13 +3475,17 @@
         .discover-map-panel {
             position: relative;
             top: 0;
-            height: 350px;
+            height: auto;
             order: -1;
             margin-bottom: var(--space-4);
         }
 
-        .discover-map-panel #discoverMap {
-            min-height: 300px;
+        /* Stack the filter bar above a fixed-height map. Panel height is auto so
+           a filter bar that wraps to several rows on small screens can't squeeze
+           the map or push it past the panel's bottom. */
+        .discover-map-panel #mapViewPanel {
+            flex: none;
+            height: 320px;
         }
     }
 
@@ -4265,7 +4282,11 @@
 /* Careers Hero */
 .careers-hero {
     background: linear-gradient(135deg, var(--heco-primary-900) 0%, var(--heco-primary-700) 100%);
-    padding: var(--space-24) var(--space-6);
+    /* --space-24 is undefined (the scale stops at --space-20), so the old value
+       made the whole padding declaration invalid → it collapsed to 0 and the
+       hero crammed against the fixed header. --space-20 (5rem) matches the
+       .page-hero used on About/Contact. */
+    padding: var(--space-20) var(--space-6);
     text-align: center;
     color: white;
     position: relative;
@@ -4596,6 +4617,13 @@
     font-size: var(--text-base);
     color: var(--color-text-muted);
     margin: 0;
+}
+
+/* Keep the CTA button on one line. As a flex item beside the paragraph it was
+   shrinking below its content width, breaking "Send Your Resume" onto 3 lines. */
+.general-application .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 /* Process Section */
@@ -5993,7 +6021,11 @@
     position: relative;
 }
 .custom-select-wrap select {
-    display: none;
+    /* The wrapped native <select> is a hidden data-holder kept in sync by
+       custom-select.js (display:none controls still submit). Force-hide it so
+       page-level rules like `.contact-form .form-input { display:block }`
+       (higher specificity) can't make it reappear beside the custom trigger. */
+    display: none !important;
 }
 .custom-select-trigger {
     display: flex;
@@ -6080,7 +6112,10 @@
     font-weight: 600;
 }
 .experience-grid-split {
-    max-height: calc(100vh - 260px);
+    /* +60px taller (was 100vh - 260px) so the cards column grows in step with
+       the map column on laptop/desktop, keeping the +60px map increase visible
+       even when a long card list — not the layout min-height — drives the row. */
+    max-height: calc(100vh - 200px);
     overflow-y: auto;
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 18px !important;
@@ -6382,7 +6417,6 @@
 }
 #mapViewPanel #discoverMap {
     height: 100%;
-    min-height: 400px;
     border-radius: 12px;
 }
 @media (max-width: 991px) {

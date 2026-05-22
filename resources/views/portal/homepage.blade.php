@@ -104,8 +104,8 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 <div class="chatbot-popup-title">
                                     <i class="bi bi-robot"></i> AI Assistant
                                 </div>
-                                <button class="chatbot-popup-close d-none" id="chatCollapseBtn">
-                                    <i class="bi bi-dash-lg"></i>
+                                <button class="chatbot-popup-close" id="chatCollapseBtn" title="Expand chat">
+                                    <i class="bi bi-plus-lg"></i>
                                 </button>
                             </div>
                             <div class="chat-collapse-messages" id="collapseChatMessages">
@@ -240,8 +240,8 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="chatbot-popup-title">
                                 <i class="bi bi-robot"></i> AI Assistant
                             </div>
-                            <button class="chatbot-popup-close d-none" id="journeyChatCollapseBtn">
-                                <i class="bi bi-dash-lg"></i>
+                            <button class="chatbot-popup-close" id="journeyChatCollapseBtn" title="Expand chat">
+                                <i class="bi bi-plus-lg"></i>
                             </button>
                         </div>
                         <div class="chat-collapse-messages" id="journeyChatMessages">
@@ -808,10 +808,18 @@ jQuery(function() {
 
     function initMap() {
         if (mapInitialized) return;
-        map = L.map('discoverMap').setView([20, 60], 3);
+        map = L.map('discoverMap', {
+            // Keep the world filling the (tall) panel and stop panning/zooming
+            // from revealing the grey "out-of-world" void above ~85°N that shows
+            // when zoomed out. minZoom 2 keeps the map ≥1024px tall.
+            minZoom: 2,
+            maxBounds: [[-85, -180], [85, 180]],
+            maxBoundsViscosity: 1.0
+        }).setView([20, 60], 3);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors',
-            maxZoom: 18
+            maxZoom: 18,
+            minZoom: 2
         }).addTo(map);
         mapInitialized = true;
         // Apply any pending marker data
@@ -870,7 +878,7 @@ jQuery(function() {
             popupHtml += '</div></div>';
 
             var marker = L.marker([lat, lng], { icon: redIcon })
-                .bindPopup(popupHtml, { maxWidth: 350, minWidth: 320, className: 'map-exp-popup', autoPan: false })
+                .bindPopup(popupHtml, { maxWidth: 350, minWidth: 320, className: 'map-exp-popup', autoPan: true, autoPanPadding: [24, 24] })
                 .addTo(map);
 
             marker.on('mouseover', function() { this.openPopup(); });
@@ -902,7 +910,10 @@ jQuery(function() {
             });
             marker.on('mouseout', function(e) {
                 var self = this;
-                setTimeout(function() { if (!self._keepPopup) self.closePopup(); }, 100);
+                // Longer grace than the autoPan animation (~250ms) so the popup
+                // doesn't close mid-pan when revealing a card near the map edge;
+                // it also gives the cursor time to land on the popup itself.
+                setTimeout(function() { if (!self._keepPopup) self.closePopup(); }, 300);
             });
 
             markers.push(marker);
@@ -2653,21 +2664,35 @@ jQuery(function() {
         if (!panel.hasClass('expanded')) {
             outer.css('height', outer.outerHeight() + 'px');
             panel.addClass('expanded');
-            jQuery('#chatCollapseBtn').removeClass('d-none');
+            // Now expanded — the button minimizes, so show the minus icon.
+            jQuery('#chatCollapseBtn').attr('title', 'Minimize chat')
+                .find('i').removeClass('bi-plus-lg').addClass('bi-dash-lg');
             jQuery('#collapseChatMessages').each(function() {
                 this.scrollTop = this.scrollHeight;
             });
         }
     });
 
-    // Collapse only on minus button click (Discover tab)
+    // Toggle expand/collapse on button click (Discover tab). The icon mirrors
+    // the action: minus while expanded (click minimizes), plus while minimized
+    // (click expands) — so the button always tells the user what it will do.
     jQuery('#chatCollapseBtn').on('click', function(e) {
         e.stopPropagation();
-        var outer = jQuery(this).closest('.chat-collapse-outer');
+        var btn = jQuery(this);
+        var outer = btn.closest('.chat-collapse-outer');
         var panel = outer.find('.chat-collapse-panel');
-        panel.removeClass('expanded');
-        jQuery('#chatCollapseBtn').addClass('d-none');
-        setTimeout(function() { outer.css('height', 'auto'); }, 320);
+        if (panel.hasClass('expanded')) {
+            panel.removeClass('expanded');
+            btn.attr('title', 'Expand chat').find('i').removeClass('bi-dash-lg').addClass('bi-plus-lg');
+            setTimeout(function() { outer.css('height', 'auto'); }, 320);
+        } else {
+            outer.css('height', outer.outerHeight() + 'px');
+            panel.addClass('expanded');
+            btn.attr('title', 'Minimize chat').find('i').removeClass('bi-plus-lg').addClass('bi-dash-lg');
+            jQuery('#collapseChatMessages').each(function() {
+                this.scrollTop = this.scrollHeight;
+            });
+        }
     });
 
     // ===================================
@@ -2679,21 +2704,35 @@ jQuery(function() {
         if (!panel.hasClass('expanded')) {
             outer.css('height', outer.outerHeight() + 'px');
             panel.addClass('expanded');
-            jQuery('#journeyChatCollapseBtn').removeClass('d-none');
+            // Now expanded — the button minimizes, so show the minus icon.
+            jQuery('#journeyChatCollapseBtn').attr('title', 'Minimize chat')
+                .find('i').removeClass('bi-plus-lg').addClass('bi-dash-lg');
             jQuery('#journeyChatMessages').each(function() {
                 this.scrollTop = this.scrollHeight;
             });
         }
     });
 
-    // Collapse only on minus button click (Journey tab)
+    // Toggle expand/collapse on button click (Journey tab). The icon mirrors
+    // the action: minus while expanded (click minimizes), plus while minimized
+    // (click expands) — so the button always tells the user what it will do.
     jQuery('#journeyChatCollapseBtn').on('click', function(e) {
         e.stopPropagation();
-        var outer = jQuery(this).closest('.chat-collapse-outer');
+        var btn = jQuery(this);
+        var outer = btn.closest('.chat-collapse-outer');
         var panel = outer.find('.chat-collapse-panel');
-        panel.removeClass('expanded');
-        jQuery('#journeyChatCollapseBtn').addClass('d-none');
-        setTimeout(function() { outer.css('height', 'auto'); }, 320);
+        if (panel.hasClass('expanded')) {
+            panel.removeClass('expanded');
+            btn.attr('title', 'Expand chat').find('i').removeClass('bi-dash-lg').addClass('bi-plus-lg');
+            setTimeout(function() { outer.css('height', 'auto'); }, 320);
+        } else {
+            outer.css('height', outer.outerHeight() + 'px');
+            panel.addClass('expanded');
+            btn.attr('title', 'Minimize chat').find('i').removeClass('bi-plus-lg').addClass('bi-dash-lg');
+            jQuery('#journeyChatMessages').each(function() {
+                this.scrollTop = this.scrollHeight;
+            });
+        }
     });
 });
 </script>
