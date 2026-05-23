@@ -72,6 +72,8 @@
     </div>
 </div>
 
+<div id="regionsPagination" class="mt-3"></div>
+
 <!-- Region Modal -->
 <div class="modal fade" id="regionModal" tabindex="-1">
     <div class="modal-dialog">
@@ -149,8 +151,8 @@ function rebuildDropdown(id) {
     if (window.buildCustomDropdown) buildCustomDropdown(jQuery('#' + id)[0]);
 }
 
-function loadRegions() {
-    var params = { get_regions_list: 1 };
+function loadRegions(page) {
+    var params = { get_regions_list: 1, paginate: 1, page: page || 1 };
     var continent = jQuery('#filterContinent').val();
     var country = jQuery('#filterCountry').val();
     var status = jQuery('#filterStatus').val();
@@ -164,6 +166,7 @@ function loadRegions() {
     ajaxPost(params, function(resp) {
         allRegions = resp.data || [];
         renderTable(allRegions);
+        renderPagination('#regionsPagination', resp, loadRegions);
     });
 }
 

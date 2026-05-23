@@ -137,13 +137,7 @@
                 <tbody id="cpLogBody"><tr><td colspan="5" class="text-center text-muted small">Loading...</td></tr></tbody>
             </table>
         </div>
-        <div class="d-flex justify-content-between align-items-center">
-            <span class="small text-muted" id="cpLogMeta"></span>
-            <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-secondary" id="cpLogPrev"><i class="bi bi-chevron-left"></i> Prev</button>
-                <button type="button" class="btn btn-outline-secondary" id="cpLogNext">Next <i class="bi bi-chevron-right"></i></button>
-            </div>
-        </div>
+        <div id="cpLogPagination" class="mt-2"></div>
     </div>
 
     {{-- ---- Glossary ---- --}}
@@ -461,9 +455,7 @@ jQuery(function() {
         ajaxPost({ get_activity_logs: 1, page: logPage }, function(resp) {
             var rows = resp.data || [];
             logLastPage = resp.last_page || 1;
-            jQuery('#cpLogMeta').text('Page ' + (resp.current_page || 1) + ' of ' + logLastPage + ' — ' + (resp.total || 0) + ' entries');
-            jQuery('#cpLogPrev').prop('disabled', (resp.current_page || 1) <= 1);
-            jQuery('#cpLogNext').prop('disabled', (resp.current_page || 1) >= logLastPage);
+            renderPagination('#cpLogPagination', resp, function(p) { logPage = p; loadLogs(); });
             if (!rows.length) { jQuery('#cpLogBody').html('<tr><td colspan="5" class="text-center text-muted small">No activity logged.</td></tr>'); return; }
             var html = '';
             rows.forEach(function(l) {
@@ -483,8 +475,6 @@ jQuery(function() {
             jQuery('#cpLogBody').html(html);
         });
     }
-    jQuery('#cpLogPrev').on('click', function() { if (logPage > 1) { logPage--; loadLogs(); } });
-    jQuery('#cpLogNext').on('click', function() { if (logPage < logLastPage) { logPage++; loadLogs(); } });
     var logsLoaded = false;
     jQuery('button[data-bs-target="#cpLogs"]').on('shown.bs.tab', function() { if (!logsLoaded) { logsLoaded = true; loadLogs(); } });
 

@@ -1050,6 +1050,22 @@ body.admin-login-page {
     border-radius: 4px;
 }
 
+/* Pagination — use the brand colour (not Bootstrap blue) for links + active page */
+.heco-admin .pagination {
+    --bs-pagination-color: var(--admin-primary);
+    --bs-pagination-hover-color: var(--admin-primary-dark);
+    --bs-pagination-focus-color: var(--admin-primary-dark);
+    --bs-pagination-focus-box-shadow: 0 0 0 0.2rem rgba(122, 161, 160, 0.25);
+    --bs-pagination-active-color: #fff;
+    --bs-pagination-active-bg: var(--admin-primary);
+    --bs-pagination-active-border-color: var(--admin-primary);
+    gap: 0.375rem;
+}
+/* Space the page boxes apart instead of Bootstrap's flush, connected look. */
+.heco-admin .pagination .page-item:not(:first-child) .page-link {
+    margin-left: 0;
+}
+
 .heco-admin .rounded-pill { border-radius: 50rem; }
 .heco-admin .rounded-circle { border-radius: 50%; }
 

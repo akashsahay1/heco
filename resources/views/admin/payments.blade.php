@@ -26,6 +26,7 @@
         <div id="spPaymentsList">
             <p class="text-muted text-center">Loading...</p>
         </div>
+        <div id="spPaymentsPagination" class="mt-3"></div>
     </div>
 
     {{-- Traveller Payments Tab --}}
@@ -73,8 +74,8 @@
 
 @section('js')
 <script>
-function loadSpPayments() {
-    var params = { get_sp_payments: 1 };
+function loadSpPayments(page) {
+    var params = { get_sp_payments: 1, page: page || 1 };
     var search = $('#spTripSearch').val();
     if (search) params.trip_search = search;
 
@@ -85,6 +86,7 @@ function loadSpPayments() {
         if (!items.length) {
             html = '<p class="text-muted text-center">No SP payments found</p>';
             $('#spPaymentsList').html(html);
+            renderPagination('#spPaymentsPagination', resp, loadSpPayments);
             return;
         }
 
@@ -155,6 +157,7 @@ function loadSpPayments() {
         });
         html += '</div>';
         $('#spPaymentsList').html(html);
+        renderPagination('#spPaymentsPagination', resp, loadSpPayments);
         // Wire up Air Datepickers + searchable mode selects on the freshly-rendered rows.
         $('#spPaymentsList .sp-date-display').each(function() {
             var $disp = $(this);

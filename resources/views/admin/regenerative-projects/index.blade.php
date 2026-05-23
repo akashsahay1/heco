@@ -73,13 +73,15 @@
     </div>
 </div>
 
+<div id="projectsPagination" class="mt-3"></div>
+
 @endsection
 
 @section('js')
 <script>
 var editRpUrl = "{{ url('/regenerative-projects/__ID__/edit') }}";
-function loadProjects() {
-    var params = { get_regenerative_projects: 1 };
+function loadProjects(page) {
+    var params = { get_regenerative_projects: 1, page: page || 1 };
     var regionId = $('#filterRegion').val();
     var status = $('#filterStatus').val();
     var search = $('#filterSearch').val();
@@ -117,6 +119,7 @@ function loadProjects() {
         });
         $('#projectsTable').html(html);
         refreshBulkBtn();
+        renderPagination('#projectsPagination', resp, loadProjects);
     });
 }
 

@@ -39,6 +39,9 @@
                     </tbody>
                 </table>
                 </div>
+                @if($hctUsers->hasPages())
+                    <div class="mt-3 d-flex justify-content-center">{{ $hctUsers->links() }}</div>
+                @endif
             </div>
         </div>
     </div>

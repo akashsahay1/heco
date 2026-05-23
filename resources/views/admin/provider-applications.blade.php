@@ -20,14 +20,16 @@
 <div class="row g-3" id="applicationsContainer">
     <div class="col-12 text-center text-muted py-4">Loading...</div>
 </div>
+<div id="applicationsPagination" class="mt-3"></div>
 
 @endsection
 
 @section('js')
 <script>
-function loadApplications() {
+function loadApplications(page) {
     ajaxPost({
         get_provider_applications: 1,
+        page: page || 1,
         status: $('#appStatusFilter').val(),
         search: $('#appSearch').val()
     }, function(resp) {
@@ -36,6 +38,7 @@ function loadApplications() {
         if (!items.length) {
             html = '<div class="col-12 text-center text-muted py-4">No applications found</div>';
             $('#applicationsContainer').html(html);
+            renderPagination('#applicationsPagination', resp, loadApplications);
             return;
         }
         items.forEach(function(app) {
@@ -103,6 +106,7 @@ function loadApplications() {
             html += '</div>';
         });
         $('#applicationsContainer').html(html);
+        renderPagination('#applicationsPagination', resp, loadApplications);
     });
 }
 

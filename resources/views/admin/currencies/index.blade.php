@@ -60,6 +60,8 @@
     </div>
 </div>
 
+<div id="currenciesPagination" class="mt-3"></div>
+
 <!-- Currency Modal -->
 <div class="modal fade" id="currencyModal" tabindex="-1">
     <div class="modal-dialog">
@@ -130,8 +132,8 @@
 <script>
 var allCurrencies = [];
 
-function loadCurrencies() {
-    var params = { get_currencies_list: 1 };
+function loadCurrencies(page) {
+    var params = { get_currencies_list: 1, page: page || 1 };
     var status = jQuery('#filterStatus').val();
     var search = jQuery('#filterSearch').val();
 
@@ -141,6 +143,7 @@ function loadCurrencies() {
     ajaxPost(params, function(resp) {
         allCurrencies = resp.data || [];
         renderTable(allCurrencies);
+        renderPagination('#currenciesPagination', resp, loadCurrencies);
     });
 }
 

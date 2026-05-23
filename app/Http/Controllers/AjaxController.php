@@ -55,6 +55,7 @@ use App\Mail\BookingConfirmationEmail;
 use App\Mail\PaymentReceivedEmail;
 use App\Mail\SpApplicationReceivedEmail;
 use App\Mail\SpApplicationApprovedEmail;
+use App\Mail\PricingApprovedEmail;
 use App\Mail\ProfileUpdatedEmail;
 use App\Mail\PasswordChangedEmail;
 use App\Mail\PasswordResetEmail;
@@ -458,6 +459,9 @@ class AjaxController extends Controller
             }
             if ($request->has('usersignup') || $request->has('register')) {
                 return $this->userSignup($request);
+            }
+            if ($request->has('save_nationality')) {
+                return $this->saveNationality($request);
             }
             if ($request->has('update_profile')) {
                 return $this->updateProfile($request);
@@ -1041,8 +1045,11 @@ class AjaxController extends Controller
             "state" => "nullable|string|max:100",
             "country" => "nullable|string|in:" . implode(',', config('countries.list')),
             "postal_code" => "nullable|string|max:20",
+            "nationality" => "required|string|in:" . implode(',', config('countries.list')),
             "gender" => "nullable|in:male,female,other,prefer_not_to_say",
             "date_of_birth" => "nullable|date|before:today",
+        ], [
+            "nationality.required" => "Please select your nationality.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -1065,6 +1072,7 @@ class AjaxController extends Controller
             "state" => $request->state,
             "country" => $request->country,
             "postal_code" => $request->postal_code,
+            "nationality" => $request->nationality,
             "gender" => $request->gender,
             "date_of_birth" => $request->date_of_birth,
         ]);
@@ -1084,6 +1092,41 @@ class AjaxController extends Controller
         return response()->json(["success" => true, "redirect" => $redirect, "trip_id" => $syncedTripId]);
     }
 
+    /**
+     * Lightweight endpoint for the post-social-login nationality prompt.
+     * Social signups bypass the signup form (which requires nationality), so we
+     * collect it on first login. Also seeds traveller_origin on the user's
+     * existing trips that don't have one yet.
+     */
+    protected function saveNationality(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(["error" => "Not authenticated"], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            "nationality" => "required|string|in:" . implode(',', config('countries.list')),
+        ], [
+            "nationality.required" => "Please select your nationality.",
+            "nationality.in" => "Please select a valid nationality.",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $user->update(["nationality" => $request->nationality]);
+
+        // Apply the derived origin to the traveller's trips that don't yet have
+        // one, so their current trip reflects it immediately (editable in admin).
+        $origin = $user->travellerOrigin();
+        if ($origin) {
+            $user->trips()->whereNull('traveller_origin')->update(['traveller_origin' => $origin]);
+        }
+
+        return response()->json(["success" => true]);
+    }
+
     protected function updateProfile(Request $request): JsonResponse
     {
         $user = Auth::user();
@@ -1096,6 +1139,7 @@ class AjaxController extends Controller
             "state" => "nullable|string|max:100",
             "country" => "nullable|string|in:" . implode(',', config('countries.list')),
             "postal_code" => "nullable|string|max:20",
+            "nationality" => "nullable|string|in:" . implode(',', config('countries.list')),
             "gender" => "nullable|in:male,female,other,prefer_not_to_say",
             "date_of_birth" => "nullable|date|before:today",
             "newsletter_optin" => "nullable|boolean",
@@ -1114,6 +1158,7 @@ class AjaxController extends Controller
             'state' => 'State',
             'country' => 'Country',
             'postal_code' => 'Postal code',
+            'nationality' => 'Nationality',
             'gender' => 'Gender',
             'date_of_birth' => 'Date of birth',
             'newsletter_optin' => 'Newsletter subscription',
@@ -2318,6 +2363,15 @@ class AjaxController extends Controller
             ]);
         }
 
+        // Derive end_date from the itinerary length so the trip always has a
+        // complete date range (calendar, listings, etc. depend on end_date).
+        if ($date) {
+            $maxDay = $trip->tripDays()->max('day_number') ?: 1;
+            $trip->update(['end_date' => \Carbon\Carbon::parse($date)->addDays($maxDay - 1)]);
+        } else {
+            $trip->update(['end_date' => null]);
+        }
+
         return response()->json(["success" => true]);
     }
 
@@ -3488,7 +3542,7 @@ class AjaxController extends Controller
 
     protected function getActivityLogs(Request $request): JsonResponse
     {
-        $logs = ActivityLog::with("user")->orderByDesc("created_at")->paginate(30);
+        $logs = ActivityLog::with("user")->orderByDesc("created_at")->paginate(config('pagination.admin_per_page', 20));
 
         // `details` is cast to array; surface a plain-text fallback for rows that
         // were written as a non-JSON string so the viewer always has something.
@@ -3793,8 +3847,16 @@ class AjaxController extends Controller
         $rows = SpPricing::pending()
             ->with(['serviceProvider:id,name,provider_type', 'pendingFor', 'submitter:id,full_name,email'])
             ->orderBy('submitted_at', 'desc')
-            ->get();
-        return response()->json(['rows' => $rows]);
+            ->paginate(config('pagination.admin_per_page', 20));
+        return response()->json([
+            'rows' => $rows->items(),
+            'pagination' => [
+                'current_page' => $rows->currentPage(),
+                'last_page' => $rows->lastPage(),
+                'total' => $rows->total(),
+                'per_page' => $rows->perPage(),
+            ],
+        ]);
     }
 
     /**
@@ -3809,10 +3871,11 @@ class AjaxController extends Controller
         if (!Auth::user() || !Auth::user()->isHct()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
-        $pending = SpPricing::pending()->findOrFail($request->id);
+        $pending = SpPricing::with(['serviceProvider.user', 'submitter'])->pending()->findOrFail($request->id);
 
         if ($pending->pending_for_id) {
             $target = SpPricing::find($pending->pending_for_id);
+            $oldPrice = $target?->price;
             if ($target) {
                 // Copy the substantive fields the SP wanted to change.
                 $target->update([
@@ -3836,6 +3899,8 @@ class AjaxController extends Controller
                     'approved_by'       => Auth::id(),
                 ]);
             }
+            // Notify the provider their price change is approved (old → new).
+            $this->notifyPricingApproved($pending, $oldPrice);
             $pending->delete();
             return response()->json(['success' => true, 'mode' => 'edit_merged', 'row_id' => $target?->id]);
         }
@@ -3847,7 +3912,44 @@ class AjaxController extends Controller
             'approved_at'     => now(),
             'approved_by'     => Auth::id(),
         ]);
+        $this->notifyPricingApproved($pending, null);
         return response()->json(['success' => true, 'mode' => 'created', 'row_id' => $pending->id]);
+    }
+
+    /**
+     * Email the service provider that their pricing change is approved and live.
+     * Fails silently (logged) so approval never breaks on a mail hiccup.
+     */
+    protected function notifyPricingApproved(SpPricing $pending, $oldPrice = null): void
+    {
+        $provider = $pending->serviceProvider;
+        if (!$provider) {
+            return;
+        }
+        $to = $provider->email ?: (optional($provider->user)->email ?: optional($pending->submitter)->email);
+        if (!$to) {
+            return;
+        }
+
+        $name = $provider->contact_person ?: ($provider->name ?: 'Partner');
+        $itemLabel = $pending->description
+            ?: ($pending->category ?: ucfirst(str_replace('_', ' ', (string) $pending->service_type)));
+        // Only show "old → new" when the price actually changed (true price edits).
+        $oldFmt = ($oldPrice !== null && (float) $oldPrice !== (float) $pending->price)
+            ? number_format((float) $oldPrice, 2)
+            : null;
+
+        $this->sendMail(
+            $to,
+            new PricingApprovedEmail(
+                $name,
+                $itemLabel,
+                number_format((float) $pending->price, 2),
+                $pending->unit ?: null,
+                $oldFmt
+            ),
+            'pricing_approved:' . $pending->id
+        );
     }
 
     /** HCT admin: reject a pending pricing row with a reason. */
@@ -4188,7 +4290,7 @@ class AjaxController extends Controller
                   ->orWhere("trip_name", "like", "%{$search}%");
             });
         }
-        $payments = $query->orderBy("created_at", "desc")->paginate(20);
+        $payments = $query->orderBy("created_at", "desc")->paginate(config('pagination.admin_per_page', 20));
         // Expose the HECO-T-… code as a separate field; leave the numeric trip_id FK intact.
         $payments->getCollection()->transform(function ($p) {
             $p->trip_code = $p->trip?->trip_id;
@@ -4383,7 +4485,7 @@ class AjaxController extends Controller
                 $q->where("name", "like", "%{$search}%")->orWhere("email", "like", "%{$search}%");
             });
         }
-        $providers = $query->orderBy("name")->paginate(20);
+        $providers = $query->orderBy("name")->paginate(config('pagination.admin_per_page', 20));
         return response()->json($providers);
     }
 
@@ -4693,7 +4795,7 @@ class AjaxController extends Controller
             });
         }
 
-        $applications = $query->orderBy("created_at", "desc")->paginate(20);
+        $applications = $query->orderBy("created_at", "desc")->paginate(config('pagination.admin_per_page', 20));
         return response()->json($applications);
     }
 
@@ -4877,8 +4979,24 @@ class AjaxController extends Controller
             $query->where("is_active", $request->status);
         }
 
-        $regions = $query->orderBy("continent")->orderBy("country")->orderBy("sort_order")->get();
+        $query->orderBy("continent")->orderBy("country")->orderBy("sort_order");
 
+        // List view opts into pagination; the cascading-filter dropdown builder
+        // (buildRegionMap) calls this without the flag and needs the full set.
+        if ($request->boolean("paginate")) {
+            $regions = $query->paginate(config('pagination.admin_per_page', 20));
+            return response()->json([
+                "data" => $regions->items(),
+                "pagination" => [
+                    "current_page" => $regions->currentPage(),
+                    "last_page" => $regions->lastPage(),
+                    "total" => $regions->total(),
+                    "per_page" => $regions->perPage(),
+                ],
+            ]);
+        }
+
+        $regions = $query->get();
         return response()->json(["data" => $regions]);
     }
 
@@ -4962,8 +5080,16 @@ class AjaxController extends Controller
             $query->where("is_active", $request->status);
         }
 
-        $currencies = $query->orderBy("sort_order")->get();
-        return response()->json(["data" => $currencies]);
+        $currencies = $query->orderBy("sort_order")->paginate(config('pagination.admin_per_page', 20));
+        return response()->json([
+            "data" => $currencies->items(),
+            "pagination" => [
+                "current_page" => $currencies->currentPage(),
+                "last_page" => $currencies->lastPage(),
+                "total" => $currencies->total(),
+                "per_page" => $currencies->perPage(),
+            ],
+        ]);
     }
 
     protected function saveCurrency(Request $request): JsonResponse
@@ -5048,7 +5174,7 @@ class AjaxController extends Controller
             $query->where("is_active", (bool) $request->status);
         }
 
-        $experiences = $query->orderBy("sort_order")->paginate(20);
+        $experiences = $query->orderBy("sort_order")->paginate(config('pagination.admin_per_page', 20));
 
         return response()->json([
             "experiences" => $experiences->items(),
@@ -5187,7 +5313,7 @@ class AjaxController extends Controller
                 $q->where("name", "like", "%{$s}%")->orWhere("short_description", "like", "%{$s}%");
             });
         }
-        $projects = $query->orderBy("name")->paginate(20);
+        $projects = $query->orderBy("name")->paginate(config('pagination.admin_per_page', 20));
         return response()->json([
             "data" => $projects->items(),
             "pagination" => [

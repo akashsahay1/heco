@@ -78,6 +78,19 @@
                     </div>
                 </div>
 
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="signupwrap-label" for="signupNationality">Nationality <span class="text-danger">*</span></label>
+                        <select class="custom-select user_nationality" id="signupNationality" name="nationality" required>
+                            <option value="">Select nationality</option>
+                            @foreach($countries as $country)
+                                <option value="{{ $country }}">{{ $country }}</option>
+                            @endforeach
+                        </select>
+                        <small class="signupwrap-help">Determines applicable pricing (Indian / foreign national).</small>
+                    </div>
+                </div>
+
                 {{-- Address --}}
                 <h6 class="signupwrap-section-heading"><i class="bi bi-geo-alt"></i> Address</h6>
 

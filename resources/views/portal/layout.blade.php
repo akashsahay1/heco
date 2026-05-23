@@ -597,6 +597,72 @@
         }
     });
     </script>
+
+    {{-- First-login nationality prompt: social signups bypass the signup form
+         (which requires nationality), so capture it once here. Shown to any
+         traveller still missing a nationality; blocks until they pick one. --}}
+    @auth
+    @if(auth()->user()->isTraveller() && empty(auth()->user()->nationality))
+    <div class="modal fade" id="nationalityPromptModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="nationalityPromptTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content rounded-4 shadow-lg">
+                <div class="modal-header border-bottom px-4 pt-4 pb-3">
+                    <h5 class="modal-title fw-bold" id="nationalityPromptTitle">
+                        <i class="bi bi-globe2 me-2"></i>One quick thing
+                    </h5>
+                </div>
+                <div class="modal-body px-4 py-4">
+                    <p class="text-muted mb-3">Please tell us your nationality so we can show the right pricing for your trips.</p>
+                    <label class="form-label fw-semibold" for="nationalityPromptSelect">Nationality <span class="text-danger">*</span></label>
+                    <select class="form-select" id="nationalityPromptSelect">
+                        <option value="">Select nationality</option>
+                        @foreach(config('countries.list') as $country)
+                            <option value="{{ $country }}">{{ $country }}</option>
+                        @endforeach
+                    </select>
+                    <div class="text-danger small mt-2 d-none" id="nationalityPromptError">Please select your nationality.</div>
+                </div>
+                <div class="modal-footer border-top px-4 pb-4 pt-3">
+                    <button type="button" class="btn btn-success w-100" id="btnSaveNationalityPrompt">
+                        <i class="bi bi-check-lg me-1"></i> Save &amp; Continue
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    jQuery(function() {
+        var npEl = document.getElementById('nationalityPromptModal');
+        if (!npEl) return;
+        var npModal = new bootstrap.Modal(npEl);
+        npModal.show();
+
+        jQuery('#nationalityPromptSelect').on('change', function() {
+            if (jQuery(this).val()) jQuery('#nationalityPromptError').addClass('d-none');
+        });
+
+        jQuery('#btnSaveNationalityPrompt').on('click', function() {
+            var val = jQuery('#nationalityPromptSelect').val();
+            if (!val) {
+                jQuery('#nationalityPromptError').text('Please select your nationality.').removeClass('d-none');
+                return;
+            }
+            var btn = jQuery(this);
+            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
+            ajaxPost({ save_nationality: 1, nationality: val }, function() {
+                npModal.hide();
+                showAlert('Thanks! Your nationality has been saved.', 'success');
+            }, function(xhr) {
+                btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save & Continue');
+                var msg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Could not save. Please try again.';
+                jQuery('#nationalityPromptError').text(msg).removeClass('d-none');
+            });
+        });
+    });
+    </script>
+    @endif
+    @endauth
+
     @yield('js')
 </body>
 </html>

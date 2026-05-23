@@ -108,6 +108,18 @@
                         </div>
                         <div class="row g-2">
                             <div class="col-md-6 mb-3">
+                                <label for="nationality" class="form-label">Nationality</label>
+                                <select class="form-select custom-select" id="nationality">
+                                    <option value="">Select nationality</option>
+                                    @foreach(config('countries.list') as $country)
+                                        <option value="{{ $country }}" {{ ($user->nationality ?? '') === $country ? 'selected' : '' }}>{{ $country }}</option>
+                                    @endforeach
+                                </select>
+                                <div class="form-text">Used to determine applicable pricing (Indian / foreign national).</div>
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-3">
                                 <label for="country" class="form-label">Country</label>
                                 <select class="form-select custom-select" id="country">
                                     <option value="">Select country</option>
@@ -226,6 +238,7 @@ $(function() {
             state: $('#state').val(),
             country: $('#country').val(),
             postal_code: $('#postalCode').val(),
+            nationality: $('#nationality').val(),
             newsletter_optin: $('#newsletterOptin').is(':checked') ? 1 : 0,
             portal_notify_optin: $('#portalNotifyOptin').is(':checked') ? 1 : 0
         }, function(resp) {

@@ -203,6 +203,52 @@
             });
         }
 
+        // Shared numbered pagination for AJAX-driven lists.
+        // `resp` may be a Laravel paginator JSON (current_page/last_page/total at
+        // top level) or an object with a `.pagination` sub-object — both work.
+        // `onPage(pageNumber)` is invoked when the user picks a page.
+        window.renderPagination = function(containerSelector, resp, onPage) {
+            var $c = jQuery(containerSelector);
+            if (!$c.length) return;
+            var p = (resp && resp.pagination) ? resp.pagination : (resp || {});
+            var current = parseInt(p.current_page, 10) || 1;
+            var last = parseInt(p.last_page, 10) || 1;
+            var total = parseInt(p.total, 10) || 0;
+
+            if (last <= 1) { $c.empty(); return; }
+
+            var html = '<nav class="d-flex justify-content-between align-items-center flex-wrap gap-2">';
+            html += '<small class="text-muted">' + total + ' total</small>';
+            html += '<ul class="pagination pagination-sm mb-0 flex-wrap">';
+            html += '<li class="page-item' + (current <= 1 ? ' disabled' : '') + '"><a class="page-link" href="#" data-page="' + (current - 1) + '">&laquo;</a></li>';
+
+            var start = Math.max(1, current - 2);
+            var end = Math.min(last, current + 2);
+            if (start > 1) {
+                html += '<li class="page-item"><a class="page-link" href="#" data-page="1">1</a></li>';
+                if (start > 2) html += '<li class="page-item disabled"><span class="page-link">&hellip;</span></li>';
+            }
+            for (var i = start; i <= end; i++) {
+                html += '<li class="page-item' + (i === current ? ' active' : '') + '"><a class="page-link" href="#" data-page="' + i + '">' + i + '</a></li>';
+            }
+            if (end < last) {
+                if (end < last - 1) html += '<li class="page-item disabled"><span class="page-link">&hellip;</span></li>';
+                html += '<li class="page-item"><a class="page-link" href="#" data-page="' + last + '">' + last + '</a></li>';
+            }
+            html += '<li class="page-item' + (current >= last ? ' disabled' : '') + '"><a class="page-link" href="#" data-page="' + (current + 1) + '">&raquo;</a></li>';
+            html += '</ul></nav>';
+            $c.html(html);
+
+            // Scoped, idempotent click binding (off before on guards re-renders).
+            $c.off('click.pg').on('click.pg', 'a.page-link[data-page]', function(e) {
+                e.preventDefault();
+                var pg = parseInt(jQuery(this).data('page'), 10);
+                if (pg >= 1 && pg <= last && pg !== current && typeof onPage === 'function') {
+                    onPage(pg);
+                }
+            });
+        };
+
         // Sidebar toggle
         (function() {
             var $sidebar = jQuery('#hctSidebar');

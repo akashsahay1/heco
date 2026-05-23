@@ -67,6 +67,8 @@
     </div>
 </div>
 
+<div id="providersPagination" class="mt-3"></div>
+
 @endsection
 
 @section('js')
@@ -78,9 +80,10 @@ function formatLastUpdated(p) {
     return '<span class="text-muted small">-</span>';
 }
 
-function loadProviders() {
+function loadProviders(page) {
     ajaxPost({
         get_providers: 1,
+        page: page || 1,
         provider_type: $('#providerTypeFilter').val(),
         region_id: $('#regionFilter').val(),
         status: $('#statusFilter').val(),
@@ -130,6 +133,7 @@ function loadProviders() {
         });
         $('#providersTable').html(html);
         refreshBulkBtn();
+        renderPagination('#providersPagination', resp, loadProviders);
     });
 }
 

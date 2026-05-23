@@ -19,7 +19,9 @@ class HctController extends Controller
 
     public function admin()
     {
-        $hctUsers = User::whereIn("user_role", ["hct_admin", "hct_collaborator"])->get();
+        $hctUsers = User::whereIn("user_role", ["hct_admin", "hct_collaborator"])
+            ->orderBy("full_name")
+            ->paginate(config('pagination.admin_per_page', 20));
         return view("admin.admin", compact("hctUsers"));
     }
 
@@ -98,7 +100,7 @@ class HctController extends Controller
                 )->orWhereHas('trip', fn($t) => $t->where('trip_id', 'like', "%{$search}%"));
             });
         }
-        $leads = $query->orderBy('enquiry_date', 'desc')->paginate(20)->withQueryString();
+        $leads = $query->orderBy('enquiry_date', 'desc')->paginate(config('pagination.admin_per_page', 20))->withQueryString();
 
         return view('admin.leads', compact('hctUsers', 'leads', 'stage', 'search'));
     }
@@ -107,10 +109,13 @@ class HctController extends Controller
     {
         // Server-side filters (Travelers-style). Mirrors getUpcomingTrips AJAX
         // logic so the existing endpoint stays usable for the dashboard widget.
-        $status   = $request->get('status', '');
-        $dateFrom = $request->get('date_from', '');
-        $dateTo   = $request->get('date_to', '');
-        $search   = trim($request->get('search', ''));
+        // Normalise to strings: an absent/empty filter can arrive as null, and
+        // `null !== ''` would slip past the guards below into whereDate(null),
+        // which throws "Illegal operator and value combination".
+        $status   = $request->get('status', '') ?: '';
+        $dateFrom = $request->get('date_from', '') ?: '';
+        $dateTo   = $request->get('date_to', '') ?: '';
+        $search   = trim($request->get('search', '') ?: '');
 
         $query = \App\Models\Trip::with(['user', 'regions']);
         $allowedStatuses = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
@@ -130,7 +135,7 @@ class HctController extends Controller
         }
 
         $trips = $query->orderByRaw('start_date IS NULL, start_date ASC')
-            ->paginate(20)
+            ->paginate(config('pagination.admin_per_page', 20))
             ->withQueryString();
 
         return view('admin.trips', compact('trips', 'status', 'dateFrom', 'dateTo', 'search'));
@@ -217,7 +222,7 @@ class HctController extends Controller
             });
         }
 
-        $travelers = $query->orderBy('created_at', 'desc')->paginate(30)->withQueryString();
+        $travelers = $query->orderBy('created_at', 'desc')->paginate(config('pagination.admin_per_page', 20))->withQueryString();
 
         return view('admin.travelers', compact('travelers', 'segment', 'search'));
     }
@@ -256,7 +261,7 @@ class HctController extends Controller
         }
 
         $subscribers = $query->orderBy('subscribed_at', 'desc')
-            ->paginate(30)
+            ->paginate(config('pagination.admin_per_page', 20))
             ->withQueryString();
 
         $stats = [

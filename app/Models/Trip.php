@@ -40,6 +40,22 @@ class Trip extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        // Default traveller_origin (Indian vs foreigner pricing bucket) from the
+        // owner's nationality whenever it wasn't set explicitly. Covers every
+        // creation path (guest sync, chat, ensureAuthTrip, admin). Stays editable
+        // in Trip Manager for edge cases like NRIs or foreign nationals in India.
+        static::creating(function (Trip $trip) {
+            if (empty($trip->traveller_origin) && $trip->user_id) {
+                $origin = User::find($trip->user_id)?->travellerOrigin();
+                if ($origin) {
+                    $trip->traveller_origin = $origin;
+                }
+            }
+        });
+    }
+
     public static function generateTripId(): string
     {
         $last = static::orderBy('id', 'desc')->first();

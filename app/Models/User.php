@@ -16,7 +16,7 @@ class User extends Authenticatable
     protected $fillable = [
         'full_name', 'email', 'password', 'auth_type', 'user_role',
         'mobile', 'address1', 'address2', 'city', 'state', 'country', 'postal_code',
-        'gender', 'date_of_birth',
+        'nationality', 'gender', 'date_of_birth',
         'google_id', 'facebook_id', 'avatar', 'photo',
         'newsletter_optin', 'portal_notify_optin', 'status',
     ];
@@ -41,6 +41,19 @@ class User extends Authenticatable
     public function getAgeAttribute(): ?int
     {
         return $this->date_of_birth ? $this->date_of_birth->age : null;
+    }
+
+    /**
+     * Map the user's nationality to the trip-pricing origin bucket
+     * ('indian' / 'foreigner'). Returns null when nationality is unknown so
+     * callers can leave traveller_origin blank rather than guess.
+     */
+    public function travellerOrigin(): ?string
+    {
+        if (!$this->nationality) {
+            return null;
+        }
+        return strcasecmp($this->nationality, 'India') === 0 ? 'indian' : 'foreigner';
     }
 
     public function isHctAdmin(): bool

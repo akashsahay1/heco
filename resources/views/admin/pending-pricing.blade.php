@@ -13,6 +13,7 @@
         <div id="pendingList" class="text-center text-muted small py-4">
             <i class="bi bi-hourglass-split me-1"></i> Loading...
         </div>
+        <div id="pendingPagination" class="mt-3"></div>
     </div>
 </div>
 
@@ -85,9 +86,10 @@ jQuery(function() {
         return rows || '<div class="small text-muted">No field changes</div>';
     }
 
-    function load() {
-        ajaxPost({ get_pending_pricing: 1 }, function(resp) {
+    function load(page) {
+        ajaxPost({ get_pending_pricing: 1, page: page || 1 }, function(resp) {
             var rows = resp.rows || [];
+            renderPagination('#pendingPagination', resp, load);
             if (!rows.length) {
                 jQuery('#pendingList').html('<div class="text-center text-muted small py-4"><i class="bi bi-check2-circle me-1"></i> No pending pricing changes.</div>');
                 return;
