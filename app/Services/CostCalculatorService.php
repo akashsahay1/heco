@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Trip;
 use App\Models\Setting;
+use App\Models\SpPricing;
+use Carbon\Carbon;
 
 class CostCalculatorService
 {
@@ -79,6 +81,42 @@ class CostCalculatorService
     protected function getBudgetMultiplier(?string $budget): float
     {
         return $this->lookup('budget_sensitivity', $budget);
+    }
+
+    /**
+     * Number of nights to bill provider-driven accommodation for. Prefers the
+     * trip's start/end span; falls back to (day count - 1) for trips that don't
+     * yet have dates set. Always at least 1 so a chosen provider is charged.
+     */
+    protected function resolveNights(Trip $trip): int
+    {
+        if ($trip->start_date && $trip->end_date) {
+            $nights = (int) Carbon::parse($trip->start_date)->diffInDays(Carbon::parse($trip->end_date));
+            if ($nights > 0) return $nights;
+        }
+        return max($trip->tripDays->count() - 1, 1);
+    }
+
+    /**
+     * Transport cost from a chosen provider, by pricing unit:
+     *   "per day"    → rate × trip days
+     *   "per person" → rate × pax
+     *   "per trip" / flat / "per km" (no distance stored) → flat rate
+     * (Per-km can't be multiplied without a trip distance, so it falls back to
+     * the flat rate; add a distance field later if per-km accuracy is needed.)
+     */
+    protected function providerTransportCost(SpPricing $pricing, Trip $trip, int $adults, int $children): int
+    {
+        $rate = (float) $pricing->price;
+        $unit = strtolower((string) $pricing->unit);
+        if (str_contains($unit, 'day')) {
+            $days = max($trip->tripDays->count() ?: ($this->resolveNights($trip) + 1), 1);
+            return (int) round($rate * $days);
+        }
+        if (str_contains($unit, 'person') || str_contains($unit, 'pax')) {
+            return (int) round($rate * max($adults + $children, 1));
+        }
+        return (int) round($rate);
     }
 
     public function calculate(Trip $trip): array
@@ -186,22 +224,43 @@ class CostCalculatorService
             }
         }
 
-        // Travel pace scales activity-driven costs (activities, guide-led time, extra activity days)
-        $activityCost = (int) round($activityCost * $paceMultiplier);
+        // Travel pace scales activity-driven costs. Activities and Extra Days are
+        // intentionally EXCLUDED — those lines are shown at their plain cost (no
+        // preference multiplier), per product decision; only guide-led time is paced.
         $guideCost = (int) round($guideCost * $paceMultiplier);
-        $extraDayCost = (int) round($extraDayCost * $paceMultiplier);
         $guideBase = $guideBase * $paceMultiplier;
 
-        // Budget sensitivity scales the entire base trip cost (excludes margins/GST below)
+        // Budget sensitivity scales the base trip cost — again EXCLUDING Activities
+        // and Extra Days (kept at plain cost).
         $transportCost = (int) round($transportCost * $budgetMultiplier);
         $accommodationCost = (int) round($accommodationCost * $budgetMultiplier);
         $guideCost = (int) round($guideCost * $budgetMultiplier);
-        $activityCost = (int) round($activityCost * $budgetMultiplier);
         $otherCost = (int) round($otherCost * $budgetMultiplier);
-        $extraDayCost = (int) round($extraDayCost * $budgetMultiplier);
         $transportBase = $transportBase * $budgetMultiplier;
         $accommodationBase = $accommodationBase * $budgetMultiplier;
         $guideBase = $guideBase * $budgetMultiplier;
+
+        // ── Provider-driven costs ───────────────────────────────────────────────
+        // When the traveller fixes a specific provider for accommodation / guide /
+        // transport, that provider's sp_pricing rate is a contractual figure that
+        // REPLACES the experience estimate for that line — equal to the rate shown
+        // in the dropdown × the relevant quantity.
+        if ($trip->accommodation_pricing_id && ($accomPricing = SpPricing::live()->find($trip->accommodation_pricing_id))) {
+            $nights = $this->resolveNights($trip);
+            $occupancy = max((int) ($accomPricing->default_occupancy ?: 2), 1);
+            $rooms = max((int) ceil(($adults + $children) / $occupancy), 1);
+            $accommodationCost = (int) round((float) $accomPricing->price * $rooms * $nights);
+            $accomMultiplier = 1.0;
+        }
+        if ($trip->guide_pricing_id && ($guidePricing = SpPricing::live()->find($trip->guide_pricing_id))) {
+            $guideDays = max($trip->tripDays->count() ?: ($this->resolveNights($trip) + 1), 1);
+            $guideCost = (int) round((float) $guidePricing->price * $guideDays);
+            $guideMultiplier = 1.0;
+        }
+        if ($trip->vehicle_pricing_id && ($vehiclePricing = SpPricing::live()->find($trip->vehicle_pricing_id))) {
+            $transportCost = $this->providerTransportCost($vehiclePricing, $trip, $adults, $children);
+            $vehicleMultiplier = 1.0;
+        }
 
         $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
 

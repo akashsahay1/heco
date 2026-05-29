@@ -552,6 +552,9 @@ class AjaxController extends Controller
             if ($request->has('get_trip_pricing')) {
                 return $this->getTripPricing($request);
             }
+            if ($request->has('get_category_providers')) {
+                return $this->getCategoryProviders($request);
+            }
             if ($request->has('create_razorpay_order')) {
                 return $this->createRazorpayOrder($request);
             }
@@ -2375,21 +2378,72 @@ class AjaxController extends Controller
         return response()->json(["success" => true]);
     }
 
+    /**
+     * Return the approved service providers that offer a given accommodation
+     * category (comfort tier), each with their real sp_pricing rate. Powers the
+     * traveller flow: pick a category → choose a provider → see its price.
+     * One option per live pricing row (a provider may list several room types
+     * within the same tier), keyed by the pricing row id.
+     */
+    protected function getCategoryProviders(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            "service_type" => "required|string|in:accommodation,transport,guide,activity,other",
+            "category"     => "required|string|max:100",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        // Each service type categorises its pricing rows on a different column:
+        // accommodation by comfort tier, transport by vehicle type, guide by category.
+        $matchColumn = match ($request->service_type) {
+            'accommodation' => 'comfort_tier',
+            'transport'     => 'vehicle_type',
+            default         => 'category', // guide / activity / other
+        };
+
+        $rows = SpPricing::live()
+            ->where('service_type', $request->service_type)
+            ->where($matchColumn, $request->category)
+            ->whereHas('serviceProvider', fn ($q) => $q->where('status', 'approved'))
+            ->with('serviceProvider:id,name')
+            ->orderBy('price')
+            ->get();
+
+        $providers = $rows->map(fn ($r) => [
+            'pricing_id'    => $r->id,
+            'provider_id'   => $r->service_provider_id,
+            'provider_name' => $r->serviceProvider?->name ?? 'Provider',
+            'room_category' => $r->room_category,
+            'price'         => (float) $r->price,
+            'unit'          => $r->unit ?: 'night',
+        ])->values();
+
+        return response()->json(["success" => true, "providers" => $providers]);
+    }
+
     protected function updateTravelPreferences(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            "accommodation_comfort" => "nullable|string|max:100",
-            "vehicle_comfort"       => "nullable|string|max:100",
-            "guide_preference"      => "nullable|string|max:100",
-            "travel_pace"           => "nullable|string|max:100",
-            "budget_sensitivity"    => "nullable|string|max:100",
+            "accommodation_comfort"     => "nullable|string|max:100",
+            "accommodation_provider_id" => "nullable|integer",
+            "accommodation_pricing_id"  => "nullable|integer",
+            "vehicle_comfort"           => "nullable|string|max:100",
+            "vehicle_provider_id"       => "nullable|integer",
+            "vehicle_pricing_id"        => "nullable|integer",
+            "guide_preference"          => "nullable|string|max:100",
+            "guide_provider_id"         => "nullable|integer",
+            "guide_pricing_id"          => "nullable|integer",
+            "travel_pace"               => "nullable|string|max:100",
+            "budget_sensitivity"        => "nullable|string|max:100",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
         if (!Auth::check()) {
             $gt = $this->guestTrip();
-            foreach (['accommodation_comfort', 'vehicle_comfort', 'guide_preference', 'travel_pace', 'budget_sensitivity'] as $key) {
+            foreach (['accommodation_comfort', 'accommodation_provider_id', 'accommodation_pricing_id', 'vehicle_comfort', 'vehicle_provider_id', 'vehicle_pricing_id', 'guide_preference', 'guide_provider_id', 'guide_pricing_id', 'travel_pace', 'budget_sensitivity'] as $key) {
                 if ($request->has($key)) $gt[$key] = $request->$key;
             }
             $this->saveGuestTrip($gt);
@@ -2399,10 +2453,32 @@ class AjaxController extends Controller
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["error" => "Trip not found"], 404);
 
-        $trip->update($request->only([
-            "accommodation_comfort", "vehicle_comfort", "guide_preference",
+        $data = $request->only([
+            "accommodation_comfort", "accommodation_provider_id", "accommodation_pricing_id",
+            "vehicle_comfort", "vehicle_provider_id", "vehicle_pricing_id",
+            "guide_preference", "guide_provider_id", "guide_pricing_id",
             "travel_pace", "budget_sensitivity",
-        ]));
+        ]);
+
+        // Changing a category invalidates any previously chosen provider (providers
+        // differ per category), unless this same request also supplies a fresh pick.
+        if ($request->has('accommodation_comfort') && !$request->has('accommodation_pricing_id')
+            && $request->accommodation_comfort !== $trip->accommodation_comfort) {
+            $data['accommodation_provider_id'] = null;
+            $data['accommodation_pricing_id'] = null;
+        }
+        if ($request->has('vehicle_comfort') && !$request->has('vehicle_pricing_id')
+            && $request->vehicle_comfort !== $trip->vehicle_comfort) {
+            $data['vehicle_provider_id'] = null;
+            $data['vehicle_pricing_id'] = null;
+        }
+        if ($request->has('guide_preference') && !$request->has('guide_pricing_id')
+            && $request->guide_preference !== $trip->guide_preference) {
+            $data['guide_provider_id'] = null;
+            $data['guide_pricing_id'] = null;
+        }
+
+        $trip->update($data);
         return response()->json(["success" => true]);
     }
 
@@ -3346,7 +3422,12 @@ class AjaxController extends Controller
         $trip->update(["ai_raw_response" => $responseText]);
 
         $itineraryService = app(ItineraryService::class);
-        $result = $itineraryService->parseAndCreateFromAi($trip, $parsed);
+        // Fan the AI's day suggestions over a deterministic per-experience plan so
+        // EVERY selected experience always gets its days. The raw AI response can
+        // omit an experience, which previously dropped it from the timeline (e.g.
+        // two experiences added but only one shown). rebuildFromExperiences merges
+        // the AI titles/descriptions/services on top of the guaranteed structure.
+        $result = $itineraryService->rebuildFromExperiences($trip, $parsed['days'] ?? []);
 
         if (!$result) {
             return response()->json([

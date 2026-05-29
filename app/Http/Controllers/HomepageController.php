@@ -72,6 +72,7 @@ class HomepageController extends Controller
         $prefLists = SystemList::whereIn('list_type', [
                 'accommodation_comfort',
                 'vehicle_comfort',
+                'vehicle_type', // Vehicle dropdown now lists actual vehicle types (matches sp_pricing.vehicle_type)
                 'guide_preference',
                 'travel_pace',
                 'budget_sensitivity',

@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Soft-archive support for service providers.
@@ -17,6 +18,12 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // sqlite (used by the test suite) stores enums as TEXT with no value
+        // constraint, so the 'removed' value already works without an ALTER —
+        // and it has no MODIFY COLUMN syntax. Only MySQL needs the raw ALTER.
+        if (Schema::getConnection()->getDriverName() !== 'mysql') {
+            return;
+        }
         // MySQL doesn't support modifying enum cleanly via Schema Builder;
         // raw ALTER is the standard approach.
         DB::statement("ALTER TABLE service_providers MODIFY COLUMN status ENUM('pending','approved','rejected','removed') NOT NULL DEFAULT 'pending'");
@@ -27,6 +34,9 @@ return new class extends Migration
         // Roll any 'removed' rows back to 'rejected' before shrinking the enum
         // so the down migration doesn't fail.
         DB::table('service_providers')->where('status', 'removed')->update(['status' => 'rejected']);
+        if (Schema::getConnection()->getDriverName() !== 'mysql') {
+            return;
+        }
         DB::statement("ALTER TABLE service_providers MODIFY COLUMN status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending'");
     }
 };

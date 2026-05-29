@@ -362,27 +362,35 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 <div class="detail-card-body">
                                     <div class="mb-3">
                                         <label class="form-label">Accommodation</label>
-                                        <select class="form-select pref-input pref-priced custom-select" id="prefAccommodation" data-pricing-key="accommodation">
+                                        <select class="form-select pref-input custom-select" id="prefAccommodation">
                                             @foreach($prefLists['accommodation_comfort'] ?? [] as $item)
-                                                <option value="{{ $item->name }}" data-name="{{ $item->name }}" data-multiplier="{{ $multiplierMap['accommodation_comfort'][$item->name] ?? 1 }}" @selected($pAccom == $item->name)>{{ $item->name }}</option>
+                                                <option value="{{ $item->name }}" @selected($pAccom == $item->name)>{{ $item->name }}</option>
                                             @endforeach
                                         </select>
+                                        {{-- Category → provider: once a category is chosen, show the approved
+                                             providers as cards (name only; hover reveals room/price). --}}
+                                        <div class="provider-cards mt-2 {{ $pAccom ? '' : 'd-none' }}" id="prefAccommodationProviderCards" data-service="accommodation" data-selected="{{ $trip->accommodation_pricing_id ?? '' }}"></div>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Vehicle</label>
-                                        <select class="form-select pref-input pref-priced custom-select" id="prefVehicle" data-pricing-key="transport">
-                                            @foreach($prefLists['vehicle_comfort'] ?? [] as $item)
-                                                <option value="{{ $item->name }}" data-name="{{ $item->name }}" data-multiplier="{{ $multiplierMap['vehicle_comfort'][$item->name] ?? 1 }}" @selected($pVehicle == $item->name)>{{ $item->name }}</option>
+                                        <select class="form-select pref-input custom-select" id="prefVehicle">
+                                            <option value="">Any / not specified</option>
+                                            @foreach($prefLists['vehicle_type'] ?? [] as $item)
+                                                <option value="{{ $item->name }}" @selected($pVehicle == $item->name)>{{ $item->name }}</option>
                                             @endforeach
                                         </select>
+                                        {{-- Vehicle type → provider: provider cards (name only; hover reveals rate). --}}
+                                        <div class="provider-cards mt-2 {{ $pVehicle ? '' : 'd-none' }}" id="prefVehicleProviderCards" data-service="transport" data-selected="{{ $trip->vehicle_pricing_id ?? '' }}"></div>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Guide</label>
-                                        <select class="form-select pref-input pref-priced custom-select" id="prefGuide" data-pricing-key="guide">
+                                        <select class="form-select pref-input custom-select" id="prefGuide">
                                             @foreach($prefLists['guide_preference'] ?? [] as $item)
-                                                <option value="{{ $item->name }}" data-name="{{ $item->name }}" data-multiplier="{{ $multiplierMap['guide_preference'][$item->name] ?? 1 }}" @selected($pGuide == $item->name)>{{ $item->name }}</option>
+                                                <option value="{{ $item->name }}" @selected($pGuide == $item->name)>{{ $item->name }}</option>
                                             @endforeach
                                         </select>
+                                        {{-- Guide preference → provider: provider cards (name only; hover reveals rate). --}}
+                                        <div class="provider-cards mt-2 {{ $pGuide ? '' : 'd-none' }}" id="prefGuideProviderCards" data-service="guide" data-selected="{{ $trip->guide_pricing_id ?? '' }}"></div>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Travel Pace</label>
@@ -407,14 +415,12 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-header"><i class="bi bi-receipt"></i> Pricing Summary</div>
                                 <div class="detail-card-body" id="pricingSummary">
-                                    <div class="pricing-row">
-                                        <span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span>
-                                        <span id="prActivities"></span>
-                                    </div>
-                                    <div class="pricing-row">
-                                        <span>Extra Days <small class="text-muted price-detail" id="prExtraDaysNote"></small></span>
-                                        <span id="prExtraDays"></span>
-                                    </div>
+                                    {{-- One row per cost component the calculator returns --}}
+                                    <div class="pricing-row"><span>Accommodation <small class="text-muted price-detail" id="prAccommodationNote"></small></span><span id="prAccommodation"></span></div>
+                                    <div class="pricing-row"><span>Transport <small class="text-muted price-detail" id="prTransportNote"></small></span><span id="prTransport"></span></div>
+                                    <div class="pricing-row"><span>Guide <small class="text-muted price-detail" id="prGuideNote"></small></span><span id="prGuide"></span></div>
+                                    <div class="pricing-row"><span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span><span id="prActivities"></span></div>
+                                    <div class="pricing-row"><span>Extra Days <small class="text-muted price-detail" id="prExtraDaysNote"></small></span><span id="prExtraDays"></span></div>
                                     <div class="pricing-row"><span>Other</span><span id="prOther"></span></div>
                                     <div class="pricing-row pricing-subtotal"><span><strong>Trip Cost</strong></span><span id="prTripCost"></span></div>
                                     <div class="pricing-row"><span>RP Contribution <small class="text-muted price-detail" id="prRPNote"></small></span><span id="prRP" class="rp-contribution"></span></div>
@@ -1842,11 +1848,23 @@ jQuery(function() {
                 });
             }
             if (dayInclusions.length) {
-                var incIconMap = { breakfast: 'bi-cup-hot', lunch: 'bi-egg-fried', dinner: 'bi-moon-stars', snacks: 'bi-basket', accommodation: 'bi-house', guide: 'bi-person-badge', transport: 'bi-truck' };
+                // Inclusions come from each day's ExperienceDay (day-wise). They're
+                // stored capitalised (e.g. "Breakfast"), so normalise to lowercase
+                // before mapping — otherwise every lookup missed and fell back to a
+                // generic check mark instead of the proper icon.
+                var incIconMap = {
+                    breakfast: 'bi-cup-hot', lunch: 'bi-egg-fried', dinner: 'bi-moon-stars',
+                    snacks: 'bi-basket', meals: 'bi-egg-fried',
+                    accommodation: 'bi-house', stay: 'bi-house', homestay: 'bi-house',
+                    guide: 'bi-person-badge', transport: 'bi-truck', transfers: 'bi-truck',
+                    activity: 'bi-lightning', permits: 'bi-file-earmark-text', water: 'bi-droplet'
+                };
                 html += '<div class="timeline-day-svc-icons">';
                 dayInclusions.forEach(function(inc) {
-                    var ico = incIconMap[inc] || 'bi-check';
-                    html += '<i class="bi ' + ico + '" title="' + inc.charAt(0).toUpperCase() + inc.slice(1) + '"></i>';
+                    var key = String(inc).toLowerCase().trim();
+                    var ico = incIconMap[key] || 'bi-bag-check';
+                    var label = key.charAt(0).toUpperCase() + key.slice(1);
+                    html += '<i class="bi ' + ico + '" title="' + label + '"></i>';
                 });
                 html += '</div>';
             }
@@ -1993,11 +2011,11 @@ jQuery(function() {
 
         ajaxPost({ get_trip_pricing: 1, trip_id: tripId }, function(resp) {
             var p = resp.pricing || resp;
-            updatePricedOptions(jQuery('#prefAccommodation'), p.accommodation_base);
-            updatePricedOptions(jQuery('#prefVehicle'),       p.transport_base);
-            updatePricedOptions(jQuery('#prefGuide'),         p.guide_base);
-            // Refresh custom-dropdown text so the price-suffixed labels show.
-            jQuery('#prefAccommodation, #prefVehicle, #prefGuide').each(function() { buildCustomDropdown(this); });
+            // Accommodation, Vehicle and Guide are priced per-provider now (no inline
+            // dropdown price), so the full per-component breakdown lives here instead.
+            jQuery('#prAccommodation').text(fmtPriceRow(p.accommodation_cost));
+            jQuery('#prTransport').text(fmtPriceRow(p.transport_cost));
+            jQuery('#prGuide').text(fmtPriceRow(p.guide_cost));
             jQuery('#prActivities').text(fmtPriceRow(p.activity_cost));
             jQuery('#prExtraDays').text(fmtPriceRow(p.extra_day_cost));
             jQuery('#prOther').text(fmtPriceRow(p.other_cost));
@@ -2009,12 +2027,11 @@ jQuery(function() {
             jQuery('#prGST').text(fmtPriceRow(p.gst_amount));
             jQuery('#prFinal').text(fmtPriceRow(p.final_price));
 
-            // Detail captions — pace/budget multipliers still apply to the activities/extra-days lines.
-            var paceMul = parseFloat(p.pace_multiplier) || 1;
-            var budgetMul = parseFloat(p.budget_multiplier) || 1;
+            // Detail captions — pace/budget no longer scale the price, so only the
+            // pax basis is shown (no multiplier).
             var paxLabel = (p.adults || 1) + (p.children > 0 ? ' adults +' + p.children + ' kids @ 50%' : ' adults');
-            jQuery('#prActivitiesNote').text(' (' + paxLabel + ')' + fmtMul(paceMul * budgetMul));
-            jQuery('#prExtraDaysNote').text(parseFloat(p.extra_day_cost) > 0 ? ' (' + paxLabel + ')' + fmtMul(paceMul * budgetMul) : '');
+            jQuery('#prActivitiesNote').text(' (' + paxLabel + ')');
+            jQuery('#prExtraDaysNote').text(parseFloat(p.extra_day_cost) > 0 ? ' (' + paxLabel + ')' : '');
             jQuery('#prRPNote').text(fmtPct(p.margin_rp_percent));
             jQuery('#prHRPNote').text(fmtPct(p.margin_hrp_percent));
             jQuery('#prHCTNote').text(fmtPct(p.commission_hct_percent));
@@ -2255,6 +2272,80 @@ jQuery(function() {
             if (typeof showAlert === 'function') showAlert('Travel preferences updated.', 'success');
         });
     });
+
+    // ── Category → provider CARDS (2-col grid; name only, hover reveals room/price) ──
+    // window.fmtCurrency is the global formatter; fmtPriceRow is scoped inside loadPricing().
+    var PROVIDER_CFG = {
+        accommodation: { service: 'accommodation', cards: '#prefAccommodationProviderCards', pref: '#prefAccommodation', catKey: 'accommodation_comfort', provKey: 'accommodation_provider_id', priceKey: 'accommodation_pricing_id', label: 'Accommodation' },
+        transport:     { service: 'transport',     cards: '#prefVehicleProviderCards',       pref: '#prefVehicle',      catKey: 'vehicle_comfort',       provKey: 'vehicle_provider_id',       priceKey: 'vehicle_pricing_id',       label: 'Transport' },
+        guide:         { service: 'guide',         cards: '#prefGuideProviderCards',         pref: '#prefGuide',        catKey: 'guide_preference',      provKey: 'guide_provider_id',         priceKey: 'guide_pricing_id',         label: 'Guide' }
+    };
+
+    function fmtProviderPrice(v) {
+        return (typeof window.fmtCurrency === 'function') ? window.fmtCurrency(Math.round(v)) : ('₹' + Math.round(v));
+    }
+
+    function escHtml(s) { return jQuery('<div>').text(s == null ? '' : s).html(); }
+
+    // Render the provider cards for one service into its container.
+    function loadProviderCards(serviceKey, category, preselectPricingId) {
+        var cfg = PROVIDER_CFG[serviceKey];
+        var $box = jQuery(cfg.cards);
+        if (!$box.length) return;
+        if (!category) { $box.addClass('d-none').empty(); return; }
+        ajaxPost({ get_category_providers: 1, service_type: cfg.service, category: category }, function(resp) {
+            var list = (resp && resp.providers) || [];
+            if (!list.length) {
+                $box.html('<div class="provider-cards-empty">No providers available</div>').removeClass('d-none');
+                return;
+            }
+            var html = '';
+            list.forEach(function(p) {
+                var detail = (p.room_category ? escHtml(p.room_category) + ' · ' : '')
+                    + fmtProviderPrice(p.price) + '/' + escHtml(p.unit || 'unit');
+                var isSel = String(p.pricing_id) === String(preselectPricingId);
+                html += '<button type="button" class="provider-card' + (isSel ? ' selected' : '') + '"'
+                    + ' data-pricing-id="' + p.pricing_id + '" data-provider-id="' + p.provider_id + '">'
+                    + '<span class="provider-card-name">' + escHtml(p.provider_name) + '</span>'
+                    + '<span class="provider-card-tip">' + detail + '</span>'
+                    + '</button>';
+            });
+            $box.html(html).removeClass('d-none');
+        });
+    }
+
+    // Category change → reload provider cards (the generic .pref-input handler already
+    // saved the category and the server cleared any stale provider).
+    jQuery('#prefAccommodation').on('change', function() { loadProviderCards('accommodation', jQuery(this).val(), null); });
+    jQuery('#prefVehicle').on('change',       function() { loadProviderCards('transport',     jQuery(this).val(), null); });
+    jQuery('#prefGuide').on('change',         function() { loadProviderCards('guide',         jQuery(this).val(), null); });
+
+    // Clicking a provider card selects it and saves the choice.
+    jQuery(document).on('click', '.provider-card', function() {
+        var $card = jQuery(this);
+        var $box = $card.closest('.provider-cards');
+        var cfg = PROVIDER_CFG[$box.data('service')];
+        if (!cfg) return;
+        $box.find('.provider-card').removeClass('selected');
+        $card.addClass('selected');
+        var payload = { update_travel_preferences: 1, trip_id: window.tripId };
+        payload[cfg.catKey]   = jQuery(cfg.pref).val();
+        payload[cfg.provKey]  = $card.data('provider-id') || '';
+        payload[cfg.priceKey] = $card.data('pricing-id') || '';
+        ajaxPost(payload, function() {
+            if (typeof loadPricing === 'function') loadPricing();
+            if (typeof showAlert === 'function') showAlert(cfg.label + ' provider updated.', 'success');
+        });
+    });
+
+    // On load, render cards for any pre-selected category and restore the saved pick.
+    (function() {
+        Object.keys(PROVIDER_CFG).forEach(function(k) {
+            var cfg = PROVIDER_CFG[k];
+            var cat = jQuery(cfg.pref).val();
+            if (cat) loadProviderCards(k, cat, jQuery(cfg.cards).data('selected'));
+        });
+    })();
 
     // Start Date — Air Datepicker on a readonly text input.
     // Stored on window so the AI sync handlers (further down) can call

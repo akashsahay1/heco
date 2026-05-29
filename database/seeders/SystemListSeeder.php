@@ -28,7 +28,7 @@ class SystemListSeeder extends Seeder
                 ['Other',         'Anything outside the above — permits, equipment rental, photography fees, ferry tickets, etc.'],
             ],
             'accommodation_category' => [
-                ['Cat A - Luxury',        'Premium hotels, 4-5 star, ensuite bathrooms, AC, room service, full amenities. Typically ₹6000+/night.'],
+                ['Cat A - Premium/Luxury', 'Premium hotels, 4-5 star, ensuite bathrooms, AC, room service, full amenities. Typically ₹6000+/night.'],
                 ['Cat B - Comfort',       'Mid-upper hotels or boutique lodges, 3-4 star, ensuite, good service. ₹3000-6000/night.'],
                 ['Cat C - Standard',      'Standard hotels or quality homestays, private bathroom, basic amenities, clean and reliable. ₹1500-3000/night.'],
                 ['Cat D - Basic/Homestay','Authentic village homestays or simple lodges, shared or private bathroom, local hospitality. ₹500-1500/night.'],
