@@ -415,6 +415,11 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-header"><i class="bi bi-receipt"></i> Pricing Summary</div>
                                 <div class="detail-card-body" id="pricingSummary">
+                                    {{-- Per-experience base price (per person), read-only. Populated by
+                                         loadTripPricing from p.experiences. The amounts are NOT added to the
+                                         total — each experience's cost is already split across the component
+                                         rows below (Accommodation/Transport/Guide/Activities). --}}
+                                    <div id="prExperiences"></div>
                                     {{-- One row per cost component the calculator returns --}}
                                     <div class="pricing-row"><span>Accommodation <small class="text-muted price-detail" id="prAccommodationNote"></small></span><span id="prAccommodation"></span></div>
                                     <div class="pricing-row"><span>Transport <small class="text-muted price-detail" id="prTransportNote"></small></span><span id="prTransport"></span></div>
@@ -1590,6 +1595,10 @@ jQuery(function() {
                 }
             }
 
+            // The trip's region may have just changed (experience added/removed) —
+            // refresh the provider lists so they show the new region's providers.
+            if (typeof window.reloadAllProviderCards === 'function') window.reloadAllProviderCards();
+
             // Update trip summary
             var totalDays = 0;
             var regions = [];
@@ -1626,6 +1635,9 @@ jQuery(function() {
                 if (thumb) html += '<img src="' + thumb + '" alt="" class="exp-thumb">';
                 html += '<div class="exp-info">';
                 html += '<span class="exp-name">' + name + '</span>';
+                if (exp && exp.base_cost_per_person > 0) {
+                    html += '<span class="exp-price">' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + ' <span class="exp-price-unit">/ person</span></span>';
+                }
                 html += '<span class="exp-id">exp id: #' + item.experience_id + '</span>';
                 html += '</div>';
                 html += '<button class="btn-remove btn-remove-exp" data-exp-id="' + item.experience_id + '" title="Remove"><i class="bi bi-x"></i></button>';
@@ -2011,6 +2023,24 @@ jQuery(function() {
 
         ajaxPost({ get_trip_pricing: 1, trip_id: tripId }, function(resp) {
             var p = resp.pricing || resp;
+
+            // Experiences — itemised per-person base price at the top of the summary.
+            // Read-only: these amounts are already folded into the component rows
+            // below, so they are shown for clarity, not added to the total again.
+            var exps = p.experiences || [];
+            if (exps.length) {
+                var eh = '<div class="pricing-row pricing-exp-head"><span><strong>Experiences</strong></span><span class="text-muted price-detail">per person</span></div>';
+                exps.forEach(function(ex) {
+                    eh += '<div class="pricing-row pricing-exp-row">'
+                        + '<span>' + escHtml(ex.name) + '</span>'
+                        + '<span>' + fmtCurrency(ex.price_per_person, ex.currency || 'INR') + '</span>'
+                        + '</div>';
+                });
+                jQuery('#prExperiences').html(eh);
+            } else {
+                jQuery('#prExperiences').empty();
+            }
+
             // Accommodation, Vehicle and Guide are priced per-provider now (no inline
             // dropdown price), so the full per-component breakdown lives here instead.
             jQuery('#prAccommodation').text(fmtPriceRow(p.accommodation_cost));
@@ -2287,31 +2317,83 @@ jQuery(function() {
 
     function escHtml(s) { return jQuery('<div>').text(s == null ? '' : s).html(); }
 
-    // Render the provider cards for one service into its container.
+    // Render the provider master/detail for one service into its container.
+    // The backend returns one row per pricing entry, and a single provider may
+    // list several room types under the same category — so we group rows by
+    // provider: the top list shows each provider once, and clicking one reveals
+    // that provider's room pricing in the section below.
     function loadProviderCards(serviceKey, category, preselectPricingId) {
         var cfg = PROVIDER_CFG[serviceKey];
         var $box = jQuery(cfg.cards);
         if (!$box.length) return;
         if (!category) { $box.addClass('d-none').empty(); return; }
-        ajaxPost({ get_category_providers: 1, service_type: cfg.service, category: category }, function(resp) {
+        // Trip is single-region — scope providers to the trip's region so a
+        // Tirthan trip doesn't list Spiti/Ladakh providers. The server resolves
+        // the region authoritatively from trip_id; region_id is a guest fallback.
+        ajaxPost({ get_category_providers: 1, service_type: cfg.service, category: category, region_id: tripRegionId || '', trip_id: window.tripId || '' }, function(resp) {
             var list = (resp && resp.providers) || [];
             if (!list.length) {
                 $box.html('<div class="provider-cards-empty">No providers available</div>').removeClass('d-none');
                 return;
             }
-            var html = '';
+            // Group rows by provider, preserving the server's price order.
+            var order = [], byProv = {};
             list.forEach(function(p) {
-                var detail = (p.room_category ? escHtml(p.room_category) + ' · ' : '')
-                    + fmtProviderPrice(p.price) + '/' + escHtml(p.unit || 'unit');
-                var isSel = String(p.pricing_id) === String(preselectPricingId);
-                html += '<button type="button" class="provider-card' + (isSel ? ' selected' : '') + '"'
-                    + ' data-pricing-id="' + p.pricing_id + '" data-provider-id="' + p.provider_id + '">'
-                    + '<span class="provider-card-name">' + escHtml(p.provider_name) + '</span>'
-                    + '<span class="provider-card-tip">' + detail + '</span>'
+                var id = String(p.provider_id);
+                if (!byProv[id]) { byProv[id] = { id: p.provider_id, name: p.provider_name, rooms: [] }; order.push(id); }
+                byProv[id].rooms.push(p);
+            });
+            // Which provider owns the saved pick? Default to the first listed.
+            var selProvId = order[0];
+            list.forEach(function(p) { if (String(p.pricing_id) === String(preselectPricingId)) selProvId = String(p.provider_id); });
+
+            $box.data('byProv', byProv);
+            $box.data('selectedPricingId', preselectPricingId ? String(preselectPricingId) : '');
+
+            var listHtml = '';
+            order.forEach(function(id) {
+                var prov = byProv[id];
+                var minPrice = Math.min.apply(null, prov.rooms.map(function(r) { return r.price; }));
+                var multi = prov.rooms.length > 1;
+                listHtml += '<button type="button" class="provider-item' + (id === String(selProvId) ? ' active' : '') + '" data-provider-id="' + id + '">'
+                    + '<span class="provider-item-name"><i class="bi bi-shop provider-item-icon"></i>' + escHtml(prov.name) + '</span>'
+                    + '<span class="provider-item-meta">' + (multi ? prov.rooms.length + ' options · ' : '') + 'from ' + fmtProviderPrice(minPrice) + '</span>'
                     + '</button>';
             });
-            $box.html(html).removeClass('d-none');
+
+            $box.html(
+                '<div class="provider-picker">'
+                  + '<div class="provider-list-title">Providers · choose one</div>'
+                  + '<div class="provider-list">' + listHtml + '</div>'
+                  + '<div class="provider-detail"></div>'
+                + '</div>'
+            ).removeClass('d-none');
+
+            renderProviderDetail($box, selProvId);
         });
+    }
+
+    // Render the room-pricing section for the chosen provider, and flag that
+    // provider as active in the list above.
+    function renderProviderDetail($box, provId) {
+        var byProv = $box.data('byProv') || {};
+        var prov = byProv[String(provId)];
+        var $detail = $box.find('.provider-detail');
+        if (!prov) { $detail.empty(); return; }
+        var selPricing = String($box.data('selectedPricingId') || '');
+        var html = '<div class="provider-detail-title">' + escHtml(prov.name) + ' · pricing</div>';
+        prov.rooms.forEach(function(r) {
+            var isSel = String(r.pricing_id) === selPricing;
+            var label = r.room_category ? escHtml(r.room_category) : escHtml(r.unit || 'Rate');
+            html += '<button type="button" class="provider-room' + (isSel ? ' selected' : '') + '"'
+                + ' data-pricing-id="' + r.pricing_id + '" data-provider-id="' + r.provider_id + '">'
+                + '<span class="provider-room-label">' + label + '</span>'
+                + '<span class="provider-room-price">' + fmtProviderPrice(r.price) + '<small>/' + escHtml(r.unit || 'unit') + '</small></span>'
+                + '</button>';
+        });
+        $detail.html(html);
+        $box.find('.provider-item').removeClass('active');
+        $box.find('.provider-item[data-provider-id="' + provId + '"]').addClass('active');
     }
 
     // Category change → reload provider cards (the generic .pref-input handler already
@@ -2320,13 +2402,21 @@ jQuery(function() {
     jQuery('#prefVehicle').on('change',       function() { loadProviderCards('transport',     jQuery(this).val(), null); });
     jQuery('#prefGuide').on('change',         function() { loadProviderCards('guide',         jQuery(this).val(), null); });
 
-    // Clicking a provider card selects it and saves the choice.
-    jQuery(document).on('click', '.provider-card', function() {
+    // Clicking a provider just switches which provider's room pricing shows.
+    jQuery(document).on('click', '.provider-item', function() {
+        var $box = jQuery(this).closest('.provider-cards');
+        renderProviderDetail($box, jQuery(this).data('provider-id'));
+    });
+
+    // Clicking a room row is the actual selection — it saves the pricing pick.
+    jQuery(document).on('click', '.provider-room', function() {
         var $card = jQuery(this);
         var $box = $card.closest('.provider-cards');
         var cfg = PROVIDER_CFG[$box.data('service')];
         if (!cfg) return;
-        $box.find('.provider-card').removeClass('selected');
+        $box.data('selectedPricingId', String($card.data('pricing-id')));
+        $box.data('selected', String($card.data('pricing-id'))); // keep in sync so a reload restores the pick
+        $box.find('.provider-room').removeClass('selected');
         $card.addClass('selected');
         var payload = { update_travel_preferences: 1, trip_id: window.tripId };
         payload[cfg.catKey]   = jQuery(cfg.pref).val();
@@ -2338,14 +2428,18 @@ jQuery(function() {
         });
     });
 
-    // On load, render cards for any pre-selected category and restore the saved pick.
-    (function() {
+    // Render cards for each service's currently-selected category, restoring the
+    // saved pick. Exposed on window so a region switch (experiences changed,
+    // which moves the trip to another region) can refresh the lists.
+    function reloadAllProviderCards() {
         Object.keys(PROVIDER_CFG).forEach(function(k) {
             var cfg = PROVIDER_CFG[k];
             var cat = jQuery(cfg.pref).val();
             if (cat) loadProviderCards(k, cat, jQuery(cfg.cards).data('selected'));
         });
-    })();
+    }
+    window.reloadAllProviderCards = reloadAllProviderCards;
+    reloadAllProviderCards();
 
     // Start Date — Air Datepicker on a readonly text input.
     // Stored on window so the AI sync handlers (further down) can call

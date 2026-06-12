@@ -104,6 +104,31 @@
                 <small class="text-muted d-block mt-1">Leave blank any tier you don't offer — only rows with a Rate will be saved.</small>
             </div>
 
+            {{-- Quick room helper — the inverse of the tier helper above: pick a
+                 comfort tier (e.g. Cat A) and get one row per room category so
+                 the SP can add Single / Double / Twin / Triple … side-by-side
+                 under that one tier. --}}
+            <div class="quick-room-helper bulk-accom-only card border-success border-opacity-25 bg-light p-2 mb-2 d-none">
+                <div class="small fw-semibold mb-1"><i class="bi bi-lightning-charge me-1 text-success"></i> Quick: add one row for every room type</div>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-6">
+                        <label class="form-label small mb-1">Comfort Tier</label>
+                        <select class="form-select form-select-sm custom-select" id="quickRoomComfortTier" data-list-type="accommodation_category">
+                            <option value="">Select tier...</option>
+                            @foreach($accommodationCategories as $c)
+                                <option value="{{ $c->name }}" data-desc="{{ $c->description }}">{{ $c->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <button type="button" class="btn btn-sm btn-success w-100" id="quickRoomGenerateBtn">
+                            <i class="bi bi-plus-square me-1"></i> Generate {{ count($roomCategories) }} rows (one per room type)
+                        </button>
+                    </div>
+                </div>
+                <small class="text-muted d-block mt-1">Leave blank any room type you don't offer — only rows with a Rate will be saved.</small>
+            </div>
+
             <div id="bulkRowsContainer"></div>
             <button type="button" class="btn btn-sm btn-outline-success mt-1" id="bulkAddRow"><i class="bi bi-plus-lg me-1"></i> Add another row</button>
         </div>
@@ -666,81 +691,155 @@ jQuery(function() {
                 var key = r.comfort_tier + '|' + (r.room_category || r.category || '');
                 pairCounts[key] = (pairCounts[key] || 0) + 1;
             });
-            var html = '';
-            rows.forEach(function(r) {
-                priceCache[r.id] = r;
-                var pairKey = (r.comfort_tier || '') + '|' + (r.room_category || r.category || '');
-                var isDupTier = r.service_type === 'accommodation'
-                    && r.comfort_tier
-                    && pairCounts[pairKey] > 1;
-
-                var details = '';
-                if (r.service_type === 'accommodation') {
-                    var parts = [];
-                    // Comfort tier is now the primary label
-                    if (r.comfort_tier)   parts.push('<strong>' + spEscape(r.comfort_tier) + '</strong>');
-                    if (isDupTier)        parts.push('<span class="badge bg-warning text-dark" title="This tier + room combination appears on more than one row. Keep one row per (tier, room) pair."><i class="bi bi-exclamation-triangle me-1"></i>duplicate</span>');
-                    var rooms = r.room_category || r.category || '';
-                    if (rooms)            parts.push('<span class="text-muted small">' + spEscape(rooms) + '</span>');
-                    if (r.meal_plan)      parts.push('<span class="badge bg-light text-dark border">' + spEscape(r.meal_plan) + '</span>');
-                    details = parts.join(' · ');
-                } else if (r.service_type === 'transport') {
-                    var parts = [];
-                    if (r.vehicle_type)    parts.push('<strong>' + spEscape(r.vehicle_type) + '</strong>');
-                    if (r.vehicle_capacity) parts.push('<small class="text-muted">' + r.vehicle_capacity + ' seats</small>');
-                    if (r.driver_allowance) parts.push('<small class="text-muted">+ ₹' + Number(r.driver_allowance).toLocaleString('en-IN') + ' driver/day</small>');
-                    details = parts.join(' · ');
-                } else if (r.service_type === 'guide') {
-                    var parts = [];
-                    if (r.category)    parts.push('<strong>' + spEscape(r.category) + '</strong>');
-                    if (r.specialties) parts.push('<small class="text-muted">' + spEscape(r.specialties) + '</small>');
-                    details = parts.join(' · ');
-                } else if (r.service_type === 'activity') {
-                    var parts = [];
-                    if (r.category)  parts.push('<strong>' + spEscape(r.category) + '</strong>');
-                    if (r.min_group || r.max_group) {
-                        var g = (r.min_group || '?') + '–' + (r.max_group || '?') + ' pax';
-                        parts.push('<small class="text-muted">' + g + '</small>');
-                    }
-                    if (r.specialties) parts.push('<small class="text-muted">' + spEscape(r.specialties) + '</small>');
-                    details = parts.join(' · ');
-                } else {
-                    details = '<strong>' + spEscape(r.category || '—') + '</strong>';
-                }
-                if (r.description) details += '<div class="small text-muted">' + spEscape(r.description) + '</div>';
-
-                var inventory = '—';
-                if (r.service_type === 'accommodation' && r.total_rooms) {
-                    inventory = '<span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-door-closed"></i> ' + r.total_rooms + ' rooms</span>';
-                }
-
-                // Approval status badge — show only on non-approved rows
-                var statusBadge = '';
+            // ── Cell builders shared by grouped + flat rows ──
+            function statusBadge(r) {
                 if (r.approval_status === 'pending') {
                     var label = r.pending_for_id ? 'pending edit' : 'pending review';
-                    statusBadge = '<span class="badge bg-warning text-dark ms-1" title="Awaiting HCT admin approval — not yet visible to travellers"><i class="bi bi-hourglass-split me-1"></i>' + label + '</span>';
-                } else if (r.approval_status === 'rejected') {
+                    return '<span class="badge bg-warning text-dark ms-1" title="Awaiting HCT admin approval — not yet visible to travellers"><i class="bi bi-hourglass-split me-1"></i>' + label + '</span>';
+                }
+                if (r.approval_status === 'rejected') {
                     var rejTitle = r.rejection_reason ? 'Rejected: ' + r.rejection_reason : 'Rejected by admin';
-                    statusBadge = '<span class="badge bg-danger ms-1" title="' + spEscape(rejTitle) + '"><i class="bi bi-x-circle me-1"></i>rejected</span>';
+                    return '<span class="badge bg-danger ms-1" title="' + spEscape(rejTitle) + '"><i class="bi bi-x-circle me-1"></i>rejected</span>';
                 }
-                html += '<tr data-id="' + r.id + '">';
-                html += '<td><span class="sp-type-badge">' + (typeIcons[r.service_type] || '·') + ' <span class="text-capitalize">' + spEscape(r.service_type) + '</span></span>' + statusBadge + '</td>';
-                html += '<td>' + details + '</td>';
-                html += '<td class="small fw-bold">&#8377;' + Number(r.price).toLocaleString('en-IN') + ' <span class="text-muted fw-normal small">' + spEscape(r.unit || '') + '</span></td>';
-                html += '<td>' + inventory + '</td>';
-                html += '<td>' + (r.is_active ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>') + '</td>';
-                html += '<td>';
+                return '';
+            }
+            function rateCell(r) {
+                return '&#8377;' + Number(r.price).toLocaleString('en-IN') + ' <span class="text-muted fw-normal small">' + spEscape(r.unit || '') + '</span>';
+            }
+            function inventoryCell(r) {
+                if (r.service_type === 'accommodation' && r.total_rooms) {
+                    return '<span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-door-closed"></i> ' + r.total_rooms + ' rooms</span>';
+                }
+                return '—';
+            }
+            function activeCell(r) {
+                return r.is_active ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>';
+            }
+            function actionsCell(r) {
+                var h = '';
                 if (r.service_type === 'accommodation' && r.room_category) {
-                    html += '  <button class="btn btn-sm btn-outline-success sp-price-tier-matrix me-1" title="Set prices for all tiers of this room"><i class="bi bi-grid-3x3-gap"></i></button>';
+                    h += '  <button class="btn btn-sm btn-outline-success sp-price-tier-matrix me-1" title="Set prices for all tiers of this room"><i class="bi bi-grid-3x3-gap"></i></button>';
                 }
-                html += '  <button class="btn btn-sm btn-outline-primary sp-price-edit me-1" title="Edit this row only"><i class="bi bi-pencil"></i></button>';
-                html += '  <button class="btn btn-sm btn-outline-danger sp-price-delete" title="Delete"><i class="bi bi-trash"></i></button>';
-                html += '</td>';
-                html += '</tr>';
+                h += '  <button class="btn btn-sm btn-outline-primary sp-price-edit me-1" title="Edit this row only"><i class="bi bi-pencil"></i></button>';
+                h += '  <button class="btn btn-sm btn-outline-danger sp-price-delete" title="Delete"><i class="bi bi-trash"></i></button>';
+                return h;
+            }
+            // Details cell. For grouped accommodation children, hideTier=true so
+            // the tier (already in the group header) is dropped and the Room
+            // Category becomes the primary label.
+            function detailsCell(r, hideTier) {
+                var parts = [];
+                if (r.service_type === 'accommodation') {
+                    var pairKey = (r.comfort_tier || '') + '|' + (r.room_category || r.category || '');
+                    var isDupTier = r.comfort_tier && pairCounts[pairKey] > 1;
+                    var rooms = r.room_category || r.category || '';
+                    if (!hideTier && r.comfort_tier) parts.push('<strong>' + spEscape(r.comfort_tier) + '</strong>');
+                    if (rooms) parts.push(hideTier
+                        ? '<strong>' + spEscape(rooms) + '</strong>'
+                        : '<span class="text-muted small">' + spEscape(rooms) + '</span>');
+                    if (isDupTier) parts.push('<span class="badge bg-warning text-dark" title="This tier + room combination appears on more than one row. Keep one row per (tier, room) pair."><i class="bi bi-exclamation-triangle me-1"></i>duplicate</span>');
+                    if (r.meal_plan) parts.push('<span class="badge bg-light text-dark border">' + spEscape(r.meal_plan) + '</span>');
+                } else if (r.service_type === 'transport') {
+                    if (r.vehicle_type) parts.push('<strong>' + spEscape(r.vehicle_type) + '</strong>');
+                    if (r.vehicle_capacity) parts.push('<small class="text-muted">' + r.vehicle_capacity + ' seats</small>');
+                    if (r.driver_allowance) parts.push('<small class="text-muted">+ ₹' + Number(r.driver_allowance).toLocaleString('en-IN') + ' driver/day</small>');
+                } else if (r.service_type === 'guide') {
+                    if (r.category) parts.push('<strong>' + spEscape(r.category) + '</strong>');
+                    if (r.specialties) parts.push('<small class="text-muted">' + spEscape(r.specialties) + '</small>');
+                } else if (r.service_type === 'activity') {
+                    if (r.category) parts.push('<strong>' + spEscape(r.category) + '</strong>');
+                    if (r.min_group || r.max_group) parts.push('<small class="text-muted">' + ((r.min_group || '?') + '–' + (r.max_group || '?') + ' pax') + '</small>');
+                    if (r.specialties) parts.push('<small class="text-muted">' + spEscape(r.specialties) + '</small>');
+                } else {
+                    parts.push('<strong>' + spEscape(r.category || '—') + '</strong>');
+                }
+                var d = parts.join(' · ');
+                if (r.description) d += '<div class="small text-muted">' + spEscape(r.description) + '</div>';
+                return d;
+            }
+            // Flat <tr> for non-accommodation service types (unchanged layout).
+            function flatRow(r) {
+                return '<tr data-id="' + r.id + '">'
+                    + '<td><span class="sp-type-badge">' + (typeIcons[r.service_type] || '·') + ' <span class="text-capitalize">' + spEscape(r.service_type) + '</span></span>' + statusBadge(r) + '</td>'
+                    + '<td>' + detailsCell(r, false) + '</td>'
+                    + '<td class="small fw-bold">' + rateCell(r) + '</td>'
+                    + '<td>' + inventoryCell(r) + '</td>'
+                    + '<td>' + activeCell(r) + '</td>'
+                    + '<td>' + actionsCell(r) + '</td>'
+                    + '</tr>';
+            }
+
+            // Split accommodation (grouped by comfort tier) from everything else.
+            var accomRows = [], otherRows = [];
+            rows.forEach(function(r) {
+                priceCache[r.id] = r;
+                (r.service_type === 'accommodation' ? accomRows : otherRows).push(r);
             });
+
+            var html = '';
+
+            // ── Accommodation → collapsible group per comfort tier ──
+            // Each tier is a clickable header row; its Single/Double/Triple…
+            // room rows sit hidden underneath until the SP clicks to expand.
+            if (accomRows.length) {
+                var tierOrder = {};
+                allComfortTiers.forEach(function(t, i) { tierOrder[t] = i; });
+                var groups = {};
+                accomRows.forEach(function(r) {
+                    var t = r.comfort_tier || 'Other';
+                    (groups[t] = groups[t] || []).push(r);
+                });
+                Object.keys(groups).sort(function(a, b) {
+                    var ai = tierOrder[a] == null ? 999 : tierOrder[a];
+                    var bi = tierOrder[b] == null ? 999 : tierOrder[b];
+                    return ai - bi;
+                }).forEach(function(tier) {
+                    var gRows = groups[tier];
+                    var totalRooms = gRows.reduce(function(s, r) { return s + (parseInt(r.total_rooms, 10) || 0); }, 0);
+                    var gid = 'tier-' + tier.replace(/[^A-Za-z0-9]+/g, '-');
+                    var anyPending = gRows.some(function(r) { return r.approval_status === 'pending'; });
+
+                    html += '<tr class="sp-tier-group table-light" data-tier-group="' + spEscape(gid) + '" style="cursor:pointer;">';
+                    html += '<td colspan="6">'
+                        + '<i class="bi bi-chevron-right sp-tier-caret me-1"></i>'
+                        + '<span class="sp-type-badge">🛏</span> '
+                        + '<strong>' + spEscape(tier) + '</strong> '
+                        + '<span class="text-muted small">— ' + gRows.length + ' room type' + (gRows.length > 1 ? 's' : '') + ' · ' + totalRooms + ' rooms total</span>'
+                        + (anyPending ? ' <span class="badge bg-warning text-dark ms-1"><i class="bi bi-hourglass-split me-1"></i>has pending</span>' : '')
+                        + '</td>';
+                    html += '</tr>';
+
+                    gRows.forEach(function(r) {
+                        html += '<tr class="sp-tier-child d-none" data-tier-group="' + spEscape(gid) + '" data-id="' + r.id + '">';
+                        html += '<td class="ps-4"><i class="bi bi-arrow-return-right text-muted me-1"></i>' + statusBadge(r) + '</td>';
+                        html += '<td>' + detailsCell(r, true) + '</td>';
+                        html += '<td class="small fw-bold">' + rateCell(r) + '</td>';
+                        html += '<td>' + inventoryCell(r) + '</td>';
+                        html += '<td>' + activeCell(r) + '</td>';
+                        html += '<td>' + actionsCell(r) + '</td>';
+                        html += '</tr>';
+                    });
+                });
+            }
+
+            // ── Other service types render flat, below the tier groups ──
+            otherRows.forEach(function(r) { html += flatRow(r); });
+
             jQuery('#spPriceBody').html(html);
         });
     }
+
+    // Expand / collapse a comfort-tier group: clicking the header row toggles
+    // its child room rows and flips the chevron.
+    jQuery(document).on('click', '.sp-tier-group', function() {
+        var gid = jQuery(this).data('tier-group');
+        var $children = jQuery('.sp-tier-child[data-tier-group="' + gid + '"]');
+        var willOpen = $children.first().hasClass('d-none');
+        $children.toggleClass('d-none', !willOpen);
+        jQuery(this).find('.sp-tier-caret')
+            .toggleClass('bi-chevron-down', willOpen)
+            .toggleClass('bi-chevron-right', !willOpen);
+    });
 
     function showServiceFields(type) {
         jQuery('.svc-fields').addClass('d-none');
@@ -888,6 +987,31 @@ jQuery(function() {
             var $row = jQuery('#bulkRowsContainer .bulk-row').last();
             $row.find('.bulk-field[data-field=room_category]').val(roomCat);
             $row.find('.bulk-field[data-field=comfort_tier]').val(tier);
+        });
+        // Refresh dropdowns so labels reflect the pre-set values.
+        jQuery('#bulkRowsContainer .custom-select').each(function() {
+            if (window.buildCustomDropdown) window.buildCustomDropdown(this);
+            jQuery(this).trigger('change');
+        });
+    });
+
+    // Quick-room helper: the inverse of the tier helper above. Pick a comfort
+    // tier (e.g. Cat A) and pre-fill one row per room category (Single, Double,
+    // Triple …) so the SP only has to type Total + Rate for each room type.
+    var allRoomCategories = @json($roomCategories->pluck('name')->values());
+    jQuery('#quickRoomGenerateBtn').on('click', function() {
+        var tier = jQuery('#quickRoomComfortTier').val();
+        if (!tier) {
+            window.showError && window.showError('Pick a Comfort Tier first');
+            return;
+        }
+        // Wipe existing rows so the matrix is clean; SP can still remove or add more.
+        jQuery('#bulkRowsContainer').empty();
+        allRoomCategories.forEach(function(roomCat) {
+            addBulkRow('accommodation');
+            var $row = jQuery('#bulkRowsContainer .bulk-row').last();
+            $row.find('.bulk-field[data-field=comfort_tier]').val(tier);
+            $row.find('.bulk-field[data-field=room_category]').val(roomCat);
         });
         // Refresh dropdowns so labels reflect the pre-set values.
         jQuery('#bulkRowsContainer .custom-select').each(function() {

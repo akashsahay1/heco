@@ -2388,6 +2388,18 @@
         overflow: hidden;
     }
 
+    .journey-exp-item .exp-price {
+        display: block;
+        font-size: var(--text-xs);
+        font-weight: var(--font-bold, 700);
+        color: var(--heco-primary-600, #276749);
+    }
+    .journey-exp-item .exp-price .exp-price-unit {
+        font-weight: 400;
+        font-size: 10px;
+        color: var(--color-text-muted);
+    }
+
     .journey-exp-item .exp-id {
         font-size: 10px;
         color: var(--color-text-muted);
@@ -2891,90 +2903,146 @@
         margin-top: var(--space-1);
     }
 
-    /* Provider picker — 2-column card grid (replaces the provider dropdown).
-       Each card shows only the provider name; hover reveals the room/price tip. */
-    .provider-cards {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+    /* Experiences — itemised per-person base price at the top of the pricing
+       summary. Display-only: not added to the total (each experience's cost is
+       already split across the Accommodation/Transport/Guide/Activities rows). */
+    #prExperiences:not(:empty) {
+        border-bottom: 1px dashed var(--color-border, #e5e7eb);
+        margin-bottom: var(--space-1);
+        padding-bottom: var(--space-1);
+    }
+    .pricing-row.pricing-exp-head {
+        padding-bottom: var(--space-1);
+    }
+    .pricing-row.pricing-exp-row {
+        padding: 2px 0 2px var(--space-2);
+        font-size: 0.78rem;
+        color: var(--color-text-muted, #6b7280);
+    }
+    .pricing-row.pricing-exp-row > span:last-child {
+        font-weight: var(--font-bold, 700);
+        color: var(--heco-primary-600, #276749);
+        white-space: nowrap;
+    }
+
+    /* Provider picker — vertical master/detail (replaces the provider dropdown).
+       Top section lists each provider once; clicking one reveals that provider's
+       room pricing in the section below. Everything stacks vertically. */
+    .provider-cards { display: block; }
+    .provider-picker {
+        display: flex;
+        flex-direction: column;
         gap: 8px;
     }
     .provider-cards-empty {
-        grid-column: 1 / -1;
         font-size: 0.8rem;
         color: var(--color-text-muted, #6b7280);
         padding: 6px 2px;
     }
-    .provider-card {
-        position: relative;
-        display: block;
-        width: 100%;
-        text-align: center;
+
+    /* ── Provider list (top) ──
+       One scroll card holding the providers; each provider is its own mini-card
+       with a gap between them. Once 3–4 providers appear the card scrolls
+       internally instead of growing taller. */
+    .provider-list-title {
+        font-size: 0.68rem;
+        font-weight: var(--font-bold, 700);
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        color: var(--color-text-muted, #6b7280);
+        margin-bottom: 5px;
+    }
+    .provider-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
         border: 1px solid var(--color-border, #e5e7eb);
         border-radius: 10px;
+        background: #f8fafb;
+        padding: 8px;
+        max-height: 196px;
+        overflow-y: auto;
+    }
+    .provider-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: 8px;
         background: #fff;
-        padding: 12px 10px;
+        padding: 9px 11px;
+        cursor: pointer;
+        transition: background .15s, border-color .15s, box-shadow .15s;
+    }
+    .provider-item:hover {
+        border-color: var(--heco-primary-500, #2f855a);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+    }
+    .provider-item.active {
+        border-color: var(--heco-primary-500, #2f855a);
+        background: var(--heco-primary-50, #f1f7f4);
+    }
+    .provider-item-icon {
+        color: var(--heco-primary-500, #2f855a);
+        margin-right: 5px;
+    }
+    .provider-item-name {
+        display: block;
         font-size: 0.85rem;
+        line-height: 1.25;
+        color: var(--color-text, #1f2937);
+    }
+    .provider-item-meta {
+        display: block;
+        font-size: 0.72rem;
+        color: var(--color-text-muted, #6b7280);
+        margin-top: 2px;
+    }
+
+    /* ── Selected provider's room pricing (bottom) ── */
+    .provider-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px;
+        border: 1px dashed var(--color-border, #e5e7eb);
+        border-radius: 10px;
+        background: var(--heco-primary-50, #f8fafb);
+    }
+    .provider-detail-title {
+        font-size: 0.68rem;
+        font-weight: var(--font-bold, 700);
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        color: var(--color-text-muted, #6b7280);
+    }
+    .provider-room {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        text-align: left;
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px 10px;
+        font-size: 0.82rem;
         color: var(--color-text, #1f2937);
         cursor: pointer;
-        transition: border-color .15s, box-shadow .15s, background .15s;
+        transition: border-color .15s, background .15s;
     }
-    .provider-card:hover {
-        border-color: var(--heco-primary-500, #2f855a);
-        box-shadow: 0 2px 10px rgba(0, 0, 0, .08);
-    }
-    .provider-card.selected {
+    .provider-room:hover { border-color: var(--heco-primary-500, #2f855a); }
+    .provider-room.selected {
         border-color: var(--heco-primary-500, #2f855a);
         background: var(--heco-primary-50, #f1f7f4);
         font-weight: var(--font-bold, 700);
     }
-    .provider-card-name {
-        display: block;
-        line-height: 1.25;
-    }
-    /* Hover tip — floats above the card so it doesn't shift the grid. Anchored to
-       the card edge (not centered) and wrapped within a max width so it never runs
-       off the panel and gets clipped. Left column anchors left; right column right. */
-    .provider-card-tip {
-        position: absolute;
-        bottom: calc(100% + 8px);
-        left: 0;
-        right: auto;
-        max-width: 180px;
-        width: max-content;
-        white-space: normal;
-        text-align: left;
-        line-height: 1.3;
-        background: #1f2937;
-        color: #fff;
-        font-size: 0.72rem;
+    .provider-room-label { line-height: 1.2; }
+    .provider-room-price { white-space: nowrap; }
+    .provider-room-price small {
+        color: var(--color-text-muted, #6b7280);
         font-weight: 400;
-        padding: 6px 9px;
-        border-radius: 6px;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity .15s;
-        z-index: 30;
-    }
-    .provider-cards .provider-card:nth-child(even) .provider-card-tip {
-        left: auto;
-        right: 0;
-        text-align: right;
-    }
-    .provider-card-tip::after {
-        content: "";
-        position: absolute;
-        top: 100%;
-        left: 16px;
-        right: auto;
-        border: 5px solid transparent;
-        border-top-color: #1f2937;
-    }
-    .provider-cards .provider-card:nth-child(even) .provider-card-tip::after {
-        left: auto;
-        right: 16px;
-    }
-    .provider-card:hover .provider-card-tip {
-        opacity: 1;
     }
 
     .btn-request-support {

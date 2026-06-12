@@ -2390,6 +2390,8 @@ class AjaxController extends Controller
         $validator = Validator::make($request->all(), [
             "service_type" => "required|string|in:accommodation,transport,guide,activity,other",
             "category"     => "required|string|max:100",
+            "region_id"    => "nullable|integer",
+            "trip_id"      => "nullable",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -2403,10 +2405,32 @@ class AjaxController extends Controller
             default         => 'category', // guide / activity / other
         };
 
+        // A trip is single-region, so only surface providers from the trip's
+        // region. Without this, a Tirthan trip would also list Spiti/Ladakh
+        // providers, which can never actually serve it.
+        //
+        // The region is resolved SERVER-SIDE from the trip's own experiences —
+        // not the client-sent region_id — because the client value can go stale
+        // (e.g. the traveller switches the trip to another region without the
+        // provider cards reloading). The client region_id is only a fallback for
+        // guest trips that have no DB row yet.
+        $regionId = $request->input('region_id');
+        if ($request->filled('trip_id') && $request->trip_id !== 'guest') {
+            $trip = Trip::with('selectedExperiences')->find($request->trip_id);
+            $expId = $trip?->selectedExperiences->pluck('experience_id')->first();
+            if ($expId) {
+                $tripRegionId = Experience::whereKey($expId)->value('region_id');
+                if ($tripRegionId) $regionId = $tripRegionId;
+            }
+        }
+
         $rows = SpPricing::live()
             ->where('service_type', $request->service_type)
             ->where($matchColumn, $request->category)
-            ->whereHas('serviceProvider', fn ($q) => $q->where('status', 'approved'))
+            ->whereHas('serviceProvider', function ($q) use ($regionId) {
+                $q->where('status', 'approved');
+                if ($regionId) $q->where('region_id', $regionId);
+            })
             ->with('serviceProvider:id,name')
             ->orderBy('price')
             ->get();
@@ -2636,6 +2660,7 @@ class AjaxController extends Controller
         if (!Auth::check()) {
             $gt = $this->guestTrip();
             $pricing = $this->computeGuestPricing($gt);
+            $pricing['experiences'] = $this->pricingExperienceLines($gt['experience_ids'] ?? []);
             return response()->json(["success" => true, "pricing" => $pricing]);
         }
 
@@ -2652,7 +2677,37 @@ class AjaxController extends Controller
         $pricing['total_paid'] = $totalPaid;
         $pricing['balance_due'] = max(0, ($pricing['final_price'] ?? 0) - $totalPaid);
 
+        // Per-experience base price (per person) for the pricing summary. Display
+        // only — NOT summed into the total, since CostCalculatorService already
+        // distributes each experience's cost across the component lines.
+        $pricing['experiences'] = $this->pricingExperienceLines(
+            $trip->selectedExperiences()->orderBy('sort_order')->pluck('experience_id')->all()
+        );
+
         return response()->json(["success" => true, "pricing" => $pricing]);
+    }
+
+    /**
+     * Itemised experience lines (name + per-person base price) for the pricing
+     * summary, in the trip's experience order. Skips experiences with no price.
+     */
+    protected function pricingExperienceLines(array $expIds): array
+    {
+        if (empty($expIds)) return [];
+        $exps = Experience::whereIn('id', $expIds)
+            ->get(['id', 'name', 'base_cost_per_person', 'price_currency'])
+            ->keyBy('id');
+        $lines = [];
+        foreach ($expIds as $id) {
+            $e = $exps->get($id);
+            if (!$e || (float) $e->base_cost_per_person <= 0) continue;
+            $lines[] = [
+                'name'             => $e->name,
+                'price_per_person' => (float) $e->base_cost_per_person,
+                'currency'         => $e->price_currency ?: 'INR',
+            ];
+        }
+        return $lines;
     }
 
     protected function getTripImpact(Request $request): JsonResponse
