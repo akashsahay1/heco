@@ -152,7 +152,9 @@
       "Bash(awk -F: '$1>1760 && $1<1980')",
       "Bash(php -l app/Http/Controllers/AjaxController.php)",
       "Bash(python -c ' *)",
-      "Bash(PYTHONIOENCODING=utf-8 python -c ' *)"
+      "Bash(PYTHONIOENCODING=utf-8 python -c ' *)",
+      "Bash(git rev-list *)",
+      "Bash(xargs ls -lh)"
     ]
   }
 }

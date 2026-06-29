@@ -1,0 +1,549 @@
+==================================================================
+ HECO — MASTER AUDIT + FIX PLAN  (single merged file)
+==================================================================
+Yeh ek hi file hai — plan.txt + poora verified audit + role flow +
+admin pages check, sab merge. Koi duplicate point nahi, sequential.
+
+Verification: 9 agents ne current code check kiya —
+  5 finding-agents (area-wise) + 3 flow-agents (role journey) +
+  1 admin-pages-agent. Conflicts khud code padh ke resolve kiye.
+
+Coverage: pricing calc, SP/provider, payments/razorpay, itinerary/
+AI build, auth/roles/leads, AI chat, admin CRUD/config, portal/
+email/PDF, database/migrations, frontend JS, tests, admin pages.
+
+Legend: [R]=Blocker  [Y]=Gap  [S]=Smell/minor
+Status:  BROKEN | PARTIAL | DONE | WORKS
+
+*** GLOBAL RULE: KAHIN HARDCODE NAHI ***
+Saare pricing constants, multipliers, default rates, margins, %, aur
+config DB se (settings / system lists) — single source of truth. Code
+mein literal number nahi. Setting::getValue ka hardcoded fallback bhi
+avoid (DB mein seed karo). Yeh har phase pe laagu (khaaskar pricing).
+Current hardcode inventory = finding #43; fix = Phase 2.6.
+
+Sections:
+  PART 1 — Role health + end-to-end flow status
+  PART 2 — Jo HO CHUKA (completed/working, verified)
+  PART 3 — Admin pages render check (sab 31)
+  PART 4 — Saari PENDING findings (sequential 1-37, deduped)
+  PART 5 — Fix plan (phases, order mein)
+  PART 6 — Pricing display feature (detailed steps)
+  PART 7 — Test / verification
+
+
+==================================================================
+ PART 1 — ROLE HEALTH + END-TO-END FLOW
+==================================================================
+TRAVELLER ~70% | Provider/SP ~72% | Admin/HCT ~65% (security se)
+Foundation theek; pages render hote; bugs functional layer mein.
+
+------------------------------------------------------------------
+TRAVELLER FLOW (guest -> AI -> build -> pay)
+------------------------------------------------------------------
+  Browse experiences ........................ WORKS
+  AI chat start ............................. WORKS
+  AI "added" fallback ....................... BREAKS  (#23 1890 undefined 500)
+  Add/remove experience ..................... PARTIAL (#6 recalc + #11 lock)
+  Add/remove day ............................ PARTIAL (#6 no price recalc)
+  Add/edit/remove service ................... WORKS   (rooms ok)
+  Guest vs login pricing .................... PARTIAL (#9 ~5-10% farq)
+  Double-charge ............................. BROKEN  (#5)
+  Email/password login sync ................. WORKS
+  Social login .............................. BREAKS  (#22 draft wipe)
+  Confirm trip .............................. WORKS
+  Post-confirm edits ........................ BREAKS  (#11 koi lock nahi)
+  Razorpay order ............................ WORKS   (server-authoritative)
+  Razorpay verify ........................... WORKS   (signature check)
+  Pre-pay itinerary change .................. PARTIAL (#10 mismatch risk)
+  Post-payment edit lock .................... BREAKS  (#11)
+  Portal PDF download ....................... BREAKS  (#29 sirf admin)
+  Wishlist/reviews/profile .................. WORKS
+  Support request ........................... PARTIAL (#28 email nahi)
+
+------------------------------------------------------------------
+PROVIDER / SP FLOW (apply -> price -> pin -> pay)
+------------------------------------------------------------------
+  Onboarding (apply->approve->user) ......... PARTIAL (#20 pre-approval pricing nahi)
+  SP pricing rows ........................... PARTIAL (#15 meal bana nahi sakte)
+  Availability rooms/iCal ................... WORKS
+  Day-level pin -> SpRoomBooking ............ WORKS
+  Trip-level pin -> SpRoomBooking ........... BREAKS  (#13)
+  Provider rate line replace ................ WORKS
+  min/max group enforce ..................... BROKEN  (#16)
+  Pricing-change approve .................... WORKS   (#21 'notes' chhod ke)
+  createSpPayment amount .................... BROKEN  (#12 manual)
+  confirm pe provider re-verify ............. BREAKS  (#17)
+  confirm pe auto SpPayment ................. MISSING (#14 invoice hi nahi)
+  pricing_id ownership validate ............. MISSING (#19)
+
+------------------------------------------------------------------
+ADMIN / HCT FLOW (auth -> leads -> trip -> CRUD -> pay)
+------------------------------------------------------------------
+  Admin /ajax auth .......................... BREAKS  (#1 [R][R] sabse bada)
+  Lead create ............................... WORKS
+  Lead update/assign/won .................... BREAKS  (#1 unauth)
+  budget_notes .............................. BROKEN  (#24 save nahi)
+  Trip edit / margins ....................... BREAKS  (#1 unauth + #11 lock)
+  Trip edit pe recalc ....................... WORKS   (5652)
+  Experience CRUD + gallery ................. WORKS   (par #1 unauth)
+  Region CRUD ............................... PARTIAL (#26 image/anchor/sort_order)
+  Settings (GST/margin) UI .................. DONE    (par #1 unauth tamper)
+  Trip confirm (traveller) .................. WORKS   (auth+ownership)
+  addTravellerPayment ....................... BREAKS  (#3 unauth)
+  addSpPaymentEntry/edit .................... BREAKS  (#3 unauth)
+  Audit logging ............................. BROKEN  (#27 sirf newsletter)
+  Trip PDF (admin) .......................... WORKS   (auth+hct middleware)
+
+
+==================================================================
+ PART 1B — PROVIDER SUB-ROLES (HRP / HLH / OSP) FLOW
+==================================================================
+"Provider" ek role nahi — 3 sub-role (User enum: hrp/hlh/osp,
+isServiceProvider()). Teeno same SP infra share karte; code mein
+SIRF HRP ka 1 special branch hai (getSpAssignedTrips 4817), HLH aur
+OSP code-level pe IDENTICAL treat hote (sirf semantic + schema farq).
+
+  HRP = Himalayan Regenerative Partner — region-based partner,
+        region_id linked, default 10% margin.
+  HLH = Homestay Local Host — experiences host (Experience.hlh_id),
+        accommodation/homestay.
+  OSP = Other Service Provider — free-form (transport/guide/activity
+        etc.), koi structural FK nahi, sirf day-level assign.
+
+------------------------------------------------------------------
+COMMON SP FLOW (teeno roles)
+------------------------------------------------------------------
+  Apply (submitSpApplication 6235) ........... WORKS
+  Admin approve -> user create (4679-4726) ... WORKS
+  Login + dashboard (SpController 19) ........ WORKS
+  Dashboard role sections render ............. WORKS  (case sahi; HLH
+        agent ka "case mismatch" claim GALAT — strtolower 10, lc 377/429/492)
+  Pricing set (all service types) ............ WORKS  (#14 meal chhod ke)
+  Availability calendar + iCal sync .......... WORKS
+  Pricing-change approval .................... WORKS
+  getSpAssignedTrips (day-level) ............. WORKS  (endpoint exist 4780;
+        HLH agent ka "no endpoint" claim GALAT)
+  Day-level pin -> SpRoomBooking ............. WORKS  (accommodation)
+  Trip-level pin -> booking ................. BREAKS  (#12)
+  confirm pe auto SpPayment .................. MISSING (#13)
+  SpPayment .................................. MANUAL  (HCT createSpPayment)
+
+------------------------------------------------------------------
+ROLE-SPECIFIC STATUS
+------------------------------------------------------------------
+  HRP:
+    - region_id link, dashboard "My Region" card ... WORKS (render)
+    - region-trips visibility ..................... BREAKS (#37 hrp_id
+          kabhi populate nahi -> getSpAssignedTrips region branch khaali)
+    - baaki common flow ke saath
+  HLH:
+    - Experience.hlh_id link (hasMany) ............ WORKS
+    - auto-match to trip services ................. BREAKS (#38 case
+          mismatch; manual assign chalta)
+    - self-serve experience CRUD ................. ABSENT (#41 likely MVP)
+  OSP:
+    - day-level assign (TripDayService) .......... WORKS
+    - trip-level provider FK ..................... ABSENT (#39)
+    - osps_involved/osp_services ................. INFO-ONLY (no FK)
+    - homepage community count ................... EXCLUDED (hlh+hrp only)
+
+NOTE (sab SP): SpMiddleware approved-status check weak ho sakta —
+  par data actions resolveApprovedSp() se gated (#40).
+
+
+==================================================================
+ PART 2 — JO HO CHUKA (COMPLETED / WORKING, verified)
+==================================================================
+In par dobara kaam ki zaroorat NAHI:
+
+  Plan ke BAAD jo fix hue (plan.txt mein "missing" likha tha):
+    D1 Pricing/Margin/GST settings ka admin UI ab HAI (6300-6317).
+    D2 Gallery edit naye uploads merge karta (5397-5410).
+    D3 PasswordChangedEmail ab send hota (1267-1271).
+    D4 [plan claim galat] loadPricing/escHtml/buildCustomDropdown
+       duplicate NAHI; AI chat ajax local error handler hai.
+
+  Traveller (working):
+    - Experience browse + region listing (paginated)
+    - AI chat start + preference extract + itinerary build (normal path)
+    - Day service CRUD + room allocation (day-level SpRoomBooking)
+    - Email/password login -> guest journey sync to DB
+    - Confirm trip (status/ownership/stage guard sahi)
+    - Razorpay order (server-side amount) + verify (signature)
+    - Wishlist, Reviews, Profile, Newsletter subscribe
+    - Password-changed email
+
+  Provider/SP (working):
+    - SP application -> admin approve -> user auto-create + link
+    - SP pricing create (accommodation/transport/guide/activity)
+    - iCal save + sync, room availability logic
+    - Day-level provider pin -> SpRoomBooking
+    - Provider rate experience line replace (calc sahi)
+    - Pricing-change approval (pending row -> live; auth-guarded 4007)
+
+  Admin/HCT (working):
+    - Lead creation (LeadService)
+    - Trip edit pe pricing recalc (5652)
+    - Experience CRUD + gallery upload merge
+    - Pricing/Margin/GST settings UI
+    - Trip PDF generation (admin, auth-guarded)
+    - System lists CRUD, HCT user CRUD, newsletter campaigns
+
+
+==================================================================
+ PART 3 — ADMIN PAGES RENDER CHECK (sab 31 — RENDER OK)
+==================================================================
+Page-level: saare 31 admin pages render hote, koi crash/404/blank
+nahi. Route+controller+view exist, koi undefined var nahi, 40+ AJAX
+key handler maujood, 16/16 sidebar link valid (koi 404 nahi).
+
+  Overview : Dashboard, Admin Users, Control Panel
+  Sales/Ops: Leads, Trips, Calendar
+  Finance  : Payments, GST Report, Currencies
+  People   : Providers (+show/edit), Travelers, Newsletter,
+             Applications, Pending Rates
+  Content  : Regions, Experiences (+create/edit),
+             Regenerative Projects (+create/edit)
+  Settings : Travel Preferences (+edit)
+  Ops      : Trip Manager, Email Test, Login
+
+ZAROORI distinction: "page render hota" != "har feature sahi".
+Render OK hai, par in pages ke ANDAR PART 4 ke functional bug hain:
+  Control Panel/Settings -> #1 (unauth tamper)
+  Trip Manager           -> #5 double-charge, #11 lock
+  Payments               -> #3 unauth, #12 manual amount
+  Leads                  -> #1 unauth, #24 budget_notes
+  Regions                -> #26 image/anchor/sort_order save nahi
+  Saare CRUD pages       -> #27 audit log nahi
+
+
+==================================================================
+ PART 4 — SAARI PENDING FINDINGS (sequential, deduped)
+==================================================================
+
+--- SECURITY ---
+ 1. [R][R] BROKEN  /ajax admin route auth+hct middleware ke BAHAR
+    (web.php:80). 20+ admin method bina login callable:
+    saveRegion(5139) saveExperience(5327) saveSettings(6310)
+    updateTripInfo(5628) updateLead(4269) getActivityLogs(3679).
+    Impact: koi bhi GST/margin 0 kar de, final_price/margin tamper,
+    lead "won" kar de. (hct_collaborator bhi admin kaam — same root,
+    isHctAdmin() check missing.)
+    Protected (theek): confirmTrip(2875), createRazorpayOrder(5691),
+    createSpPayment(4446), approvePricing(4007), PDF route.
+ 2. [R] BROKEN  addTravellerPayment(5658)/addSpPaymentEntry(4473)/
+    editSpPaymentEntry(4505) pe auth nahi -> recorded_by null,
+    fake/forged payment record ho sakta.
+ 3. [Y] BROKEN  saveSettings(6310) arbitrary key accept (no whitelist)
+    -> setting injection.
+
+--- PRICING CALC ---
+ 4. [R] BROKEN  Double-charge: addExperienceToDay (5972-5982) services
+    cost>0 banata; CostCalculatorService (168-178 + 207-211) services
+    + exp-components dono jodta -> ~100% over. (same-exp-multi-day
+    dedup 180-184 alag, theek hai.)
+ 5. [Y] BROKEN  Auto-recalc gayab: 2162,2200,2535-2656,5984,6071,6106
+    ke baad calculate() nahi -> stale price. (updateTripInfo 5652
+    recalc karta — wahan theek.)
+ 6. [Y] BROKEN  Guest pricing (144-259) extra_day_cost nahi; multiplier
+    map CostCalc(18-52) se duplicate (178-214).
+ 7. [Y] PARTIAL Guest vs login pricing divergence: guest base-rate,
+    login component-breakdown -> ~5-10% farq login boundary pe.
+ 8. [S] DOC    Provider rate budget-multiplier bypass (248-263,
+    multiplier=1.0). Intentional lagta par comment nahi.
+
+--- PAYMENTS ---
+ 9. [Y] PARTIAL Razorpay: order amount server-authoritative (5705) —
+    "stale read" utna severe nahi. Par confirmation email stale
+    trip->final_price (5829), aur order-baad/pay-pehle itinerary
+    change pe mismatch. final_price vs paid re-check add karo.
+10. [R] BROKEN  Closed/paid trip lock backend mein nahi (sirf
+    confirmTrip transition guard). Saare edit endpoint + verify ko
+    stage=closed / payment-paid pe reject karna hai.
+
+--- PROVIDER / SP ---
+11. [R] BROKEN  createSpPayment(4464) amount_due manual; rate*qty nahi.
+12. [R] BREAKS  Trip-level pin (updateTravelPreferences 2450-2507) pe
+    SpRoomBooking nahi (day-level theek).
+13. [R] MISSING confirm pe auto SpPayment nahi -> provider invoice/pay
+    nahi hota (sabse bada operational gap).
+14. [Y] BROKEN  meal SP-pricing validation se bahar (3863) par day
+    service (6043) mein allowed -> meal cost SP ke liye untracked.
+15. [Y] BROKEN  min/max group store+approve hota (3924-25,4031-32) par
+    kahin enforce nahi (calc/book/confirm).
+16. [Y] BREAKS  confirm(2873-2893) pe pinned provider/pricing live()
+    re-verify nahi -> orphan booking risk. Saath hi: booking-create
+    time pe bhi koi guard nahi -> SpRoomBooking unapproved/inactive
+    sp_pricing row se link ho sakti hai (validation chahiye).
+17. [Y] MISSING activity trip-pin nahi (activity_provider_id field nahi).
+18. [Y] MISSING accommodation_pricing_id ka provider_id se ownership
+    validate nahi (2480-2505).
+19. [Y] PARTIAL SP onboarding: approval se pehle pricing set nahi kar
+    sakte (user_id approval pe banta).
+20. [S] MINOR  approvePricing (4017-4036) 14 field preserve karta par
+    'notes' field copy nahi hota. (Confirmed: code padha.)
+
+--- AUTH / AI / LEADS ---
+21. [Y] BREAKS  Social login (SocialAuth 91-113) login pe non_confirmed
+    draft trips wipe/reset -> data loss.
+22. [R] BROKEN  AjaxController:1890 foreach($experiences) undefined ->
+    500 jab AI bina [ADD_TO_TRIP] tag ke "added" bole.
+    ($experiencesJson defined, $experiences nahi.)
+23. [Y] BROKEN  budget_notes code mein use (1684,1769) par Trip/Lead
+    $fillable mein nahi, DB column nahi -> discard (1790).
+24. [S] MINOR  HCT chat fallback weak; Ollama context chhota.
+
+--- ADMIN CRUD / CONFIG ---
+25. [Y] BROKEN  saveRegion (5157-5174): image + anchor_points $data
+    mein nahi (edit hi nahi hote); sort_order update pe set nahi
+    (sirf create 5174). (Confirmed: code padha.)
+26. [R] BROKEN  ActivityLog sirf newsletter (2812,3765). Region/Exp/
+    Settings/Lead/Trip/Payment CRUD pe koi audit log nahi.
+
+--- PORTAL / EMAIL / PDF ---
+27. [R] BROKEN  requestSupport(2749-2777) koi email nahi (sirf record).
+28. [Y] BREAKS  Trip PDF sirf admin domain (web.php:72); portal se
+    traveller download nahi.
+
+--- DATABASE / MIGRATIONS ---
+29. [R] BROKEN  FK = RESTRICT: traveller_payments(12-13), sp_payments
+    (12-13), leads(12-13) -> trip/user/provider delete fail.
+30. [Y] BROKEN  experiences.region_id RESTRICT (13) -> region delete block.
+31. [R] BROKEN  enum mismatch: trip_day_services 'meal' (14), sp_pricing
+    mein nahi (13) -> meal service pricing link nahi.
+32. [S] MINOR  trip_days.added_by string(20) bina enum; payment_status
+    bina enum constraint.
+
+--- FRONTEND JS ---
+33. [R] BROKEN  XSS: homepage 2094 & 2233 .html() mein unescaped
+    exp/day naam (.text() se aaya par escape nahi).
+34. [Y] PARTIAL window.showError 10 jagah call (admin/providers/edit,
+    portal/sp/pricing) par kahin define nahi -> error chup gum.
+    (showAlert layout:298 mein hai — alias bana do.)
+35. [S] MINOR  AI chat ajax pe skipGlobalError nahi (local handler hai).
+
+--- TESTS ---
+36. [R] BROKEN  3 test file (1 real: AccommodationBookingFlowTest), 1
+    factory (User). Double-charge/payments/leads/guest-pricing/
+    itinerary -> zero coverage.
+
+--- PROVIDER SUB-ROLES (HRP/HLH/OSP) ---
+37. [R] BREAKS  HRP: TripRegion.hrp_id kabhi populate nahi
+    (firstOrCreate 2154-2157 sirf trip_id+region_id). getSpAssignedTrips
+    (4817-18) hrp_id padhta par koi writer nahi -> HRP apne region ke
+    trips dekh hi nahi sakta. (HRP-only special branch ka data khaali.)
+38. [Y] BREAKS  HLH/all: SpMatchingService (106) services_offered
+    Title-case ("Transport") par TripDayService.service_type lowercase
+    ("transport") -> whereJsonContains match fail -> SP auto-assign
+    kabhi nahi. (Manual change_day_service_provider chalta — to UX gap.)
+39. [Y] MISSING OSP: koi trip-level provider FK nahi (vehicle/guide ki
+    tarah). Sirf day-level (TripDayService.service_provider_id).
+    osps_involved/osp_services info-only (FK nahi). OSP homepage
+    community count se bhi excluded (hlh+hrp only, HomepageController 36).
+40. [Y] PARTIAL SpMiddleware approved-status verify weak ho sakta ->
+    pending SP /sp/dashboard load kar le. (Data actions resolveApprovedSp()
+    se gated, to impact limited — confirm + harden.)
+41. [S] DESIGN No role-based pricing restriction: koi bhi SP (hlh/hrp/
+    osp) koi bhi service_type set kar sakta (3863). HLH self-serve
+    experience CRUD bhi absent (likely MVP scope) — decide.
+
+--- PRICING: PAX TYPES (adult/child/infant) ---  [user feature]
+42. [Y] MISSING Adult/child/infant ka alag pricing backend mein nahi.
+    Abhi: Trip mein adults/children/infants teeno (Trip.php:11) par
+    CostCalculatorService:151 peopleFactor = adults + 0.5*children
+    (child 50% HARDCODED, configurable nahi) aur INFANTS bilkul ignore.
+    providerTransportCost(108-118) + room calc(251) bhi sirf
+    adults+children. computeGuestPricing bhi same. -> infant ka koi
+    charge nahi, child rate fix; admin/SP set nahi kar sakta.
+    Fix Phase 2.5 mein.
+
+--- HARDCODED VALUES (global rule: koi hardcode nahi) ---
+43. [Y] BROKEN  Pricing mein kaafi values hardcoded — DB se honi chahiye:
+    (i) Multiplier maps DONO jagah hardcoded + duplicate:
+        CostCalculatorService:18-52 (getMultiplierMap) aur
+        AjaxController:179-213 (computeGuestPricing) — accommodation
+        comfort (Cat A-E 0.5..2.5), vehicle (0.5..1.5), guide (0..1.5),
+        pace (0.9..1.3), budget (0.85..1.5). Inhe DB mein lao (system
+        list option pe multiplier column ya settings).
+    (ii) Setting::getValue ke hardcoded FALLBACK defaults (DB seed karo,
+        fallback hatao): base_transport_per_day 3500, base_accommodation
+        _per_night 2500, base_guide_per_day 2000 (AjaxController 174-176);
+        rest_day_cost_per_person 2000, activity_day_cost_per_person 5000
+        (CostCalc 146-147); default_rp/hrp/hct 5/10/15, gst_percent 5
+        (CostCalc 269-279, AjaxController 231-240).
+    (iii) child 0.5 / infant ignore (#42 — settings se).
+    (iv) default pax adults=2 (guest) hardcoded (AjaxController 99,112,1523).
+    Fix Phase 2.6.
+
+
+==================================================================
+ PART 5 — FIX PLAN (phases, order mein)
+==================================================================
+
+PHASE 0 — SAFETY NET (fix se PEHLE)
+  - tests/Feature/ExperienceToDayPricingTest: double-charge assert
+    (abhi fail -> fix baad pass).
+  - AccommodationBookingFlowTest extend: total_cost/gst/final_price.
+
+PHASE 1 — SECURITY [#1,#2,#3]  *** turant ***
+  1.1 web.php:80 /ajax ko ['auth','hct'] middleware mein daalo.
+  1.2 har admin method top pe isHctAdmin()/isHct() guard (403);
+      collaborator vs admin alag.
+  1.3 payment-entry methods pe auth + ownership.
+  1.4 saveSettings keys whitelist.
+
+PHASE 2 — PAISA SAHI [#4,#5,#6,#9]
+  2.1 Double-charge: addExperienceToDay services cost=0; exp-component
+      loop = single source.
+  2.2 Auto-recalc helper: har itinerary mutation end pe calculate().
+  2.3 Guest pricing: extra_day_cost add; multiplier map reuse.
+  2.4 Payment truth: verify + email locked TravellerPayment.amount se;
+      pre-pay change pe re-check.
+  2.5 PAX-TYPE PRICING [#42] — adult/child/infant alag set:
+      (a) Settings: child_price_percent (def 50), infant_price_percent
+          (def 0) — control-panel Settings mein editable (hardcode 0.5
+          hatao, CostCalc:151).
+      (b) CostCalculatorService peopleFactor =
+          adults + (child% * children) + (infant% * infants).
+      (c) computeGuestPricing (AjaxController) same formula mirror.
+      (d) providerTransportCost(108-118) + room calc(251): infant
+          policy decide (per-person mein infant count kare ya nahi;
+          rooms mein infant skip default).
+      (e) (advanced/optional) per-experience ya per-SpPricing pe
+          adult/child/infant price override columns + admin/SP UI —
+          agar global % se granular chahiye.
+      Verify: child%/infant% badle to total badle; infant=0% pe
+      sirf infant add karne se price na badhe.
+  2.6 DE-HARDCODE [#43] [GLOBAL RULE] — sab pricing config DB se:
+      (a) Multiplier maps DB mein: har system-list option (accommodation
+          _comfort/vehicle/guide/pace/budget) pe 'multiplier' column add
+          + seed; CostCalc getMultiplierMap + computeGuestPricing dono
+          wahi se padhein (duplicate khatam, single source).
+      (b) Base rates + margins + gst ko DB mein seed; Setting::getValue
+          ke hardcoded fallback hatao (ya central default config).
+      (c) child%/infant% (2.5a) + default pax bhi settings se.
+      (d) Admin UI: yeh sab control-panel Settings mein editable.
+      Verify: koi pricing literal code mein na bache (grep clean);
+      setting badalne se calc turant badle, code change bina.
+
+PHASE 3 — TRIP LOCK & SAFETY [#10,#21,#33,#34]
+  3.1 Closed/paid lock: saare edit handler + verify reject.
+  3.2 XSS: homepage 2094,2233 .text()/escHtml().
+  3.3 window.showError -> showAlert alias.
+  3.4 Social login: draft wipe se pehle preserve/confirm.
+
+PHASE 4 — PROVIDER PAISA AUTO-TRACK [#11,#12,#13,#16,#18]
+  4.1 createSpPayment amount_due = pinned pricing * qty.
+  4.2 Trip-level pin pe SpRoomBooking (RoomAvailabilityService::book).
+  4.3 confirm pe auto SpPayment + provider live() verify.
+  4.4 pricing_id ka provider ownership validate.
+  4.5 HRP: TripRegion.hrp_id populate karo (experience add / region
+      assign pe) -> HRP ko apne trips dikhein [#37].
+  4.6 SpMatchingService case normalize (services_offered vs
+      service_type lowercase) -> auto-assign chale [#38].
+
+PHASE 5 — EXPERIENCE vs PROVIDER DISPLAY [user feature]
+  Detailed steps PART 6. (Phase 2 ke baad — warna line amount galat.)
+
+PHASE 6 — TRAVELLER + LEAD GAPS [#22,#23,#27,#28]
+  6.1 AI chat 500: 1890 se pehle $experiences load (ya branch hatao).
+  6.2 budget_notes: Lead/Trip column + fillable.
+  6.3 Support email: requestSupport -> traveller+admin mail.
+  6.4 Portal PDF route + download button.
+
+PHASE 7 — ADMIN CONFIG & AUDIT [#25,#26]
+  7.1 saveRegion: image+anchor_points fields; edit pe sort_order.
+  7.2 ActivityLog::create() saare admin CRUD handler mein.
+
+PHASE 8 — DATABASE HARDENING [#29,#30,#31,#32]
+  8.1 payment/lead/experiences FK onDelete (cascade/nullOnDelete).
+  8.2 meal enum align: sp_pricing mein 'meal' (Phase 9 ke saath) ya
+      trip_day_services se hatao — decide.
+  8.3 payment_status + trip_days.added_by enum/validate.
+  8.4 SpRoomBooking ko unapproved/inactive sp_pricing se rokne ki
+      validation (booking-create time) [#16].
+
+PHASE 9 — FUTURE [#14,#15,#17,#19,#20,#24,#35,#36,#39,#40,#41]
+  - OSP trip-level provider FK + homepage community count include [#39].
+  - SpMiddleware approved-status harden [#40].
+  - Role-based pricing restriction; HLH self-serve experience CRUD [#41].
+  - Meal provider-pinnable (3863 + meal_pricing_id + calculator + UI).
+  - Activity trip-pinnable; min/max group enforce.
+  - SP pre-approval pricing; approve pe notes carry.
+  - HCT chat fallback strong; AI ajax skipGlobalError.
+  - Test backfill: CostCalculator unit, payments, leads, roles.
+    Factories (Trip/Experience/SpPricing/Region).
+  - Guest vs login pricing reconcile (#7).
+
+EXECUTION ORDER: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
+Har phase ke baad test + manual check.
+
+
+==================================================================
+ PART 6 — PRICING DISPLAY: DETAILED STEPS (user feature)
+==================================================================
+Asool: dono ALAG CHARGE nahi. Har line ka paisa ek baar, par har
+line pe SOURCE label — provider pin hai to [Provider] (naam+rate),
+warna [Experience]. Provider rate line ko REPLACE karta hai.
+
+Data raasta: calculate() -> line_sources[] -> getTripPricing -> render.
+
+6.1 CALCULATOR (CostCalculatorService 248-263)
+    Provider override block mein serviceProvider relation load +
+    line_sources map:
+      'accommodation' => source/provider/rate/unit/qty (rooms x nights)
+      'transport','guide' => same (jab *_pricing_id set)
+      'meals','activities' => always 'experience'
+
+6.2 getTripPricing(2658) array already pass hota. computeGuestPricing
+    bhi same shape (sab 'experience').
+
+6.3 CSS (style.css):
+    .pr-tag.provider{background:#e6f4ea;color:#1e7e34}
+    .pr-tag.experience{background:#eef0f2;color:#666}
+
+6.4 TRIP-DETAIL renderPricing: line source meta -> row+caption+tag.
+6.5 HOMEPAGE summary + loadPricing(1986): shared JS helper.
+6.6 (optional) provider card hint "package estimate replace karega".
+
+KAISA DIKHEGA:
+  Accommodation                          Rs 24,000
+  +- Hotel Taj . Rs 8,000/night x 1 x 3  [Provider]
+  Transport                              Rs  9,000
+  +- Sharma Travels . Rs 3,000/day x 3   [Provider]
+  Meals                                  Rs  3,600
+  +- Package mein shaamil                [Experience]
+  Guide                                  Rs  5,000
+  +- Package mein shaamil                [Experience]
+  --------------------------------------------------
+  Trip Cost                              Rs 45,600
+  RP/HRP/HCT + GST                       Rs  4,560
+  Total                                  Rs 50,160
+
+ZAROORI: Phase 5 se PEHLE Phase 2 (double-charge fix) — warna har
+line ka amount hi galat dikhega.
+
+
+==================================================================
+ PART 7 — TEST / VERIFICATION
+==================================================================
+Phase 1: bina login admin AJAX = 403; collaborator -> admin = 403;
+  saveSettings invalid key reject; unauth payment entry block.
+Phase 2: double-count test pass; exp add pe accommodation_cost =
+  component x people (no double); add/remove ke turant baad refresh;
+  guest extra_day_cost.
+Phase 3: closed/paid trip edit reject; exp/day naam <script> na chale;
+  error message dikhe; social login pe draft trip safe.
+Phase 4: SpPayment auto amount = calculator provider line; trip-pin pe
+  room booking; confirm pe auto SpPayment + provider verify.
+Phase 5: har line pe sahi tag; pin/unpin pe total+tag badle.
+Phase 6: AI "added" fallback pe 500 na aaye; budget_notes save; support
+  email; portal PDF download.
+Phase 7: admin CRUD log; region image/anchor/sort_order save.
+Phase 8: trip/user/provider/region delete clean; meal pricing link.
+Render: saare 31 admin pages bina error khulein (PART 3).
+
+==================================================================
+ END — yeh file ab single source of truth hai (plan.txt merged).
+==================================================================

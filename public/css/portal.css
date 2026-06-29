@@ -2982,6 +2982,21 @@
         border-color: var(--heco-primary-500, #2f855a);
         background: var(--heco-primary-50, #f1f7f4);
     }
+    /* "Use package estimate" (no provider) — dashed + muted to read as a fall-back. */
+    .provider-none {
+        border-style: dashed;
+    }
+    .provider-none .provider-item-icon {
+        color: var(--color-text-muted, #6b7280);
+    }
+    /* Bottom detail message when no provider is pinned. */
+    .provider-detail-none {
+        font-size: 0.78rem;
+        color: var(--color-text-muted, #6b7280);
+        padding: 8px 10px;
+        background: var(--heco-primary-50, #f1f7f4);
+        border-radius: 6px;
+    }
     .provider-item-icon {
         color: var(--heco-primary-500, #2f855a);
         margin-right: 5px;

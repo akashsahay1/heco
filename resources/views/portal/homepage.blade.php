@@ -2343,14 +2343,22 @@ jQuery(function() {
                 if (!byProv[id]) { byProv[id] = { id: p.provider_id, name: p.provider_name, rooms: [] }; order.push(id); }
                 byProv[id].rooms.push(p);
             });
-            // Which provider owns the saved pick? Default to the first listed.
-            var selProvId = order[0];
+            // Which provider owns the saved pick? When nothing is pinned no
+            // provider is active — the "None / package estimate" choice is.
+            var hasPick = !!preselectPricingId;
+            var selProvId = '';
             list.forEach(function(p) { if (String(p.pricing_id) === String(preselectPricingId)) selProvId = String(p.provider_id); });
 
             $box.data('byProv', byProv);
             $box.data('selectedPricingId', preselectPricingId ? String(preselectPricingId) : '');
 
-            var listHtml = '';
+            // "None" un-pins and falls back to the package estimate (sends a
+            // null provider/pricing so the calculator uses the experience's
+            // own component cost instead of a provider rate).
+            var listHtml = '<button type="button" class="provider-item provider-none' + (hasPick ? '' : ' active') + '" data-provider-id="">'
+                + '<span class="provider-item-name"><i class="bi bi-x-circle provider-item-icon"></i>Use package estimate</span>'
+                + '<span class="provider-item-meta">No provider</span>'
+                + '</button>';
             order.forEach(function(id) {
                 var prov = byProv[id];
                 var minPrice = Math.min.apply(null, prov.rooms.map(function(r) { return r.price; }));
@@ -2363,7 +2371,7 @@ jQuery(function() {
 
             $box.html(
                 '<div class="provider-picker">'
-                  + '<div class="provider-list-title">Providers · choose one</div>'
+                  + '<div class="provider-list-title">Providers · choose one or none</div>'
                   + '<div class="provider-list">' + listHtml + '</div>'
                   + '<div class="provider-detail"></div>'
                 + '</div>'
@@ -2379,7 +2387,14 @@ jQuery(function() {
         var byProv = $box.data('byProv') || {};
         var prov = byProv[String(provId)];
         var $detail = $box.find('.provider-detail');
-        if (!prov) { $detail.empty(); return; }
+        if (!prov) {
+            // No provider chosen — show the package-estimate state and keep
+            // the "None" option flagged as active.
+            $detail.html('<div class="provider-detail-none"><i class="bi bi-info-circle"></i> No provider selected · using package estimate</div>');
+            $box.find('.provider-item').removeClass('active');
+            $box.find('.provider-none').addClass('active');
+            return;
+        }
         var selPricing = String($box.data('selectedPricingId') || '');
         var html = '<div class="provider-detail-title">' + escHtml(prov.name) + ' · pricing</div>';
         prov.rooms.forEach(function(r) {
@@ -2402,9 +2417,26 @@ jQuery(function() {
     jQuery('#prefVehicle').on('change',       function() { loadProviderCards('transport',     jQuery(this).val(), null); });
     jQuery('#prefGuide').on('change',         function() { loadProviderCards('guide',         jQuery(this).val(), null); });
 
-    // Clicking a provider just switches which provider's room pricing shows.
+    // Clicking a provider switches which provider's room pricing shows.
+    // Clicking "None" un-pins the provider and saves the fall-back to estimate.
     jQuery(document).on('click', '.provider-item', function() {
         var $box = jQuery(this).closest('.provider-cards');
+        if (jQuery(this).hasClass('provider-none')) {
+            var cfg = PROVIDER_CFG[$box.data('service')];
+            if (!cfg) return;
+            $box.data('selectedPricingId', '');
+            $box.data('selected', '');
+            renderProviderDetail($box, '');
+            var payload = { update_travel_preferences: 1, trip_id: window.tripId };
+            payload[cfg.catKey]   = jQuery(cfg.pref).val();
+            payload[cfg.provKey]  = '';
+            payload[cfg.priceKey] = '';
+            ajaxPost(payload, function() {
+                if (typeof loadPricing === 'function') loadPricing();
+                if (typeof showAlert === 'function') showAlert(cfg.label + ' set to package estimate.', 'success');
+            });
+            return;
+        }
         renderProviderDetail($box, jQuery(this).data('provider-id'));
     });
 
