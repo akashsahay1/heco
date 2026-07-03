@@ -170,6 +170,10 @@
                 timerProgressBar: true
             });
         }
+        // Alias — several pages call showError(); route it to the toast so their
+        // error paths surface instead of throwing ReferenceError and going silent.
+        window.showError = function (message) { showAlert(message, 'danger'); };
+        window.showAlert = showAlert;
 
         function confirmAction(message, callback) {
             Swal.fire({

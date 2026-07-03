@@ -308,6 +308,9 @@
                 timerProgressBar: true
             });
         };
+        // Alias — pages (e.g. sp/pricing) call showError(); route to the toast so
+        // their error paths surface instead of throwing ReferenceError silently.
+        window.showError = function(message) { window.showAlert(message, 'danger'); };
 
         // Confirm Action
         window.confirmAction = function(message, callback) {

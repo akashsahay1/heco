@@ -4534,6 +4534,7 @@ class AjaxController extends Controller
                     'min_group'         => $pending->min_group,
                     'max_group'         => $pending->max_group,
                     'specialties'       => $pending->specialties,
+                    'notes'             => $pending->notes,
                     'approved_at'       => now(),
                     'approved_by'       => Auth::id(),
                 ]);
