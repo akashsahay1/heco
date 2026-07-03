@@ -4045,6 +4045,7 @@ class AjaxController extends Controller
         $user = User::findOrFail($request->user_id);
         $newStatus = $user->status === "active" ? "inactive" : "active";
         $user->update(["status" => $newStatus]);
+        $this->logActivity('hct_user_status_changed', 'User', $user->id, ['status' => $newStatus]);
         return response()->json(["success" => true, "status" => $newStatus]);
     }
 
@@ -4103,6 +4104,7 @@ class AjaxController extends Controller
             Log::error("HCT password reset email failed [" . $user->id . "]: " . $e->getMessage());
         }
 
+        $this->logActivity('hct_user_password_reset', 'User', $user->id);
         return response()->json(["success" => true]);
     }
 
@@ -4137,6 +4139,7 @@ class AjaxController extends Controller
             }
             $prompt = AiPrompt::create($data);
         }
+        $this->logActivity('ai_prompt_saved', 'AiPrompt', $prompt->id, ['key' => $prompt->key]);
         return response()->json(["success" => true, "prompt" => $prompt]);
     }
 
@@ -4150,6 +4153,7 @@ class AjaxController extends Controller
         } else {
             return response()->json(["error" => "Nothing to delete"], 422);
         }
+        $this->logActivity('ai_prompt_deleted', 'AiPrompt', null, ['ids' => $ids ?: [$request->id]]);
         return response()->json(["success" => true]);
     }
 
@@ -5456,6 +5460,7 @@ class AjaxController extends Controller
             $this->finalizeApproval($provider->fresh());
         }
 
+        $this->logActivity('provider_approved', 'ServiceProvider', $provider->id, ['first_time' => !$wasApproved]);
         return response()->json(["success" => true]);
     }
 
@@ -5463,6 +5468,7 @@ class AjaxController extends Controller
     {
         $provider = ServiceProvider::findOrFail($request->provider_id);
         $provider->update(["status" => "rejected"]);
+        $this->logActivity('provider_rejected', 'ServiceProvider', $provider->id);
         return response()->json(["success" => true]);
     }
 
@@ -5501,6 +5507,7 @@ class AjaxController extends Controller
                 ->whereIn('status', ['held', 'confirmed'])
                 ->update(['status' => 'released']);
         }
+        $this->logActivity('provider_removed', 'ServiceProvider', $provider->id);
         return response()->json(['success' => true]);
     }
 
@@ -6466,6 +6473,9 @@ class AjaxController extends Controller
     {
         $payment = TravellerPayment::findOrFail($request->payment_id);
         $payment->update($request->only(["amount", "payment_date", "mode", "notes"]));
+        $this->logActivity('traveller_payment_edited', 'TravellerPayment', $payment->id, [
+            'trip_id' => $payment->trip_id, 'amount' => (float) $payment->amount,
+        ]);
         return response()->json(["success" => true]);
     }
 
