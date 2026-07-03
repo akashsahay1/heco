@@ -124,6 +124,10 @@ Route::domain(config('app.portal_domain'))->group(function () {
         Route::get('/trip/{trip}/thank-you', [TravellerController::class, 'paymentThankYou'])->name('trip.thank-you')->whereNumber('trip');
         Route::get('/wishlist', [TravellerController::class, 'wishlist'])->name('wishlist');
         Route::get('/profile', [TravellerController::class, 'profile'])->name('profile');
+
+        // Traveller downloads their own trip PDF (ownership enforced in the
+        // controller; HCT may download any). #28
+        Route::get('/pdf/trip/{trip_id}', [PdfController::class, 'tripPdf'])->name('portal.pdf.trip')->whereNumber('trip_id');
     });
 
     // SP Dashboard (auth + sp middleware)

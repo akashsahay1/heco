@@ -45,6 +45,13 @@
                         </button>
                     </div>
                 @endif
+                @if($tripHasItinerary)
+                    <div class="mt-2">
+                        <a href="{{ route('portal.pdf.trip', $trip->id) }}" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-download"></i> Download PDF
+                        </a>
+                    </div>
+                @endif
             </div>
         </div>
     </div>
