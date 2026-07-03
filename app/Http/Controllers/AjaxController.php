@@ -738,6 +738,27 @@ class AjaxController extends Controller
     }
 
     /**
+     * Write an audit-log row for an admin mutation. Best-effort — never breaks
+     * the calling action. Records who did what to which model, plus details (#26).
+     */
+    private function logActivity(string $action, ?string $modelType = null, $modelId = null, array $details = []): void
+    {
+        try {
+            ActivityLog::create([
+                'user_id'    => auth()->id(),
+                'action'     => $action,
+                'model_type' => $modelType,
+                'model_id'   => $modelId,
+                'details'    => $details ?: null,
+                'ip_address' => request()->ip(),
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('ActivityLog write failed [' . $action . ']: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Reject a mutation when it targets a locked (paid/closed) trip.
      * Returns a 423 response to block, or null to allow.
      */
@@ -3901,6 +3922,7 @@ class AjaxController extends Controller
             "auth_type" => "email",
         ]);
 
+        $this->logActivity('hct_user_created', 'User', $user->id, ['role' => $user->user_role, 'email' => $user->email]);
         return response()->json(["success" => true, "user" => $user]);
     }
 
@@ -3912,6 +3934,10 @@ class AjaxController extends Controller
             $data["password"] = $request->password;
         }
         $user->update($data);
+        $this->logActivity('hct_user_updated', 'User', $user->id, [
+            'fields' => array_keys($data),
+            'password_reset' => $request->filled('password'),
+        ]);
         return response()->json(["success" => true]);
     }
 
@@ -4648,6 +4674,9 @@ class AjaxController extends Controller
             app(LeadService::class)->markLost($lead);
         }
 
+        $this->logActivity('lead_updated', 'Lead', $lead->id, [
+            'fields' => array_keys($data), 'stage' => $request->stage,
+        ]);
         return response()->json(["success" => true]);
     }
 
@@ -5536,6 +5565,9 @@ class AjaxController extends Controller
             $msg = "Region created successfully";
         }
 
+        $this->logActivity('region_saved', 'Region', $region->id, [
+            'name' => $region->name, 'created' => !$request->filled('region_id'),
+        ]);
         return response()->json(["success" => $msg, "region" => $region]);
     }
 
@@ -6012,6 +6044,7 @@ class AjaxController extends Controller
             app(CostCalculatorService::class)->calculate($trip);
         }
 
+        $this->logActivity('trip_updated', 'Trip', $trip->id, ['fields' => array_keys($data)]);
         return response()->json(["success" => true]);
     }
 
@@ -6029,7 +6062,7 @@ class AjaxController extends Controller
 
         $trip = Trip::findOrFail($request->trip_id);
 
-        TravellerPayment::create([
+        $payment = TravellerPayment::create([
             "trip_id" => $trip->id,
             "user_id" => $trip->user_id,
             "amount" => $request->amount,
@@ -6042,6 +6075,9 @@ class AjaxController extends Controller
 
         app(LeadService::class)->checkPaymentAndTransition($trip);
 
+        $this->logActivity('traveller_payment_added', 'TravellerPayment', $payment->id, [
+            'trip_id' => $trip->id, 'amount' => (float) $request->amount, 'mode' => $request->mode,
+        ]);
         return response()->json(["success" => true]);
     }
 
@@ -6718,11 +6754,14 @@ class AjaxController extends Controller
                 "user_id" => auth()->id(),
             ]);
         }
+        $applied = [];
         foreach ($settings as $key => $value) {
             if ($existing->has($key)) {
                 Setting::setValue($key, $value, $existing[$key]->group);
+                $applied[$key] = $value;
             }
         }
+        $this->logActivity('settings_updated', 'Setting', null, ['keys' => array_keys($applied)]);
         return response()->json(["success" => true, "rejected" => $rejected]);
     }
 
