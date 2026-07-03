@@ -8016,3 +8016,50 @@
     margin-top: auto;
     min-height: 1.1em;
 }
+
+/* ============================================================
+   Comfort & Partners (Phase D) — clean per-category provider
+   picker: one custom dropdown per category -> preview + room
+   selector. Namespaced `cp-` to avoid the data-deletion .dd-*.
+   ============================================================ */
+.cp-hint { font-size: 11.5px; color: #64748b; margin-bottom: 12px; }
+.cp-summary { font-size: 12.5px; }
+.cp-sum-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid #f1f5f9; }
+.cp-sum-row:last-child { border-bottom:none; }
+.cp-sum-row .k { color:#64748b; }
+.cp-sum-row .v { font-weight:600; color:#1e293b; text-align:right; }
+.cp-toggle { margin-left:auto; font-size:12px; font-weight:600; color:#79a09f; cursor:pointer; display:inline-flex; align-items:center; gap:4px; user-select:none; }
+.cp-body { margin-top:8px; }
+.cp-body.d-none { display:none; }
+.cp-field { margin-bottom:14px; }
+.cp-field:last-child { margin-bottom:0; }
+.cp-field-lbl { display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; margin-bottom:6px; color:#1e293b; }
+.cp-field-lbl i { color:#79a09f; }
+/* custom dropdown */
+.cp-dd { position:relative; }
+.cp-dd-btn { display:flex; align-items:center; gap:8px; width:100%; border:1px solid #e2e8f0; border-radius:8px; background:#fff; padding:9px 11px; font-size:13px; color:#1e293b; cursor:pointer; text-align:left; }
+.cp-dd-btn:hover { border-color:#7ca4a3; }
+.cp-dd.open .cp-dd-btn { border-color:#7ca4a3; box-shadow:0 0 0 3px #dceae9; }
+.cp-dd-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cp-dd-price { color:#64748b; font-size:12px; white-space:nowrap; }
+.cp-dd-chev { color:#94a3b8; font-size:13px; transition:transform .15s; }
+.cp-dd.open .cp-dd-chev { transform:rotate(180deg); }
+.cp-dd-menu { display:none; position:absolute; top:calc(100% + 6px); left:0; right:0; z-index:30; background:#fff; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 12px 28px rgba(15,23,42,.16),0 3px 8px rgba(15,23,42,.08); overflow:hidden; max-height:300px; overflow-y:auto; }
+.cp-dd.open .cp-dd-menu { display:block; }
+.cp-dd-opt { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 11px; font-size:13px; cursor:pointer; }
+.cp-dd-opt:hover, .cp-dd-opt.selected { background:#f1f7f7; }
+.cp-dd-opt-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cp-dd-opt.selected .cp-dd-opt-name { font-weight:600; }
+.cp-dd-opt-price { color:#64748b; font-size:12px; white-space:nowrap; }
+.cp-dd-opt.selected .cp-dd-opt-price { color:#5f8484; font-weight:600; }
+.cp-dd-opt-img { width:44px; height:34px; object-fit:cover; border-radius:6px; flex:none; background:#f1f5f9; }
+/* preview + room */
+.cp-prev { margin-top:7px; }
+.cp-prev-partner { display:flex; align-items:center; gap:10px; border:1px solid #e2e8f0; border-radius:8px; padding:7px; background:#fff; }
+.cp-prev-partner img { width:54px; height:42px; object-fit:cover; border-radius:6px; flex:none; background:#f1f5f9; }
+.cp-prev-partner .pn { font-size:12.5px; font-weight:600; line-height:1.2; }
+.cp-prev-partner .pr2 { font-size:11.5px; color:#64748b; margin-top:2px; }
+.cp-room { margin-top:7px; }
+.cp-tag { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; border-radius:999px; padding:2px 7px; white-space:nowrap; background:#e6f4ea; color:#1e7e34; }
+.cp-note { font-size:11px; color:#64748b; margin-top:6px; }
+.cp-note i { color:#79a09f; }
