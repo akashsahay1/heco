@@ -114,6 +114,22 @@ class ProviderInvoiceTest extends TestCase
         ]);
     }
 
+    public function test_confirm_reserves_rooms_for_trip_level_pin(): void
+    {
+        // 2 nights (01, 02 Jun), 2 adults / occupancy 2 -> 1 room per night.
+        $this->actingAs($this->traveller)
+            ->post("http://{$this->portal}/ajax", ['confirm_trip' => 1, 'trip_id' => $this->trip->id])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('sp_room_bookings', [
+            'trip_id' => $this->trip->id, 'date' => '2026-06-01 00:00:00', 'quantity' => 1, 'status' => 'confirmed',
+        ]);
+        $this->assertDatabaseHas('sp_room_bookings', [
+            'trip_id' => $this->trip->id, 'date' => '2026-06-02 00:00:00', 'quantity' => 1, 'status' => 'confirmed',
+        ]);
+        $this->assertSame(2, \App\Models\SpRoomBooking::where('trip_id', $this->trip->id)->count());
+    }
+
     public function test_create_sp_payment_auto_derives_amount(): void
     {
         // Manual amount_due (999) is ignored — the pinned rate × qty (5000) wins.

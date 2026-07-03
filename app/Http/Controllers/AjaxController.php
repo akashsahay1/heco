@@ -696,6 +696,39 @@ class AjaxController extends Controller
     }
 
     /**
+     * Reserve room inventory for a TRIP-LEVEL accommodation pin across every
+     * night of the trip. The day-level path already books via SpRoomBooking, but
+     * a trip-level pin (Comfort & Partners) previously reserved nothing (#12).
+     * book() is idempotent per date and refuses to overbook, so this is safe.
+     */
+    private function bookTripLevelAccommodation(Trip $trip): void
+    {
+        if (!$trip->accommodation_pricing_id || !$trip->start_date || !$trip->end_date) {
+            return;
+        }
+        $pricing = SpPricing::find($trip->accommodation_pricing_id);
+        if (!$pricing || $pricing->service_type !== 'accommodation') {
+            return;
+        }
+        $adults = max((int) $trip->adults, 1);
+        $children = (int) ($trip->children ?: 0);
+        $occupancy = max((int) ($pricing->default_occupancy ?: 2), 1);
+        $rooms = max((int) ceil(($adults + $children) / $occupancy), 1);
+
+        $room = app(\App\Services\RoomAvailabilityService::class);
+        $start = \Carbon\Carbon::parse($trip->start_date)->startOfDay();
+        $end   = \Carbon\Carbon::parse($trip->end_date)->startOfDay();
+        for ($d = $start->copy(); $d->lt($end); $d->addDay()) {
+            $booked = $room->book($pricing->id, $trip->id, null, $d->copy(), $rooms, 'confirmed', 'trip_preference');
+            if (!$booked) {
+                \Log::warning('Trip-level accommodation could not be booked (availability)', [
+                    'trip_id' => $trip->id, 'sp_pricing_id' => $pricing->id, 'date' => $d->toDateString(),
+                ]);
+            }
+        }
+    }
+
+    /**
      * Create provider invoices (SpPayment) for a trip's pinned providers, with
      * the amount auto-computed as rate × quantity. One invoice per (trip,
      * provider, service_type) — safe to call again (dedupe). Used on confirm so
@@ -3323,6 +3356,8 @@ class AjaxController extends Controller
         $trip->update(["status" => "confirmed"]);
         // Promote any held SP room bookings → confirmed.
         app(\App\Services\RoomAvailabilityService::class)->confirmForTrip($trip->id);
+        // Reserve room inventory for a trip-level accommodation pin (#12).
+        $this->bookTripLevelAccommodation($trip);
         // Bill each pinned provider (amount auto-computed as rate × qty) so the
         // provider actually gets an invoice on confirm (#13).
         $this->createProviderInvoices($trip);
