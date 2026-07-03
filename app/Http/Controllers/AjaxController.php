@@ -696,6 +696,84 @@ class AjaxController extends Controller
     }
 
     /**
+     * Create provider invoices (SpPayment) for a trip's pinned providers, with
+     * the amount auto-computed as rate × quantity. One invoice per (trip,
+     * provider, service_type) — safe to call again (dedupe). Used on confirm so
+     * providers are actually billed (#13), instead of relying on manual entry.
+     */
+    private function createProviderInvoices(Trip $trip): void
+    {
+        $calc = app(CostCalculatorService::class);
+        $pins = [
+            ['accommodation_provider_id', 'accommodation_pricing_id', 'accommodation'],
+            ['vehicle_provider_id',       'vehicle_pricing_id',       'transport'],
+            ['guide_provider_id',         'guide_pricing_id',         'guide'],
+        ];
+        foreach ($pins as [$provKey, $priceKey, $serviceType]) {
+            $providerId = $trip->{$provKey};
+            $pricingId  = $trip->{$priceKey};
+            if (!$providerId || !$pricingId) {
+                continue;
+            }
+            $already = SpPayment::where('trip_id', $trip->id)
+                ->where('service_provider_id', $providerId)
+                ->where('service_type', $serviceType)
+                ->exists();
+            if ($already) {
+                continue;
+            }
+            $pricing = SpPricing::find($pricingId);
+            if (!$pricing) {
+                continue;
+            }
+            $amount = $calc->providerPayable($pricing, $trip, $serviceType);
+            SpPayment::create([
+                'trip_id'             => $trip->id,
+                'service_provider_id' => $providerId,
+                'service_type'        => $serviceType,
+                'amount_due'          => $amount,
+                'amount_paid'         => 0,
+                'balance'             => $amount,
+                'notes'               => 'Auto-generated on trip confirmation.',
+            ]);
+        }
+
+        // Day-level assigned providers (trip-manager) — sum each provider's booked
+        // day-service cost per service_type and invoice it too, so nothing that was
+        // pinned to specific days is left unbilled. Deduped against the pins above.
+        $dayServices = TripDayService::whereHas('tripDay', fn($q) => $q->where('trip_id', $trip->id))
+            ->whereNotNull('service_provider_id')
+            ->where('cost', '>', 0)
+            ->get()
+            ->groupBy(fn($s) => $s->service_provider_id . '|' . $s->service_type);
+        foreach ($dayServices as $group) {
+            $first = $group->first();
+            $providerId = (int) $first->service_provider_id;
+            $serviceType = (string) $first->service_type;
+            $already = SpPayment::where('trip_id', $trip->id)
+                ->where('service_provider_id', $providerId)
+                ->where('service_type', $serviceType)
+                ->exists();
+            if ($already) {
+                continue;
+            }
+            $amount = (int) round($group->sum('cost'));
+            if ($amount <= 0) {
+                continue;
+            }
+            SpPayment::create([
+                'trip_id'             => $trip->id,
+                'service_provider_id' => $providerId,
+                'service_type'        => $serviceType,
+                'amount_due'          => $amount,
+                'amount_paid'         => 0,
+                'balance'             => $amount,
+                'notes'               => 'Auto-generated on trip confirmation (day services).',
+            ]);
+        }
+    }
+
+    /**
      * Best-effort resolve the trip a mutation targets, from whichever id the
      * request carries (trip / day / day-experience / service / reorder list).
      */
@@ -3245,6 +3323,9 @@ class AjaxController extends Controller
         $trip->update(["status" => "confirmed"]);
         // Promote any held SP room bookings → confirmed.
         app(\App\Services\RoomAvailabilityService::class)->confirmForTrip($trip->id);
+        // Bill each pinned provider (amount auto-computed as rate × qty) so the
+        // provider actually gets an invoice on confirm (#13).
+        $this->createProviderInvoices($trip);
         return response()->json(["success" => true, "status" => "confirmed"]);
     }
 
@@ -4821,23 +4902,40 @@ class AjaxController extends Controller
             "trip_id" => "required|exists:trips,id",
             "service_provider_id" => "required|exists:service_providers,id",
             "service_type" => "required|string|max:50",
-            "amount_due" => "required|numeric|min:0",
+            "amount_due" => "nullable|numeric|min:0",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        // Prefer the auto-computed payable (rate × qty) when this provider is
+        // pinned on the trip for this service type, so the invoice isn't a
+        // hand-typed guess (#11). Falls back to the supplied amount for ad-hoc
+        // invoices (e.g. a day-level service with no trip-level pin).
+        $trip = Trip::find($request->trip_id);
+        $pricingId = match ($request->service_type) {
+            'accommodation' => $trip?->accommodation_pricing_id,
+            'transport'     => $trip?->vehicle_pricing_id,
+            'guide'         => $trip?->guide_pricing_id,
+            default         => null,
+        };
+        $amountDue = (float) $request->input('amount_due', 0);
+        if ($trip && $pricingId && ($pricing = SpPricing::find($pricingId))
+            && (int) $pricing->service_provider_id === (int) $request->service_provider_id) {
+            $amountDue = app(CostCalculatorService::class)->providerPayable($pricing, $trip, $request->service_type);
         }
 
         $spPayment = SpPayment::create([
             "trip_id" => $request->trip_id,
             "service_provider_id" => $request->service_provider_id,
             "service_type" => $request->service_type,
-            "amount_due" => $request->amount_due,
+            "amount_due" => $amountDue,
             "amount_paid" => 0,
-            "balance" => $request->amount_due,
+            "balance" => $amountDue,
             "notes" => $request->notes,
         ]);
 
-        return response()->json(["success" => true, "id" => $spPayment->id]);
+        return response()->json(["success" => true, "id" => $spPayment->id, "amount_due" => $amountDue]);
     }
 
     protected function addSpPaymentEntry(Request $request): JsonResponse

@@ -119,6 +119,36 @@ class CostCalculatorService
         return (int) round($rate);
     }
 
+    /**
+     * Amount owed to a provider for one pinned service on this trip, using the
+     * same rate × quantity rules as the provider-override block below:
+     *   accommodation → price × rooms × nights (rooms = ceil(pax / occupancy))
+     *   guide         → price × guide-days
+     *   transport     → per unit (day / person / flat)
+     * Used to auto-fill SpPayment invoices so provider payables aren't hand-typed.
+     */
+    public function providerPayable(SpPricing $pricing, Trip $trip, string $serviceType): int
+    {
+        $trip->loadMissing('tripDays');
+        $adults = max((int) $trip->adults, 1);
+        $children = (int) ($trip->children ?: 0);
+
+        if ($serviceType === 'accommodation') {
+            $nights = $this->resolveNights($trip);
+            $occupancy = max((int) ($pricing->default_occupancy ?: 2), 1);
+            $rooms = max((int) ceil(($adults + $children) / $occupancy), 1);
+            return (int) round((float) $pricing->price * $rooms * $nights);
+        }
+        if ($serviceType === 'guide') {
+            $guideDays = max($trip->tripDays->count() ?: ($this->resolveNights($trip) + 1), 1);
+            return (int) round((float) $pricing->price * $guideDays);
+        }
+        if ($serviceType === 'transport') {
+            return $this->providerTransportCost($pricing, $trip, $adults, $children);
+        }
+        return (int) round((float) $pricing->price);
+    }
+
     public function calculate(Trip $trip): array
     {
         $trip->load(['tripDays.services', 'tripDays.experiences.experience']);
