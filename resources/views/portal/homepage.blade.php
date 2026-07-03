@@ -2091,7 +2091,7 @@ jQuery(function() {
         pendingRemoveExpName = btn.closest('.journey-exp-item').find('.exp-name').text().trim() || 'this experience';
         if (!tripId || !pendingRemoveExpId) return;
         jQuery('#removeExpModalSubtitle').text(pendingRemoveExpName);
-        jQuery('#removeExpModalMsg').html('Are you sure you want to remove <strong>' + pendingRemoveExpName + '</strong> from your trip?');
+        jQuery('#removeExpModalMsg').html('Are you sure you want to remove <strong>' + escHtml(pendingRemoveExpName) + '</strong> from your trip?');
         var modal = new bootstrap.Modal(jQuery('#removeExpModal')[0]);
         modal.show();
     });
@@ -2230,7 +2230,7 @@ jQuery(function() {
         var dayEl = jQuery(this).closest('.timeline-day');
         pendingRemoveDayLabel = dayEl.find('.timeline-day-number').text() || 'this day';
         jQuery('#removeDayModalSubtitle').text(pendingRemoveDayLabel);
-        jQuery('#removeDayModalMsg').html('Are you sure you want to remove <strong>' + pendingRemoveDayLabel + '</strong> from your trip? This action cannot be undone.');
+        jQuery('#removeDayModalMsg').html('Are you sure you want to remove <strong>' + escHtml(pendingRemoveDayLabel) + '</strong> from your trip? This action cannot be undone.');
         var modal = new bootstrap.Modal(jQuery('#removeDayModal')[0]);
         modal.show();
     });

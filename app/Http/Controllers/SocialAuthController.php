@@ -87,8 +87,11 @@ class SocialAuthController extends Controller
         $guestTrip = session('guest_trip');
         $guestChat = session('guest_chat');
 
-        // Clear previous trip data so traveller starts fresh each login
-        if ($user->isTraveller()) {
+        // Only reset an existing draft when the guest arrived with a freshly-built
+        // trip that should replace it. Without incoming guest data we must PRESERVE
+        // the traveller's saved draft — wiping it unconditionally on every social
+        // login lost in-progress trips (#22).
+        if ($user->isTraveller() && !empty($guestTrip['experience_ids'] ?? [])) {
             $trips = $user->trips()->whereIn('status', ['not_confirmed'])->get();
             foreach ($trips as $t) {
                 $t->aiConversations()->where('context_type', 'traveller_chat')->delete();

@@ -93,41 +93,6 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::get('/csrf-token', fn() => response()->json(['token' => csrf_token()]));
     Route::get('/opcache-reset', fn() => (function_exists('opcache_reset') && opcache_reset()) ? 'cleared' : 'no opcache');
 
-    Route::get('/testapi', function(){
-
-        $apiKey = 'AIzaSyBBCNGLn18wRYsgpqEtbP68PTVAn097-zQ';  // Use the NEW key after revoking the old one
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={$apiKey}";
-
-        $data = [
-            'contents' => [
-                ['parts' => [['text' => 'Reply with just OK']]]
-            ]
-        ];
-
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);  // For local dev only
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-
-        echo "<pre>";
-        echo "HTTP Status: {$httpCode}\n\n";
-        if ($error) echo "cURL Error: {$error}\n\n";
-        echo "Response:\n";
-        echo json_encode(json_decode($response), JSON_PRETTY_PRINT);
-        echo "</pre>";
-
-        echo "Hi";
-
-
-    });
-
     // Static Pages
     Route::get('/about', fn() => view('portal.pages.about'))->name('about');
     Route::get('/privacy-policy', fn() => view('portal.pages.privacy'))->name('privacy');

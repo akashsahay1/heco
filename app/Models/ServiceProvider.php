@@ -61,7 +61,10 @@ class ServiceProvider extends Model
 
     public function tripRegions()
     {
-        return $this->hasMany(TripRegion::class, 'hrp_id');
+        // Trips in this partner's region. Match region_id -> region_id: the
+        // hrp_id column was never populated anywhere, so the old hrp_id-based
+        // relation was always empty (#37). region_id is set at application time.
+        return $this->hasMany(TripRegion::class, 'region_id', 'region_id');
     }
 
     public function spPayments()

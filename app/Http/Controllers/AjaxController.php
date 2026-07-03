@@ -54,6 +54,7 @@ use App\Mail\NewsletterCampaignEmail;
 use App\Mail\BookingConfirmationEmail;
 use App\Mail\PaymentReceivedEmail;
 use App\Mail\SpApplicationReceivedEmail;
+use App\Mail\SupportRequestEmail;
 use App\Mail\SpApplicationApprovedEmail;
 use App\Mail\PricingApprovedEmail;
 use App\Mail\ProfileUpdatedEmail;
@@ -450,9 +451,325 @@ class AjaxController extends Controller
         return $result;
     }
 
+    /**
+     * Per-action authorization levels for the shared AJAX dispatcher.
+     *
+     * Both the admin domain (hecoadmin.test/ajax -> adminIndex) and the PUBLIC
+     * portal domain (hecoportal.test/ajax -> portalIndex) route through the same
+     * index() method, so route middleware alone cannot protect admin actions —
+     * every key is otherwise reachable unauthenticated from the public portal.
+     * This map gates each dispatched key by the minimum trust level required.
+     *
+     * Levels: public | auth | sp | sp_or_hct | hct | hct_admin
+     * Keep entries in the SAME ORDER as the index() dispatch chain below
+     * (the first key present on the request is the one that will be dispatched).
+     */
+    private const ACTION_LEVELS = [
+        // AUTH & USER
+        'userlogin' => 'public', 'login' => 'public',
+        'usersignup' => 'public', 'register' => 'public',
+        'save_nationality' => 'auth',
+        'update_profile' => 'auth',
+        'upload_profile_photo' => 'auth',
+        'change_password' => 'auth',
+        // TRAVELLER HOMEPAGE (guest + traveller)
+        'get_regions_for_map' => 'public',
+        'get_experiences_for_discover' => 'public',
+        'get_experience_detail' => 'public',
+        'get_reviews' => 'public',
+        'check_review_eligibility' => 'public',
+        'submit_review' => 'auth',
+        'set_landing_preferences' => 'public',
+        'chat_with_ai' => 'public',
+        'create_trip' => 'public',
+        'get_trip_selected_experiences' => 'public',
+        'get_trip_timeline' => 'public',
+        'get_chat_history' => 'public',
+        'sync_guest_journey' => 'auth',
+        'generate_itinerary' => 'public',
+        'add_experience_to_trip' => 'public',
+        'remove_experience_from_trip' => 'public',
+        'prefer_experience' => 'public',
+        'get_wishlist' => 'public',
+        'reorder_experiences' => 'public',
+        'update_group_details' => 'public',
+        'update_trip_start_date' => 'public',
+        'update_travel_preferences' => 'public',
+        'save_trip_name' => 'public',
+        'add_day_to_trip' => 'public',
+        'remove_day_from_trip' => 'public',
+        'get_trip_pricing' => 'public',
+        'get_category_providers' => 'public',
+        'create_razorpay_order' => 'public',
+        'log_razorpay_failure' => 'public',
+        'verify_razorpay_payment' => 'public',
+        'get_traveller_payment_history' => 'auth',
+        'get_trip_impact' => 'public',
+        'request_support' => 'public',
+        'subscribe_newsletter' => 'public',
+        'get_user_trips' => 'auth',
+        'reopen_trip' => 'auth',
+        'confirm_trip' => 'auth',
+        'erase_trip' => 'auth',
+        // HCT DASHBOARD
+        'get_dashboard_stats' => 'hct',
+        'create_hct_user' => 'hct_admin',
+        'update_hct_user' => 'hct_admin',
+        'deactivate_hct_user' => 'hct_admin',
+        'get_system_lists' => 'hct',
+        'save_system_list_item' => 'hct_admin',
+        'deactivate_system_list_item' => 'hct_admin',
+        'delete_system_list_item' => 'hct_admin',
+        'reset_hct_user_password' => 'hct_admin',
+        'get_ai_prompts' => 'hct',
+        'save_ai_prompt' => 'hct_admin',
+        'delete_ai_prompt' => 'hct_admin',
+        'get_activity_logs' => 'hct',
+        'get_newsletter_send_count' => 'hct',
+        'send_newsletter_campaign' => 'hct_admin',
+        'set_subscriber_status' => 'hct',
+        'get_sp_pricing' => 'sp_or_hct',
+        'save_sp_pricing' => 'sp_or_hct',
+        'delete_sp_pricing' => 'sp_or_hct',
+        'get_pending_pricing' => 'hct',
+        'approve_pricing' => 'hct',
+        'reject_pricing' => 'hct',
+        'get_room_availability' => 'public',
+        'get_support_requests' => 'hct',
+        'resolve_support_request' => 'hct',
+        'chat_with_ai_hct' => 'hct',
+        'get_lead_reminders' => 'hct',
+        'get_leads' => 'hct',
+        'update_lead' => 'hct',
+        'get_lead_history' => 'hct',
+        'get_upcoming_trips' => 'hct',
+        'get_trips_by_date_range' => 'hct',
+        'update_trip_status' => 'hct',
+        'get_calendar_trips' => 'hct',
+        'get_sp_payments' => 'hct',
+        'create_sp_payment' => 'hct',
+        'add_sp_payment_entry' => 'hct',
+        'edit_sp_payment_entry' => 'hct',
+        'get_sp_payment_history' => 'hct',
+        'get_traveller_payments_overview' => 'hct',
+        'get_gst_report' => 'hct',
+        'get_providers' => 'hct',
+        'edit_provider' => 'hct',
+        'get_provider_trips' => 'hct',
+        'get_provider_payment_history' => 'hct',
+        'get_traveler_trips' => 'hct',
+        'get_traveler_payment_history' => 'hct',
+        'get_provider_applications' => 'hct',
+        'approve_provider' => 'hct',
+        'reject_provider' => 'hct',
+        'remove_provider' => 'hct_admin',
+        'restore_provider' => 'hct_admin',
+        'permanently_delete_provider' => 'hct_admin',
+        // REGION
+        'get_regions_list' => 'hct',
+        'save_region' => 'hct',
+        'toggle_region' => 'hct',
+        'delete_region' => 'hct',
+        'bulk_delete_regions' => 'hct',
+        // CURRENCY (pricing-sensitive -> admin for writes)
+        'get_currencies_list' => 'hct',
+        'save_currency' => 'hct_admin',
+        'toggle_currency' => 'hct_admin',
+        'delete_currency' => 'hct_admin',
+        'bulk_delete_currencies' => 'hct_admin',
+        // EXPERIENCE & RP
+        'get_experiences_list' => 'hct',
+        'save_experience' => 'hct',
+        'disable_experience' => 'hct',
+        'bulk_delete_experiences' => 'hct',
+        'get_regenerative_projects' => 'hct',
+        'save_regenerative_project' => 'hct',
+        'disable_regenerative_project' => 'hct',
+        'bulk_delete_regenerative_projects' => 'hct',
+        // TRIP MANAGER
+        'get_trip_info' => 'hct',
+        'update_trip_info' => 'hct',
+        'add_traveller_payment' => 'hct',
+        'edit_traveller_payment' => 'hct',
+        'get_trip_itinerary' => 'hct',
+        'search_experiences_for_trip' => 'hct',
+        'add_experience_to_day' => 'hct',
+        'remove_experience_from_day' => 'hct',
+        'reorder_trip_days' => 'hct',
+        'add_trip_day' => 'hct',
+        'remove_trip_day' => 'hct',
+        'get_day_services' => 'hct',
+        'add_day_service' => 'hct',
+        'edit_day_service' => 'hct',
+        'remove_day_service' => 'hct',
+        'change_day_service_provider' => 'hct',
+        'request_ai_recalculation' => 'hct',
+        'recalculate_trip_cost' => 'hct',
+        // SP APPLICATION
+        'submit_sp_application' => 'public',
+        // SP AVAILABILITY (Portal - service provider)
+        'get_sp_calendar' => 'sp',
+        'sp_block_dates' => 'sp',
+        'sp_unblock_dates' => 'sp',
+        'sp_save_ical_url' => 'sp',
+        'sp_sync_ical_now' => 'sp',
+        'update_sp_profile' => 'sp',
+        'get_sp_assigned_trips' => 'sp',
+        // SP AVAILABILITY (Admin)
+        'admin_get_sp_calendar' => 'hct',
+        'admin_sp_block_dates' => 'hct',
+        'admin_sp_unblock_dates' => 'hct',
+        // SETTINGS & PDF
+        'get_settings' => 'hct',
+        'save_settings' => 'hct_admin',
+        'get_pdf_templates' => 'hct',
+        'save_pdf_template' => 'hct_admin',
+    ];
+
+    /**
+     * Central authorization gate for the shared AJAX dispatcher.
+     * Finds the first ACTION_LEVELS key present on the request (mirrors the
+     * dispatch order) and enforces its required trust level. Returns a 401/403
+     * JSON response when the caller is not permitted, or null to allow.
+     */
+    private function authorizeAction(Request $request): ?JsonResponse
+    {
+        $level = null;
+        foreach (self::ACTION_LEVELS as $key => $lvl) {
+            if ($request->has($key)) {
+                $level = $lvl;
+                break;
+            }
+        }
+        if ($level === null || $level === 'public') {
+            return null;
+        }
+        $user = auth()->user();
+        $ok = match ($level) {
+            'auth'      => (bool) $user,
+            'sp'        => $user && $user->isServiceProvider(),
+            'sp_or_hct' => $user && ($user->isServiceProvider() || $user->isHct()),
+            'hct'       => $user && $user->isHct(),
+            'hct_admin' => $user && $user->isHctAdmin(),
+            default     => false,
+        };
+        if ($ok) {
+            return null;
+        }
+        return response()->json(
+            ['error' => $user ? 'Forbidden' : 'Unauthorized'],
+            $user ? 403 : 401
+        );
+    }
+
+    /**
+     * Itinerary/price mutation keys that must be rejected once a trip is locked
+     * (paid or closed) — otherwise the total can drift after money is received.
+     */
+    private const LOCK_EDIT_KEYS = [
+        'update_trip_info', 'update_travel_preferences',
+        'add_experience_to_day', 'remove_experience_from_day',
+        'add_trip_day', 'remove_trip_day', 'reorder_trip_days',
+        'add_day_service', 'edit_day_service', 'remove_day_service',
+        'change_day_service_provider',
+    ];
+
+    /**
+     * A trip is locked for editing once its stage is closed or any traveller
+     * payment has been received. Confirmed-but-unpaid trips stay editable so HCT
+     * can still adjust them before payment.
+     */
+    private function tripIsLocked(Trip $trip): bool
+    {
+        if ($trip->stage === 'closed') {
+            return true;
+        }
+        return $trip->travellerPayments()->where('payment_status', 'paid')->exists();
+    }
+
+    /**
+     * True when every pinned provider rate is valid: it belongs to its named
+     * provider, is the right service type, and is approved + active. Each
+     * $pins entry is [providerId, pricingId, serviceType]; null pricing = skip.
+     * Shared by the pin-time (#18) and confirm-time (#16) checks.
+     */
+    private function pinnedRatesValid(array $pins): bool
+    {
+        foreach ($pins as [$providerId, $pricingId, $serviceType]) {
+            if (!$pricingId) {
+                continue;
+            }
+            $ok = SpPricing::where('id', $pricingId)
+                ->where('service_provider_id', $providerId)
+                ->where('service_type', $serviceType)
+                ->where('is_active', true)
+                ->where('approval_status', 'approved')
+                ->exists();
+            if (!$ok) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Best-effort resolve the trip a mutation targets, from whichever id the
+     * request carries (trip / day / day-experience / service / reorder list).
+     */
+    private function resolveTripFromRequest(Request $request): ?Trip
+    {
+        if ($request->filled('trip_id')) {
+            return Trip::find($request->trip_id);
+        }
+        if ($request->filled('day_id')) {
+            return optional(TripDay::find($request->day_id))->trip;
+        }
+        if ($request->filled('day_experience_id')) {
+            return optional(optional(TripDayExperience::find($request->day_experience_id))->tripDay)->trip;
+        }
+        if ($request->filled('service_id')) {
+            return optional(optional(TripDayService::find($request->service_id))->tripDay)->trip;
+        }
+        $order = $request->get('order');
+        if (is_array($order) && !empty($order)) {
+            return optional(TripDay::find(reset($order)))->trip;
+        }
+        return null;
+    }
+
+    /**
+     * Reject a mutation when it targets a locked (paid/closed) trip.
+     * Returns a 423 response to block, or null to allow.
+     */
+    private function guardLockedTrip(Request $request): ?JsonResponse
+    {
+        foreach (self::LOCK_EDIT_KEYS as $key) {
+            if ($request->has($key)) {
+                $trip = $this->resolveTripFromRequest($request);
+                if ($trip && $this->tripIsLocked($trip)) {
+                    return response()->json([
+                        'error' => 'This trip is locked (paid or closed) and can no longer be edited.',
+                    ], 423);
+                }
+                break;
+            }
+        }
+        return null;
+    }
+
     public function index(Request $request): JsonResponse
     {
         try {
+            // Central authorization gate — see ACTION_LEVELS. Protects admin
+            // actions reachable via the public portal /ajax (shared dispatcher).
+            if ($denied = $this->authorizeAction($request)) {
+                return $denied;
+            }
+            // Closed/paid trip lock — no itinerary/price edits after payment.
+            if ($locked = $this->guardLockedTrip($request)) {
+                return $locked;
+            }
+
             // ===== AUTH & USER =====
             if ($request->has('userlogin') || $request->has('login')) {
                 return $this->userLogin($request);
@@ -1887,7 +2204,14 @@ class AjaxController extends Controller
         // try to match experience names from the catalog and add them automatically
         if (empty($addedExperienceIds) && preg_match('/(?:added|adding|I\'ve added|I have added|added .* to your trip|adding .* to your)/i', $responseText)) {
             $fallbackIds = [];
-            foreach ($experiences as $exp) {
+            // Candidate catalogue to name-match against — active experiences, scoped
+            // to the trip's region when known (mirrors the single-region constraint).
+            // Previously this loop referenced an undefined $experiences, throwing a
+            // 500 whenever the AI said "added" without an [ADD_TO_TRIP] tag (#23).
+            $candidateExperiences = Experience::where('is_active', true)
+                ->when($currentTripRegionId, fn($q) => $q->where('region_id', $currentTripRegionId))
+                ->get(['id', 'name', 'region_id']);
+            foreach ($candidateExperiences as $exp) {
                 // Check if the experience name appears in the AI response
                 if (stripos($responseText, $exp->name) !== false) {
                     // Single-region constraint
@@ -2502,6 +2826,18 @@ class AjaxController extends Controller
             $data['guide_pricing_id'] = null;
         }
 
+        // Validate every pinned rate belongs to its named provider and is an
+        // approved, active row of the right service type — otherwise a traveller
+        // could pin an arbitrary/unapproved pricing id to any provider (#18).
+        $valid = $this->pinnedRatesValid([
+            [$data['accommodation_provider_id'] ?? null, $data['accommodation_pricing_id'] ?? null, 'accommodation'],
+            [$data['vehicle_provider_id'] ?? null,       $data['vehicle_pricing_id'] ?? null,       'transport'],
+            [$data['guide_provider_id'] ?? null,         $data['guide_pricing_id'] ?? null,         'guide'],
+        ]);
+        if (!$valid) {
+            return response()->json(["error" => "Selected provider rate is invalid or unavailable."], 422);
+        }
+
         $trip->update($data);
         return response()->json(["success" => true]);
     }
@@ -2766,12 +3102,17 @@ class AjaxController extends Controller
             $hasPayment = TravellerPayment::where("trip_id", $request->trip_id)->exists();
         }
 
-        SupportRequest::create([
+        $support = SupportRequest::create([
             "user_id" => $user->id,
             "trip_id" => ($request->trip_id !== 'guest') ? $request->trip_id : null,
             "message" => $request->message,
             "traveller_status" => $hasPayment ? "client" : "lead",
         ]);
+
+        // Notify the team so support requests aren't silently stranded in the DB (#27).
+        $support->setRelation('user', $user);
+        $adminEmail = Setting::getValue('site_email') ?: 'info@heco.eco';
+        $this->sendMail($adminEmail, new SupportRequestEmail($support), 'support_request:' . $support->id);
 
         return response()->json(["success" => true, "message" => "Support request submitted"]);
     }
@@ -2883,6 +3224,17 @@ class AjaxController extends Controller
         $hasItinerary = $trip->tripDays()->exists() || $trip->selectedExperiences()->exists();
         if (!$hasItinerary) {
             return response()->json(["error" => "Add at least one experience to your trip before confirming."], 422);
+        }
+        // Re-verify any pinned provider rates are still valid at confirm time — a
+        // pricing row may have been unapproved or deactivated since it was pinned,
+        // which would otherwise create an orphan booking on confirm (#16).
+        $ratesValid = $this->pinnedRatesValid([
+            [$trip->accommodation_provider_id, $trip->accommodation_pricing_id, 'accommodation'],
+            [$trip->vehicle_provider_id,       $trip->vehicle_pricing_id,       'transport'],
+            [$trip->guide_provider_id,         $trip->guide_pricing_id,         'guide'],
+        ]);
+        if (!$ratesValid) {
+            return response()->json(["error" => "A selected provider rate is no longer available. Please review your Comfort & Partners selections before confirming."], 422);
         }
         // Confirm the trip but keep the stage open — closing the stage is an
         // explicit HCT action (matches the C2 guard against silent downgrades).
@@ -4813,9 +5165,11 @@ class AjaxController extends Controller
             $tripsById[$trip->id]['_services'][$label] = true;
         }
 
-        // 2) HRP-managed regions (if this provider is an HRP).
-        if (strtolower((string) $provider->provider_type) === 'hrp') {
-            $tripRegions = TripRegion::where('hrp_id', $provider->id)->with('trip')->get();
+        // 2) HRP-managed regions (if this provider is an HRP). Match on region_id —
+        // the provider's region_id is populated at application, whereas hrp_id was
+        // never written anywhere, so the old hrp_id match was always empty (#37).
+        if (strtolower((string) $provider->provider_type) === 'hrp' && $provider->region_id) {
+            $tripRegions = TripRegion::where('region_id', $provider->region_id)->with('trip')->get();
             foreach ($tripRegions as $tr) {
                 $trip = $tr->trip;
                 if (!$trip) {
@@ -5860,6 +6214,13 @@ class AjaxController extends Controller
     {
         $trip = Trip::find($request->trip_id);
 
+        // Ownership guard (IDOR): a traveller may only see their own trip's
+        // payments; HCT staff may see any. Auth is already ensured by the gate.
+        $user = auth()->user();
+        if (!$trip || (!$user->isHct() && (int) $trip->user_id !== (int) $user->id)) {
+            return response()->json(["error" => "Not found"], 404);
+        }
+
         $payments = TravellerPayment::where("trip_id", $request->trip_id)
             ->with(["recorder", "trip:id,trip_id,trip_name,final_price"])
             ->orderBy("payment_date", "desc")
@@ -5963,6 +6324,12 @@ class AjaxController extends Controller
             ["cost_per_person" => (float) $experience->cost_activities]
         ));
 
+        // Component placeholder rows (accommodation / transport / guide / other) are
+        // created at cost=0 — the bundled cost is captured ONCE by the Experience
+        // breakdown in CostCalculatorService (single source of truth). Storing the
+        // component cost here as well would double-count it (calculator adds cost>0
+        // day-services on top of the exp components). A pinned provider later sets
+        // the real rate on the row, replacing the bundled estimate for that line.
         $componentMap = [
             "cost_accommodation" => ["accommodation", $experience->accommodation_category ?? "Accommodation"],
             "cost_logistics"     => ["transport",     "Logistics / Transport"],
@@ -5970,16 +6337,21 @@ class AjaxController extends Controller
             "cost_other"         => ["other",         "Other"],
         ];
         foreach ($componentMap as $field => [$serviceType, $description]) {
-            $cost = (float) $experience->{$field};
-            if ($cost <= 0) continue;
+            // Only create a placeholder for components the experience actually
+            // bundles, so the itinerary breakdown/pin targets stay meaningful.
+            if ((float) $experience->{$field} <= 0) continue;
             TripDayService::create([
                 "trip_day_id" => $day->id,
                 "service_type" => $serviceType,
                 "description" => $description,
-                "cost" => $cost,
+                "cost" => 0,
                 "is_included" => true,
             ]);
         }
+
+        // Persist a fresh total so the trip's price reflects the new experience
+        // immediately (mutation endpoints otherwise leave a stale final_price).
+        app(CostCalculatorService::class)->calculate($day->trip);
 
         return response()->json(["success" => true, "day_experience" => $dayExp]);
     }
@@ -6146,6 +6518,16 @@ class AjaxController extends Controller
         $date = $service->tripDay->date;
         $trip = $service->tripDay->trip;
 
+        // Validate the target is a real, approved provider before assigning it —
+        // otherwise a day service could be pinned to an unapproved/non-existent
+        // provider with untracked cost (NEW-B).
+        if ($newSpId) {
+            $sp = ServiceProvider::find($newSpId);
+            if (!$sp || $sp->status !== 'approved') {
+                return response()->json(['error' => 'Selected provider is not available.'], 422);
+            }
+        }
+
         $availabilityService = new SpAvailabilityService();
 
         // Release any per-room bookings under the old SP for this service.
@@ -6178,6 +6560,11 @@ class AjaxController extends Controller
         }
 
         $service->update($updateData);
+        // Reflect the provider's cost in the trip total immediately (NEW-C) —
+        // otherwise the day-level assign leaves a stale final_price.
+        if ($trip) {
+            app(CostCalculatorService::class)->calculate($trip);
+        }
         return response()->json(["success" => true]);
     }
 
@@ -6310,10 +6697,27 @@ class AjaxController extends Controller
     protected function saveSettings(Request $request): JsonResponse
     {
         $settings = $request->get("settings", []);
-        foreach ($settings as $key => $value) {
-            Setting::setValue($key, $value, $request->get("group", "general"));
+        if (!is_array($settings)) {
+            return response()->json(["error" => "Invalid settings payload"], 422);
         }
-        return response()->json(["success" => true]);
+        // Whitelist: only keys that already exist as Setting rows may be updated,
+        // so arbitrary/injection keys are rejected. Each key keeps its own group.
+        // No hardcoded list — the DB is the single source of truth; a genuinely
+        // new setting must be seeded first before it becomes editable here.
+        $existing = Setting::whereIn("key", array_keys($settings))->get()->keyBy("key");
+        $rejected = array_values(array_diff(array_keys($settings), $existing->keys()->all()));
+        if (!empty($rejected)) {
+            Log::warning("saveSettings rejected unknown setting keys", [
+                "keys" => $rejected,
+                "user_id" => auth()->id(),
+            ]);
+        }
+        foreach ($settings as $key => $value) {
+            if ($existing->has($key)) {
+                Setting::setValue($key, $value, $existing[$key]->group);
+            }
+        }
+        return response()->json(["success" => true, "rejected" => $rejected]);
     }
 
     protected function getPdfTemplates(Request $request): JsonResponse
