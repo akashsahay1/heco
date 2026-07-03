@@ -14,15 +14,16 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * F1 — a day-level provider assigned to a service must REPLACE the experience's
- * bundled component for that category, not stack on top of it (which would
- * double-charge the traveller: provider rate + bundled estimate).
+ * Provider services and experience components are DIFFERENT real-world segments
+ * for accommodation & transport (hotel vs trek-time stay; anchor→hotel vs
+ * hotel→trek), so a day-level provider STACKS on top of the experience component
+ * — both are charged, shown as separate lines. (It does NOT replace it.)
  */
 class DayProviderReplaceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_day_level_provider_replaces_bundled_component(): void
+    public function test_day_level_provider_stacks_on_bundled_component(): void
     {
         $user = User::create([
             'full_name' => 'U', 'email' => 'u@dpr.test',
@@ -52,9 +53,9 @@ class DayProviderReplaceTest extends TestCase
 
         $breakdown = app(CostCalculatorService::class)->calculate($trip);
 
-        // Accommodation = provider rate only (4000), NOT 4000 + bundled 1000.
-        $this->assertSame(4000, (int) $breakdown['accommodation_cost']);
-        // Activities still counted (1000). Total = 4000 + 1000 = 5000 (not 6000).
-        $this->assertSame(5000, (int) $breakdown['total_cost']);
+        // Accommodation = experience trek-stay (1000) + provider hotel (4000) = 5000.
+        $this->assertSame(5000, (int) $breakdown['accommodation_cost']);
+        // + activities 1000 => trip cost 6000 (both accommodation segments charged).
+        $this->assertSame(6000, (int) $breakdown['total_cost']);
     }
 }

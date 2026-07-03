@@ -189,19 +189,6 @@ class CostCalculatorService
         // Track which experiences have already been costed (charge once per experience, not per day)
         $chargedExperienceIds = [];
 
-        // A day-level SP-assigned service (cost>0) REPLACES the experience's bundled
-        // estimate for that category — it must NOT stack on top, which would double-
-        // charge the traveller (provider rate + bundled component). Detect which
-        // categories a real day service already covers so those components are dropped.
-        $serviceCovered = ['transport' => false, 'accommodation' => false, 'guide' => false];
-        foreach ($trip->tripDays as $day) {
-            foreach ($day->services as $service) {
-                if ((float) $service->cost > 0 && array_key_exists($service->service_type, $serviceCovered)) {
-                    $serviceCovered[$service->service_type] = true;
-                }
-            }
-        }
-
         foreach ($trip->tripDays as $day) {
             // Charge extra days (days without experiences)
             $hasExperiences = $day->experiences->isNotEmpty();
@@ -256,26 +243,25 @@ class CostCalculatorService
                     $componentSum = $activitiesComponent;
                 }
 
-                // Drop any component already covered by a day-level provider so the
-                // provider rate replaces (not stacks on) the bundled estimate (#F1).
-                $effAccom     = $serviceCovered['accommodation'] ? 0.0 : $accomComponent;
-                $effLogistics = $serviceCovered['transport']     ? 0.0 : $logisticsComponent;
-                $effGuide     = $serviceCovered['guide']         ? 0.0 : $guideComponent;
-
-                $accommodationCost += round($effAccom      * $peopleFactor * $accomMultiplier);
-                $transportCost     += round($effLogistics  * $peopleFactor * $vehicleMultiplier);
-                $guideCost         += round($effGuide      * $peopleFactor * $guideMultiplier);
+                // The experience's own components (trek-time accommodation, hotel→trek
+                // transport, guide, activities) always count. Provider services are
+                // DIFFERENT segments (hotel, anchor→hotel) and STACK on top — they do
+                // NOT replace these. (Guide is kept exclusive at the pin stage, so an
+                // experience guide and a guide provider never coexist.)
+                $accommodationCost += round($accomComponent      * $peopleFactor * $accomMultiplier);
+                $transportCost     += round($logisticsComponent  * $peopleFactor * $vehicleMultiplier);
+                $guideCost         += round($guideComponent      * $peopleFactor * $guideMultiplier);
                 $activityCost      += round($activitiesComponent * $peopleFactor);
                 $otherCost         += round($otherComponent      * $peopleFactor);
 
-                $accommodationBase += $effAccom     * $peopleFactor;
-                $transportBase     += $effLogistics * $peopleFactor;
-                $guideBase         += $effGuide     * $peopleFactor;
+                $accommodationBase += $accomComponent     * $peopleFactor;
+                $transportBase     += $logisticsComponent * $peopleFactor;
+                $guideBase         += $guideComponent     * $peopleFactor;
 
                 // Keep TripDayExperience.total_cost in sync for any downstream readers.
-                $expTotal = ($effAccom * $accomMultiplier
-                    + $effLogistics * $vehicleMultiplier
-                    + $effGuide * $guideMultiplier
+                $expTotal = ($accomComponent * $accomMultiplier
+                    + $logisticsComponent * $vehicleMultiplier
+                    + $guideComponent * $guideMultiplier
                     + $activitiesComponent
                     + $otherComponent) * $peopleFactor;
                 $dayExp->update(['total_cost' => round($expTotal)]);
@@ -299,25 +285,24 @@ class CostCalculatorService
         $guideBase = $guideBase * $budgetMultiplier;
 
         // ── Provider-driven costs ───────────────────────────────────────────────
-        // When the traveller fixes a specific provider for accommodation / guide /
-        // transport, that provider's sp_pricing rate is a contractual figure that
-        // REPLACES the experience estimate for that line — equal to the rate shown
-        // in the dropdown × the relevant quantity.
+        // A pinned provider's sp_pricing rate is a contractual figure (rate × qty).
+        // For accommodation & transport it is a DIFFERENT segment from the experience
+        // (hotel vs trek stay; anchor→hotel vs hotel→trek), so it ADDS on top of the
+        // experience component. Guide is EXCLUSIVE — a guide can only be pinned when
+        // the experience provides none (cost_guide=0), so replacing is a no-op stack.
         if ($trip->accommodation_pricing_id && ($accomPricing = SpPricing::live()->find($trip->accommodation_pricing_id))) {
             $nights = $this->resolveNights($trip);
             $occupancy = max((int) ($accomPricing->default_occupancy ?: 2), 1);
             $rooms = max((int) ceil(($adults + $children) / $occupancy), 1);
-            $accommodationCost = (int) round((float) $accomPricing->price * $rooms * $nights);
-            $accomMultiplier = 1.0;
+            $accommodationCost += (int) round((float) $accomPricing->price * $rooms * $nights);
         }
         if ($trip->guide_pricing_id && ($guidePricing = SpPricing::live()->find($trip->guide_pricing_id))) {
             $guideDays = max($trip->tripDays->count() ?: ($this->resolveNights($trip) + 1), 1);
-            $guideCost = (int) round((float) $guidePricing->price * $guideDays);
+            $guideCost += (int) round((float) $guidePricing->price * $guideDays);
             $guideMultiplier = 1.0;
         }
         if ($trip->vehicle_pricing_id && ($vehiclePricing = SpPricing::live()->find($trip->vehicle_pricing_id))) {
-            $transportCost = $this->providerTransportCost($vehiclePricing, $trip, $adults, $children);
-            $vehicleMultiplier = 1.0;
+            $transportCost += $this->providerTransportCost($vehiclePricing, $trip, $adults, $children);
         }
 
         $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;

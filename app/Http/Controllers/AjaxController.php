@@ -2965,8 +2965,30 @@ class AjaxController extends Controller
             return response()->json(["error" => "Selected provider rate is invalid or unavailable."], 422);
         }
 
+        // Guide is EXCLUSIVE: if the trip's experience already provides a guide, an
+        // additional guide provider can't be pinned on top (unlike accommodation /
+        // transport, which are distinct segments and stack).
+        if (!empty($data['guide_pricing_id']) && $this->tripHasIncludedGuide($trip)) {
+            return response()->json([
+                "error" => "This experience already includes a guide, so an additional guide can't be added.",
+            ], 422);
+        }
+
         $trip->update($data);
         return response()->json(["success" => true]);
+    }
+
+    /**
+     * True when any experience selected on the trip already bundles a guide
+     * (cost_guide > 0) — used to block adding a duplicate guide provider.
+     */
+    private function tripHasIncludedGuide(Trip $trip): bool
+    {
+        $ids = $trip->selectedExperiences()->pluck('experience_id');
+        if ($ids->isEmpty()) {
+            return false;
+        }
+        return Experience::whereIn('id', $ids)->where('cost_guide', '>', 0)->exists();
     }
 
     protected function saveTripName(Request $request): JsonResponse
