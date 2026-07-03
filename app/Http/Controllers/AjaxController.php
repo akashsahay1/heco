@@ -5650,10 +5650,13 @@ class AjaxController extends Controller
             ],
             "continent" => "required|string|max:100",
             "country" => "required|string|max:100",
+            "image" => "nullable|file|mimes:jpg,jpeg,png,webp|max:6144",
         ];
 
         $validator = Validator::make($request->all(), $rules, [
             "name.unique" => "A region with this name already exists.",
+            "image.mimes" => "Please choose a JPG, PNG or WEBP image.",
+            "image.max"   => "The image must be 6 MB or smaller.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -5671,20 +5674,53 @@ class AjaxController extends Controller
             "is_active" => $request->boolean("is_active", true),
         ];
 
-        if ($request->filled("region_id")) {
-            $region = Region::findOrFail($request->region_id);
-            $region->update($data);
-            $msg = "Region updated successfully";
-        } else {
+        // Anchor points (map markers) — accept a JSON string or an array; the
+        // model casts to array. Only overwrite when the field is present (#25).
+        if ($request->has("anchor_points")) {
+            $anchors = $request->input("anchor_points");
+            if (is_string($anchors)) {
+                $decoded = json_decode($anchors, true);
+                $anchors = json_last_error() === JSON_ERROR_NONE ? $decoded : null;
+            }
+            $data["anchor_points"] = is_array($anchors) ? array_values($anchors) : null;
+        }
+
+        // sort_order — allow reordering on UPDATE too (was create-only, #25).
+        if ($request->filled("sort_order")) {
+            $data["sort_order"] = (int) $request->sort_order;
+        }
+
+        $isNew = !$request->filled("region_id");
+        $region = $isNew ? new Region() : Region::findOrFail($request->region_id);
+        $oldImage = $region->image;
+
+        // Image upload — stored year/month-wise + resized (ImageUploadService, #25).
+        if ($request->hasFile("image")) {
+            $path = \App\Services\ImageUploadService::storeUploadedImage($request->file("image"), 'regions', 1200);
+            if (!$path) {
+                return response()->json(["error" => "Could not process the image. Please try a different file."], 422);
+            }
+            $data["image"] = $path;
+        }
+
+        if ($isNew && !isset($data["sort_order"])) {
             $data["sort_order"] = Region::max("sort_order") + 1;
-            $region = Region::create($data);
-            $msg = "Region created successfully";
+        }
+
+        $region->fill($data)->save();
+
+        // Delete the replaced image only after the new one is safely stored.
+        if (!empty($data["image"]) && $oldImage && $oldImage !== $data["image"]) {
+            \App\Services\ImageUploadService::deleteLocal($oldImage);
         }
 
         $this->logActivity('region_saved', 'Region', $region->id, [
-            'name' => $region->name, 'created' => !$request->filled('region_id'),
+            'name' => $region->name, 'created' => $isNew,
         ]);
-        return response()->json(["success" => $msg, "region" => $region]);
+        return response()->json([
+            "success" => $isNew ? "Region created successfully" : "Region updated successfully",
+            "region" => $region,
+        ]);
     }
 
     protected function toggleRegion(Request $request): JsonResponse

@@ -124,6 +124,12 @@
                     <label class="form-label small">External URL</label>
                     <input type="url" class="form-control form-control-sm" id="regionUrl">
                 </div>
+                <div class="mb-3">
+                    <label class="form-label small">Region Image</label>
+                    <input type="file" class="form-control form-control-sm" id="regionImage" accept="image/jpeg,image/png,image/webp">
+                    <small class="text-muted">JPG, PNG or WEBP — up to 6 MB. Resized automatically.</small>
+                    <div class="mt-2"><img id="regionImagePreview" src="" alt="Region image" style="max-height:90px;border-radius:6px;display:none;"></div>
+                </div>
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="regionActive" checked>
                     <label class="form-check-label small" for="regionActive">Active</label>
@@ -271,6 +277,8 @@ function resetForm() {
     jQuery('#regionLongitude').val('');
     jQuery('#regionUrl').val('');
     jQuery('#regionActive').prop('checked', true);
+    jQuery('#regionImage').val('');
+    jQuery('#regionImagePreview').attr('src', '').hide();
     jQuery('#regionModalTitle').text('Add Region');
 }
 
@@ -309,26 +317,34 @@ jQuery('#btnReset').on('click', function() {
 });
 
 jQuery('#btnSaveRegion').on('click', function() {
-    var data = {
-        save_region: 1,
-        name: jQuery('#regionName').val(),
-        continent: jQuery('#regionContinent').val(),
-        country: jQuery('#regionCountry').val(),
-        description: jQuery('#regionDescription').val(),
-        latitude: jQuery('#regionLatitude').val(),
-        longitude: jQuery('#regionLongitude').val(),
-        external_url: jQuery('#regionUrl').val(),
-        is_active: jQuery('#regionActive').is(':checked') ? 1 : 0,
-    };
-
+    // FormData so the region image file can be uploaded in the same request.
+    var fd = new FormData();
+    fd.append('save_region', 1);
+    fd.append('name', jQuery('#regionName').val());
+    fd.append('continent', jQuery('#regionContinent').val());
+    fd.append('country', jQuery('#regionCountry').val());
+    fd.append('description', jQuery('#regionDescription').val());
+    fd.append('latitude', jQuery('#regionLatitude').val());
+    fd.append('longitude', jQuery('#regionLongitude').val());
+    fd.append('external_url', jQuery('#regionUrl').val());
+    fd.append('is_active', jQuery('#regionActive').is(':checked') ? 1 : 0);
     var regionId = jQuery('#regionId').val();
-    if (regionId) data.region_id = regionId;
+    if (regionId) fd.append('region_id', regionId);
+    var imgFile = jQuery('#regionImage')[0].files[0];
+    if (imgFile) fd.append('image', imgFile);
 
-    ajaxPost(data, function(resp) {
-        showAlert(resp.message || resp.success || 'Saved', 'success');
-        bootstrap.Modal.getInstance(jQuery('#regionModal')[0]).hide();
-        buildRegionMap();
-        loadRegions();
+    jQuery.ajax({
+        url: '/ajax', method: 'POST', data: fd, processData: false, contentType: false,
+        success: function(resp) {
+            showAlert(resp.message || resp.success || 'Saved', 'success');
+            bootstrap.Modal.getInstance(jQuery('#regionModal')[0]).hide();
+            buildRegionMap();
+            loadRegions();
+        },
+        error: function(xhr) {
+            var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Error') : 'Request failed';
+            showAlert(msg, 'danger');
+        }
     });
 });
 
@@ -349,7 +365,22 @@ jQuery(document).on('click', '.btn-edit', function() {
     jQuery('#regionActive').prop('checked', region.is_active);
     jQuery('#regionModalTitle').text('Edit Region');
 
+    // Reset the file input; show the current image (if any) as a preview.
+    jQuery('#regionImage').val('');
+    if (region.image) {
+        jQuery('#regionImagePreview').attr('src', region.image).show();
+    } else {
+        jQuery('#regionImagePreview').attr('src', '').hide();
+    }
+
     new bootstrap.Modal(jQuery('#regionModal')[0]).show();
+});
+
+// Live preview when a new image file is chosen.
+jQuery(document).on('change', '#regionImage', function() {
+    var file = this.files[0];
+    if (!file) return;
+    jQuery('#regionImagePreview').attr('src', URL.createObjectURL(file)).show();
 });
 
 jQuery(document).on('click', '.btn-toggle', function() {
