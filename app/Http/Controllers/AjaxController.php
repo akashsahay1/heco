@@ -4212,7 +4212,7 @@ class AjaxController extends Controller
         $serviceType = $request->input('service_type');
         $baseRules = [
             "provider_id"  => "required|exists:service_providers,id",
-            "service_type" => "required|in:accommodation,transport,guide,activity,other",
+            "service_type" => "required|in:accommodation,transport,guide,activity,meal,other",
             "price"        => "required|numeric|min:0",
         ];
 
@@ -4243,6 +4243,12 @@ class AjaxController extends Controller
                 "category"          => "nullable|string|max:100",
                 "min_group"         => "nullable|integer|min:1|max:500",
                 "max_group"         => "nullable|integer|min:1|max:500",
+                "unit"              => "required|string|max:50",
+            ],
+            'meal' => [
+                // e.g. Breakfast / Lunch / Dinner, priced per person or per meal.
+                "category"          => "nullable|string|max:100",
+                "meal_plan"         => "nullable|string|max:100",
                 "unit"              => "required|string|max:50",
             ],
             'other' => [

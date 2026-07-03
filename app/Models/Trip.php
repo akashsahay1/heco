@@ -15,7 +15,7 @@ class Trip extends Model
         'accommodation_comfort', 'accommodation_provider_id', 'accommodation_pricing_id',
         'vehicle_comfort', 'vehicle_provider_id', 'vehicle_pricing_id',
         'guide_preference', 'guide_provider_id', 'guide_pricing_id',
-        'travel_pace', 'budget_sensitivity', 'other_preferences',
+        'travel_pace', 'budget_sensitivity', 'budget_notes', 'other_preferences',
         'transport_cost', 'accommodation_cost', 'guide_cost', 'activity_cost', 'extra_day_cost', 'other_cost', 'total_cost',
         'margin_rp_percent', 'margin_rp_amount', 'margin_hrp_percent', 'margin_hrp_amount',
         'commission_hct_percent', 'commission_hct_amount',
