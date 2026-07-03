@@ -420,9 +420,13 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                          total — each experience's cost is already split across the component
                                          rows below (Accommodation/Transport/Guide/Activities). --}}
                                     <div id="prExperiences"></div>
-                                    {{-- One row per cost component the calculator returns --}}
-                                    <div class="pricing-row"><span>Accommodation <small class="text-muted price-detail" id="prAccommodationNote"></small></span><span id="prAccommodation"></span></div>
-                                    <div class="pricing-row"><span>Transport <small class="text-muted price-detail" id="prTransportNote"></small></span><span id="prTransport"></span></div>
+                                    {{-- One row per cost component the calculator returns.
+                                         Accommodation & Transport split into an experience
+                                         segment (trek stay / hotel→trek) and a provider
+                                         segment (hotel / anchor→hotel) when a provider is
+                                         chosen — rendered by loadPricing(). --}}
+                                    <div id="prAccommodationRows"></div>
+                                    <div id="prTransportRows"></div>
                                     <div class="pricing-row"><span>Guide <small class="text-muted price-detail" id="prGuideNote"></small></span><span id="prGuide"></span></div>
                                     <div class="pricing-row"><span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span><span id="prActivities"></span></div>
                                     <div class="pricing-row"><span>Extra Days <small class="text-muted price-detail" id="prExtraDaysNote"></small></span><span id="prExtraDays"></span></div>
@@ -2043,8 +2047,18 @@ jQuery(function() {
 
             // Accommodation, Vehicle and Guide are priced per-provider now (no inline
             // dropdown price), so the full per-component breakdown lives here instead.
-            jQuery('#prAccommodation').text(fmtPriceRow(p.accommodation_cost));
-            jQuery('#prTransport').text(fmtPriceRow(p.transport_cost));
+            // Accommodation & Transport show two lines when a provider segment
+            // exists (experience trek-stay/hotel→trek + provider hotel/anchor→hotel).
+            function segmentRows(label, expCost, provCost, total) {
+                expCost = Number(expCost) || 0; provCost = Number(provCost) || 0;
+                if (provCost > 0 && expCost > 0) {
+                    return '<div class="pricing-row"><span>' + label + ' <small class="text-muted">(experience)</small></span><span>' + fmtPriceRow(expCost) + '</span></div>'
+                         + '<div class="pricing-row"><span>' + label + ' <small class="text-muted">(provider)</small></span><span>' + fmtPriceRow(provCost) + '</span></div>';
+                }
+                return '<div class="pricing-row"><span>' + label + '</span><span>' + fmtPriceRow(total) + '</span></div>';
+            }
+            jQuery('#prAccommodationRows').html(segmentRows('Accommodation', p.accommodation_experience_cost, p.accommodation_provider_cost, p.accommodation_cost));
+            jQuery('#prTransportRows').html(segmentRows('Transport', p.transport_experience_cost, p.transport_provider_cost, p.transport_cost));
             jQuery('#prGuide').text(fmtPriceRow(p.guide_cost));
             jQuery('#prActivities').text(fmtPriceRow(p.activity_cost));
             jQuery('#prExtraDays').text(fmtPriceRow(p.extra_day_cost));

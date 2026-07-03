@@ -55,6 +55,9 @@ class DayProviderReplaceTest extends TestCase
 
         // Accommodation = experience trek-stay (1000) + provider hotel (4000) = 5000.
         $this->assertSame(5000, (int) $breakdown['accommodation_cost']);
+        // ...shown as two separate segments in the pricing summary.
+        $this->assertSame(1000, (int) $breakdown['accommodation_experience_cost']);
+        $this->assertSame(4000, (int) $breakdown['accommodation_provider_cost']);
         // + activities 1000 => trip cost 6000 (both accommodation segments charged).
         $this->assertSame(6000, (int) $breakdown['total_cost']);
     }

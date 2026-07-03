@@ -165,6 +165,12 @@ class CostCalculatorService
         $activityCost = 0;
         $otherCost = 0;
 
+        // Provider portion of accommodation/transport, tracked separately so the
+        // pricing summary can show the experience segment (trek stay / hotel→trek)
+        // and the provider segment (hotel / anchor→hotel) as two distinct lines.
+        $accommodationProviderCost = 0;
+        $transportProviderCost = 0;
+
         // Track each per-option line at multiplier=1.0 so the portal can show
         // alternative prices (e.g. "what if I picked Premium SUV instead?")
         // inside each dropdown option without re-running the calculator.
@@ -204,8 +210,8 @@ class CostCalculatorService
                 $cost = (float) $service->cost;
                 if ($cost <= 0) continue;
                 match ($service->service_type) {
-                    'transport' => [$transportCost += round($cost * $vehicleMultiplier), $transportBase += $cost],
-                    'accommodation' => [$accommodationCost += round($cost * $accomMultiplier), $accommodationBase += $cost],
+                    'transport' => [$transportCost += round($cost * $vehicleMultiplier), $transportBase += $cost, $transportProviderCost += round($cost * $vehicleMultiplier)],
+                    'accommodation' => [$accommodationCost += round($cost * $accomMultiplier), $accommodationBase += $cost, $accommodationProviderCost += round($cost * $accomMultiplier)],
                     'guide' => [$guideCost += round($cost * $guideMultiplier), $guideBase += $cost],
                     'activity' => $activityCost += $cost,
                     default => $otherCost += $cost,
@@ -280,6 +286,10 @@ class CostCalculatorService
         $accommodationCost = (int) round($accommodationCost * $budgetMultiplier);
         $guideCost = (int) round($guideCost * $budgetMultiplier);
         $otherCost = (int) round($otherCost * $budgetMultiplier);
+        // Keep the provider-portion trackers in step with the same scaling so the
+        // experience segment = total - provider stays exact.
+        $accommodationProviderCost = (int) round($accommodationProviderCost * $budgetMultiplier);
+        $transportProviderCost = (int) round($transportProviderCost * $budgetMultiplier);
         $transportBase = $transportBase * $budgetMultiplier;
         $accommodationBase = $accommodationBase * $budgetMultiplier;
         $guideBase = $guideBase * $budgetMultiplier;
@@ -294,7 +304,9 @@ class CostCalculatorService
             $nights = $this->resolveNights($trip);
             $occupancy = max((int) ($accomPricing->default_occupancy ?: 2), 1);
             $rooms = max((int) ceil(($adults + $children) / $occupancy), 1);
-            $accommodationCost += (int) round((float) $accomPricing->price * $rooms * $nights);
+            $accomProviderLine = (int) round((float) $accomPricing->price * $rooms * $nights);
+            $accommodationCost += $accomProviderLine;
+            $accommodationProviderCost += $accomProviderLine;
         }
         if ($trip->guide_pricing_id && ($guidePricing = SpPricing::live()->find($trip->guide_pricing_id))) {
             $guideDays = max($trip->tripDays->count() ?: ($this->resolveNights($trip) + 1), 1);
@@ -302,7 +314,9 @@ class CostCalculatorService
             $guideMultiplier = 1.0;
         }
         if ($trip->vehicle_pricing_id && ($vehiclePricing = SpPricing::live()->find($trip->vehicle_pricing_id))) {
-            $transportCost += $this->providerTransportCost($vehiclePricing, $trip, $adults, $children);
+            $transProviderLine = $this->providerTransportCost($vehiclePricing, $trip, $adults, $children);
+            $transportCost += $transProviderLine;
+            $transportProviderCost += $transProviderLine;
         }
 
         $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
@@ -359,6 +373,14 @@ class CostCalculatorService
         $data['transport_base']      = (int) round($transportBase);
         $data['accommodation_base']  = (int) round($accommodationBase);
         $data['guide_base']          = (int) round($guideBase);
+
+        // Split accommodation/transport into the experience segment (trek stay /
+        // hotel→trek) and the provider segment (hotel / anchor→hotel) so the
+        // pricing summary can show them as two separate lines.
+        $data['accommodation_provider_cost']   = (int) $accommodationProviderCost;
+        $data['accommodation_experience_cost'] = (int) max(0, $accommodationCost - $accommodationProviderCost);
+        $data['transport_provider_cost']       = (int) $transportProviderCost;
+        $data['transport_experience_cost']     = (int) max(0, $transportCost - $transportProviderCost);
 
         return $data;
     }
