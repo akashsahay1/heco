@@ -2331,6 +2331,12 @@ jQuery(function() {
         // Tirthan trip doesn't list Spiti/Ladakh providers. The server resolves
         // the region authoritatively from trip_id; region_id is a guest fallback.
         ajaxPost({ get_category_providers: 1, service_type: cfg.service, category: category, region_id: tripRegionId || '', trip_id: window.tripId || '' }, function(resp) {
+            // Guide is exclusive — if the experience already provides a guide, show a
+            // notice instead of provider options (backend rejects an added guide too).
+            if (resp && resp.guide_included) {
+                $box.html('<div class="provider-cards-empty"><i class="bi bi-info-circle"></i> A guide is already included in your experience, so an additional guide can\'t be added.</div>').removeClass('d-none');
+                return;
+            }
             var list = (resp && resp.providers) || [];
             if (!list.length) {
                 $box.html('<div class="provider-cards-empty">No providers available</div>').removeClass('d-none');

@@ -2895,7 +2895,19 @@ class AjaxController extends Controller
             'unit'          => $r->unit ?: 'night',
         ])->values();
 
-        return response()->json(["success" => true, "providers" => $providers]);
+        // Guide is exclusive — tell the UI to show a notice and hide the guide
+        // provider list when the trip's experience already provides a guide.
+        $guideIncluded = false;
+        if ($request->service_type === 'guide' && $request->filled('trip_id') && $request->trip_id !== 'guest') {
+            $t = Trip::find($request->trip_id);
+            $guideIncluded = $t ? $this->tripHasIncludedGuide($t) : false;
+        }
+
+        return response()->json([
+            "success" => true,
+            "providers" => $providers,
+            "guide_included" => $guideIncluded,
+        ]);
     }
 
     protected function updateTravelPreferences(Request $request): JsonResponse

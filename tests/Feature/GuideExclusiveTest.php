@@ -88,4 +88,16 @@ class GuideExclusiveTest extends TestCase
         $this->pinGuide($trip)->assertStatus(200);
         $this->assertEquals($this->guidePricing->id, $trip->fresh()->guide_pricing_id);
     }
+
+    public function test_get_category_providers_flags_guide_included(): void
+    {
+        $trip = $this->tripWithGuideCost(2000);
+        $this->actingAs($this->traveller)
+            ->post("http://{$this->portal}/ajax", [
+                'get_category_providers' => 1, 'service_type' => 'guide',
+                'category' => 'Local Guide', 'trip_id' => $trip->id,
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('guide_included', true);
+    }
 }
