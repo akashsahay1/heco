@@ -10,6 +10,8 @@ use App\Models\Trip;
 use App\Models\TripDay;
 use App\Models\TripDayExperience;
 use App\Models\User;
+use App\Models\ServiceProvider;
+use App\Models\SpPricing;
 use App\Services\CostCalculatorService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use ReflectionMethod;
@@ -83,5 +85,36 @@ class GuestVsLoginPricingTest extends TestCase
     {
         $prefs = ['accommodation_comfort' => 'Cat B - Comfort', 'guide_preference' => 'Certified/Expert'];
         $this->assertSame($this->loginTotal($prefs), $this->guestTotal($prefs));
+    }
+
+    public function test_guest_stacks_and_splits_provider_accommodation(): void
+    {
+        $provider = ServiceProvider::create([
+            'provider_type' => 'hlh', 'name' => 'Stay', 'email' => 's@gp.test',
+            'phone_1' => '9990001111', 'region_id' => $this->exp->region_id, 'status' => 'approved',
+        ]);
+        $pricing = SpPricing::create([
+            'service_provider_id' => $provider->id, 'service_type' => 'accommodation',
+            'unit' => 'night', 'price' => 2000, 'default_occupancy' => 2,
+            'is_active' => true, 'approval_status' => 'approved',
+        ]);
+        // 2 days -> nights 1; 2 adults / occupancy 2 -> 1 room -> provider 2000.
+        $guestData = [
+            'adults' => 2, 'children' => 0,
+            'experience_ids' => [$this->exp->id],
+            'ai_itinerary' => ['days' => [
+                ['experiences' => [['experience_id' => $this->exp->id]]],
+                ['experiences' => [['experience_id' => $this->exp->id]]],
+            ]],
+            'accommodation_pricing_id' => $pricing->id,
+        ];
+        $m = new ReflectionMethod(AjaxController::class, 'computeGuestPricing');
+        $m->setAccessible(true);
+        $r = $m->invoke(app(AjaxController::class), $guestData);
+
+        // Experience trek-stay 3000 x peopleFactor(2) = 6000, + provider hotel 2000.
+        $this->assertSame(6000, (int) $r['accommodation_experience_cost']);
+        $this->assertSame(2000, (int) $r['accommodation_provider_cost']);
+        $this->assertSame(8000, (int) $r['accommodation_cost']);
     }
 }

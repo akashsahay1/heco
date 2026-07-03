@@ -214,6 +214,32 @@ class AjaxController extends Controller
         }
         $extraDayCost = (int) round($extraDayCost);
 
+        // Provider pins STACK on top for accommodation & transport (two segments —
+        // hotel / anchor→hotel), same as the logged-in calculator. Guide is exclusive
+        // (blocked at pin), so no guide provider price here.
+        $numDays = ($itinerary && isset($itinerary['days'])) ? count($itinerary['days']) : 1;
+        $nights = max($numDays - 1, 1);
+        $totalPax = $adults + $children;
+        $accommodationProviderCost = 0;
+        $transportProviderCost = 0;
+        if (!empty($guestData['accommodation_pricing_id']) && ($ap = SpPricing::live()->find($guestData['accommodation_pricing_id']))) {
+            $occ = max((int) ($ap->default_occupancy ?: 2), 1);
+            $rooms = max((int) ceil($totalPax / $occ), 1);
+            $accommodationProviderCost = (int) round((float) $ap->price * $rooms * $nights);
+            $accommodationCost += $accommodationProviderCost;
+        }
+        if (!empty($guestData['vehicle_pricing_id']) && ($vp = SpPricing::live()->find($guestData['vehicle_pricing_id']))) {
+            $unit = strtolower((string) $vp->unit);
+            if (str_contains($unit, 'day')) {
+                $transportProviderCost = (int) round((float) $vp->price * max($numDays, 1));
+            } elseif (str_contains($unit, 'person') || str_contains($unit, 'pax')) {
+                $transportProviderCost = (int) round((float) $vp->price * max($totalPax, 1));
+            } else {
+                $transportProviderCost = (int) round((float) $vp->price);
+            }
+            $transportCost += $transportProviderCost;
+        }
+
         $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
         $rpPercent = (float) Setting::getValue('default_rp_margin_percent', 5);
         $hrpPercent = (float) Setting::getValue('default_hrp_margin_percent', 10);
@@ -236,6 +262,11 @@ class AjaxController extends Controller
             'other_cost' => $otherCost,
             'extra_day_cost' => $extraDayCost,
             'total_cost' => $totalCost,
+            // Two-segment split so the guest pricing summary matches the logged-in one.
+            'accommodation_provider_cost'   => $accommodationProviderCost,
+            'accommodation_experience_cost' => max(0, $accommodationCost - $accommodationProviderCost),
+            'transport_provider_cost'       => $transportProviderCost,
+            'transport_experience_cost'     => max(0, $transportCost - $transportProviderCost),
             'margin_rp_percent' => $rpPercent,
             'margin_rp_amount' => $rpAmount,
             'margin_hrp_percent' => $hrpPercent,
@@ -2897,10 +2928,17 @@ class AjaxController extends Controller
 
         // Guide is exclusive — tell the UI to show a notice and hide the guide
         // provider list when the trip's experience already provides a guide.
+        // Works for both a saved trip and a guest's session experiences.
         $guideIncluded = false;
-        if ($request->service_type === 'guide' && $request->filled('trip_id') && $request->trip_id !== 'guest') {
-            $t = Trip::find($request->trip_id);
-            $guideIncluded = $t ? $this->tripHasIncludedGuide($t) : false;
+        if ($request->service_type === 'guide') {
+            if ($request->filled('trip_id') && $request->trip_id !== 'guest') {
+                $t = Trip::find($request->trip_id);
+                $guideIncluded = $t ? $this->tripHasIncludedGuide($t) : false;
+            } else {
+                $gExpIds = $this->guestTrip()['experience_ids'] ?? [];
+                $guideIncluded = !empty($gExpIds)
+                    && Experience::whereIn('id', $gExpIds)->where('cost_guide', '>', 0)->exists();
+            }
         }
 
         return response()->json([
@@ -2930,6 +2968,16 @@ class AjaxController extends Controller
         }
         if (!Auth::check()) {
             $gt = $this->guestTrip();
+            // Guide is exclusive — block pinning a guide when the guest's experience
+            // already provides one (the UI shows a notice; this is the safety net).
+            if ($request->filled('guide_pricing_id')) {
+                $gExpIds = $gt['experience_ids'] ?? [];
+                if (!empty($gExpIds) && Experience::whereIn('id', $gExpIds)->where('cost_guide', '>', 0)->exists()) {
+                    return response()->json([
+                        "error" => "This experience already includes a guide, so an additional guide can't be added.",
+                    ], 422);
+                }
+            }
             foreach (['accommodation_comfort', 'accommodation_provider_id', 'accommodation_pricing_id', 'vehicle_comfort', 'vehicle_provider_id', 'vehicle_pricing_id', 'guide_preference', 'guide_provider_id', 'guide_pricing_id', 'travel_pace', 'budget_sensitivity'] as $key) {
                 if ($request->has($key)) $gt[$key] = $request->$key;
             }
