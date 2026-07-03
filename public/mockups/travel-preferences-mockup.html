@@ -18,21 +18,58 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
 .topbar{background:#fff;border-bottom:1px solid var(--border);padding:12px 20px;font-weight:700;color:var(--p800);display:flex;align-items:center;gap:8px}
-.wrap{max-width:1100px;margin:18px auto;padding:0 16px}
-/* Right panel = 320px, same as portal (.journey-panels: 280px 1fr 320px, gap 20px). */
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start}
+.wrap{max-width:1320px;margin:18px auto;padding:0 16px}
+/* 3-column portal layout — .journey-panels: 280px 1fr 320px, gap 20px. */
+.layout{display:grid;grid-template-columns:280px minmax(0,1fr) 320px;gap:20px;align-items:start}
+@media(max-width:1080px){.layout{grid-template-columns:1fr 320px}}
 @media(max-width:860px){.layout{grid-template-columns:1fr}}
+/* experiences (far-left) */
+.count-pill{margin-left:auto;background:var(--p700);color:#fff;border-radius:999px;font-size:11px;font-weight:600;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
+.exp-card{border:1px solid var(--border);border-radius:var(--rlg);overflow:hidden;position:relative;background:#fff;margin-bottom:10px;cursor:grab;transition:box-shadow .12s,border-color .12s}
+.exp-card:last-child{margin-bottom:0}
+.exp-card:active{cursor:grabbing}
+.exp-card.dragging{opacity:.4}
+.exp-card.drag-over{border-color:var(--p500);box-shadow:0 0 0 3px var(--p100)}
+.exp-card img{width:100%;height:120px;object-fit:cover;display:block;background:var(--n100)}
+.exp-grip{position:absolute;top:8px;left:8px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.45);color:#fff;border-radius:6px;font-size:13px;cursor:grab}
+.exp-order{position:absolute;bottom:8px;left:8px;background:var(--p700);color:#fff;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px}
+.exp-body{padding:10px}
+.exp-name{font-size:13px;font-weight:600;line-height:1.3;margin-bottom:3px}
+.exp-meta{font-size:12px;color:var(--p800);font-weight:600}
+.exp-id{font-size:10.5px;color:var(--muted);margin-top:3px}
+.exp-x{position:absolute;top:7px;right:7px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.9);border-radius:50%;color:var(--n500);font-size:11px;cursor:pointer;box-shadow:var(--shadow)}
 .card2{background:var(--card);border:1px solid var(--border);border-radius:var(--rxl);overflow:visible;margin-bottom:14px;box-shadow:var(--shadow)}
 .card2-h{display:flex;align-items:center;gap:8px;padding:11px 14px;background:var(--n50);border-bottom:1px solid var(--border);font-size:13px;font-weight:600}
 .card2-h i{color:var(--p700)}
 .card2-b{padding:14px}
 .row2{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13px}
-/* itinerary */
-.day{display:flex;gap:10px;border:1px solid var(--border);border-radius:var(--rlg);padding:10px;margin-bottom:8px;background:#fff}
+/* itinerary — collapsible days */
+.day{border:1px solid var(--border);border-radius:var(--rlg);margin-bottom:8px;background:#fff;overflow:hidden}
+.day-top{display:flex;gap:10px;align-items:center;padding:10px;cursor:pointer;user-select:none;transition:background .12s}
+.day-top:hover{background:var(--n50)}
 .day img{width:74px;height:58px;object-fit:cover;border-radius:8px;flex:none;background:var(--n100)}
+.day-noimg{width:74px;height:58px;border-radius:8px;flex:none;border:1.5px dashed var(--n300);background:var(--n50);display:flex;align-items:center;justify-content:center;color:var(--n400);font-size:20px}
+.day-main{flex:1;min-width:0}
 .day-h{font-weight:600;font-size:13px;margin-bottom:3px}
 .day-x{font-size:12px;color:var(--muted)}
-.pill-muted{display:inline-block;background:var(--n100);color:var(--n500);border-radius:999px;padding:2px 9px;font-size:11px;margin:4px 3px 0 0}
+.day-del{color:var(--n400);font-size:13px;flex:none;cursor:pointer;padding:3px;border-radius:6px;transition:all .12s}
+.day-del:hover{color:#dc3545;background:#fdecec}
+.day-chev{color:var(--n400);font-size:14px;transition:transform .18s;flex:none}
+.day.open .day-chev{transform:rotate(180deg)}
+.day-body{display:none;padding:0 12px 12px 96px}
+.day.open .day-body{display:block}
+.day-points{margin:2px 0 8px;padding-left:16px}
+.day-points li{font-size:12.5px;color:var(--text);line-height:1.65;margin-bottom:2px}
+.day-points li[contenteditable]{outline:none;cursor:text}
+.day-points li[contenteditable]:empty:before{content:attr(data-ph);color:var(--n400)}
+.day-points li[contenteditable]:focus{background:var(--p50);border-radius:4px}
+.add-point{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--p700);cursor:pointer;background:none;border:none;padding:2px 0;margin-top:2px}
+.add-point:hover{text-decoration:underline}
+.add-point i{font-size:13px}
+.pill-muted{display:inline-block;background:var(--n100);color:var(--n500);border-radius:999px;padding:2px 9px;font-size:11px;margin:0 3px 0 0}
+.add-day{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;border:1.5px dashed var(--n300);border-radius:var(--rlg);background:#fff;color:var(--p700);font-size:12.5px;font-weight:600;padding:11px;cursor:pointer;transition:all .15s;margin-top:2px}
+.add-day:hover{border-color:var(--p500);background:var(--p50)}
+.add-day i{font-size:15px}
 /* accordion */
 .acc-toggle{margin-left:auto;font-size:12px;font-weight:600;color:var(--p700);cursor:pointer;display:flex;align-items:center;gap:4px;user-select:none}
 .acc-summary{font-size:12.5px}
@@ -57,11 +94,12 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 .dd-price{color:var(--muted);font-size:12px;white-space:nowrap}
 .dd-chev{color:var(--n400);font-size:13px;transition:transform .15s}
 .dd.open .dd-chev{transform:rotate(180deg)}
-.dd-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);overflow:hidden}
+.dd-menu{display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:30;background:#fff;border:1px solid var(--n300);border-radius:10px;box-shadow:0 12px 28px rgba(15,23,42,.16),0 3px 8px rgba(15,23,42,.08);overflow:hidden}
 .dd.open .dd-menu{display:block}
 .dd-opt{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;font-size:13px;cursor:pointer}
 .dd-opt:hover{background:var(--p50)}
 .dd-opt.selected{background:var(--p50)}
+.dd-opt-img{width:44px;height:34px;object-fit:cover;border-radius:6px;flex:none;background:var(--n100)}
 .dd-opt-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dd-opt.selected .dd-opt-name{font-weight:600}
 .dd-opt-price{color:var(--muted);font-size:12px;white-space:nowrap}
@@ -90,6 +128,30 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 .rp{color:var(--p700);font-weight:500}
 .legend{font-size:11px;color:var(--muted);margin-top:10px;display:flex;gap:12px;flex-wrap:wrap}
 .banner{background:#fff8e6;border:1px solid #f5d98a;color:#7a5c00;border-radius:var(--rmd);padding:8px 12px;font-size:12.5px;margin-bottom:14px}
+/* Add-a-Day modal */
+.modal-ov{display:none;position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.5);align-items:center;justify-content:center;padding:16px}
+.modal-ov.open{display:flex}
+.modal-box{background:#fff;border-radius:14px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.modal-h{display:flex;align-items:center;gap:11px;background:var(--p700);color:#fff;padding:16px 18px}
+.modal-h .mh-ic{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+.modal-h .mh-t{font-size:15px;font-weight:700;line-height:1.2}
+.modal-h .mh-s{font-size:12px;opacity:.9;margin-top:2px}
+.modal-h .mh-x{margin-left:auto;width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;flex:none}
+.modal-h .mh-x:hover{background:rgba(255,255,255,.3)}
+.modal-b{padding:18px}
+.modal-lbl{font-size:13px;font-weight:700;margin-bottom:8px}
+.modal-lbl .req{color:#dc3545}
+.daytype{display:flex;gap:10px;margin-bottom:16px}
+.dt{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--border);border-radius:999px;background:#fff;padding:9px 12px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.dt:hover{border-color:var(--p500)}
+.dt.active{background:var(--p50);border-color:var(--p700);color:var(--p800)}
+.modal-ta{width:100%;border:1px solid var(--border);border-radius:9px;padding:10px;font-size:13px;font-family:inherit;resize:vertical;min-height:74px;color:var(--text)}
+.modal-ta:focus{outline:none;border-color:var(--p500);box-shadow:0 0 0 3px var(--p100)}
+.modal-f{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+.btn-g{border:1px solid var(--border);background:#fff;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text)}
+.btn-g:hover{background:var(--n50)}
+.btn-p{border:none;background:var(--p700);color:#fff;border-radius:9px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn-p:hover{background:var(--p800)}
 </style>
 </head>
 <body>
@@ -98,14 +160,78 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
   <div class="banner"><i class="bi bi-info-circle"></i> Provider chuno (clean list) → room/vehicle/guide type ka chhota selector niche aata hai. Comfort = filter, koi multiplier nahi. Images temporary (picsum).</div>
   <div class="layout">
 
-    <!-- LEFT: Itinerary -->
+    <!-- FAR LEFT: Experiences -->
     <div>
       <div class="card2">
-        <div class="card2-h"><i class="bi bi-list-check"></i> Your Itinerary</div>
+        <div class="card2-h"><i class="bi bi-collection"></i> Experiences <span class="count-pill">1</span></div>
+        <div class="card2-b" id="expList">
+          <div class="acc-hint" style="margin-bottom:10px"><i class="bi bi-arrows-move"></i> Drag karke experiences ka order badlo.</div>
+          <div class="exp-card" draggable="true">
+            <i class="bi bi-grip-vertical exp-grip"></i>
+            <i class="bi bi-x-lg exp-x"></i>
+            <img src="https://picsum.photos/seed/exp1/320/200" alt="exp">
+            <span class="exp-order">1</span>
+            <div class="exp-body">
+              <div class="exp-name">Great Himalayan National Park Trek</div>
+              <div class="exp-meta">₹13,000 / person</div>
+              <div class="exp-id">exp id: #4</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MIDDLE: Trip Timeline -->
+    <div>
+      <div class="card2">
+        <div class="card2-h"><i class="bi bi-list-check"></i> Trip Timeline</div>
         <div class="card2-b">
-          <div class="day"><img src="https://picsum.photos/seed/exp1/160/120" alt="exp"><div><div class="day-h">Day 1 · Arrival in Tirthan</div><div class="day-x">Check-in, riverside walk</div><span class="pill-muted">Stay</span><span class="pill-muted">Meals</span></div></div>
-          <div class="day"><img src="https://picsum.photos/seed/exp2/160/120" alt="exp"><div><div class="day-h">Day 2 · Great Himalayan NP trek</div><div class="day-x">Guided day hike</div><span class="pill-muted">Guide</span><span class="pill-muted">Activity</span></div></div>
-          <div class="day"><img src="https://picsum.photos/seed/exp3/160/120" alt="exp"><div><div class="day-h">Day 3 · Village & departure</div><div class="day-x">Local immersion</div><span class="pill-muted">Transport</span></div></div>
+          <div class="day open">
+            <div class="day-top" data-day-toggle>
+              <img src="https://picsum.photos/seed/exp1/160/120" alt="exp">
+              <div class="day-main"><div class="day-h">Day 1 · Arrival in Tirthan</div><div class="day-x">Check-in, riverside walk</div></div>
+              <i class="bi bi-chevron-down day-chev"></i>
+            </div>
+            <div class="day-body">
+              <ul class="day-points">
+                <li>Drive from Aut to the GHNP trailhead at Gushaini.</li>
+                <li>Check in to the riverside homestay and settle.</li>
+                <li>Evening riverside walk and local orientation.</li>
+              </ul>
+              <span class="pill-muted">Stay</span><span class="pill-muted">Meals</span>
+            </div>
+          </div>
+          <div class="day">
+            <div class="day-top" data-day-toggle>
+              <img src="https://picsum.photos/seed/exp2/160/120" alt="exp">
+              <div class="day-main"><div class="day-h">Day 2 · Great Himalayan NP trek</div><div class="day-x">Guided day hike</div></div>
+              <i class="bi bi-chevron-down day-chev"></i>
+            </div>
+            <div class="day-body">
+              <ul class="day-points">
+                <li>Register at the park entry and meet your guide.</li>
+                <li>Trek through cedar forest to the upper meadows (2,400 m).</li>
+                <li>Packed lunch with valley views; return by evening.</li>
+              </ul>
+              <span class="pill-muted">Guide</span><span class="pill-muted">Activity</span>
+            </div>
+          </div>
+          <div class="day">
+            <div class="day-top" data-day-toggle>
+              <img src="https://picsum.photos/seed/exp3/160/120" alt="exp">
+              <div class="day-main"><div class="day-h">Day 3 · Village & departure</div><div class="day-x">Local immersion</div></div>
+              <i class="bi bi-chevron-down day-chev"></i>
+            </div>
+            <div class="day-body">
+              <ul class="day-points">
+                <li>Morning village walk and interaction with local families.</li>
+                <li>Pack up and transfer back to Aut.</li>
+                <li>Drive to your onward destination.</li>
+              </ul>
+              <span class="pill-muted">Transport</span>
+            </div>
+          </div>
+          <button type="button" class="add-day" id="addDay"><i class="bi bi-plus-circle"></i> Add day</button>
         </div>
       </div>
     </div>
@@ -132,7 +258,7 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
         </div>
         <div class="card2-b">
           <div class="acc-summary" id="accSummary" style="display:none">
-            <div class="sum-row"><span>Accommodation</span><span id="sumAccom">Hotel Taj Tirthan</span></div>
+            <div class="sum-row"><span>Accommodation</span><span id="sumAccom">Included</span></div>
             <div class="sum-row"><span>Transport</span><span id="sumVeh">Included</span></div>
             <div class="sum-row"><span>Guide</span><span id="sumGuide">Included</span></div>
           </div>
@@ -143,12 +269,12 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
             <div class="field" data-cat="accom">
               <div class="field-lbl"><i class="bi bi-house-heart"></i> Accommodation</div>
               <div class="dd">
-                <button type="button" class="dd-btn"><span class="dd-name">Hotel Taj Tirthan</span><span class="dd-price"></span><i class="bi bi-chevron-down dd-chev"></i></button>
+                <button type="button" class="dd-btn"><span class="dd-name">Experience Included</span><span class="dd-price"></span><i class="bi bi-chevron-down dd-chev"></i></button>
                 <div class="dd-menu">
-                  <div class="dd-opt" data-val="included" data-total="15000"><span class="dd-opt-name">Experience Included</span><span class="dd-opt-price">Package default</span></div>
-                  <div class="dd-opt"><span class="dd-opt-name">Mountain View Hotel</span><span class="dd-opt-price">from ₹6,500/night</span></div>
-                  <div class="dd-opt selected"><span class="dd-opt-name">Hotel Taj Tirthan</span><span class="dd-opt-price">from ₹8,000/night</span></div>
-                  <div class="dd-opt"><span class="dd-opt-name">Riverside Resort</span><span class="dd-opt-price">from ₹12,000/night</span></div>
+                  <div class="dd-opt selected" data-val="included" data-total="6000"><span class="dd-opt-name">Experience Included</span><span class="dd-opt-price">Package default</span></div>
+                  <div class="dd-opt"><span class="dd-opt-name">Mountain View Hotel</span><span class="dd-opt-price">from ₹4,500/night</span></div>
+                  <div class="dd-opt"><span class="dd-opt-name">Hotel Taj Tirthan</span><span class="dd-opt-price">from ₹5,000/night</span></div>
+                  <div class="dd-opt"><span class="dd-opt-name">Riverside Resort</span><span class="dd-opt-price">from ₹8,000/night</span></div>
                 </div>
               </div>
               <div class="prev"></div>
@@ -159,7 +285,7 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
               <div class="dd">
                 <button type="button" class="dd-btn"><span class="dd-name">Experience Included</span><span class="dd-price"></span><i class="bi bi-chevron-down dd-chev"></i></button>
                 <div class="dd-menu">
-                  <div class="dd-opt selected" data-val="included" data-total="9000"><span class="dd-opt-name">Experience Included</span><span class="dd-opt-price">Package default</span></div>
+                  <div class="dd-opt selected" data-val="included" data-total="8000"><span class="dd-opt-name">Experience Included</span><span class="dd-opt-price">Package default</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Himalaya Cabs</span><span class="dd-opt-price">from ₹3,000/day</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Sharma Travels</span><span class="dd-opt-price">from ₹3,500/day</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Fortuner Rentals</span><span class="dd-opt-price">from ₹5,000/day</span></div>
@@ -173,7 +299,7 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
               <div class="dd">
                 <button type="button" class="dd-btn"><span class="dd-name">Experience Included</span><span class="dd-price"></span><i class="bi bi-chevron-down dd-chev"></i></button>
                 <div class="dd-menu">
-                  <div class="dd-opt selected" data-val="included" data-total="0"><span class="dd-opt-name">Experience Included</span><span class="dd-opt-price">Package default</span></div>
+                  <div class="dd-opt selected" data-val="included" data-total="8000"><span class="dd-opt-name">Experience Included</span><span class="dd-opt-price">Package default</span></div>
                   <div class="dd-opt" data-val="noguide" data-total="0"><span class="dd-opt-name">No Guide</span><span class="dd-opt-price">Remove guide</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Tenzin Norbu</span><span class="dd-opt-price">from ₹1,500/day</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Aarav Sharma</span><span class="dd-opt-price">from ₹2,500/day</span></div>
@@ -200,10 +326,7 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
       <div class="card2">
         <div class="card2-h"><i class="bi bi-receipt"></i> Pricing Summary</div>
         <div class="card2-b">
-          <div class="pr"><span>Accommodation <span id="accomSrcTag" class="tagx partner">Partner</span></span><span id="pr_accom"></span></div>
-          <div class="pr"><span>Transport <span id="vehSrcTag" class="tagx experience">Experience</span></span><span id="pr_veh"></span></div>
-          <div class="pr"><span>Guide <span id="guideSrcTag" class="tagx experience">Experience</span></span><span id="pr_guide"></span></div>
-          <div class="pr"><span>Activities <span class="tagx experience">Experience</span></span><span>₹3,600</span></div>
+          <div id="prLines"></div>
           <div class="pr sub"><span><b>Trip Cost</b></span><span id="prTrip"></span></div>
           <div class="pr"><span>RP Contribution <small>5%</small></span><span class="rp" id="prRP"></span></div>
           <div class="pr"><span>HRP Margin <small>10%</small></span><span id="prHRP"></span></div>
@@ -219,15 +342,53 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
   </div>
 </div>
 
+<!-- Add-a-Day modal -->
+<div class="modal-ov" id="addDayModal">
+  <div class="modal-box">
+    <div class="modal-h">
+      <div class="mh-ic"><i class="bi bi-calendar-plus"></i></div>
+      <div><div class="mh-t">Add a Day</div><div class="mh-s" id="addDaySub">Adding a new day</div></div>
+      <div class="mh-x" data-modal-close><i class="bi bi-x-lg"></i></div>
+    </div>
+    <div class="modal-b">
+      <div class="modal-lbl">Day Type</div>
+      <div class="daytype" id="dayType">
+        <div class="dt active" data-type="Rest &amp; Relax" data-icon="bi-moon"><i class="bi bi-moon"></i> Rest &amp; Relax</div>
+        <div class="dt" data-type="Activity Day" data-icon="bi-lightning-charge"><i class="bi bi-lightning-charge"></i> Activity Day</div>
+      </div>
+      <div class="modal-lbl">Description <span class="req">*</span></div>
+      <textarea class="modal-ta" id="dayDesc" placeholder="Is din kya karna hai…"></textarea>
+      <div class="modal-f">
+        <button type="button" class="btn-g" data-modal-close>Cancel</button>
+        <button type="button" class="btn-p" id="confirmAddDay"><i class="bi bi-plus"></i> Add Day</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-var ACT=3600;
-var cur={accom:24000, veh:9000, guide:0};
+// ── EASY PRICING MODEL ──────────────────────────────────────────────
+// Experience ₹13,000/person = all-in bundle (admin "Total Cost Per Person").
+// Default: sirf bundle dikhta hai (₹13,000 × PAX) — koi component breakdown nahi.
+// Provider pin → us category ka per-person share bundle se MINUS + provider ka
+// flat rate (room×nights / day) alag line (replace, stack nahi). No Guide → minus, koi line nahi.
+var PAX=2; // 2 adults, 0 children
+var COMP={accom:3000, veh:4000, guide:4000, act:2000, other:0}; // per-person components; sum = 13,000
+var CATLBL={accom:'Accommodation', veh:'Transport', guide:'Guide'};
+var CATSUM={accom:'#sumAccom', veh:'#sumVeh', guide:'#sumGuide'};
+var catState={accom:{mode:'included'}, veh:{mode:'included'}, guide:{mode:'included'}}; // mode: included|partner|none
+// Provider-level image (hotel building / vehicle fleet / guide photo) — room images alag (ROOMS[].img).
+var PROV_IMG={
+  'Mountain View Hotel':'hotelmv','Hotel Taj Tirthan':'hoteltaj','Riverside Resort':'hotelrs',
+  'Himalaya Cabs':'fleethim','Sharma Travels':'fleetsharma','Fortuner Rentals':'fleetfort',
+  'Tenzin Norbu':'guidetenzin','Aarav Sharma':'guideaarav'
+};
 // rooms / variants per provider, per category
 var ROOMS={
   accom:{
-    'Mountain View Hotel':[{room:'Standard Double · garden view',price:'₹6,500/night',total:19500,img:'room2'},{room:'Deluxe Room · balcony',price:'₹8,500/night',total:25500,img:'room2b'}],
-    'Hotel Taj Tirthan':[{room:'Deluxe Double · river view',price:'₹8,000/night',total:24000,img:'room1'},{room:'River Suite · premium',price:'₹12,000/night',total:36000,img:'room1b'}],
-    'Riverside Resort':[{room:'Premium Suite',price:'₹12,000/night',total:36000,img:'room3'}]
+    'Mountain View Hotel':[{room:'Single Room · garden view',price:'₹4,500/night',total:13500,img:'room2s'},{room:'Twin Room · garden view',price:'₹5,500/night',total:16500,img:'room2t'},{room:'Standard Double · garden view',price:'₹6,500/night',total:19500,img:'room2'},{room:'Deluxe Room · balcony',price:'₹8,500/night',total:25500,img:'room2b'},{room:'Family Room · 4 guests',price:'₹9,500/night',total:28500,img:'room2f'}],
+    'Hotel Taj Tirthan':[{room:'Single Room · river view',price:'₹5,000/night',total:15000,img:'room1s'},{room:'Deluxe Double · river view',price:'₹8,000/night',total:24000,img:'room1'},{room:'River Suite · premium',price:'₹12,000/night',total:36000,img:'room1b'}],
+    'Riverside Resort':[{room:'Single Room',price:'₹8,000/night',total:24000,img:'room3s'},{room:'Premium Suite',price:'₹12,000/night',total:36000,img:'room3'},{room:'Family Suite · 4 guests',price:'₹16,000/night',total:48000,img:'room3f'}]
   },
   veh:{
     'Himalaya Cabs':[{room:'Bolero · 4 seater',price:'₹3,000/day',total:9000,img:'car2'}],
@@ -240,27 +401,59 @@ var ROOMS={
   }
 };
 function inr(n){return '₹'+Number(n).toLocaleString('en-IN');}
-function srcTag(cat,src){ $('#'+cat+'SrcTag').text(src).removeClass('experience partner').addClass(src.toLowerCase()); }
+function escHtml(s){return $('<div>').text(s==null?'':s).html();}
+// bundle = (activities + other) always + har 'included' pinnable category — sab × PAX
+function bundleTotal(){
+  var b=(COMP.act+COMP.other)*PAX;
+  ['accom','veh','guide'].forEach(function(c){ if(catState[c].mode==='included') b+=COMP[c]*PAX; });
+  return b;
+}
+function tripCost(){
+  var t=bundleTotal();
+  ['accom','veh','guide'].forEach(function(c){ if(catState[c].mode==='partner') t+=(catState[c].total||0); });
+  return t;
+}
 function recalcTotal(){
-  var trip=cur.accom+cur.veh+cur.guide+ACT;
+  var trip=tripCost();
   var rp=Math.round(trip*.05),hrp=Math.round(trip*.10),hct=Math.round(trip*.15);
   var pre=trip+rp+hrp+hct,gst=Math.round(pre*.05),fin=pre+gst;
   $('#prTrip').text(inr(trip));$('#prRP').text(inr(rp));$('#prHRP').text(inr(hrp));
   $('#prHCT').text(inr(hct));$('#prPre').text(inr(pre));$('#prGST').text(inr(gst));$('#prFinal').text(inr(fin));
 }
-function updateCat(cat,total,src,sumText){
-  cur[cat]=total; $('#pr_'+cat).text(inr(total)); srcTag(cat,src);
-  var sumId={accom:'#sumAccom',veh:'#sumVeh',guide:'#sumGuide'}[cat]; if(sumId)$(sumId).text(sumText);
+// Pricing Summary: Experiences bundle (excl. pinned) + har pinned category ki alag line
+function renderPricing(){
+  var excl=['accom','veh','guide'].filter(function(c){return catState[c].mode!=='included';}).map(function(c){return CATLBL[c];});
+  var exl = excl.length ? ' <small>(excl. '+excl.join(', ')+')</small>' : '';
+  var html='';
+  html+='<div class="pr" style="border-bottom:1px dashed var(--border);margin-bottom:4px;padding-bottom:8px"><span><b>Experiences</b> <small>'+PAX+' adults</small></span><span></span></div>';
+  html+='<div class="pr" style="padding:2px 0"><span style="color:var(--muted);font-size:12.5px">Great Himalayan National Park Trek'+exl+' <span class="tagx experience">Experience</span></span><span>'+inr(bundleTotal())+'</span></div>';
+  ['accom','veh','guide'].forEach(function(c){
+    var st=catState[c];
+    if(st.mode==='partner'){
+      html+='<div class="pr" style="padding-top:8px"><span>'+CATLBL[c]+' <span class="tagx partner">Partner</span></span><span>'+inr(st.total||0)+'</span></div>';
+      html+='<div class="pr" style="padding:0 0 4px"><small style="color:var(--muted)">'+escHtml(st.name||'')+(st.rate?' · '+escHtml(st.rate):'')+'</small></div>';
+    }
+  });
+  $('#prLines').html(html);
   recalcTotal();
+}
+// category state set + collapsed summary + re-render
+function setCat(cat,mode,info){
+  info=info||{};
+  catState[cat]={mode:mode, total:info.total||0, name:info.name||'', rate:info.rate||''};
+  var sumId=CATSUM[cat];
+  if(sumId)$(sumId).text(mode==='partner'?(info.name||'Selected'):(mode==='none'?'No Guide':'Included'));
+  renderPricing();
 }
 function applyRoomFromOpt($field,$opt){
   var cat=$field.data('cat');
   var room=$opt.find('.dd-opt-name').text();
   var price=$opt.find('.dd-opt-price').text();
-  $field.find('.prev-img').attr('src','https://picsum.photos/seed/'+$opt.data('img')+'/160/120');
+  // Room image sirf room-selector thumbnail update kare — hotel (preview) image alag/fixed rahe.
+  $field.find('.dd-room-thumb').attr('src','https://picsum.photos/seed/'+$opt.data('img')+'/120/90');
   $field.find('.dd-room .dd-name').text(room);
   $field.find('.dd-room .dd-price').text(price);
-  updateCat(cat, Number($opt.data('total'))||0, 'Partner', $field.data('prov'));
+  setCat(cat,'partner',{total:Number($opt.data('total'))||0, name:$field.data('prov'), rate:price});
 }
 function selectProvider($field,$opt){
   var cat=$field.data('cat'); if(!cat)return;
@@ -270,18 +463,19 @@ function selectProvider($field,$opt){
   $field.children('.dd').find('.dd-name').text(name);
   $field.children('.dd').find('.dd-price').text(isBase?'':rightText);
   var $prev=$field.find('.prev');
-  if(isBase){ $prev.empty(); updateCat(cat, Number($opt.data('total'))||0, 'Experience', val==='noguide'?'No Guide':'Included'); return; }
+  if(isBase){ $prev.empty(); setCat(cat, val==='noguide'?'none':'included'); return; }
   var rooms=(ROOMS[cat]||{})[name]||[]; if(!rooms.length){ $prev.empty(); return; }
   $field.data('prov',name);
   var multi=rooms.length>1;
   var sub = multi ? '' : '<div class="pr2">'+rooms[0].room+' · '+rooms[0].price+'</div>';
   var roomDD='';
   if(multi){
-    var opts=rooms.map(function(r,i){return '<div class="dd-opt'+(i===0?' selected':'')+'" data-total="'+r.total+'" data-img="'+r.img+'"><span class="dd-opt-name">'+r.room+'</span><span class="dd-opt-price">'+r.price+'</span></div>';}).join('');
-    roomDD='<div class="dd dd-room"><button type="button" class="dd-btn"><span class="dd-name">'+rooms[0].room+'</span><span class="dd-price">'+rooms[0].price+'</span><i class="bi bi-chevron-down dd-chev"></i></button><div class="dd-menu">'+opts+'</div></div>';
+    var opts=rooms.map(function(r,i){return '<div class="dd-opt'+(i===0?' selected':'')+'" data-total="'+r.total+'" data-img="'+r.img+'"><img class="dd-opt-img" src="https://picsum.photos/seed/'+r.img+'/120/90" alt=""><span class="dd-opt-name">'+r.room+'</span><span class="dd-opt-price">'+r.price+'</span></div>';}).join('');
+    roomDD='<div class="dd dd-room"><button type="button" class="dd-btn"><img class="dd-opt-img dd-room-thumb" src="https://picsum.photos/seed/'+rooms[0].img+'/120/90" alt=""><span class="dd-name">'+rooms[0].room+'</span><span class="dd-price">'+rooms[0].price+'</span><i class="bi bi-chevron-down dd-chev"></i></button><div class="dd-menu">'+opts+'</div></div>';
   }
-  $prev.html('<div class="prev-partner"><img class="prev-img" src="https://picsum.photos/seed/'+rooms[0].img+'/160/120" alt=""><div style="flex:1;min-width:0"><div class="pn">'+name+'</div>'+sub+'</div><span class="tagx partner">Partner</span></div>'+roomDD);
-  updateCat(cat, rooms[0].total, 'Partner', name);
+  var pImg=PROV_IMG[name]||rooms[0].img;
+  $prev.html('<div class="prev-partner"><img class="prev-img" src="https://picsum.photos/seed/'+pImg+'/160/120" alt=""><div style="flex:1;min-width:0"><div class="pn">'+name+'</div>'+sub+'</div><span class="tagx partner">Partner</span></div>'+roomDD);
+  setCat(cat,'partner',{total:rooms[0].total, name:name, rate:rooms[0].price});
 }
 // accordion
 $('#accToggle').on('click',function(){
@@ -305,6 +499,60 @@ $(document).on('click','.dd-opt',function(e){
   $dd.removeClass('open');
   if($dd.hasClass('dd-room')){ applyRoomFromOpt($field,$(this)); }
   else { selectProvider($field,$(this)); }
+});
+// timeline day collapse/expand
+$(document).on('click','[data-day-toggle]',function(){ $(this).closest('.day').toggleClass('open'); });
+// remove day (stopPropagation so header toggle na chale)
+$(document).on('click','[data-day-del]',function(e){ e.stopPropagation(); $(this).closest('.day').remove(); });
+// open Add-a-Day modal
+$('#addDay').on('click',function(){
+  $('#addDaySub').text('Adding a new day after Day '+$('.day').length);
+  $('#dayDesc').val('').css('border-color','');
+  $('#dayType .dt').removeClass('active').first().addClass('active');
+  $('#addDayModal').addClass('open');
+});
+// day-type pills
+$('#dayType').on('click','.dt',function(){ $('#dayType .dt').removeClass('active'); $(this).addClass('active'); });
+// close modal (X, Cancel, backdrop)
+$(document).on('click','[data-modal-close]',function(){ $('#addDayModal').removeClass('open'); });
+$('#addDayModal').on('click',function(e){ if(e.target===this)$(this).removeClass('open'); });
+// confirm add — description required
+$('#confirmAddDay').on('click',function(){
+  var desc=$.trim($('#dayDesc').val());
+  if(!desc){ $('#dayDesc').focus().css('border-color','#dc3545'); return; }
+  var $dt=$('#dayType .dt.active'); var type=$dt.data('type'); var icon=$dt.data('icon');
+  var n=$('.day').length+1;
+  var html='<div class="day open"><div class="day-top" data-day-toggle>'
+    +'<div class="day-noimg"><i class="bi '+icon+'"></i></div>'
+    +'<div class="day-main"><div class="day-h">Day '+n+' · '+type+'</div><div class="day-x">Custom day</div></div>'
+    +'<i class="bi bi-trash day-del" data-day-del title="Remove day"></i>'
+    +'<i class="bi bi-chevron-down day-chev"></i></div>'
+    +'<div class="day-body"><div style="font-size:12.5px;line-height:1.6">'+escHtml(desc)+'</div>'
+    +'<span class="pill-muted" style="margin-top:8px">'+escHtml(type)+'</span></div></div>';
+  $('#addDay').before(html);
+  $('#addDayModal').removeClass('open');
+});
+// experiences drag-to-reorder (HTML5 native DnD)
+var dragEl=null;
+function renumberExp(){ $('#expList .exp-card').each(function(i){ $(this).find('.exp-order').text(i+1); }); }
+$(document).on('dragstart','.exp-card',function(e){ dragEl=this; $(this).addClass('dragging'); if(e.originalEvent.dataTransfer)e.originalEvent.dataTransfer.effectAllowed='move'; });
+$(document).on('dragend','.exp-card',function(){ $(this).removeClass('dragging'); $('.exp-card').removeClass('drag-over'); });
+$(document).on('dragover','.exp-card',function(e){ e.preventDefault(); if(this!==dragEl)$(this).addClass('drag-over'); });
+$(document).on('dragleave','.exp-card',function(){ $(this).removeClass('drag-over'); });
+$(document).on('drop','.exp-card',function(e){
+  e.preventDefault();
+  if(!dragEl||this===dragEl){ $('.exp-card').removeClass('drag-over'); return; }
+  var nodes=$('#expList .exp-card').toArray();
+  if(nodes.indexOf(dragEl)<nodes.indexOf(this)) $(this).after(dragEl); else $(this).before(dragEl);
+  $('.exp-card').removeClass('drag-over');
+  renumberExp();
+});
+// remove an experience card
+$(document).on('click','.exp-x',function(e){
+  e.stopPropagation();
+  $(this).closest('.exp-card').remove();
+  $('.count-pill').text($('#expList .exp-card').length);
+  renumberExp();
 });
 // init
 $('.field[data-cat]').each(function(){ selectProvider($(this), $(this).children('.dd').find('.dd-opt.selected')); });
