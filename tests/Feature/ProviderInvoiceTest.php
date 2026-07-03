@@ -130,18 +130,32 @@ class ProviderInvoiceTest extends TestCase
         $this->assertSame(2, \App\Models\SpRoomBooking::where('trip_id', $this->trip->id)->count());
     }
 
-    public function test_create_sp_payment_auto_derives_amount(): void
+    public function test_create_sp_payment_auto_derives_amount_when_omitted(): void
     {
-        // Manual amount_due (999) is ignored — the pinned rate × qty (5000) wins.
+        // No amount supplied -> auto-computed from the pinned rate × qty (5000).
         $this->actingAs($this->admin)
             ->post("http://{$this->portal}/ajax", [
                 'create_sp_payment' => 1,
                 'trip_id' => $this->trip->id,
                 'service_provider_id' => $this->provider->id,
                 'service_type' => 'accommodation',
-                'amount_due' => 999,
             ])
             ->assertStatus(200)
             ->assertJsonPath('amount_due', 5000);
+    }
+
+    public function test_create_sp_payment_honors_explicit_amount(): void
+    {
+        // An explicitly supplied amount (e.g. a negotiated figure) is honored.
+        $this->actingAs($this->admin)
+            ->post("http://{$this->portal}/ajax", [
+                'create_sp_payment' => 1,
+                'trip_id' => $this->trip->id,
+                'service_provider_id' => $this->provider->id,
+                'service_type' => 'accommodation',
+                'amount_due' => 3200,
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('amount_due', 3200);
     }
 }

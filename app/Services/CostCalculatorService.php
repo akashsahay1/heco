@@ -225,12 +225,16 @@ class CostCalculatorService
                 $activitiesComponent = (float) $exp->cost_activities;
                 $otherComponent      = (float) $exp->cost_other;
 
-                // Fall back to the headline per-person price when the breakdown is missing
-                // (older/legacy experiences) so we don't silently report ₹0.
+                // Fall back to the headline per-person price when the breakdown is
+                // missing (older/legacy experiences) so we don't silently report ₹0.
+                // Use the Experience's base_cost_per_person — the SAME field the guest
+                // estimator falls back to — so guest and logged-in quotes stay equal
+                // even for legacy experiences (dayExp->cost_per_person is the activity
+                // slice and is often 0, which under-charged the trip).
                 $componentSum = $accomComponent + $logisticsComponent + $guideComponent
                     + $activitiesComponent + $otherComponent;
                 if ($componentSum <= 0) {
-                    $activitiesComponent = (float) $dayExp->cost_per_person;
+                    $activitiesComponent = (float) ($exp->base_cost_per_person ?: $dayExp->cost_per_person);
                     $componentSum = $activitiesComponent;
                 }
 

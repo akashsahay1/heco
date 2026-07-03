@@ -70,4 +70,19 @@ class TripEditLockTest extends TestCase
         $this->addDay($trip)->assertStatus(200);
         $this->assertSame(1, $trip->tripDays()->count());
     }
+
+    public function test_paid_trip_portal_builder_edit_is_blocked(): void
+    {
+        // A traveller-facing portal builder key must also be blocked on a paid
+        // trip (the lock guard runs before the handler).
+        $trip = $this->makeTrip();
+        TravellerPayment::create([
+            'trip_id' => $trip->id, 'user_id' => $this->admin->id, 'amount' => 1000,
+            'payment_status' => 'paid', 'payment_date' => '2026-06-01',
+            'mode' => 'cash', 'recorded_by' => $this->admin->id,
+        ]);
+        $this->actingAs($this->admin)
+            ->post("http://{$this->portal}/ajax", ['add_experience_to_trip' => 1, 'trip_id' => $trip->id, 'experience_id' => 1])
+            ->assertStatus(423);
+    }
 }

@@ -650,11 +650,19 @@ class AjaxController extends Controller
      * (paid or closed) — otherwise the total can drift after money is received.
      */
     private const LOCK_EDIT_KEYS = [
+        // Admin / trip-manager edits.
         'update_trip_info', 'update_travel_preferences',
         'add_experience_to_day', 'remove_experience_from_day',
         'add_trip_day', 'remove_trip_day', 'reorder_trip_days',
         'add_day_service', 'edit_day_service', 'remove_day_service',
         'change_day_service_provider',
+        // Traveller portal-builder edits — these mutate the same trip's
+        // itinerary / pax / dates (the price basis), so a paid or closed trip
+        // must reject them too. (Guests carry no trip_id and own no locked
+        // trip, so the guard resolves to null and lets them through.)
+        'add_experience_to_trip', 'remove_experience_from_trip',
+        'add_day_to_trip', 'remove_day_from_trip',
+        'update_group_details', 'update_trip_start_date', 'reorder_experiences',
     ];
 
     /**
@@ -3212,14 +3220,22 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
+        // Only attach the trip (and read its payment status) when it belongs to
+        // the caller — otherwise a user could reference someone else's trip and
+        // learn whether it has a payment. HCT staff may reference any trip.
+        $tripId = null;
         $hasPayment = false;
         if ($request->filled("trip_id") && $request->trip_id !== 'guest') {
-            $hasPayment = TravellerPayment::where("trip_id", $request->trip_id)->exists();
+            $trip = Trip::find($request->trip_id);
+            if ($trip && ((int) $trip->user_id === (int) $user->id || $user->isHct())) {
+                $tripId = $trip->id;
+                $hasPayment = $trip->travellerPayments()->exists();
+            }
         }
 
         $support = SupportRequest::create([
             "user_id" => $user->id,
-            "trip_id" => ($request->trip_id !== 'guest') ? $request->trip_id : null,
+            "trip_id" => $tripId,
             "message" => $request->message,
             "traveller_status" => $hasPayment ? "client" : "lead",
         ]);
@@ -4947,21 +4963,25 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
-        // Prefer the auto-computed payable (rate × qty) when this provider is
-        // pinned on the trip for this service type, so the invoice isn't a
-        // hand-typed guess (#11). Falls back to the supplied amount for ad-hoc
-        // invoices (e.g. a day-level service with no trip-level pin).
+        // An explicit amount always wins (HCT may enter a negotiated/discounted or
+        // ad-hoc figure). Only when no amount is supplied do we auto-compute the
+        // payable (rate × qty) for a provider that is pinned on the trip for this
+        // service type, so the invoice isn't left at ₹0 or a hand-typed guess (#11).
         $trip = Trip::find($request->trip_id);
-        $pricingId = match ($request->service_type) {
-            'accommodation' => $trip?->accommodation_pricing_id,
-            'transport'     => $trip?->vehicle_pricing_id,
-            'guide'         => $trip?->guide_pricing_id,
-            default         => null,
-        };
-        $amountDue = (float) $request->input('amount_due', 0);
-        if ($trip && $pricingId && ($pricing = SpPricing::find($pricingId))
-            && (int) $pricing->service_provider_id === (int) $request->service_provider_id) {
-            $amountDue = app(CostCalculatorService::class)->providerPayable($pricing, $trip, $request->service_type);
+        if ($request->filled('amount_due')) {
+            $amountDue = (float) $request->amount_due;
+        } else {
+            $amountDue = 0.0;
+            $pricingId = match ($request->service_type) {
+                'accommodation' => $trip?->accommodation_pricing_id,
+                'transport'     => $trip?->vehicle_pricing_id,
+                'guide'         => $trip?->guide_pricing_id,
+                default         => null,
+            };
+            if ($trip && $pricingId && ($pricing = SpPricing::find($pricingId))
+                && (int) $pricing->service_provider_id === (int) $request->service_provider_id) {
+                $amountDue = app(CostCalculatorService::class)->providerPayable($pricing, $trip, $request->service_type);
+            }
         }
 
         $spPayment = SpPayment::create([
