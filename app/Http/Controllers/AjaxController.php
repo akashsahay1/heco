@@ -144,91 +144,73 @@ class AjaxController extends Controller
      */
     protected function computeGuestPricing(array $guestData): array
     {
-        $adults = $guestData['adults'] ?: 1;
-        $activityCost = 0;
-        $numDays = 0;
+        // Mirror CostCalculatorService exactly so a guest sees the SAME price they
+        // will see after logging in (#6/#7). Both use the per-experience component
+        // breakdown × peopleFactor and the shared multiplier map — no flat base
+        // rates, no headline-vs-breakdown mismatch.
+        $adults = max((int) ($guestData['adults'] ?: 1), 1);
+        $children = (int) ($guestData['children'] ?? 0);
+        $peopleFactor = $adults + (0.5 * $children);
 
+        $map = CostCalculatorService::getMultiplierMap();
+        $accomMultiplier   = $map['accommodation_comfort'][$guestData['accommodation_comfort'] ?? ''] ?? 1.0;
+        $vehicleMultiplier = $map['vehicle_comfort'][$guestData['vehicle_comfort'] ?? ''] ?? 1.0;
+        $guideMultiplier   = $map['guide_preference'][$guestData['guide_preference'] ?? ''] ?? 1.0;
+        $paceMultiplier    = $map['travel_pace'][$guestData['travel_pace'] ?? ''] ?? 1.0;
+        $budgetMultiplier  = $map['budget_sensitivity'][$guestData['budget_sensitivity'] ?? ''] ?? 1.0;
+
+        $transportCost = 0;
+        $accommodationCost = 0;
+        $guideCost = 0;
+        $activityCost = 0;
+        $otherCost = 0;
+
+        // Charge each SELECTED experience once (matches the logged-in dedup).
+        $expIds = array_values(array_unique($guestData['experience_ids'] ?? []));
+        $experiences = !empty($expIds) ? Experience::whereIn('id', $expIds)->get() : collect();
+        foreach ($experiences as $exp) {
+            $accom      = (float) $exp->cost_accommodation;
+            $logistics  = (float) $exp->cost_logistics;
+            $guide      = (float) $exp->cost_guide;
+            $activities = (float) $exp->cost_activities;
+            $other      = (float) $exp->cost_other;
+            // Fall back to the headline per-person price when the breakdown is missing.
+            if (($accom + $logistics + $guide + $activities + $other) <= 0) {
+                $activities = (float) $exp->base_cost_per_person;
+            }
+            $accommodationCost += round($accom      * $peopleFactor * $accomMultiplier);
+            $transportCost     += round($logistics  * $peopleFactor * $vehicleMultiplier);
+            $guideCost         += round($guide      * $peopleFactor * $guideMultiplier);
+            $activityCost      += round($activities * $peopleFactor);
+            $otherCost         += round($other      * $peopleFactor);
+        }
+
+        // Pace scales guide-led time; budget scales the base trip lines. Activities
+        // and extra days are excluded from both — same as CostCalculatorService.
+        $guideCost = (int) round($guideCost * $paceMultiplier);
+        $transportCost     = (int) round($transportCost * $budgetMultiplier);
+        $accommodationCost = (int) round($accommodationCost * $budgetMultiplier);
+        $guideCost         = (int) round($guideCost * $budgetMultiplier);
+        $otherCost         = (int) round($otherCost * $budgetMultiplier);
+
+        // Extra days (days in the itinerary with no experience) — rest vs activity.
+        $restDayCostPerPerson = (float) Setting::getValue('rest_day_cost_per_person', 2000);
+        $activityDayCostPerPerson = (float) Setting::getValue('activity_day_cost_per_person', 5000);
+        $extraDayCost = 0;
         $itinerary = $guestData['ai_itinerary'] ?? null;
         if ($itinerary && isset($itinerary['days'])) {
-            $numDays = count($itinerary['days']);
-            $expIds = [];
             foreach ($itinerary['days'] as $day) {
-                foreach ($day['experiences'] ?? [] as $exp) {
-                    if (isset($exp['experience_id'])) {
-                        $expIds[] = $exp['experience_id'];
-                    }
-                }
-            }
-            if (!empty($expIds)) {
-                $experiences = Experience::whereIn('id', $expIds)->pluck('base_cost_per_person', 'id');
-                foreach ($itinerary['days'] as $day) {
-                    foreach ($day['experiences'] ?? [] as $exp) {
-                        $eid = $exp['experience_id'] ?? null;
-                        $costPerPerson = $experiences[$eid] ?? 0;
-                        $activityCost += $costPerPerson * $adults;
-                    }
+                $hasExp = !empty($day['experiences'] ?? []);
+                $dayType = $day['type'] ?? ($day['day_type'] ?? null);
+                if (!$hasExp && $dayType) {
+                    $costPerPerson = in_array($dayType, ['activity', 'free']) ? $activityDayCostPerPerson : $restDayCostPerPerson;
+                    $extraDayCost += $costPerPerson * $peopleFactor;
                 }
             }
         }
+        $extraDayCost = (int) round($extraDayCost);
 
-        // Estimate transport, accommodation, guide using base rates and preference multipliers
-        $baseTransport = (float) Setting::getValue('base_transport_per_day', 3500);
-        $baseAccommodation = (float) Setting::getValue('base_accommodation_per_night', 2500);
-        $baseGuide = (float) Setting::getValue('base_guide_per_day', 2000);
-
-        $accomMultiplier = match ($guestData['accommodation_comfort'] ?? '') {
-            'Cat E - Camping/Tents' => 0.5,
-            'Cat D - Basic/Homestay' => 0.7,
-            'Cat C - Standard' => 1.0,
-            'Cat B - Comfort' => 1.5,
-            'Cat A - Premium/Luxury' => 2.5,
-            default => 1.0,
-        };
-        $vehicleMultiplier = match ($guestData['vehicle_comfort'] ?? '') {
-            'Local Transport' => 0.5,
-            'SUV (Bolero/Scorpio)' => 0.8,
-            'SUV (Innova/Crysta)' => 1.0,
-            'Premium (Fortuner/Similar)' => 1.5,
-            'Tempo Traveller' => 1.3,
-            default => 1.0,
-        };
-        $guideMultiplier = match ($guestData['guide_preference'] ?? '') {
-            'No Guide' => 0.0,
-            'Local Guide' => 0.7,
-            'English-speaking' => 1.0,
-            'Certified/Expert' => 1.5,
-            default => 1.0,
-        };
-        $paceMultiplier = match ($guestData['travel_pace'] ?? '') {
-            'Relaxed' => 0.9,
-            'Moderate' => 1.0,
-            'Active' => 1.15,
-            'Intensive' => 1.3,
-            default => 1.0,
-        };
-        $budgetMultiplier = match ($guestData['budget_sensitivity'] ?? '') {
-            'Budget-friendly' => 0.85,
-            'Mid-range' => 1.0,
-            'Premium' => 1.25,
-            'No Limit' => 1.5,
-            default => 1.0,
-        };
-
-        $numNights = max($numDays - 1, 0);
-        $transportCost = round($baseTransport * $numDays * $vehicleMultiplier);
-        $accommodationCost = round($baseAccommodation * $numNights * $adults * $accomMultiplier);
-        $guideCost = round($baseGuide * $numDays * $guideMultiplier);
-
-        // Pace scales activity-driven costs; budget scales overall trip base cost
-        $activityCost = (int) round($activityCost * $paceMultiplier);
-        $guideCost = (int) round($guideCost * $paceMultiplier);
-
-        $transportCost = (int) round($transportCost * $budgetMultiplier);
-        $accommodationCost = (int) round($accommodationCost * $budgetMultiplier);
-        $guideCost = (int) round($guideCost * $budgetMultiplier);
-        $activityCost = (int) round($activityCost * $budgetMultiplier);
-
-        $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost;
+        $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
         $rpPercent = (float) Setting::getValue('default_rp_margin_percent', 5);
         $hrpPercent = (float) Setting::getValue('default_hrp_margin_percent', 10);
         $hctPercent = (float) Setting::getValue('default_hct_commission_percent', 15);
@@ -247,7 +229,8 @@ class AjaxController extends Controller
             'accommodation_cost' => $accommodationCost,
             'guide_cost' => $guideCost,
             'activity_cost' => $activityCost,
-            'other_cost' => 0,
+            'other_cost' => $otherCost,
+            'extra_day_cost' => $extraDayCost,
             'total_cost' => $totalCost,
             'margin_rp_percent' => $rpPercent,
             'margin_rp_amount' => $rpAmount,
