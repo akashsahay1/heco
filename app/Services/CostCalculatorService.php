@@ -184,6 +184,19 @@ class CostCalculatorService
         // Track which experiences have already been costed (charge once per experience, not per day)
         $chargedExperienceIds = [];
 
+        // A day-level SP-assigned service (cost>0) REPLACES the experience's bundled
+        // estimate for that category — it must NOT stack on top, which would double-
+        // charge the traveller (provider rate + bundled component). Detect which
+        // categories a real day service already covers so those components are dropped.
+        $serviceCovered = ['transport' => false, 'accommodation' => false, 'guide' => false];
+        foreach ($trip->tripDays as $day) {
+            foreach ($day->services as $service) {
+                if ((float) $service->cost > 0 && array_key_exists($service->service_type, $serviceCovered)) {
+                    $serviceCovered[$service->service_type] = true;
+                }
+            }
+        }
+
         foreach ($trip->tripDays as $day) {
             // Charge extra days (days without experiences)
             $hasExperiences = $day->experiences->isNotEmpty();
@@ -238,20 +251,26 @@ class CostCalculatorService
                     $componentSum = $activitiesComponent;
                 }
 
-                $accommodationCost += round($accomComponent      * $peopleFactor * $accomMultiplier);
-                $transportCost     += round($logisticsComponent  * $peopleFactor * $vehicleMultiplier);
-                $guideCost         += round($guideComponent      * $peopleFactor * $guideMultiplier);
+                // Drop any component already covered by a day-level provider so the
+                // provider rate replaces (not stacks on) the bundled estimate (#F1).
+                $effAccom     = $serviceCovered['accommodation'] ? 0.0 : $accomComponent;
+                $effLogistics = $serviceCovered['transport']     ? 0.0 : $logisticsComponent;
+                $effGuide     = $serviceCovered['guide']         ? 0.0 : $guideComponent;
+
+                $accommodationCost += round($effAccom      * $peopleFactor * $accomMultiplier);
+                $transportCost     += round($effLogistics  * $peopleFactor * $vehicleMultiplier);
+                $guideCost         += round($effGuide      * $peopleFactor * $guideMultiplier);
                 $activityCost      += round($activitiesComponent * $peopleFactor);
                 $otherCost         += round($otherComponent      * $peopleFactor);
 
-                $accommodationBase += $accomComponent     * $peopleFactor;
-                $transportBase     += $logisticsComponent * $peopleFactor;
-                $guideBase         += $guideComponent     * $peopleFactor;
+                $accommodationBase += $effAccom     * $peopleFactor;
+                $transportBase     += $effLogistics * $peopleFactor;
+                $guideBase         += $effGuide     * $peopleFactor;
 
                 // Keep TripDayExperience.total_cost in sync for any downstream readers.
-                $expTotal = ($accomComponent * $accomMultiplier
-                    + $logisticsComponent * $vehicleMultiplier
-                    + $guideComponent * $guideMultiplier
+                $expTotal = ($effAccom * $accomMultiplier
+                    + $effLogistics * $vehicleMultiplier
+                    + $effGuide * $guideMultiplier
                     + $activitiesComponent
                     + $otherComponent) * $peopleFactor;
                 $dayExp->update(['total_cost' => round($expTotal)]);
