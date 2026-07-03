@@ -33,7 +33,7 @@ class HomepageController extends Controller
         $experienceCount = Experience::where("is_active", true)->count();
         $regionCount = $regions->count();
         $communityCount = ServiceProvider::where("status", "approved")
-            ->whereIn("provider_type", ["hlh", "hrp"])
+            ->whereIn("provider_type", ["hlh", "hrp", "osp"])
             ->count();
         return view("portal.landing", compact(
             "regions", "experienceTypes", "experienceCount", "regionCount", "communityCount"
