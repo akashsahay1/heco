@@ -2871,7 +2871,7 @@ class AjaxController extends Controller
     {
         $validator = Validator::make($request->all(), [
             "service_type" => "required|string|in:accommodation,transport,guide,activity,other",
-            "category"     => "required|string|max:100",
+            "category"     => "nullable|string|max:100",
             "region_id"    => "nullable|integer",
             "trip_id"      => "nullable",
         ]);
@@ -2908,7 +2908,9 @@ class AjaxController extends Controller
 
         $rows = SpPricing::live()
             ->where('service_type', $request->service_type)
-            ->where($matchColumn, $request->category)
+            // Category (comfort tier) is an OPTIONAL filter — the Comfort & Partners
+            // UI lists every provider in the region; a category narrows it if sent.
+            ->when($request->filled('category'), fn ($q) => $q->where($matchColumn, $request->category))
             ->whereHas('serviceProvider', function ($q) use ($regionId) {
                 $q->where('status', 'approved');
                 if ($regionId) $q->where('region_id', $regionId);
