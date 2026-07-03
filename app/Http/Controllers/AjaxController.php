@@ -150,7 +150,11 @@ class AjaxController extends Controller
         // rates, no headline-vs-breakdown mismatch.
         $adults = max((int) ($guestData['adults'] ?: 1), 1);
         $children = (int) ($guestData['children'] ?? 0);
-        $peopleFactor = $adults + (0.5 * $children);
+        $infants = (int) ($guestData['infants'] ?? 0);
+        // Same pax-type factors as CostCalculatorService so guest == login (#42).
+        $childFactor  = (float) Setting::getValue('child_price_percent', 50) / 100;
+        $infantFactor = (float) Setting::getValue('infant_price_percent', 0) / 100;
+        $peopleFactor = $adults + ($childFactor * $children) + ($infantFactor * $infants);
 
         $map = CostCalculatorService::getMultiplierMap();
         $accomMultiplier   = $map['accommodation_comfort'][$guestData['accommodation_comfort'] ?? ''] ?? 1.0;

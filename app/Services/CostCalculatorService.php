@@ -177,8 +177,13 @@ class CostCalculatorService
         $activityDayCostPerPerson = (float) Setting::getValue('activity_day_cost_per_person', 5000);
         $adults = max($trip->adults, 1);
         $children = $trip->children ?: 0;
-        // Children charged at 50% — bake into a single multiplier so every line item bills the same way.
-        $peopleFactor = $adults + (0.5 * $children);
+        $infants = $trip->infants ?: 0;
+        // Pax-type pricing (#42): child/infant bill at a configurable fraction of an
+        // adult (was a hardcoded 50% for children, infants ignored). One factor so
+        // every line item bills the same way.
+        $childFactor  = (float) Setting::getValue('child_price_percent', 50) / 100;
+        $infantFactor = (float) Setting::getValue('infant_price_percent', 0) / 100;
+        $peopleFactor = $adults + ($childFactor * $children) + ($infantFactor * $infants);
         $extraDayCost = 0;
 
         // Track which experiences have already been costed (charge once per experience, not per day)
