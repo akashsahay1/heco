@@ -154,7 +154,8 @@
       "Bash(python -c ' *)",
       "Bash(PYTHONIOENCODING=utf-8 python -c ' *)",
       "Bash(git rev-list *)",
-      "Bash(xargs ls -lh)"
+      "Bash(xargs ls -lh)",
+      "Bash(start *)"
     ]
   }
 }

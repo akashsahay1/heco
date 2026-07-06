@@ -14,7 +14,7 @@ class SpPricing extends Model
         // hotel-style room inventory
         'room_category', 'comfort_tier', 'total_rooms', 'default_occupancy',
         // transport extras
-        'vehicle_capacity', 'driver_allowance',
+        'vehicle_capacity', 'driver_allowance', 'distance_km',
         // activity / guide extras
         'min_group', 'max_group', 'specialties',
         // approval workflow
@@ -29,6 +29,7 @@ class SpPricing extends Model
         return [
             'price' => 'decimal:2',
             'driver_allowance' => 'decimal:2',
+            'distance_km' => 'decimal:2',
             'total_rooms' => 'integer',
             'vehicle_capacity' => 'integer',
             'min_group' => 'integer',

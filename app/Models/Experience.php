@@ -73,6 +73,34 @@ class Experience extends Model
         return $this->hasMany(ExperienceDay::class)->orderBy('day_number');
     }
 
+    public function priceSlabs()
+    {
+        return $this->hasMany(ExperiencePriceSlab::class)->orderBy('min_persons');
+    }
+
+    /**
+     * Per-person selling price for a party of $pax (req 3.2). Picks the slab with
+     * the largest min_persons <= $pax (so min_persons=6 serves "6+"). Falls back
+     * to base_cost_per_person when the experience has no slabs configured, so
+     * legacy experiences keep pricing exactly as before.
+     */
+    public function slabPricePerPerson(int $pax): float
+    {
+        $pax = max($pax, 1);
+        $slab = $this->priceSlabs
+            ->where('min_persons', '<=', $pax)
+            ->sortByDesc('min_persons')
+            ->first();
+
+        if ($slab) {
+            return (float) $slab->price_per_person;
+        }
+
+        // No slab at/below pax — use the smallest configured slab if any, else base.
+        $smallest = $this->priceSlabs->sortBy('min_persons')->first();
+        return $smallest ? (float) $smallest->price_per_person : (float) $this->base_cost_per_person;
+    }
+
     public function tripDayExperiences()
     {
         return $this->hasMany(TripDayExperience::class);

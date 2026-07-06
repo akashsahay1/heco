@@ -12,13 +12,14 @@ class ServiceProvider extends Model
         'bank_ifsc', 'bank_account_name', 'bank_account_number', 'upi',
         'services_offered', 'accommodation_categories', 'vehicle_types',
         'guide_types', 'activity_types', 'notes', 'ical_url', 'ical_last_synced_at',
-        'status', 'approved_at', 'approved_by',
+        'status', 'markup_percent', 'approved_at', 'approved_by',
         'last_updated_by', 'last_updated_by_role',
     ];
 
     protected function casts(): array
     {
         return [
+            'markup_percent' => 'decimal:2',
             'services_offered' => 'array',
             'accommodation_categories' => 'array',
             'vehicle_types' => 'array',
@@ -27,6 +28,20 @@ class ServiceProvider extends Model
             'approved_at' => 'datetime',
             'ical_last_synced_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Admin markup % applied to this provider's raw prices before the traveller
+     * sees them (req 3.3). Falls back to the global default_provider_markup_percent
+     * setting when the provider has none of its own. 0 = no markup.
+     */
+    public function effectiveMarkupPercent(): float
+    {
+        $val = $this->markup_percent;
+        if ($val === null || $val === '') {
+            $val = Setting::getValue('default_provider_markup_percent', 0);
+        }
+        return (float) $val;
     }
 
     public function user()

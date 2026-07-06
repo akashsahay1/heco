@@ -21,6 +21,9 @@ class SettingSeeder extends Seeder
             // adult, an infant at infant_price_percent. Editable in Settings.
             ['key' => 'child_price_percent', 'value' => '50', 'group' => 'financial'],
             ['key' => 'infant_price_percent', 'value' => '0', 'group' => 'financial'],
+            // Per-provider markup (req 3.3): global fallback when a provider has no
+            // markup_percent set. 0 = no markup until an admin sets one.
+            ['key' => 'default_provider_markup_percent', 'value' => '0', 'group' => 'financial'],
             ['key' => 'site_name', 'value' => 'HECO Portal', 'group' => 'general'],
             ['key' => 'site_email', 'value' => 'info@heco.eco', 'group' => 'general'],
             ['key' => 'ollama_enabled', 'value' => '1', 'group' => 'ai'],
