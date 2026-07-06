@@ -3,17 +3,16 @@
 namespace Database\Seeders;
 
 use App\Models\SystemList;
-use App\Services\CostCalculatorService;
 use Illuminate\Database\Seeder;
 
 /**
- * Seeds the five "travel preference" system_lists types whose option labels
- * must mirror the keys of CostCalculatorService::getMultiplierMap() exactly
- * (the pricing engine matches stored trip column strings against those labels,
- * e.g. trips.accommodation_comfort = "Cat C - Standard").
+ * Seeds the "travel preference" system_lists types used by the portal + admin
+ * dropdowns. accommodation_comfort / vehicle_comfort / guide_preference also
+ * drive provider filtering (get_category_providers matches these strings).
  *
- * Each label also gets a description so admins and travellers understand
- * what each level actually means in practice.
+ * The option labels ARE the keys of $descriptions below — this seeder is the
+ * single source of truth for them (the old CostCalculatorService multiplier map
+ * was removed with the slab-pricing change).
  *
  * Idempotent — updateOrCreate on (list_type, name).
  */
@@ -21,9 +20,8 @@ class PreferenceListsSeeder extends Seeder
 {
     public function run(): void
     {
-        // Descriptions keyed by (list_type, label). Multiplier from
-        // CostCalculatorService::getMultiplierMap() is also referenced in
-        // the description so admins see the pricing impact at a glance.
+        // The option labels for each list_type ARE the keys here; the values are
+        // admin-facing descriptions of what each level means.
         $descriptions = [
             'accommodation_comfort' => [
                 'Cat E - Camping/Tents'      => 'Wilderness camping in tents — sleeping bags + camp kitchen. Cheapest option (~0.5× standard rate). Best for treks where no built lodging exists.',
@@ -59,7 +57,7 @@ class PreferenceListsSeeder extends Seeder
             ],
         ];
 
-        foreach (CostCalculatorService::getMultiplierMap() as $listType => $options) {
+        foreach ($descriptions as $listType => $options) {
             $sort = 0;
             foreach (array_keys($options) as $label) {
                 SystemList::updateOrCreate(

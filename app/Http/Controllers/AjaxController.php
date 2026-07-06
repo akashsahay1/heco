@@ -3206,7 +3206,7 @@ class AjaxController extends Controller
                 $gt['experience_ids'] ?? [],
                 (int) ($gt['adults'] ?? 1) + (int) ($gt['children'] ?? 0) + (int) ($gt['infants'] ?? 0)
             );
-            return response()->json(["success" => true, "pricing" => $pricing]);
+            return response()->json(["success" => true, "pricing" => $this->hideInternalMargins($pricing)]);
         }
 
         $trip = $this->resolveTrip($request);
@@ -3230,7 +3230,21 @@ class AjaxController extends Controller
             (int) $trip->adults + (int) $trip->children + (int) $trip->infants
         );
 
-        return response()->json(["success" => true, "pricing" => $pricing]);
+        return response()->json(["success" => true, "pricing" => $this->hideInternalMargins($pricing)]);
+    }
+
+    /**
+     * Strip the internal HRP margin + HCT commission from a traveller-facing
+     * pricing payload (req 3.3 — only RP is shown to the traveller, as an
+     * informational contribution). HRP/HCT stay server-side for payout/reporting.
+     */
+    private function hideInternalMargins(array $pricing): array
+    {
+        unset(
+            $pricing['margin_hrp_percent'], $pricing['margin_hrp_amount'],
+            $pricing['commission_hct_percent'], $pricing['commission_hct_amount']
+        );
+        return $pricing;
     }
 
     /**

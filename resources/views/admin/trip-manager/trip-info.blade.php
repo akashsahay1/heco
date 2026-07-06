@@ -128,16 +128,24 @@
                     </div>
                     <div class="card-body">
                         @php
-                            // Canonical option sets — must match the strings the traveller portal stores
-                            // (system_lists table, seeded by PreferenceListsSeeder) and the multiplier keys
-                            // in App\Services\CostCalculatorService::getMultiplierMap(). Changing these will
-                            // break pricing, so keep them in sync with that service.
-                            $prefOptions = \App\Services\CostCalculatorService::getMultiplierMap();
+                            // Option sets are sourced from the system_lists table (seeded by
+                            // PreferenceListsSeeder) — the same source the traveller portal uses.
+                            // accommodation_comfort / vehicle_comfort / guide_preference also drive
+                            // provider filtering, so these must stay populated.
+                            $prefOptions = \App\Models\SystemList::whereIn('list_type', [
+                                    'accommodation_comfort', 'vehicle_comfort', 'guide_preference', 'travel_pace',
+                                ])
+                                ->where('is_active', true)
+                                ->orderBy('sort_order')
+                                ->get()
+                                ->groupBy('list_type')
+                                ->map(fn ($rows) => $rows->pluck('name')->all())
+                                ->all();
 
                             // Build the option list for a given field, preserving the trip's stored value
                             // even if it's a legacy/off-list string (so submitting the form doesn't wipe it).
                             $prefOptsFor = function (string $field) use ($prefOptions, $trip) {
-                                $opts = array_keys($prefOptions[$field] ?? []);
+                                $opts = $prefOptions[$field] ?? [];
                                 $current = $trip->{$field};
                                 if ($current !== null && $current !== '' && !in_array($current, $opts, true)) {
                                     array_unshift($opts, $current);

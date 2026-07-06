@@ -8,7 +8,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class PdfService
 {
-    public function generateTripItinerary(Trip $trip): \Barryvdh\DomPDF\PDF
+    public function generateTripItinerary(Trip $trip, bool $showInternal = false): \Barryvdh\DomPDF\PDF
     {
         $trip->load([
             'user', 'tripDays.experiences.experience', 'tripDays.services.serviceProvider',
@@ -20,6 +20,8 @@ class PdfService
         $pdf = Pdf::loadView('admin.pdf.trip-itinerary', [
             'trip' => $trip,
             'template' => $template,
+            // Only HCT staff see internal HRP/HCT margins; false = traveller-safe.
+            'showInternal' => $showInternal,
         ]);
 
         if ($template) {

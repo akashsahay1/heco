@@ -117,8 +117,6 @@ class HomepageController extends Controller
             }
         }
 
-        $multiplierMap = CostCalculatorService::getMultiplierMap();
-
         // Filter dropdown options must mirror the actual DB strings so every option
         // returns results (see audit H2). 'extreme' is forced in even if the seed
         // data happens not to contain it yet.
@@ -143,7 +141,7 @@ class HomepageController extends Controller
             ->sortBy(fn($d) => array_search(strtolower($d), $difficultyOrder) === false ? 99 : array_search(strtolower($d), $difficultyOrder))
             ->values();
 
-        return view("portal.homepage", compact("regions", "experiences", "trip", "guestTripData", "prefLists", "multiplierMap", "experienceTypes", "difficultyLevels"));
+        return view("portal.homepage", compact("regions", "experiences", "trip", "guestTripData", "prefLists", "experienceTypes", "difficultyLevels"));
     }
 
     /**

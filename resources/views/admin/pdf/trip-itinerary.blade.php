@@ -299,13 +299,19 @@
         </tr>
     </thead>
     <tbody>
-        <tr>
-            <td>Transport Cost</td>
-            <td class="text-right">{{ number_format($trip->transport_cost ?? 0, 2) }}</td>
-        </tr>
+        @if(($trip->experience_cost ?? 0) > 0)
+            <tr>
+                <td>Experiences</td>
+                <td class="text-right">{{ number_format($trip->experience_cost ?? 0, 2) }}</td>
+            </tr>
+        @endif
         <tr>
             <td>Accommodation Cost</td>
             <td class="text-right">{{ number_format($trip->accommodation_cost ?? 0, 2) }}</td>
+        </tr>
+        <tr>
+            <td>Transport Cost</td>
+            <td class="text-right">{{ number_format($trip->transport_cost ?? 0, 2) }}</td>
         </tr>
         <tr>
             <td>Guide Cost</td>
@@ -315,6 +321,12 @@
             <td>Activity Cost</td>
             <td class="text-right">{{ number_format($trip->activity_cost ?? 0, 2) }}</td>
         </tr>
+        @if(($trip->extra_day_cost ?? 0) > 0)
+            <tr>
+                <td>Extra Days</td>
+                <td class="text-right">{{ number_format($trip->extra_day_cost ?? 0, 2) }}</td>
+            </tr>
+        @endif
         <tr>
             <td>Other Cost</td>
             <td class="text-right">{{ number_format($trip->other_cost ?? 0, 2) }}</td>
@@ -322,28 +334,6 @@
         <tr style="background: #f8f9fa;">
             <td class="bold">Total Cost</td>
             <td class="text-right bold">{{ number_format($trip->total_cost ?? 0, 2) }}</td>
-        </tr>
-        @if(($trip->margin_rp_amount ?? 0) > 0)
-            <tr>
-                <td>RP Margin ({{ $trip->margin_rp_percent ?? 0 }}%)</td>
-                <td class="text-right">{{ number_format($trip->margin_rp_amount ?? 0, 2) }}</td>
-            </tr>
-        @endif
-        @if(($trip->margin_hrp_amount ?? 0) > 0)
-            <tr>
-                <td>HRP Margin ({{ $trip->margin_hrp_percent ?? 0 }}%)</td>
-                <td class="text-right">{{ number_format($trip->margin_hrp_amount ?? 0, 2) }}</td>
-            </tr>
-        @endif
-        @if(($trip->commission_hct_amount ?? 0) > 0)
-            <tr>
-                <td>HCT Commission ({{ $trip->commission_hct_percent ?? 0 }}%)</td>
-                <td class="text-right">{{ number_format($trip->commission_hct_amount ?? 0, 2) }}</td>
-            </tr>
-        @endif
-        <tr style="background: #f8f9fa;">
-            <td class="bold">Subtotal</td>
-            <td class="text-right bold">{{ number_format($trip->subtotal ?? 0, 2) }}</td>
         </tr>
         <tr>
             <td>GST</td>
@@ -353,6 +343,26 @@
             <td class="bold" style="font-size: 13px;">Final Price</td>
             <td class="text-right bold" style="font-size: 13px;">&#8377;{{ number_format($trip->final_price ?? 0, 2) }}</td>
         </tr>
+        {{-- Informational: the regenerative-project share included in the price
+             (not an added charge). HRP/HCT are internal splits, shown to staff only. --}}
+        @if(($trip->margin_rp_amount ?? 0) > 0)
+            <tr>
+                <td>Of which, Regenerative Contribution ({{ $trip->margin_rp_percent ?? 0 }}%)</td>
+                <td class="text-right">{{ number_format($trip->margin_rp_amount ?? 0, 2) }}</td>
+            </tr>
+        @endif
+        @if(($showInternal ?? false) && ($trip->margin_hrp_amount ?? 0) > 0)
+            <tr>
+                <td>[Internal] HRP Margin ({{ $trip->margin_hrp_percent ?? 0 }}%)</td>
+                <td class="text-right">{{ number_format($trip->margin_hrp_amount ?? 0, 2) }}</td>
+            </tr>
+        @endif
+        @if(($showInternal ?? false) && ($trip->commission_hct_amount ?? 0) > 0)
+            <tr>
+                <td>[Internal] HCT Commission ({{ $trip->commission_hct_percent ?? 0 }}%)</td>
+                <td class="text-right">{{ number_format($trip->commission_hct_amount ?? 0, 2) }}</td>
+            </tr>
+        @endif
     </tbody>
 </table>
 
