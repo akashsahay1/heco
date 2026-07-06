@@ -220,19 +220,15 @@ class AccommodationBookingFlowTest extends TestCase
         ]);
         $pricingResp->assertStatus(200)->assertJson(['success' => true]);
         $pricing = $pricingResp->json('pricing');
+        // Accommodation line = provider hotel ONLY. The experience's trek-time stay is
+        // now inside the slab-priced experience bundle, so it isn't on this line.
+        // 2500 x 1 room x 3 nights = 7500; markup 0% => 7500.
         $this->assertEquals(
-            9500,
+            7500,
             (float) $pricing['accommodation_cost'],
-            'Accommodation stacks: experience trek-stay 1000 x peopleFactor(2) = 2000 '
-                . 'PLUS provider hotel 2500 x 1 room x 3 nights = 7500 => 9500'
+            'Accommodation line = provider hotel 2500 x 1 room x 3 nights = 7500'
         );
-        $this->assertEquals(1.0, (float) $pricing['accommodation_multiplier'], 'Cat C category multiplier is 1.0');
-
-        // The provider hotel adds ON TOP of the experience trek-stay — it does not
-        // replace it — so the line is neither the pure provider rate (7500) nor the
-        // pure experience estimate (2000).
-        $this->assertNotEquals(7500, (float) $pricing['accommodation_cost']);
-        $this->assertNotEquals(2000, (float) $pricing['accommodation_cost']);
+        $this->assertEquals(7500, (float) $pricing['accommodation_provider_cost']);
 
         // 7. Changing category alone (no pricing id) clears provider + pricing.
         $changeCat = $this->ajax([

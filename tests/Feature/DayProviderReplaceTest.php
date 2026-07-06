@@ -14,16 +14,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Provider services and experience components are DIFFERENT real-world segments
- * for accommodation & transport (hotel vs trek-time stay; anchor→hotel vs
- * hotel→trek), so a day-level provider STACKS on top of the experience component
- * — both are charged, shown as separate lines. (It does NOT replace it.)
+ * A day-level provider service STACKS on top of the experience bundle — both are
+ * charged. The experience is one slab-priced bundle (its trek-time stay is inside
+ * that bundle, NOT on the accommodation line); the provider hotel is its own line.
  */
 class DayProviderReplaceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_day_level_provider_stacks_on_bundled_component(): void
+    public function test_day_level_provider_stacks_on_experience_bundle(): void
     {
         $user = User::create([
             'full_name' => 'U', 'email' => 'u@dpr.test',
@@ -53,12 +52,13 @@ class DayProviderReplaceTest extends TestCase
 
         $breakdown = app(CostCalculatorService::class)->calculate($trip);
 
-        // Accommodation = experience trek-stay (1000) + provider hotel (4000) = 5000.
-        $this->assertSame(5000, (int) $breakdown['accommodation_cost']);
-        // ...shown as two separate segments in the pricing summary.
-        $this->assertSame(1000, (int) $breakdown['accommodation_experience_cost']);
+        // Experience bundle = base_cost_per_person 2000 x peopleFactor(1) = 2000
+        // (no slabs configured -> falls back to base_cost_per_person).
+        $this->assertSame(2000, (int) $breakdown['experience_cost']);
+        // Accommodation line = the provider hotel only (4000); markup 0% => 4000.
+        $this->assertSame(4000, (int) $breakdown['accommodation_cost']);
         $this->assertSame(4000, (int) $breakdown['accommodation_provider_cost']);
-        // + activities 1000 => trip cost 6000 (both accommodation segments charged).
+        // Trip cost = experience bundle 2000 + provider hotel 4000 = 6000.
         $this->assertSame(6000, (int) $breakdown['total_cost']);
     }
 }

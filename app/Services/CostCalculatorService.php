@@ -5,82 +5,21 @@ namespace App\Services;
 use App\Models\Trip;
 use App\Models\Setting;
 use App\Models\SpPricing;
+use App\Models\ServiceProvider;
 use Carbon\Carbon;
 
 class CostCalculatorService
 {
     /**
-     * Single source of truth for preference-option multipliers.
-     * Used by the calculator AND surfaced to the portal view so each
-     * dropdown option can show its computed price inline.
+     * Preference-option multipliers were REMOVED (client req 3.2 — the experience
+     * is now priced by per-person slabs, and provider services by rate × quantity
+     * with an admin markup). Kept as an empty map so any legacy caller
+     * (HomepageController, guest estimator) degrades to "no multiplier" instead of
+     * fataling. Delete once all callers are cleaned up.
      */
     public static function getMultiplierMap(): array
     {
-        return [
-            'accommodation_comfort' => [
-                'Cat E - Camping/Tents'      => 0.5,
-                'Cat D - Basic/Homestay'     => 0.7,
-                'Cat C - Standard'           => 1.0,
-                'Cat B - Comfort'            => 1.5,
-                'Cat A - Premium/Luxury'     => 2.5,
-            ],
-            'vehicle_comfort' => [
-                'Local Transport'            => 0.5,
-                'SUV (Bolero/Scorpio)'       => 0.8,
-                'SUV (Innova/Crysta)'        => 1.0,
-                'Premium (Fortuner/Similar)' => 1.5,
-                'Tempo Traveller'            => 1.3,
-            ],
-            'guide_preference' => [
-                'No Guide'                   => 0.0,
-                'Local Guide'                => 0.7,
-                'English-speaking'           => 1.0,
-                'Certified/Expert'           => 1.5,
-            ],
-            'travel_pace' => [
-                'Relaxed'                    => 0.9,
-                'Moderate'                   => 1.0,
-                'Active'                     => 1.15,
-                'Intensive'                  => 1.3,
-            ],
-            'budget_sensitivity' => [
-                'Budget-friendly'            => 0.85,
-                'Mid-range'                  => 1.0,
-                'Premium'                    => 1.25,
-                'No Limit'                   => 1.5,
-            ],
-        ];
-    }
-
-    protected function lookup(string $listType, ?string $name): float
-    {
-        if ($name === null || $name === '') return 1.0;
-        return self::getMultiplierMap()[$listType][$name] ?? 1.0;
-    }
-
-    protected function getAccommodationMultiplier(?string $comfort): float
-    {
-        return $this->lookup('accommodation_comfort', $comfort);
-    }
-
-    protected function getVehicleMultiplier(?string $vehicle): float
-    {
-        return $this->lookup('vehicle_comfort', $vehicle);
-    }
-
-    protected function getGuideMultiplier(?string $guide): float
-    {
-        return $this->lookup('guide_preference', $guide);
-    }
-
-    protected function getPaceMultiplier(?string $pace): float
-    {
-        return $this->lookup('travel_pace', $pace);
-    }
-
-    protected function getBudgetMultiplier(?string $budget): float
-    {
-        return $this->lookup('budget_sensitivity', $budget);
+        return [];
     }
 
     /**
@@ -98,17 +37,21 @@ class CostCalculatorService
     }
 
     /**
-     * Transport cost from a chosen provider, by pricing unit:
+     * RAW transport cost from a chosen provider row (no markup — this is what the
+     * provider is owed), by pricing unit:
+     *   "per km"     → rate × distance_km   (req 3.1; distance admin-set on the row)
      *   "per day"    → rate × trip days
      *   "per person" → rate × pax
-     *   "per trip" / flat / "per km" (no distance stored) → flat rate
-     * (Per-km can't be multiplied without a trip distance, so it falls back to
-     * the flat rate; add a distance field later if per-km accuracy is needed.)
+     *   "per trip" / flat → flat rate
      */
     protected function providerTransportCost(SpPricing $pricing, Trip $trip, int $adults, int $children): int
     {
         $rate = (float) $pricing->price;
         $unit = strtolower((string) $pricing->unit);
+        if (str_contains($unit, 'km')) {
+            // Distance × per-km rate. No distance set → 0 (admin must enter the route KM).
+            return (int) round($rate * (float) ($pricing->distance_km ?: 0));
+        }
         if (str_contains($unit, 'day')) {
             $days = max($trip->tripDays->count() ?: ($this->resolveNights($trip) + 1), 1);
             return (int) round($rate * $days);
@@ -120,12 +63,26 @@ class CostCalculatorService
     }
 
     /**
-     * Amount owed to a provider for one pinned service on this trip, using the
-     * same rate × quantity rules as the provider-override block below:
+     * Admin markup applied to a provider's RAW price before the traveller sees it
+     * (req 3.3). The markup is the platform's margin; the raw price is never shown.
+     * Providers with no markup of their own fall back to the global default (0%).
+     */
+    protected function applyMarkup(int $raw, ?ServiceProvider $provider): int
+    {
+        if (!$provider) {
+            $pct = (float) Setting::getValue('default_provider_markup_percent', 0);
+        } else {
+            $pct = $provider->effectiveMarkupPercent();
+        }
+        return (int) round($raw * (1 + $pct / 100));
+    }
+
+    /**
+     * RAW amount owed to a provider for one pinned service on this trip (no markup —
+     * this feeds SpPayment invoices, which pay the provider their contracted rate):
      *   accommodation → price × rooms × nights (rooms = ceil(pax / occupancy))
      *   guide         → price × guide-days
-     *   transport     → per unit (day / person / flat)
-     * Used to auto-fill SpPayment invoices so provider payables aren't hand-typed.
+     *   transport     → per unit (km / day / person / flat)
      */
     public function providerPayable(SpPricing $pricing, Trip $trip, string $serviceType): int
     {
@@ -151,74 +108,62 @@ class CostCalculatorService
 
     public function calculate(Trip $trip): array
     {
-        $trip->load(['tripDays.services', 'tripDays.experiences.experience']);
+        $trip->load([
+            'tripDays.services.serviceProvider',
+            'tripDays.experiences.experience.priceSlabs',
+        ]);
 
-        $accomMultiplier = $this->getAccommodationMultiplier($trip->accommodation_comfort);
-        $vehicleMultiplier = $this->getVehicleMultiplier($trip->vehicle_comfort);
-        $guideMultiplier = $this->getGuideMultiplier($trip->guide_preference);
-        $paceMultiplier = $this->getPaceMultiplier($trip->travel_pace);
-        $budgetMultiplier = $this->getBudgetMultiplier($trip->budget_sensitivity);
-
-        $transportCost = 0;
-        $accommodationCost = 0;
-        $guideCost = 0;
-        $activityCost = 0;
-        $otherCost = 0;
-
-        // Provider portion of accommodation/transport, tracked separately so the
-        // pricing summary can show the experience segment (trek stay / hotel→trek)
-        // and the provider segment (hotel / anchor→hotel) as two distinct lines.
-        $accommodationProviderCost = 0;
-        $transportProviderCost = 0;
-
-        // Track each per-option line at multiplier=1.0 so the portal can show
-        // alternative prices (e.g. "what if I picked Premium SUV instead?")
-        // inside each dropdown option without re-running the calculator.
-        $transportBase = 0;
-        $accommodationBase = 0;
-        $guideBase = 0;
-
-        // Extra day costs — different rates for rest and activity days
-        $restDayCostPerPerson = (float) Setting::getValue('rest_day_cost_per_person', 2000);
-        $activityDayCostPerPerson = (float) Setting::getValue('activity_day_cost_per_person', 5000);
-        $adults = max($trip->adults, 1);
+        // Pax-type factors (#42): a child/infant bills at a configurable fraction of
+        // an adult. peopleFactor is the "billable head" count used to multiply
+        // per-person prices; groupSize is the raw headcount used to pick the slab.
+        $adults   = max($trip->adults, 1);
         $children = $trip->children ?: 0;
-        $infants = $trip->infants ?: 0;
-        // Pax-type pricing (#42): child/infant bill at a configurable fraction of an
-        // adult (was a hardcoded 50% for children, infants ignored). One factor so
-        // every line item bills the same way.
+        $infants  = $trip->infants ?: 0;
         $childFactor  = (float) Setting::getValue('child_price_percent', 50) / 100;
         $infantFactor = (float) Setting::getValue('infant_price_percent', 0) / 100;
         $peopleFactor = $adults + ($childFactor * $children) + ($infantFactor * $infants);
-        $extraDayCost = 0;
+        $groupSize    = max($adults + $children + $infants, 1);
 
-        // Track which experiences have already been costed (charge once per experience, not per day)
+        // Extra day costs — different rates for rest and activity days.
+        $restDayCostPerPerson     = (float) Setting::getValue('rest_day_cost_per_person', 2000);
+        $activityDayCostPerPerson = (float) Setting::getValue('activity_day_cost_per_person', 5000);
+
+        $experienceCost    = 0; // slab-priced experience bundle(s) — the "Experiences" line
+        $accommodationCost = 0; // provider hotel (marked up) + day-level accommodation
+        $transportCost     = 0; // provider transport (marked up, per-km) + day-level transport
+        $guideCost         = 0; // provider guide (marked up)
+        $activityCost      = 0; // day-level activity services (marked up)
+        $otherCost         = 0; // day-level other/meal services (marked up)
+        $extraDayCost      = 0;
+
+        // Charge each experience once across all days.
         $chargedExperienceIds = [];
 
         foreach ($trip->tripDays as $day) {
-            // Charge extra days (days without experiences)
+            // Extra days (days without experiences).
             $hasExperiences = $day->experiences->isNotEmpty();
             if (!$hasExperiences && $day->day_type) {
                 $costPerPerson = in_array($day->day_type, ['activity', 'free']) ? $activityDayCostPerPerson : $restDayCostPerPerson;
                 $extraDayCost += $costPerPerson * $peopleFactor;
             }
 
-            // SP-matched services contribute their booked price on top of the experience's bundled estimate.
-            // Services left at cost=0 are placeholders for the bundled cost we already capture below from
-            // the Experience breakdown, so skip them to avoid double-counting / zeroing out the line.
+            // Day-level SP-matched services are provider add-ons that STACK on top of
+            // the experience bundle. cost=0 rows are bundled-cost placeholders — skip.
+            // Each is shown at its marked-up price (raw provider price stays hidden).
             foreach ($day->services as $service) {
                 $cost = (float) $service->cost;
                 if ($cost <= 0) continue;
+                $marked = $this->applyMarkup((int) round($cost), $service->serviceProvider);
                 match ($service->service_type) {
-                    'transport' => [$transportCost += round($cost * $vehicleMultiplier), $transportBase += $cost, $transportProviderCost += round($cost * $vehicleMultiplier)],
-                    'accommodation' => [$accommodationCost += round($cost * $accomMultiplier), $accommodationBase += $cost, $accommodationProviderCost += round($cost * $accomMultiplier)],
-                    'guide' => [$guideCost += round($cost * $guideMultiplier), $guideBase += $cost],
-                    'activity' => $activityCost += $cost,
-                    default => $otherCost += $cost,
+                    'transport'     => $transportCost += $marked,
+                    'accommodation' => $accommodationCost += $marked,
+                    'guide'         => $guideCost += $marked,
+                    'activity'      => $activityCost += $marked,
+                    default         => $otherCost += $marked,
                 };
             }
+
             foreach ($day->experiences as $dayExp) {
-                // Only charge each experience once across all days
                 if (in_array($dayExp->experience_id, $chargedExperienceIds)) {
                     $dayExp->update(['total_cost' => 0]);
                     continue;
@@ -227,160 +172,99 @@ class CostCalculatorService
                 $exp = $dayExp->experience;
                 if (!$exp) continue;
 
-                // Split each experience's bundled price into its line items (accommodation/logistics/
-                // guide/activities/other) so the pricing summary actually shows where the money goes
-                // instead of dumping everything into "Activities" with 0s elsewhere.
-                $accomComponent      = (float) $exp->cost_accommodation;
-                $logisticsComponent  = (float) $exp->cost_logistics;
-                $guideComponent      = (float) $exp->cost_guide;
-                $activitiesComponent = (float) $exp->cost_activities;
-                $otherComponent      = (float) $exp->cost_other;
-
-                // Fall back to the headline per-person price when the breakdown is
-                // missing (older/legacy experiences) so we don't silently report ₹0.
-                // Use the Experience's base_cost_per_person — the SAME field the guest
-                // estimator falls back to — so guest and logged-in quotes stay equal
-                // even for legacy experiences (dayExp->cost_per_person is the activity
-                // slice and is often 0, which under-charged the trip).
-                $componentSum = $accomComponent + $logisticsComponent + $guideComponent
-                    + $activitiesComponent + $otherComponent;
-                if ($componentSum <= 0) {
-                    $activitiesComponent = (float) ($exp->base_cost_per_person ?: $dayExp->cost_per_person);
-                    $componentSum = $activitiesComponent;
+                // The experience is ONE slab-priced bundle (req 3.2): per-person price
+                // by group size × billable heads. Trek stay (tent), hotel↔trek
+                // transport, included guide and activities are all inside this bundle;
+                // provider hotel/transport/guide are separate stacked lines below.
+                $perPerson = $exp->slabPricePerPerson($groupSize);
+                if ($perPerson <= 0) {
+                    // Legacy experiences with no slabs: fall back to the headline
+                    // per-person price, then to the sum of the cost components.
+                    $perPerson = (float) ($exp->base_cost_per_person
+                        ?: ($exp->cost_accommodation + $exp->cost_logistics + $exp->cost_guide
+                            + $exp->cost_activities + $exp->cost_other));
                 }
-
-                // The experience's own components (trek-time accommodation, hotel→trek
-                // transport, guide, activities) always count. Provider services are
-                // DIFFERENT segments (hotel, anchor→hotel) and STACK on top — they do
-                // NOT replace these. (Guide is kept exclusive at the pin stage, so an
-                // experience guide and a guide provider never coexist.)
-                $accommodationCost += round($accomComponent      * $peopleFactor * $accomMultiplier);
-                $transportCost     += round($logisticsComponent  * $peopleFactor * $vehicleMultiplier);
-                $guideCost         += round($guideComponent      * $peopleFactor * $guideMultiplier);
-                $activityCost      += round($activitiesComponent * $peopleFactor);
-                $otherCost         += round($otherComponent      * $peopleFactor);
-
-                $accommodationBase += $accomComponent     * $peopleFactor;
-                $transportBase     += $logisticsComponent * $peopleFactor;
-                $guideBase         += $guideComponent     * $peopleFactor;
-
-                // Keep TripDayExperience.total_cost in sync for any downstream readers.
-                $expTotal = ($accomComponent * $accomMultiplier
-                    + $logisticsComponent * $vehicleMultiplier
-                    + $guideComponent * $guideMultiplier
-                    + $activitiesComponent
-                    + $otherComponent) * $peopleFactor;
-                $dayExp->update(['total_cost' => round($expTotal)]);
+                $line = (int) round($perPerson * $peopleFactor);
+                $experienceCost += $line;
+                $dayExp->update(['total_cost' => $line]);
             }
         }
 
-        // Travel pace scales activity-driven costs. Activities and Extra Days are
-        // intentionally EXCLUDED — those lines are shown at their plain cost (no
-        // preference multiplier), per product decision; only guide-led time is paced.
-        $guideCost = (int) round($guideCost * $paceMultiplier);
-        $guideBase = $guideBase * $paceMultiplier;
-
-        // Budget sensitivity scales the base trip cost — again EXCLUDING Activities
-        // and Extra Days (kept at plain cost).
-        $transportCost = (int) round($transportCost * $budgetMultiplier);
-        $accommodationCost = (int) round($accommodationCost * $budgetMultiplier);
-        $guideCost = (int) round($guideCost * $budgetMultiplier);
-        $otherCost = (int) round($otherCost * $budgetMultiplier);
-        // Keep the provider-portion trackers in step with the same scaling so the
-        // experience segment = total - provider stays exact.
-        $accommodationProviderCost = (int) round($accommodationProviderCost * $budgetMultiplier);
-        $transportProviderCost = (int) round($transportProviderCost * $budgetMultiplier);
-        $transportBase = $transportBase * $budgetMultiplier;
-        $accommodationBase = $accommodationBase * $budgetMultiplier;
-        $guideBase = $guideBase * $budgetMultiplier;
-
-        // ── Provider-driven costs ───────────────────────────────────────────────
-        // A pinned provider's sp_pricing rate is a contractual figure (rate × qty).
-        // For accommodation & transport it is a DIFFERENT segment from the experience
-        // (hotel vs trek stay; anchor→hotel vs hotel→trek), so it ADDS on top of the
-        // experience component. Guide is EXCLUSIVE — a guide can only be pinned when
-        // the experience provides none (cost_guide=0), so replacing is a no-op stack.
-        if ($trip->accommodation_pricing_id && ($accomPricing = SpPricing::live()->find($trip->accommodation_pricing_id))) {
+        // ── Trip-level provider pins — separate marked-up lines (they STACK on the
+        //    experience bundle). Guide is exclusive: it can only be pinned when the
+        //    experience provides none, so it never double-charges. ────────────────
+        if ($trip->accommodation_pricing_id && ($accomPricing = SpPricing::live()->with('serviceProvider')->find($trip->accommodation_pricing_id))) {
             $nights = $this->resolveNights($trip);
             $occupancy = max((int) ($accomPricing->default_occupancy ?: 2), 1);
             $rooms = max((int) ceil(($adults + $children) / $occupancy), 1);
-            $accomProviderLine = (int) round((float) $accomPricing->price * $rooms * $nights);
-            $accommodationCost += $accomProviderLine;
-            $accommodationProviderCost += $accomProviderLine;
+            $raw = (int) round((float) $accomPricing->price * $rooms * $nights);
+            $accommodationCost += $this->applyMarkup($raw, $accomPricing->serviceProvider);
         }
-        if ($trip->guide_pricing_id && ($guidePricing = SpPricing::live()->find($trip->guide_pricing_id))) {
+        if ($trip->guide_pricing_id && ($guidePricing = SpPricing::live()->with('serviceProvider')->find($trip->guide_pricing_id))) {
             $guideDays = max($trip->tripDays->count() ?: ($this->resolveNights($trip) + 1), 1);
-            $guideCost += (int) round((float) $guidePricing->price * $guideDays);
-            $guideMultiplier = 1.0;
+            $raw = (int) round((float) $guidePricing->price * $guideDays);
+            $guideCost += $this->applyMarkup($raw, $guidePricing->serviceProvider);
         }
-        if ($trip->vehicle_pricing_id && ($vehiclePricing = SpPricing::live()->find($trip->vehicle_pricing_id))) {
-            $transProviderLine = $this->providerTransportCost($vehiclePricing, $trip, $adults, $children);
-            $transportCost += $transProviderLine;
-            $transportProviderCost += $transProviderLine;
+        if ($trip->vehicle_pricing_id && ($vehiclePricing = SpPricing::live()->with('serviceProvider')->find($trip->vehicle_pricing_id))) {
+            $raw = $this->providerTransportCost($vehiclePricing, $trip, $adults, $children);
+            $transportCost += $this->applyMarkup($raw, $vehiclePricing->serviceProvider);
         }
 
-        $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
+        $totalCost = $experienceCost + $accommodationCost + $transportCost + $guideCost
+            + $activityCost + $otherCost + $extraDayCost;
 
-        // Cast to float first — DB returns DECIMAL columns as strings (e.g. "0.00"),
-        // and any non-empty string is truthy in PHP, so `?:` would skip the default.
-        $rpPercent  = (float) $trip->margin_rp_percent       ?: (float) Setting::getValue('default_rp_margin_percent', 5);
-        $hrpPercent = (float) $trip->margin_hrp_percent      ?: (float) Setting::getValue('default_hrp_margin_percent', 10);
-        $hctPercent = (float) $trip->commission_hct_percent  ?: (float) Setting::getValue('default_hct_commission_percent', 15);
+        // Margins RP/HRP/HCT are computed for INTERNAL payout/reporting ONLY — they are
+        // NOT added to what the traveller pays (req 3.3). The per-provider markup baked
+        // into the lines above is the platform's margin. Downstream: RP is surfaced to
+        // the traveller as an info line ("goes to the regenerative project"); HRP and
+        // HCT stay hidden from the traveller and are used for internal splits.
+        //
+        // Cast to float first — DB DECIMALs come back as strings ("0.00"), which are
+        // truthy, so `?:` would skip the configured default.
+        $rpPercent  = (float) $trip->margin_rp_percent      ?: (float) Setting::getValue('default_rp_margin_percent', 5);
+        $hrpPercent = (float) $trip->margin_hrp_percent     ?: (float) Setting::getValue('default_hrp_margin_percent', 10);
+        $hctPercent = (float) $trip->commission_hct_percent ?: (float) Setting::getValue('default_hct_commission_percent', 15);
+        $rpAmount   = round($totalCost * $rpPercent / 100, 2);
+        $hrpAmount  = round($totalCost * $hrpPercent / 100, 2);
+        $hctAmount  = round($totalCost * $hctPercent / 100, 2);
 
-        $rpAmount = round($totalCost * $rpPercent / 100, 2);
-        $hrpAmount = round($totalCost * $hrpPercent / 100, 2);
-        $hctAmount = round($totalCost * $hctPercent / 100, 2);
-
-        $subtotal = $totalCost + $rpAmount + $hrpAmount + $hctAmount;
+        // What the traveller actually pays: trip cost + GST. No margins on top.
+        $subtotal   = $totalCost;
         $gstPercent = (float) Setting::getValue('gst_percent', 5);
-        $gstAmount = round($subtotal * $gstPercent / 100, 2);
+        $gstAmount  = round($subtotal * $gstPercent / 100, 2);
         $finalPrice = $subtotal + $gstAmount;
 
         $data = [
-            'transport_cost' => $transportCost,
-            'accommodation_cost' => $accommodationCost,
-            'guide_cost' => $guideCost,
-            'activity_cost' => $activityCost,
-            'extra_day_cost' => $extraDayCost,
-            'other_cost' => $otherCost,
-            'total_cost' => $totalCost,
-            'margin_rp_percent' => $rpPercent,
-            'margin_rp_amount' => $rpAmount,
-            'margin_hrp_percent' => $hrpPercent,
-            'margin_hrp_amount' => $hrpAmount,
-            'commission_hct_percent' => $hctPercent,
-            'commission_hct_amount' => $hctAmount,
-            'subtotal' => $subtotal,
-            'gst_amount' => $gstAmount,
-            'final_price' => $finalPrice,
+            'experience_cost'         => $experienceCost,
+            'transport_cost'          => $transportCost,
+            'accommodation_cost'      => $accommodationCost,
+            'guide_cost'              => $guideCost,
+            'activity_cost'           => $activityCost,
+            'extra_day_cost'          => $extraDayCost,
+            'other_cost'              => $otherCost,
+            'total_cost'              => $totalCost,
+            'margin_rp_percent'       => $rpPercent,
+            'margin_rp_amount'        => $rpAmount,
+            'margin_hrp_percent'      => $hrpPercent,
+            'margin_hrp_amount'       => $hrpAmount,
+            'commission_hct_percent'  => $hctPercent,
+            'commission_hct_amount'   => $hctAmount,
+            'subtotal'                => $subtotal,
+            'gst_amount'              => $gstAmount,
+            'final_price'             => $finalPrice,
         ];
 
         $trip->update($data);
 
-        // Add display-only details for the pricing summary captions (not persisted)
-        $data['vehicle_multiplier']       = $vehicleMultiplier;
-        $data['accommodation_multiplier'] = $accomMultiplier;
-        $data['guide_multiplier']         = $guideMultiplier;
-        $data['pace_multiplier']          = $paceMultiplier;
-        $data['budget_multiplier']        = $budgetMultiplier;
-        $data['gst_percent']              = (float) Setting::getValue('gst_percent', 5);
-        $data['adults']                   = $adults;
-        $data['children']                 = $children;
-
-        // Per-option base costs (multiplier=1.0 equivalent, with pace/budget already
-        // baked in). Portal multiplies these by each dropdown option's data-multiplier
-        // to render alternate prices inline.
-        $data['transport_base']      = (int) round($transportBase);
-        $data['accommodation_base']  = (int) round($accommodationBase);
-        $data['guide_base']          = (int) round($guideBase);
-
-        // Split accommodation/transport into the experience segment (trek stay /
-        // hotel→trek) and the provider segment (hotel / anchor→hotel) so the
-        // pricing summary can show them as two separate lines.
-        $data['accommodation_provider_cost']   = (int) $accommodationProviderCost;
-        $data['accommodation_experience_cost'] = (int) max(0, $accommodationCost - $accommodationProviderCost);
-        $data['transport_provider_cost']       = (int) $transportProviderCost;
-        $data['transport_experience_cost']     = (int) max(0, $transportCost - $transportProviderCost);
+        // Display-only extras for the pricing summary (not persisted).
+        $data['gst_percent'] = $gstPercent;
+        $data['adults']      = $adults;
+        $data['children']    = $children;
+        // Provider-only line totals (already marked up). The experience bundle is its
+        // own line; provider hotel/transport/guide stack as separate lines.
+        $data['accommodation_provider_cost'] = (int) $accommodationCost;
+        $data['transport_provider_cost']     = (int) $transportCost;
+        $data['guide_provider_cost']         = (int) $guideCost;
 
         return $data;
     }

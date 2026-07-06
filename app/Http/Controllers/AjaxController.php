@@ -2913,18 +2913,25 @@ class AjaxController extends Controller
                 $q->where('status', 'approved');
                 if ($regionId) $q->where('region_id', $regionId);
             })
-            ->with('serviceProvider:id,name')
+            ->with('serviceProvider:id,name,markup_percent')
             ->orderBy('price')
             ->get();
 
-        $providers = $rows->map(fn ($r) => [
-            'pricing_id'    => $r->id,
-            'provider_id'   => $r->service_provider_id,
-            'provider_name' => $r->serviceProvider?->name ?? 'Provider',
-            'room_category' => $r->room_category,
-            'price'         => (float) $r->price,
-            'unit'          => $r->unit ?: 'night',
-        ])->values();
+        // Never expose a provider's RAW price to the traveller (req 3.3): every price
+        // shown is the admin-marked-up selling price. The markup is the platform's
+        // hidden margin. For per-km transport the displayed figure is the marked-up
+        // per-km rate; the actual line cost (distance × rate) is computed server-side.
+        $providers = $rows->map(function ($r) {
+            $pct = $r->serviceProvider ? $r->serviceProvider->effectiveMarkupPercent() : 0;
+            return [
+                'pricing_id'    => $r->id,
+                'provider_id'   => $r->service_provider_id,
+                'provider_name' => $r->serviceProvider?->name ?? 'Provider',
+                'room_category' => $r->room_category,
+                'price'         => round((float) $r->price * (1 + $pct / 100), 2),
+                'unit'          => $r->unit ?: 'night',
+            ];
+        })->values();
 
         // Guide is exclusive — tell the UI to show a notice and hide the guide
         // provider list when the trip's experience already provides a guide.
