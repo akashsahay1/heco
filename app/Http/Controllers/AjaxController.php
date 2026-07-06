@@ -3202,7 +3202,10 @@ class AjaxController extends Controller
         if (!Auth::check()) {
             $gt = $this->guestTrip();
             $pricing = $this->computeGuestPricing($gt);
-            $pricing['experiences'] = $this->pricingExperienceLines($gt['experience_ids'] ?? []);
+            $pricing['experiences'] = $this->pricingExperienceLines(
+                $gt['experience_ids'] ?? [],
+                (int) ($gt['adults'] ?? 1) + (int) ($gt['children'] ?? 0) + (int) ($gt['infants'] ?? 0)
+            );
             return response()->json(["success" => true, "pricing" => $pricing]);
         }
 
@@ -3223,7 +3226,8 @@ class AjaxController extends Controller
         // only — NOT summed into the total, since CostCalculatorService already
         // distributes each experience's cost across the component lines.
         $pricing['experiences'] = $this->pricingExperienceLines(
-            $trip->selectedExperiences()->orderBy('sort_order')->pluck('experience_id')->all()
+            $trip->selectedExperiences()->orderBy('sort_order')->pluck('experience_id')->all(),
+            (int) $trip->adults + (int) $trip->children + (int) $trip->infants
         );
 
         return response()->json(["success" => true, "pricing" => $pricing]);
@@ -3233,19 +3237,21 @@ class AjaxController extends Controller
      * Itemised experience lines (name + per-person base price) for the pricing
      * summary, in the trip's experience order. Skips experiences with no price.
      */
-    protected function pricingExperienceLines(array $expIds): array
+    protected function pricingExperienceLines(array $expIds, int $groupSize = 1): array
     {
         if (empty($expIds)) return [];
-        $exps = Experience::whereIn('id', $expIds)
-            ->get(['id', 'name', 'base_cost_per_person', 'price_currency'])
-            ->keyBy('id');
+        $exps = Experience::whereIn('id', $expIds)->with('priceSlabs')->get()->keyBy('id');
         $lines = [];
         foreach ($expIds as $id) {
             $e = $exps->get($id);
-            if (!$e || (float) $e->base_cost_per_person <= 0) continue;
+            if (!$e) continue;
+            // Per-person price for THIS group size (req 3.2), matching the calculator.
+            $perPerson = $e->slabPricePerPerson(max($groupSize, 1));
+            if ($perPerson <= 0) $perPerson = (float) $e->base_cost_per_person;
+            if ($perPerson <= 0) continue;
             $lines[] = [
                 'name'             => $e->name,
-                'price_per_person' => (float) $e->base_cost_per_person,
+                'price_per_person' => $perPerson,
                 'currency'         => $e->price_currency ?: 'INR',
             ];
         }

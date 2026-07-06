@@ -392,22 +392,6 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                         {{-- Guide preference → provider: provider cards (name only; hover reveals rate). --}}
                                         <div class="provider-cards mt-2 {{ $pGuide ? '' : 'd-none' }}" id="prefGuideProviderCards" data-service="guide" data-selected="{{ $trip->guide_pricing_id ?? '' }}"></div>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Travel Pace</label>
-                                        <select class="form-select pref-input custom-select" id="prefPace">
-                                            @foreach($prefLists['travel_pace'] ?? [] as $item)
-                                                <option value="{{ $item->name }}" @selected($pPace == $item->name)>{{ $item->name }}</option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                    <div class="mb-0">
-                                        <label class="form-label">Budget Sensitivity</label>
-                                        <select class="form-select pref-input custom-select" id="prefBudget">
-                                            @foreach($prefLists['budget_sensitivity'] ?? [] as $item)
-                                                <option value="{{ $item->name }}" @selected($pBudget == $item->name)>{{ $item->name }}</option>
-                                            @endforeach
-                                        </select>
-                                    </div>
                                 </div>
                             </div>
 
@@ -419,25 +403,23 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                          loadTripPricing from p.experiences. The amounts are NOT added to the
                                          total — each experience's cost is already split across the component
                                          rows below (Accommodation/Transport/Guide/Activities). --}}
+                                    {{-- Experiences bundle (slab-priced) + provider add-on
+                                         lines (hotel / airport↔hotel transport / guide),
+                                         each shown at its marked-up price. Zero rows hide.
+                                         Rendered by loadPricing(). --}}
                                     <div id="prExperiences"></div>
-                                    {{-- One row per cost component the calculator returns.
-                                         Accommodation & Transport split into an experience
-                                         segment (trek stay / hotel→trek) and a provider
-                                         segment (hotel / anchor→hotel) when a provider is
-                                         chosen — rendered by loadPricing(). --}}
-                                    <div id="prAccommodationRows"></div>
-                                    <div id="prTransportRows"></div>
-                                    <div class="pricing-row"><span>Guide <small class="text-muted price-detail" id="prGuideNote"></small></span><span id="prGuide"></span></div>
-                                    <div class="pricing-row"><span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span><span id="prActivities"></span></div>
-                                    <div class="pricing-row"><span>Extra Days <small class="text-muted price-detail" id="prExtraDaysNote"></small></span><span id="prExtraDays"></span></div>
-                                    <div class="pricing-row"><span>Other</span><span id="prOther"></span></div>
+                                    <div class="pricing-row" id="prRowAccommodation"><span>Accommodation <small class="text-muted price-detail">hotel</small></span><span id="prAccommodation"></span></div>
+                                    <div class="pricing-row" id="prRowTransport"><span>Transport <small class="text-muted price-detail">airport/station ↔ hotel</small></span><span id="prTransport"></span></div>
+                                    <div class="pricing-row" id="prRowGuide"><span>Guide</span><span id="prGuide"></span></div>
+                                    <div class="pricing-row" id="prRowActivities"><span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span><span id="prActivities"></span></div>
+                                    <div class="pricing-row" id="prRowExtraDays"><span>Extra Days <small class="text-muted price-detail" id="prExtraDaysNote"></small></span><span id="prExtraDays"></span></div>
+                                    <div class="pricing-row" id="prRowOther"><span>Other</span><span id="prOther"></span></div>
                                     <div class="pricing-row pricing-subtotal"><span><strong>Trip Cost</strong></span><span id="prTripCost"></span></div>
-                                    <div class="pricing-row"><span>RP Contribution <small class="text-muted price-detail" id="prRPNote"></small></span><span id="prRP" class="rp-contribution"></span></div>
-                                    <div class="pricing-row"><span>HRP Margin <small class="text-muted price-detail" id="prHRPNote"></small></span><span id="prHRP"></span></div>
-                                    <div class="pricing-row"><span>HCT Service <small class="text-muted price-detail" id="prHCTNote"></small></span><span id="prHCT"></span></div>
-                                    <div class="pricing-row pricing-subtotal"><span><strong>Pre-tax Total</strong></span><span id="prSubtotal"></span></div>
                                     <div class="pricing-row"><span>GST <small class="text-muted price-detail" id="prGSTNote"></small></span><span id="prGST"></span></div>
                                     <div class="pricing-row total"><span>Final Price</span><span id="prFinal"></span></div>
+                                    {{-- Informational only: the share of the price that supports
+                                         the regenerative project. Not an added charge. --}}
+                                    <div class="pricing-row rp-info" id="prRowRP"><span class="text-muted"><i class="bi bi-tree"></i> Regenerative contribution <small class="price-detail" id="prRPNote"></small></span><span id="prRP" class="text-muted"></span></div>
                                 </div>
                             </div>
 
@@ -2028,16 +2010,17 @@ jQuery(function() {
         ajaxPost({ get_trip_pricing: 1, trip_id: tripId }, function(resp) {
             var p = resp.pricing || resp;
 
-            // Experiences — itemised per-person base price at the top of the summary.
-            // Read-only: these amounts are already folded into the component rows
-            // below, so they are shown for clarity, not added to the total again.
+            // Experiences bundle — one "Experiences" total (the slab-priced bundle),
+            // with each experience listed beneath at its per-person slab price. This
+            // IS a line in the trip cost (not folded into provider rows).
             var exps = p.experiences || [];
-            if (exps.length) {
-                var eh = '<div class="pricing-row pricing-exp-head"><span><strong>Experiences</strong></span><span class="text-muted price-detail">per person</span></div>';
+            var expCost = Number(p.experience_cost) || 0;
+            if (exps.length || expCost > 0) {
+                var eh = '<div class="pricing-row pricing-subtotal"><span><strong>Experiences</strong></span><span>' + fmtPriceRow(expCost) + '</span></div>';
                 exps.forEach(function(ex) {
                     eh += '<div class="pricing-row pricing-exp-row">'
-                        + '<span>' + escHtml(ex.name) + '</span>'
-                        + '<span>' + fmtCurrency(ex.price_per_person, ex.currency || 'INR') + '</span>'
+                        + '<span class="text-muted">' + escHtml(ex.name) + '</span>'
+                        + '<span class="text-muted price-detail">' + fmtCurrency(ex.price_per_person, ex.currency || 'INR') + ' / person</span>'
                         + '</div>';
                 });
                 jQuery('#prExperiences').html(eh);
@@ -2045,40 +2028,33 @@ jQuery(function() {
                 jQuery('#prExperiences').empty();
             }
 
-            // Accommodation, Vehicle and Guide are priced per-provider now (no inline
-            // dropdown price), so the full per-component breakdown lives here instead.
-            // Accommodation & Transport show two lines when a provider segment
-            // exists (experience trek-stay/hotel→trek + provider hotel/anchor→hotel).
-            function segmentRows(label, expCost, provCost, total) {
-                expCost = Number(expCost) || 0; provCost = Number(provCost) || 0;
-                if (provCost > 0 && expCost > 0) {
-                    return '<div class="pricing-row"><span>' + label + ' <small class="text-muted">(experience)</small></span><span>' + fmtPriceRow(expCost) + '</span></div>'
-                         + '<div class="pricing-row"><span>' + label + ' <small class="text-muted">(provider)</small></span><span>' + fmtPriceRow(provCost) + '</span></div>';
-                }
-                return '<div class="pricing-row"><span>' + label + '</span><span>' + fmtPriceRow(total) + '</span></div>';
+            // Provider add-on lines (hotel / airport↔hotel transport / guide) and any
+            // day-level activity/other costs — each already marked up server-side. A row
+            // with a zero amount is hidden to keep the summary clean.
+            function setRow(rowId, valId, amount) {
+                var v = Number(amount) || 0;
+                jQuery('#' + valId).text(fmtPriceRow(v));
+                jQuery('#' + rowId).toggleClass('d-none', v <= 0);
             }
-            jQuery('#prAccommodationRows').html(segmentRows('Accommodation', p.accommodation_experience_cost, p.accommodation_provider_cost, p.accommodation_cost));
-            jQuery('#prTransportRows').html(segmentRows('Transport', p.transport_experience_cost, p.transport_provider_cost, p.transport_cost));
-            jQuery('#prGuide').text(fmtPriceRow(p.guide_cost));
-            jQuery('#prActivities').text(fmtPriceRow(p.activity_cost));
-            jQuery('#prExtraDays').text(fmtPriceRow(p.extra_day_cost));
-            jQuery('#prOther').text(fmtPriceRow(p.other_cost));
+            setRow('prRowAccommodation', 'prAccommodation', p.accommodation_cost);
+            setRow('prRowTransport', 'prTransport', p.transport_cost);
+            setRow('prRowGuide', 'prGuide', p.guide_cost);
+            setRow('prRowActivities', 'prActivities', p.activity_cost);
+            setRow('prRowExtraDays', 'prExtraDays', p.extra_day_cost);
+            setRow('prRowOther', 'prOther', p.other_cost);
             jQuery('#prTripCost').text(fmtPriceRow(p.total_cost));
-            jQuery('#prRP').text(fmtPriceRow(p.margin_rp_amount));
-            jQuery('#prHRP').text(fmtPriceRow(p.margin_hrp_amount));
-            jQuery('#prHCT').text(fmtPriceRow(p.commission_hct_amount));
-            jQuery('#prSubtotal').text(fmtPriceRow(p.subtotal));
             jQuery('#prGST').text(fmtPriceRow(p.gst_amount));
             jQuery('#prFinal').text(fmtPriceRow(p.final_price));
 
-            // Detail captions — pace/budget no longer scale the price, so only the
-            // pax basis is shown (no multiplier).
+            // RP is informational only — the share of the price supporting the
+            // regenerative project (NOT an extra charge). HRP/HCT are never shown.
+            setRow('prRowRP', 'prRP', p.margin_rp_amount);
+            jQuery('#prRPNote').text(fmtPct(p.margin_rp_percent));
+
+            // Detail captions — pricing is per-person by group size (no multipliers).
             var paxLabel = (p.adults || 1) + (p.children > 0 ? ' adults +' + p.children + ' kids @ 50%' : ' adults');
             jQuery('#prActivitiesNote').text(' (' + paxLabel + ')');
             jQuery('#prExtraDaysNote').text(parseFloat(p.extra_day_cost) > 0 ? ' (' + paxLabel + ')' : '');
-            jQuery('#prRPNote').text(fmtPct(p.margin_rp_percent));
-            jQuery('#prHRPNote').text(fmtPct(p.margin_hrp_percent));
-            jQuery('#prHCTNote').text(fmtPct(p.commission_hct_percent));
             jQuery('#prGSTNote').text(fmtPct(p.gst_percent));
 
             // Balance due is computed server-side in getTripPricing; the frontend
@@ -2307,9 +2283,7 @@ jQuery(function() {
             trip_id: window.tripId,
             accommodation_comfort: jQuery('#prefAccommodation').val(),
             vehicle_comfort: jQuery('#prefVehicle').val(),
-            guide_preference: jQuery('#prefGuide').val(),
-            travel_pace: jQuery('#prefPace').val(),
-            budget_sensitivity: jQuery('#prefBudget').val()
+            guide_preference: jQuery('#prefGuide').val()
         };
         ajaxPost(payload, function() {
             if (typeof loadPricing === 'function') loadPricing();
@@ -2348,7 +2322,7 @@ jQuery(function() {
             // Guide is exclusive — if the experience already provides a guide, show a
             // notice instead of provider options (backend rejects an added guide too).
             if (resp && resp.guide_included) {
-                $box.html('<div class="provider-cards-empty"><i class="bi bi-info-circle"></i> A guide is already included in your experience, so an additional guide can\'t be added.</div>').removeClass('d-none');
+                $box.html('<div class="provider-cards-empty"><i class="bi bi-info-circle"></i> Guide is already included in this experience.</div>').removeClass('d-none');
                 return;
             }
             var list = (resp && resp.providers) || [];
@@ -2721,8 +2695,6 @@ jQuery(function() {
                 if (d.accommodation_comfort) jQuery('#prefAccommodation').val(d.accommodation_comfort);
                 if (d.vehicle_comfort) jQuery('#prefVehicle').val(d.vehicle_comfort);
                 if (d.guide_preference) jQuery('#prefGuide').val(d.guide_preference);
-                if (d.travel_pace) jQuery('#prefPace').val(d.travel_pace);
-                if (d.budget_sensitivity) jQuery('#prefBudget').val(d.budget_sensitivity);
                 if (d.start_date) {
                     jQuery('#tripStartDateInput').val(d.start_date);
                     if (window.tripStartDatepicker) {
