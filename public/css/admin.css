@@ -1483,3 +1483,7 @@ body.admin-login-page {
     min-height: calc(1.5em + .5rem + calc(var(--bs-border-width) * 2));
     border-radius: var(--bs-border-radius-sm);
 }
+
+/* Experience per-person price slabs (req 3.2) — narrow, tidy pricing table. */
+.exp-slab-table { max-width: 520px; }
+.exp-slab-table .exp-slab-col { width: 140px; }

@@ -51,6 +51,16 @@
                             </select>
                         </div>
                     </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Admin Markup %</label>
+                            <div class="input-group input-group-sm">
+                                <input type="number" step="0.01" min="0" max="100" name="markup_percent" class="form-control form-control-sm" value="{{ $provider->markup_percent !== null ? (float) $provider->markup_percent : '' }}" placeholder="0">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <small class="text-muted">Added to this provider's prices before the traveller sees them; the raw price is never shown. 0 = no markup.</small>
+                        </div>
+                    </div>
                     <div class="mb-2">
                         <label class="form-label small text-muted">Contact Person</label>
                         <input type="text" name="contact_person" class="form-control form-control-sm" value="{{ $provider->contact_person }}">
@@ -524,7 +534,7 @@
             </div>
 
             <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-5">
+                <div class="col-md-3">
                     <label class="form-label small">Rate (₹) <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_transport" placeholder="e.g. 25" data-price-for="transport">
                     <small class="form-help-text text-muted d-block mt-1"></small>
@@ -539,7 +549,12 @@
                     </select>
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
+                    <label class="form-label small">Route Distance (km)</label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="distance_km" placeholder="for per-km">
+                    <small class="form-help-text text-muted d-block mt-1">Used only when Unit is "per km": cost = rate × distance.</small>
+                </div>
+                <div class="col-md-3">
                     <label class="form-label small">Driver Allowance (₹/day)</label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="driver_allowance" placeholder="optional">
                     <small class="form-help-text text-muted d-block mt-1"></small>
@@ -1113,6 +1128,7 @@ jQuery(function() {
                     var parts = [];
                     if (r.vehicle_type)    parts.push('<strong>' + spEscape(r.vehicle_type) + '</strong>');
                     if (r.vehicle_capacity) parts.push('<small class="text-muted">' + r.vehicle_capacity + ' seats</small>');
+                    if (r.distance_km && String(r.unit || '').toLowerCase().indexOf('km') !== -1) parts.push('<small class="text-muted">× ' + Number(r.distance_km).toLocaleString('en-IN') + ' km</small>');
                     if (r.driver_allowance) parts.push('<small class="text-muted">+ ₹' + Number(r.driver_allowance).toLocaleString('en-IN') + ' driver/day</small>');
                     details = parts.join(' · ');
                 } else if (r.service_type === 'guide') {
@@ -1225,6 +1241,7 @@ jQuery(function() {
         $f.find('[name=vehicle_type]').val(r ? (r.vehicle_type || '') : '');
         $f.find('[name=vehicle_capacity]').val(r ? (r.vehicle_capacity || '') : '');
         $f.find('[name=driver_allowance]').val(r ? (r.driver_allowance || '') : '');
+        $f.find('[name=distance_km]').val(r ? (r.distance_km || '') : '');
         $f.find('[name=price_transport]').val(r && r.service_type === 'transport' ? r.price : '');
         $f.find('[name=unit_transport]').val(r && r.service_type === 'transport' ? (r.unit || '') : '');
 
@@ -1633,6 +1650,7 @@ jQuery(function() {
             data.vehicle_type     = jQuery(this).find('[name=vehicle_type]').val();
             data.vehicle_capacity = jQuery(this).find('[name=vehicle_capacity]').val();
             data.driver_allowance = jQuery(this).find('[name=driver_allowance]').val();
+            data.distance_km      = jQuery(this).find('[name=distance_km]').val();
             data.price            = jQuery(this).find('[name=price_transport]').val();
             data.unit             = jQuery(this).find('[name=unit_transport]').val();
         } else if (type === 'guide') {

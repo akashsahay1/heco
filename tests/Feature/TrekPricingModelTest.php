@@ -12,8 +12,11 @@ use App\Models\Trip;
 use App\Models\TripDay;
 use App\Models\TripDayExperience;
 use App\Models\User;
+use App\Http\Controllers\AjaxController;
 use App\Services\CostCalculatorService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use ReflectionMethod;
 use Tests\TestCase;
 
 /**
@@ -144,5 +147,30 @@ class TrekPricingModelTest extends TestCase
         $this->assertSame(24000, $cost(2));       // 2p slab 12000 × 2
         $this->assertSame(36000, $cost(3));       // min<=3 -> 2p slab 12000 × 3
         $this->assertSame(40000, $cost(4));       // 4p slab 10000 × 4
+    }
+
+    public function test_get_category_providers_returns_marked_up_price_not_raw(): void
+    {
+        $region = Region::firstOrCreate(['slug' => 'valley'], ['name' => 'Valley', 'is_active' => true]);
+        // Provider with a 20% markup and a raw ₹1000/night Cat C rate.
+        $hotel = $this->makeProvider('hrp', 'markup@trek.test', 20);
+        SpPricing::create([
+            'service_provider_id' => $hotel->id, 'service_type' => 'accommodation',
+            'comfort_tier' => 'Cat C - Standard', 'room_category' => 'Standard Double',
+            'unit' => 'per night', 'price' => 1000, 'default_occupancy' => 2,
+            'approval_status' => 'approved', 'is_active' => true,
+        ]);
+
+        $req = Request::create('/ajax', 'POST', [
+            'get_category_providers' => 1, 'service_type' => 'accommodation',
+            'category' => 'Cat C - Standard', 'region_id' => $region->id,
+        ]);
+        $m = new ReflectionMethod(AjaxController::class, 'getCategoryProviders');
+        $m->setAccessible(true);
+        $providers = $m->invoke(app(AjaxController::class), $req)->getData(true)['providers'];
+
+        $this->assertNotEmpty($providers);
+        // Traveller sees the marked-up price (1000 + 20% = 1200), never the raw 1000.
+        $this->assertSame(1200.0, (float) $providers[0]['price']);
     }
 }

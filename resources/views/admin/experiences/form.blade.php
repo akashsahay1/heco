@@ -471,7 +471,33 @@
                                 <span class="input-group-text cost-symbol">{{ isset($e) && $e->price_currency ? \App\Models\Currency::where('code', $e->price_currency)->value('symbol') ?? '₹' : '₹' }}</span>
                                 <input type="number" class="form-control bg-light" id="baseCostPreview" name="base_cost_per_person" value="{{ $e->base_cost_per_person ?? '0.00' }}" step="0.01" min="0" readonly tabindex="-1">
                             </div>
-                            <small class="text-muted">Sum of the 5 cost components above. This is the headline price travellers see.</small>
+                            <small class="text-muted">Cheapest group-size slab below (or the sum of components if no slabs are set). Shown as the "from" price on cards.</small>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label mb-1">Per-Person Price by Group Size</label>
+                            <p class="text-muted small mb-2">The experience is priced per person, varying with the number of travellers (fewer travellers usually cost more each). The last row ("6+") applies to that many travellers or more. Leave a row blank to skip it. Traveller pays this price × number of travellers.</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle exp-slab-table">
+                                    <thead><tr><th class="exp-slab-col">Travellers</th><th>Price / person</th></tr></thead>
+                                    <tbody>
+                                        @php
+                                            $existingSlabs = isset($e) ? $e->priceSlabs->pluck('price_per_person', 'min_persons')->toArray() : [];
+                                            $slabRows = [1 => '1 person', 2 => '2 persons', 3 => '3 persons', 4 => '4 persons', 5 => '5 persons', 6 => '6+ persons'];
+                                        @endphp
+                                        @foreach ($slabRows as $n => $label)
+                                        <tr>
+                                            <td>{{ $label }}<input type="hidden" name="price_slabs[{{ $loop->index }}][min_persons]" value="{{ $n }}"></td>
+                                            <td>
+                                                <div class="input-group">
+                                                    <span class="input-group-text cost-symbol">₹</span>
+                                                    <input type="number" class="form-control" name="price_slabs[{{ $loop->index }}][price_per_person]" value="{{ isset($existingSlabs[$n]) ? (float) $existingSlabs[$n] : '' }}" step="0.01" min="0" placeholder="—">
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Single Supplement</label>

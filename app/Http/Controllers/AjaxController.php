@@ -4461,6 +4461,8 @@ class AjaxController extends Controller
                 "vehicle_type"      => "required|string|max:100",
                 "vehicle_capacity"  => "nullable|integer|min:1|max:80",
                 "driver_allowance"  => "nullable|numeric|min:0",
+                // Route distance (km) for per-km pricing (req 3.1): cost = price × distance.
+                "distance_km"       => "nullable|numeric|min:0|max:100000",
                 "unit"              => "required|string|max:50",
             ],
             'guide' => [
@@ -4507,6 +4509,7 @@ class AjaxController extends Controller
             "default_occupancy"   => $request->input("default_occupancy") ?: null,
             "vehicle_capacity"    => $request->filled("vehicle_capacity") ? (int) $request->vehicle_capacity : null,
             "driver_allowance"    => $request->filled("driver_allowance") ? (float) $request->driver_allowance : null,
+            "distance_km"         => $request->filled("distance_km") ? (float) $request->distance_km : null,
             "min_group"           => $request->filled("min_group") ? (int) $request->min_group : null,
             "max_group"           => $request->filled("max_group") ? (int) $request->max_group : null,
             "specialties"         => $request->input("specialties") ?: null,
@@ -4614,6 +4617,7 @@ class AjaxController extends Controller
                     'default_occupancy' => $pending->default_occupancy,
                     'vehicle_capacity'  => $pending->vehicle_capacity,
                     'driver_allowance'  => $pending->driver_allowance,
+                    'distance_km'       => $pending->distance_km,
                     'min_group'         => $pending->min_group,
                     'max_group'         => $pending->max_group,
                     'specialties'       => $pending->specialties,
@@ -5254,6 +5258,12 @@ class AjaxController extends Controller
             "accommodation_categories", "vehicle_types", "guide_types", "activity_types",
             "notes", "status",
         ]);
+        // Per-provider admin markup (req 3.3) — HCT-only (this whole method is gated).
+        // Clamp to 0–100%. Blank means "no markup" (0).
+        if ($request->has('markup_percent')) {
+            $data['markup_percent'] = max(0, min(100, (float) $request->input('markup_percent', 0)));
+        }
+
         // Track approval timestamp when status flips to approved for the first time
         if (($data['status'] ?? null) === 'approved' && !$wasApproved) {
             $data['approved_at'] = now();
@@ -6003,7 +6013,7 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
-        $data = $request->except(["_token", "save_experience", "experience_days", "gallery"]);
+        $data = $request->except(["_token", "save_experience", "experience_days", "gallery", "price_slabs"]);
 
         if ($request->hasFile("card_image")) {
             $stored = \App\Services\ImageUploadService::storeUploadedImage($request->file("card_image"), "experiences", 1200);
@@ -6030,13 +6040,28 @@ class AjaxController extends Controller
             $data["slug"] = Str::slug($data["name"]);
         }
 
-        // Auto-sync base_cost_per_person from the breakdown so what HCT enters
-        // and what the trip is charged stay in lockstep.
-        $data["base_cost_per_person"] = (float) ($data["cost_accommodation"] ?? 0)
-            + (float) ($data["cost_logistics"] ?? 0)
-            + (float) ($data["cost_guide"] ?? 0)
-            + (float) ($data["cost_activities"] ?? 0)
-            + (float) ($data["cost_other"] ?? 0);
+        // Per-person price slabs by group size (req 3.2). Normalize the posted rows to
+        // a {min_persons => price_per_person} map (deduped, sorted, only valid rows).
+        $slabs = [];
+        foreach ((array) $request->input('price_slabs', []) as $row) {
+            $mp = (int) ($row['min_persons'] ?? 0);
+            $pp = (float) ($row['price_per_person'] ?? 0);
+            if ($mp >= 1 && $pp > 0) $slabs[$mp] = $pp;
+        }
+        ksort($slabs);
+
+        // Headline base_cost_per_person: when slabs are set, use the cheapest per-person
+        // (the "from" price shown on cards) and as the calculator's fallback; otherwise
+        // keep it in lockstep with the component breakdown for legacy experiences.
+        if (!empty($slabs)) {
+            $data["base_cost_per_person"] = min($slabs);
+        } else {
+            $data["base_cost_per_person"] = (float) ($data["cost_accommodation"] ?? 0)
+                + (float) ($data["cost_logistics"] ?? 0)
+                + (float) ($data["cost_guide"] ?? 0)
+                + (float) ($data["cost_activities"] ?? 0)
+                + (float) ($data["cost_other"] ?? 0);
+        }
 
         if ($request->filled("id")) {
             $experience = Experience::findOrFail($request->id);
@@ -6079,7 +6104,13 @@ class AjaxController extends Controller
             ]);
         }
 
-        return response()->json(["success" => true, "experience" => $experience]);
+        // Replace the experience's per-person price slabs (req 3.2).
+        $experience->priceSlabs()->delete();
+        foreach ($slabs as $mp => $pp) {
+            $experience->priceSlabs()->create(['min_persons' => $mp, 'price_per_person' => $pp]);
+        }
+
+        return response()->json(["success" => true, "experience" => $experience->load('priceSlabs')]);
     }
 
     protected function disableExperience(Request $request): JsonResponse
