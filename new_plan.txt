@@ -33,6 +33,64 @@ Sections:
 
 
 ==================================================================
+ PART 0 — IMPLEMENTATION STATUS  (updated 2026-07-04)
+==================================================================
+Branch `phase1-security` — NOT pushed. 44 feature tests green; fixes below are
+test-verified unless noted. Detail in memory: mvp-blocker-fixes-progress,
+phase-d-integration-wip, heco-cost-model, ajax-authorization-gate.
+
+--- FIXED + VERIFIED ---
+ Security : #1 central per-key AUTH GATE in AjaxController::index (ACTION_LEVELS);
+            #2 payment-entry auth; #3 saveSettings key whitelist; getTravellerPayment
+            History IDOR guard; hardcoded Gemini key + /testapi route REMOVED.
+            (!! the leaked key STILL needs rotation in Google console — user deferred.)
+ Pricing  : #4 double-charge (component rows now cost=0 placeholders); #5 auto-recalc
+            on mutations; #6/#7 guest==login pricing (computeGuestPricing mirrors
+            CostCalculatorService); #9 razorpay final_price re-check on read.
+ Trip     : #10 closed/paid EDIT-LOCK (admin + portal-builder keys); #16 confirm
+            re-verifies pinned rates; #18 pin ownership/approval validation; #22
+            social login no longer wipes drafts; #23 AI "added" 500; #33 XSS escHtml.
+ Provider : #11+#13 auto SpPayment invoices on confirm (rate x qty, trip + day level);
+            #12 trip-level accommodation books rooms per night; #14 meal SP pricing
+            (enum + validation); #37 HRP region-trips (match region_id); OSP NEW-B/C
+            (day-assign approval guard + recalc). [#38 & #40 were already OK.]
+ DB       : #24 budget_notes column; #29 FK RESTRICT->nullOnDelete (live); #31 meal
+            enum (live). (Migrations reversible via migrate:rollback.)
+ Admin/UX : #25 region image upload + anchor_points + sort_order-on-update; #26 audit
+            log across settings/HCT-user/trip/payment/lead/region/provider/AI-prompt;
+            #27 support-request email; #28 portal trip PDF (+ownership); #34
+            window.showError alias; #20 approvePricing carries 'notes'; #39 OSP in
+            homepage community count.
+ Feature  : #42 configurable child/infant pricing (child_price_percent /
+            infant_price_percent settings — no more hardcoded 50%/ignored infants).
+ MODEL    : Accommodation & Transport now STACK — experience segment (trek-stay /
+            hotel->trek) + provider segment (hotel / anchor->hotel) are DIFFERENT and
+            both charged, shown as two pricing-summary lines. Guide is EXCLUSIVE
+            (blocked + notice when the experience already provides one). Guest flow
+            at parity. (Supersedes the old "provider replaces the line" model.)
+ Review   : adversarial review fixes — lock-guard portal-key coverage, guest==login
+            legacy fallback, createSpPayment honors an explicit amount, request_support
+            trip-ownership.
+
+--- PENDING (not done) ---
+ Decision : #41 role->service_type pricing restriction + HLH self-serve experience
+            CRUD; #15 min/max group enforce; #19 SP pre-approval pricing.
+ Refactor : #43 de-hardcode multiplier maps + base rates -> DB (only partially
+            reused for guest so far).
+ UI/feat  : Phase D "Comfort & Partners" real-portal UI was BUILT then REVERTED
+            (untested) — WIP in commits 874b972 / 22b7c97, resume per memory
+            phase-d-integration-wip. MVP-spec gaps: region -> himalayanecotourism.com
+            link, landing resume-CTA, drag-drop parity, AI->HCT blocked-data queue.
+ Tests    : #36 fuller unit/factory backfill (44 feature tests exist now).
+ Minor    : #8 (doc), #32 (enum constraints), #35 (skipGlobalError).
+ Kept     : #30 experiences.region_id RESTRICT — intentional (deleteRegion already
+            guards; cascade/null would orphan experiences).
+ Known-lim: F4 (SP-invoice dedup can under-bill two same-type services from one
+            provider); F5 (trip+day room double-reserve; confirm proceeds despite a
+            booking-availability failure — only logged).
+
+
+==================================================================
  PART 1 — ROLE HEALTH + END-TO-END FLOW
 ==================================================================
 TRAVELLER ~70% | Provider/SP ~72% | Admin/HCT ~65% (security se)
