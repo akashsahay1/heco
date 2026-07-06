@@ -145,9 +145,9 @@ class AjaxController extends Controller
     protected function computeGuestPricing(array $guestData): array
     {
         // Mirror CostCalculatorService exactly so a guest sees the SAME price they
-        // will see after logging in (#6/#7). Both use the per-experience component
-        // breakdown × peopleFactor and the shared multiplier map — no flat base
-        // rates, no headline-vs-breakdown mismatch.
+        // will see after logging in (#6/#7). New model (reqs 3.1-3.3): the experience
+        // is one slab-priced bundle; provider hotel/transport/guide stack as separate
+        // marked-up lines; RP/HRP/HCT are internal only (not added to the total).
         $adults = max((int) ($guestData['adults'] ?: 1), 1);
         $children = (int) ($guestData['children'] ?? 0);
         $infants = (int) ($guestData['infants'] ?? 0);
@@ -155,47 +155,29 @@ class AjaxController extends Controller
         $childFactor  = (float) Setting::getValue('child_price_percent', 50) / 100;
         $infantFactor = (float) Setting::getValue('infant_price_percent', 0) / 100;
         $peopleFactor = $adults + ($childFactor * $children) + ($infantFactor * $infants);
+        $groupSize    = max($adults + $children + $infants, 1);
+        $defaultMarkup = (float) Setting::getValue('default_provider_markup_percent', 0);
 
-        $map = CostCalculatorService::getMultiplierMap();
-        $accomMultiplier   = $map['accommodation_comfort'][$guestData['accommodation_comfort'] ?? ''] ?? 1.0;
-        $vehicleMultiplier = $map['vehicle_comfort'][$guestData['vehicle_comfort'] ?? ''] ?? 1.0;
-        $guideMultiplier   = $map['guide_preference'][$guestData['guide_preference'] ?? ''] ?? 1.0;
-        $paceMultiplier    = $map['travel_pace'][$guestData['travel_pace'] ?? ''] ?? 1.0;
-        $budgetMultiplier  = $map['budget_sensitivity'][$guestData['budget_sensitivity'] ?? ''] ?? 1.0;
-
+        $experienceCost = 0;
         $transportCost = 0;
         $accommodationCost = 0;
         $guideCost = 0;
         $activityCost = 0;
         $otherCost = 0;
 
-        // Charge each SELECTED experience once (matches the logged-in dedup).
+        // Charge each SELECTED experience once (matches the logged-in dedup). Each is a
+        // slab-priced bundle: per-person price by group size × billable heads.
         $expIds = array_values(array_unique($guestData['experience_ids'] ?? []));
-        $experiences = !empty($expIds) ? Experience::whereIn('id', $expIds)->get() : collect();
+        $experiences = !empty($expIds) ? Experience::whereIn('id', $expIds)->with('priceSlabs')->get() : collect();
         foreach ($experiences as $exp) {
-            $accom      = (float) $exp->cost_accommodation;
-            $logistics  = (float) $exp->cost_logistics;
-            $guide      = (float) $exp->cost_guide;
-            $activities = (float) $exp->cost_activities;
-            $other      = (float) $exp->cost_other;
-            // Fall back to the headline per-person price when the breakdown is missing.
-            if (($accom + $logistics + $guide + $activities + $other) <= 0) {
-                $activities = (float) $exp->base_cost_per_person;
+            $perPerson = $exp->slabPricePerPerson($groupSize);
+            if ($perPerson <= 0) {
+                $perPerson = (float) ($exp->base_cost_per_person
+                    ?: ($exp->cost_accommodation + $exp->cost_logistics + $exp->cost_guide
+                        + $exp->cost_activities + $exp->cost_other));
             }
-            $accommodationCost += round($accom      * $peopleFactor * $accomMultiplier);
-            $transportCost     += round($logistics  * $peopleFactor * $vehicleMultiplier);
-            $guideCost         += round($guide      * $peopleFactor * $guideMultiplier);
-            $activityCost      += round($activities * $peopleFactor);
-            $otherCost         += round($other      * $peopleFactor);
+            $experienceCost += (int) round($perPerson * $peopleFactor);
         }
-
-        // Pace scales guide-led time; budget scales the base trip lines. Activities
-        // and extra days are excluded from both — same as CostCalculatorService.
-        $guideCost = (int) round($guideCost * $paceMultiplier);
-        $transportCost     = (int) round($transportCost * $budgetMultiplier);
-        $accommodationCost = (int) round($accommodationCost * $budgetMultiplier);
-        $guideCost         = (int) round($guideCost * $budgetMultiplier);
-        $otherCost         = (int) round($otherCost * $budgetMultiplier);
 
         // Extra days (days in the itinerary with no experience) — rest vs activity.
         $restDayCostPerPerson = (float) Setting::getValue('rest_day_cost_per_person', 2000);
@@ -214,47 +196,62 @@ class AjaxController extends Controller
         }
         $extraDayCost = (int) round($extraDayCost);
 
-        // Provider pins STACK on top for accommodation & transport (two segments —
-        // hotel / anchor→hotel), same as the logged-in calculator. Guide is exclusive
-        // (blocked at pin), so no guide provider price here.
+        // Provider pins stack as separate marked-up lines (hotel / anchor→hotel /
+        // guide). Markup is per provider (raw price never shown). Guide is exclusive
+        // — only present when the experience provides none.
         $numDays = ($itinerary && isset($itinerary['days'])) ? count($itinerary['days']) : 1;
         $nights = max($numDays - 1, 1);
         $totalPax = $adults + $children;
+        $markup = function (int $raw, $sp) use ($defaultMarkup): int {
+            $pct = $sp ? $sp->effectiveMarkupPercent() : $defaultMarkup;
+            return (int) round($raw * (1 + $pct / 100));
+        };
         $accommodationProviderCost = 0;
         $transportProviderCost = 0;
-        if (!empty($guestData['accommodation_pricing_id']) && ($ap = SpPricing::live()->find($guestData['accommodation_pricing_id']))) {
+        $guideProviderCost = 0;
+        if (!empty($guestData['accommodation_pricing_id']) && ($ap = SpPricing::live()->with('serviceProvider')->find($guestData['accommodation_pricing_id']))) {
             $occ = max((int) ($ap->default_occupancy ?: 2), 1);
             $rooms = max((int) ceil($totalPax / $occ), 1);
-            $accommodationProviderCost = (int) round((float) $ap->price * $rooms * $nights);
+            $accommodationProviderCost = $markup((int) round((float) $ap->price * $rooms * $nights), $ap->serviceProvider);
             $accommodationCost += $accommodationProviderCost;
         }
-        if (!empty($guestData['vehicle_pricing_id']) && ($vp = SpPricing::live()->find($guestData['vehicle_pricing_id']))) {
+        if (!empty($guestData['vehicle_pricing_id']) && ($vp = SpPricing::live()->with('serviceProvider')->find($guestData['vehicle_pricing_id']))) {
             $unit = strtolower((string) $vp->unit);
-            if (str_contains($unit, 'day')) {
-                $transportProviderCost = (int) round((float) $vp->price * max($numDays, 1));
+            if (str_contains($unit, 'km')) {
+                $raw = (int) round((float) $vp->price * (float) ($vp->distance_km ?: 0));
+            } elseif (str_contains($unit, 'day')) {
+                $raw = (int) round((float) $vp->price * max($numDays, 1));
             } elseif (str_contains($unit, 'person') || str_contains($unit, 'pax')) {
-                $transportProviderCost = (int) round((float) $vp->price * max($totalPax, 1));
+                $raw = (int) round((float) $vp->price * max($totalPax, 1));
             } else {
-                $transportProviderCost = (int) round((float) $vp->price);
+                $raw = (int) round((float) $vp->price);
             }
+            $transportProviderCost = $markup($raw, $vp->serviceProvider);
             $transportCost += $transportProviderCost;
         }
+        if (!empty($guestData['guide_pricing_id']) && ($gp = SpPricing::live()->with('serviceProvider')->find($guestData['guide_pricing_id']))) {
+            $guideDays = max($numDays, 1);
+            $guideProviderCost = $markup((int) round((float) $gp->price * $guideDays), $gp->serviceProvider);
+            $guideCost += $guideProviderCost;
+        }
 
-        $totalCost = $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
+        $totalCost = $experienceCost + $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
+
+        // RP/HRP/HCT computed for internal reporting only — NOT added to the total (req 3.3).
         $rpPercent = (float) Setting::getValue('default_rp_margin_percent', 5);
         $hrpPercent = (float) Setting::getValue('default_hrp_margin_percent', 10);
         $hctPercent = (float) Setting::getValue('default_hct_commission_percent', 15);
-
         $rpAmount = round($totalCost * $rpPercent / 100, 2);
         $hrpAmount = round($totalCost * $hrpPercent / 100, 2);
         $hctAmount = round($totalCost * $hctPercent / 100, 2);
 
-        $subtotal = $totalCost + $rpAmount + $hrpAmount + $hctAmount;
+        $subtotal = $totalCost;
         $gstPercent = (float) Setting::getValue('gst_percent', 5);
         $gstAmount = round($subtotal * $gstPercent / 100, 2);
         $finalPrice = $subtotal + $gstAmount;
 
         return [
+            'experience_cost' => $experienceCost,
             'transport_cost' => $transportCost,
             'accommodation_cost' => $accommodationCost,
             'guide_cost' => $guideCost,
@@ -262,11 +259,9 @@ class AjaxController extends Controller
             'other_cost' => $otherCost,
             'extra_day_cost' => $extraDayCost,
             'total_cost' => $totalCost,
-            // Two-segment split so the guest pricing summary matches the logged-in one.
             'accommodation_provider_cost'   => $accommodationProviderCost,
-            'accommodation_experience_cost' => max(0, $accommodationCost - $accommodationProviderCost),
             'transport_provider_cost'       => $transportProviderCost,
-            'transport_experience_cost'     => max(0, $transportCost - $transportProviderCost),
+            'guide_provider_cost'           => $guideProviderCost,
             'margin_rp_percent' => $rpPercent,
             'margin_rp_amount' => $rpAmount,
             'margin_hrp_percent' => $hrpPercent,
@@ -276,11 +271,6 @@ class AjaxController extends Controller
             'subtotal' => $subtotal,
             'gst_amount' => $gstAmount,
             'final_price' => $finalPrice,
-            'vehicle_multiplier' => $vehicleMultiplier,
-            'accommodation_multiplier' => $accomMultiplier,
-            'guide_multiplier' => $guideMultiplier,
-            'pace_multiplier' => $paceMultiplier,
-            'budget_multiplier' => $budgetMultiplier,
             'gst_percent' => $gstPercent,
             'adults' => $adults,
             'children' => $guestData['children'] ?? 0,

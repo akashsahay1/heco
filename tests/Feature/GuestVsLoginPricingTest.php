@@ -19,8 +19,8 @@ use Tests\TestCase;
 
 /**
  * #6/#7 — a guest must see the SAME trip cost they'll see after logging in.
- * computeGuestPricing now uses the same component-breakdown model as
- * CostCalculatorService, so the totals match for identical experiences/pax/prefs.
+ * computeGuestPricing uses the same slab-bundle + marked-up-provider model as
+ * CostCalculatorService, so the totals match for identical experiences/pax.
  */
 class GuestVsLoginPricingTest extends TestCase
 {
@@ -81,17 +81,21 @@ class GuestVsLoginPricingTest extends TestCase
         $this->assertSame($this->loginTotal([]), $this->guestTotal([]));
     }
 
-    public function test_guest_and_login_match_with_comfort_multiplier(): void
+    public function test_guest_and_login_match_with_preferences_set(): void
     {
+        // Preference selects no longer affect price (multipliers removed) — guest and
+        // login still match, and setting prefs doesn't change the total.
         $prefs = ['accommodation_comfort' => 'Cat B - Comfort', 'guide_preference' => 'Certified/Expert'];
         $this->assertSame($this->loginTotal($prefs), $this->guestTotal($prefs));
+        $this->assertSame($this->loginTotal([]), $this->loginTotal($prefs));
     }
 
-    public function test_guest_stacks_and_splits_provider_accommodation(): void
+    public function test_guest_provider_accommodation_stacks_on_bundle(): void
     {
         $provider = ServiceProvider::create([
             'provider_type' => 'hlh', 'name' => 'Stay', 'email' => 's@gp.test',
             'phone_1' => '9990001111', 'region_id' => $this->exp->region_id, 'status' => 'approved',
+            'markup_percent' => 0,
         ]);
         $pricing = SpPricing::create([
             'service_provider_id' => $provider->id, 'service_type' => 'accommodation',
@@ -112,9 +116,13 @@ class GuestVsLoginPricingTest extends TestCase
         $m->setAccessible(true);
         $r = $m->invoke(app(AjaxController::class), $guestData);
 
-        // Experience trek-stay 3000 x peopleFactor(2) = 6000, + provider hotel 2000.
-        $this->assertSame(6000, (int) $r['accommodation_experience_cost']);
+        // Experience is one slab bundle: base_cost_per_person 13000 x peopleFactor(2) = 26000.
+        $this->assertSame(26000, (int) $r['experience_cost']);
+        // Accommodation line = the provider hotel only (2000, markup 0%); the trek-stay
+        // is inside the experience bundle, not on this line.
         $this->assertSame(2000, (int) $r['accommodation_provider_cost']);
-        $this->assertSame(8000, (int) $r['accommodation_cost']);
+        $this->assertSame(2000, (int) $r['accommodation_cost']);
+        // Provider stacks on the bundle: 26000 + 2000 = 28000.
+        $this->assertSame(28000, (int) $r['total_cost']);
     }
 }
