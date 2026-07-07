@@ -157,7 +157,7 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 <body>
 <div class="topbar"><i class="bi bi-globe-asia-australia"></i> HECO Portal — Trip Builder <span style="margin-left:auto;font-weight:400;color:var(--muted);font-size:12px">UI Mockup — Phase D</span></div>
 <div class="wrap">
-  <div class="banner"><i class="bi bi-info-circle"></i> Provider chuno (clean list) → room/vehicle/guide type ka chhota selector niche aata hai. Comfort = filter, koi multiplier nahi. Images temporary (picsum).</div>
+  <div class="banner"><i class="bi bi-info-circle"></i> Experience bundle full charge hota hai; provider (hotel / transport) uske UPAR stack — dono charge. Guide included hai to provider guide nahi (exclusive). RP sirf info, HRP/HCT hidden. Final = Trip Cost + GST. Images temporary (picsum).</div>
   <div class="layout">
 
     <!-- FAR LEFT: Experiences -->
@@ -296,16 +296,7 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 
             <div class="field" data-cat="guide">
               <div class="field-lbl"><i class="bi bi-person-badge"></i> Guide</div>
-              <div class="dd">
-                <button type="button" class="dd-btn"><span class="dd-name">Experience Included</span><span class="dd-price"></span><i class="bi bi-chevron-down dd-chev"></i></button>
-                <div class="dd-menu">
-                  <div class="dd-opt selected" data-val="included" data-total="8000"><span class="dd-opt-name">Experience Included</span><span class="dd-opt-price">Package default</span></div>
-                  <div class="dd-opt" data-val="noguide" data-total="0"><span class="dd-opt-name">No Guide</span><span class="dd-opt-price">Remove guide</span></div>
-                  <div class="dd-opt"><span class="dd-opt-name">Tenzin Norbu</span><span class="dd-opt-price">from ₹1,500/day</span></div>
-                  <div class="dd-opt"><span class="dd-opt-name">Aarav Sharma</span><span class="dd-opt-price">from ₹2,500/day</span></div>
-                </div>
-              </div>
-              <div class="prev"></div>
+              <div class="note-neutral"><i class="bi bi-info-circle"></i> Guide is already included in this experience.</div>
             </div>
 
             <div class="field">
@@ -328,12 +319,10 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
         <div class="card2-b">
           <div id="prLines"></div>
           <div class="pr sub"><span><b>Trip Cost</b></span><span id="prTrip"></span></div>
-          <div class="pr"><span>RP Contribution <small>5%</small></span><span class="rp" id="prRP"></span></div>
-          <div class="pr"><span>HRP Margin <small>10%</small></span><span id="prHRP"></span></div>
-          <div class="pr"><span>HCT Service <small>15%</small></span><span id="prHCT"></span></div>
-          <div class="pr sub"><span><b>Pre-tax Total</b></span><span id="prPre"></span></div>
           <div class="pr"><span>GST <small>5%</small></span><span id="prGST"></span></div>
           <div class="pr total"><span>Final Price</span><span id="prFinal"></span></div>
+          <div class="pr"><span><i class="bi bi-tree"></i> Regenerative contribution <small>5%</small></span><span class="rp" id="prRP"></span></div>
+          <div class="note-neutral" style="margin-top:6px"><i class="bi bi-info-circle"></i> Iss price ka ye hissa regenerative project ko jaata hai (extra charge nahi). HRP/HCT margins traveller ko nahi dikhte.</div>
           <div class="legend"><span><span class="tagx experience">Experience</span> package mein shaamil</span><span><span class="tagx partner">Partner</span> chuna hua provider</span></div>
         </div>
       </div>
@@ -367,11 +356,12 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 </div>
 
 <script>
-// ── EASY PRICING MODEL ──────────────────────────────────────────────
-// Experience ₹13,000/person = all-in bundle (admin "Total Cost Per Person").
-// Default: sirf bundle dikhta hai (₹13,000 × PAX) — koi component breakdown nahi.
-// Provider pin → us category ka per-person share bundle se MINUS + provider ka
-// flat rate (room×nights / day) alag line (replace, stack nahi). No Guide → minus, koi line nahi.
+// ── PRICING MODEL (naya) ────────────────────────────────────────────
+// Experience ₹13,000/person = all-in slab bundle (tent stay + hotel→trek transport
+// + included guide + activities). Bundle HAMESHA full charge hota hai (₹13,000 × PAX).
+// Provider pin (hotel / airport↔hotel transport) = ALAG line jo bundle ke UPAR STACK
+// hoti hai — dono charge (replace nahi). Guide exclusive: experience mein guide hai to
+// provider guide add nahi kar sakte. Provider prices already marked-up (raw nahi dikhta).
 var PAX=2; // 2 adults, 0 children
 var COMP={accom:3000, veh:4000, guide:4000, act:2000, other:0}; // per-person components; sum = 13,000
 var CATLBL={accom:'Accommodation', veh:'Transport', guide:'Guide'};
@@ -402,11 +392,10 @@ var ROOMS={
 };
 function inr(n){return '₹'+Number(n).toLocaleString('en-IN');}
 function escHtml(s){return $('<div>').text(s==null?'':s).html();}
-// bundle = (activities + other) always + har 'included' pinnable category — sab × PAX
+// Experience bundle = full slab price (all components) × PAX — ALWAYS charged,
+// regardless of provider pins (providers stack on top, they don't replace it).
 function bundleTotal(){
-  var b=(COMP.act+COMP.other)*PAX;
-  ['accom','veh','guide'].forEach(function(c){ if(catState[c].mode==='included') b+=COMP[c]*PAX; });
-  return b;
+  return (COMP.accom+COMP.veh+COMP.guide+COMP.act+COMP.other)*PAX;
 }
 function tripCost(){
   var t=bundleTotal();
@@ -415,18 +404,17 @@ function tripCost(){
 }
 function recalcTotal(){
   var trip=tripCost();
-  var rp=Math.round(trip*.05),hrp=Math.round(trip*.10),hct=Math.round(trip*.15);
-  var pre=trip+rp+hrp+hct,gst=Math.round(pre*.05),fin=pre+gst;
-  $('#prTrip').text(inr(trip));$('#prRP').text(inr(rp));$('#prHRP').text(inr(hrp));
-  $('#prHCT').text(inr(hct));$('#prPre').text(inr(pre));$('#prGST').text(inr(gst));$('#prFinal').text(inr(fin));
+  // Naya model: RP/HRP/HCT total mein ADD nahi hote. RP sirf info (regenerative
+  // project ka hissa), HRP/HCT hidden. Final = Trip Cost + GST.
+  var rp=Math.round(trip*.05);
+  var gst=Math.round(trip*.05),fin=trip+gst;
+  $('#prTrip').text(inr(trip));$('#prGST').text(inr(gst));$('#prFinal').text(inr(fin));$('#prRP').text(inr(rp));
 }
 // Pricing Summary: Experiences bundle (excl. pinned) + har pinned category ki alag line
 function renderPricing(){
-  var excl=['accom','veh','guide'].filter(function(c){return catState[c].mode!=='included';}).map(function(c){return CATLBL[c];});
-  var exl = excl.length ? ' <small>(excl. '+excl.join(', ')+')</small>' : '';
   var html='';
   html+='<div class="pr" style="border-bottom:1px dashed var(--border);margin-bottom:4px;padding-bottom:8px"><span><b>Experiences</b> <small>'+PAX+' adults</small></span><span></span></div>';
-  html+='<div class="pr" style="padding:2px 0"><span style="color:var(--muted);font-size:12.5px">Great Himalayan National Park Trek'+exl+' <span class="tagx experience">Experience</span></span><span>'+inr(bundleTotal())+'</span></div>';
+  html+='<div class="pr" style="padding:2px 0"><span style="color:var(--muted);font-size:12.5px">Great Himalayan National Park Trek <span class="tagx experience">Experience</span></span><span>'+inr(bundleTotal())+'</span></div>';
   ['accom','veh','guide'].forEach(function(c){
     var st=catState[c];
     if(st.mode==='partner'){
