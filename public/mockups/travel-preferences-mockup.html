@@ -94,6 +94,8 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 .dd-price{color:var(--muted);font-size:12px;white-space:nowrap}
 .dd-chev{color:var(--n400);font-size:13px;transition:transform .15s}
 .dd.open .dd-chev{transform:rotate(180deg)}
+.dd-disabled .dd-btn{background:var(--n50);color:var(--muted);cursor:not-allowed;border-style:dashed}
+.dd-disabled .dd-btn:hover{border-color:var(--border);box-shadow:none}
 .dd-menu{display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:30;background:#fff;border:1px solid var(--n300);border-radius:10px;box-shadow:0 12px 28px rgba(15,23,42,.16),0 3px 8px rgba(15,23,42,.08);overflow:hidden}
 .dd.open .dd-menu{display:block}
 .dd-opt{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;font-size:13px;cursor:pointer}
@@ -296,6 +298,9 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 
             <div class="field" data-cat="guide">
               <div class="field-lbl"><i class="bi bi-person-badge"></i> Guide</div>
+              <div class="dd dd-disabled">
+                <button type="button" class="dd-btn" disabled><span class="dd-name">Experience Included</span><span class="dd-price"></span><i class="bi bi-lock dd-chev"></i></button>
+              </div>
               <div class="note-neutral"><i class="bi bi-info-circle"></i> Guide is already included in this experience.</div>
             </div>
 
@@ -543,7 +548,7 @@ $(document).on('click','.exp-x',function(e){
   renumberExp();
 });
 // init
-$('.field[data-cat]').each(function(){ selectProvider($(this), $(this).children('.dd').find('.dd-opt.selected')); });
+$('.field[data-cat]').each(function(){ var $sel=$(this).children('.dd').find('.dd-opt.selected'); if($sel.length) selectProvider($(this), $sel); });
 </script>
 </body>
 </html>
