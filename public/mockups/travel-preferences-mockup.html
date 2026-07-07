@@ -119,6 +119,9 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 .tagx.experience{background:#eef0f2;color:#666}
 .tagx.partner{background:#e6f4ea;color:#1e7e34}
 .note-neutral{font-size:11px;color:var(--muted);margin-top:6px}
+.note-inc{font-size:11.5px;color:#4a8a5a;margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.field-sub{font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:5px}
+.field-sub small{font-weight:400}
 /* pricing summary */
 .pr{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px}
 .pr small{font-size:11px;color:var(--muted)}
@@ -268,10 +271,12 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 
             <div class="field" data-cat="accom">
               <div class="field-lbl"><i class="bi bi-house-heart"></i> Accommodation</div>
+              <div class="note-inc"><i class="bi bi-check-circle-fill"></i> Trek-time tent stay experience mein shaamil hai.</div>
+              <div class="field-sub">Hotel add karein? <small>(trek se pehle/baad — alag se, upar stack hoga)</small></div>
               <div class="dd">
-                <button type="button" class="dd-btn"><span class="dd-name">Experience Included</span><span class="dd-price"></span><i class="bi bi-chevron-down dd-chev"></i></button>
+                <button type="button" class="dd-btn"><span class="dd-name">Koi hotel nahi</span><span class="dd-price"></span><i class="bi bi-chevron-down dd-chev"></i></button>
                 <div class="dd-menu">
-                  <div class="dd-opt selected" data-val="included" data-total="6000"><span class="dd-opt-name">Experience Included</span><span class="dd-opt-price">Package default</span></div>
+                  <div class="dd-opt selected" data-val="included"><span class="dd-opt-name">Koi hotel nahi</span><span class="dd-opt-price">Sirf tent (package)</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Mountain View Hotel</span><span class="dd-opt-price">from ₹4,500/night</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Hotel Taj Tirthan</span><span class="dd-opt-price">from ₹5,000/night</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Riverside Resort</span><span class="dd-opt-price">from ₹8,000/night</span></div>
@@ -282,10 +287,12 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 
             <div class="field" data-cat="veh">
               <div class="field-lbl"><i class="bi bi-truck"></i> Transport</div>
+              <div class="note-inc"><i class="bi bi-check-circle-fill"></i> Hotel ↔ trek point transport experience mein shaamil hai.</div>
+              <div class="field-sub">Airport / station transfer add karein? <small>(alag se — upar stack hoga)</small></div>
               <div class="dd">
-                <button type="button" class="dd-btn"><span class="dd-name">Experience Included</span><span class="dd-price"></span><i class="bi bi-chevron-down dd-chev"></i></button>
+                <button type="button" class="dd-btn"><span class="dd-name">Koi transfer nahi</span><span class="dd-price"></span><i class="bi bi-chevron-down dd-chev"></i></button>
                 <div class="dd-menu">
-                  <div class="dd-opt selected" data-val="included" data-total="8000"><span class="dd-opt-name">Experience Included</span><span class="dd-opt-price">Package default</span></div>
+                  <div class="dd-opt selected" data-val="included"><span class="dd-opt-name">Koi transfer nahi</span><span class="dd-opt-price">Sirf package transport</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Himalaya Cabs</span><span class="dd-opt-price">from ₹3,000/day</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Sharma Travels</span><span class="dd-opt-price">from ₹3,500/day</span></div>
                   <div class="dd-opt"><span class="dd-opt-name">Fortuner Rentals</span><span class="dd-opt-price">from ₹5,000/day</span></div>
@@ -296,7 +303,7 @@ body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 
             <div class="field" data-cat="guide">
               <div class="field-lbl"><i class="bi bi-person-badge"></i> Guide</div>
-              <div class="note-neutral"><i class="bi bi-info-circle"></i> Guide is already included in this experience.</div>
+              <div class="note-inc"><i class="bi bi-check-circle-fill"></i> Guide is already included in this experience.</div>
             </div>
 
             <div class="field">
