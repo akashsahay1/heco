@@ -26,6 +26,9 @@
 
 @section('js')
 <script>
+// Keeps the full application objects for the "View details" popup, keyed by id.
+var appsById = {};
+
 function loadApplications(page) {
     ajaxPost({
         get_provider_applications: 1,
@@ -35,6 +38,7 @@ function loadApplications(page) {
     }, function(resp) {
         var html = '';
         var items = resp.data || [];
+        appsById = {};
         if (!items.length) {
             html = '<div class="col-12 text-center text-muted py-4">No applications found</div>';
             $('#applicationsContainer').html(html);
@@ -42,6 +46,7 @@ function loadApplications(page) {
             return;
         }
         items.forEach(function(app) {
+            appsById[app.id] = app;
             var typeBadge = '';
             if (app.provider_type === 'hrp') typeBadge = '<span class="badge bg-info">HRP</span>';
             else if (app.provider_type === 'hlh') typeBadge = '<span class="badge bg-success">HLH</span>';
@@ -82,6 +87,9 @@ function loadApplications(page) {
                 });
                 html += '</div>';
             }
+
+            // Full details (all wizard fields + documents)
+            html += '<button class="btn btn-sm btn-outline-secondary w-100 mb-2 view-app" data-id="' + app.id + '"><i class="bi bi-eye"></i> View details</button>';
 
             // Status-dependent footer
             if (app.status === 'pending') {
@@ -152,6 +160,71 @@ $(document).on('click', '.reject-app', function() {
             showAlert('Application rejected.', 'info');
             loadApplications();
         });
+    });
+});
+
+// ── Full application details ────────────────────────────────────────────
+// Array columns arrive already cast to arrays, but tolerate a JSON string too.
+function asList(v) {
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'string' && v !== '') {
+        try { var p = JSON.parse(v); return Array.isArray(p) ? p : [v]; } catch (e) { return [v]; }
+    }
+    return [];
+}
+function esc(s) { return $('<div>').text(s == null ? '' : s).html(); }
+
+$(document).on('click', '.view-app', function() {
+    var app = appsById[$(this).data('id')];
+    if (!app) return;
+
+    function row(label, val) {
+        if (val === null || val === undefined || val === '') return '';
+        return '<div class="mb-2"><div class="text-muted small text-uppercase" style="letter-spacing:.04em;">'
+            + label + '</div><div>' + val + '</div></div>';
+    }
+    function chips(label, arr) {
+        arr = asList(arr);
+        if (!arr.length) return '';
+        var b = arr.map(function(s) { return '<span class="badge bg-light text-dark border me-1 mb-1">' + esc(s) + '</span>'; }).join('');
+        return '<div class="mb-2"><div class="text-muted small text-uppercase" style="letter-spacing:.04em;">' + label + '</div><div>' + b + '</div></div>';
+    }
+
+    var h = '<div class="text-start">';
+    h += row('Type', esc((app.provider_type || '').toUpperCase()));
+    h += row('Contact person', esc(app.contact_person));
+    h += row('Email', esc(app.email));
+    h += row('Phone', [app.phone_1, app.phone_2].filter(Boolean).map(esc).join(' · '));
+    h += row('Region', app.region ? esc(app.region.name) : '');
+    h += row('Address', esc(app.address));
+    h += row('About', esc(app.notes));
+    h += chips('Services offered', app.services_offered);
+    h += chips('Accommodation categories', app.accommodation_categories);
+    h += chips('Vehicle types', app.vehicle_types);
+    h += chips('Guide specialisations', app.guide_types);
+    h += chips('Activity types', app.activity_types);
+
+    var docs = asList(app.documents);
+    if (docs.length) {
+        var d = docs.map(function(doc) {
+            var url = '/storage/' + doc.path;
+            return '<div class="mb-1"><i class="bi bi-paperclip text-muted"></i> '
+                + '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(doc.label || 'Document') + '</a> '
+                + '<span class="text-muted small">' + esc(doc.original_name || '') + '</span></div>';
+        }).join('');
+        h += '<div class="mb-2"><div class="text-muted small text-uppercase" style="letter-spacing:.04em;">Documents</div>' + d + '</div>';
+    } else {
+        h += row('Documents', '<span class="text-muted">None uploaded</span>');
+    }
+    h += '<div class="text-muted small mt-2">Submitted ' + (app.created_at ? app.created_at.substring(0, 10) : '-') + '</div>';
+    h += '</div>';
+
+    Swal.fire({
+        title: esc(app.name || 'Application'),
+        html: h,
+        width: 620,
+        confirmButtonText: 'Close',
+        confirmButtonColor: '#79a09f',
     });
 });
 </script>

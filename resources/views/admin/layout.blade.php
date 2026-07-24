@@ -14,6 +14,18 @@
     <link href="{{ url('css/air-datepicker.min.css') }}" rel="stylesheet">
     <link href="{{ url('style.css') }}?v={{ time() }}" rel="stylesheet">
     <link href="{{ url('css/admin.css') }}?v={{ time() }}" rel="stylesheet">
+    <style>
+        /* Pulses the sidebar count so a pending approval is noticed, without the
+           harsh on/off flash of a true blink. Respects reduced-motion. */
+        .hct-badge-blink { animation: hctBadgePulse 1.4s ease-in-out infinite; }
+        @keyframes hctBadgePulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%      { opacity: .45; transform: scale(1.12); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .hct-badge-blink { animation: none; }
+        }
+    </style>
     @yield('css')
 </head>
 <body class="hct-body heco-admin">
@@ -69,14 +81,28 @@
             <a href="{{ url('/newsletter') }}" class="hct-nav-link {{ request()->routeIs('hct.newsletter') ? 'active' : '' }}">
                 <i class="bi bi-envelope-heart"></i> Newsletter
             </a>
+            @php $pendingApplicationCount = \App\Models\ServiceProvider::where('status', 'pending')->count(); @endphp
             <a href="{{ url('/provider-applications') }}" class="hct-nav-link {{ request()->routeIs('hct.provider-applications') ? 'active' : '' }}">
                 <i class="bi bi-envelope-paper"></i> Applications
+                @if($pendingApplicationCount > 0)
+                    <span class="badge bg-danger ms-auto hct-badge-blink"
+                          title="{{ $pendingApplicationCount }} application(s) awaiting approval">
+                        {{ $pendingApplicationCount }}
+                    </span>
+                @endif
             </a>
             @php $pendingPricingCount = \App\Models\SpPricing::where('approval_status', 'pending')->count(); @endphp
             <a href="{{ url('/pending-pricing') }}" class="hct-nav-link {{ request()->routeIs('hct.pending-pricing') ? 'active' : '' }}">
                 <i class="bi bi-cash-stack"></i> Pending Rates
                 @if($pendingPricingCount > 0)
                     <span class="badge bg-danger ms-auto">{{ $pendingPricingCount }}</span>
+                @endif
+            </a>
+            @php $pendingExperienceCount = \App\Models\Experience::pending()->count(); @endphp
+            <a href="{{ url('/pending-experiences') }}" class="hct-nav-link {{ request()->routeIs('hct.pending-experiences') ? 'active' : '' }}">
+                <i class="bi bi-layers"></i> Pending Experiences
+                @if($pendingExperienceCount > 0)
+                    <span class="badge bg-danger ms-auto">{{ $pendingExperienceCount }}</span>
                 @endif
             </a>
 

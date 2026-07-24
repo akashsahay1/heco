@@ -12,8 +12,11 @@ class SpApplicationApprovedEmail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public string $name, public string $providerType, public string $setPasswordUrl)
-    {
+    public function __construct(
+        public string $name,
+        public string $providerType,
+        public ?string $setPasswordUrl = null,
+    ) {
     }
 
     public function envelope(): Envelope

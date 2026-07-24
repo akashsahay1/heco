@@ -7,11 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class ServiceProvider extends Model
 {
     protected $fillable = [
-        'user_id', 'provider_type', 'name', 'contact_person', 'email',
-        'phone_1', 'phone_2', 'region_id', 'address', 'bank_name',
+        'user_id', 'provider_type', 'business_type', 'registration_number',
+        'year_established', 'name', 'contact_person', 'email',
+        'phone_1', 'phone_2', 'region_id', 'address', 'city', 'postal_code',
+        'country', 'bank_name',
         'bank_ifsc', 'bank_account_name', 'bank_account_number', 'upi',
         'services_offered', 'accommodation_categories', 'vehicle_types',
-        'guide_types', 'activity_types', 'notes', 'ical_url', 'ical_last_synced_at',
+        'guide_types', 'activity_types', 'documents', 'notes', 'ical_url', 'ical_last_synced_at',
         'status', 'markup_percent', 'approved_at', 'approved_by',
         'last_updated_by', 'last_updated_by_role',
     ];
@@ -25,6 +27,7 @@ class ServiceProvider extends Model
             'vehicle_types' => 'array',
             'guide_types' => 'array',
             'activity_types' => 'array',
+            'documents' => 'array',
             'approved_at' => 'datetime',
             'ical_last_synced_at' => 'datetime',
         ];

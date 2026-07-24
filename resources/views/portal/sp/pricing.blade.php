@@ -13,9 +13,18 @@
                 + the AI pull these in when this property is included in a trip.
             </p>
         </div>
-        <a href="{{ route('sp.dashboard') }}" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-arrow-left"></i> Back to Dashboard
-        </a>
+        <div class="d-flex gap-2">
+            @if(in_array($provider->provider_type, ['hlh', 'osp'], true))
+                {{-- Rates and experiences are different things; providers look
+                     for one while on the other, so link across. --}}
+                <a href="{{ route('sp.experiences') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-layers"></i> My Experiences
+                </a>
+            @endif
+            <a href="{{ route('sp.dashboard') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
     </div>
 
     <div class="card mb-4" id="spPricingCard" data-provider-id="{{ $provider->id }}">
@@ -319,6 +328,36 @@
                     <label class="form-label small">Driver Allowance (₹/day)</label>
                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="driver_allowance" placeholder="optional">
                     <small class="form-help-text text-muted d-block mt-1"></small>
+                </div>
+            </div>
+            {{-- Which vehicle this rate is for. Optional, but it is what lets
+                 HCT tell two identical Tempo Traveller rows apart. --}}
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-5">
+                    <label class="form-label small">Make &amp; Model</label>
+                    <input type="text" maxlength="120" class="form-control form-control-sm" name="vehicle_make_model" placeholder="e.g. Toyota Innova Crysta">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Registration No.</label>
+                    <input type="text" maxlength="40" class="form-control form-control-sm" name="vehicle_registration_no" placeholder="e.g. HP 33 A 1234">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Year</label>
+                    <input type="number" min="1950" max="{{ date('Y') + 1 }}" class="form-control form-control-sm" name="vehicle_year" placeholder="e.g. 2021">
+                </div>
+            </div>
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="driver_included" id="spDriverIncluded" value="1">
+                        <label class="form-check-label small" for="spDriverIncluded">Driver included in this rate</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="fuel_tolls_extra" id="spFuelTollsExtra" value="1">
+                        <label class="form-check-label small" for="spFuelTollsExtra">Fuel &amp; tolls billed separately</label>
+                    </div>
                 </div>
             </div>
         </div>
@@ -874,6 +913,11 @@ jQuery(function() {
         $f.find('[name=driver_allowance]').val(r ? (r.driver_allowance || '') : '');
         $f.find('[name=price_transport]').val(r && r.service_type === 'transport' ? r.price : '');
         $f.find('[name=unit_transport]').val(r && r.service_type === 'transport' ? (r.unit || '') : '');
+        $f.find('[name=vehicle_make_model]').val(r ? (r.vehicle_make_model || '') : '');
+        $f.find('[name=vehicle_registration_no]').val(r ? (r.vehicle_registration_no || '') : '');
+        $f.find('[name=vehicle_year]').val(r ? (r.vehicle_year || '') : '');
+        $f.find('[name=driver_included]').prop('checked', r ? !!r.driver_included : false);
+        $f.find('[name=fuel_tolls_extra]').prop('checked', r ? !!r.fuel_tolls_extra : false);
 
         $f.find('[name=category_guide]').val(r && r.service_type === 'guide' ? (r.category || '') : '');
         $f.find('[name=specialties_guide]').val(r && r.service_type === 'guide' ? (r.specialties || '') : '');
@@ -1315,6 +1359,11 @@ jQuery(function() {
             data.driver_allowance = jQuery(this).find('[name=driver_allowance]').val();
             data.price            = jQuery(this).find('[name=price_transport]').val();
             data.unit             = jQuery(this).find('[name=unit_transport]').val();
+            data.vehicle_make_model      = jQuery(this).find('[name=vehicle_make_model]').val();
+            data.vehicle_registration_no = jQuery(this).find('[name=vehicle_registration_no]').val();
+            data.vehicle_year            = jQuery(this).find('[name=vehicle_year]').val();
+            data.driver_included  = jQuery(this).find('[name=driver_included]').is(':checked') ? 1 : 0;
+            data.fuel_tolls_extra = jQuery(this).find('[name=fuel_tolls_extra]').is(':checked') ? 1 : 0;
         } else if (type === 'guide') {
             data.category    = jQuery(this).find('[name=category_guide]').val();
             data.specialties = jQuery(this).find('[name=specialties_guide]').val();

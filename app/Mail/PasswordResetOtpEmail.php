@@ -8,24 +8,21 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class SpApplicationReceivedEmail extends Mailable
+class PasswordResetOtpEmail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(
-        public string $name,
-        public string $providerType,
-        public ?string $setPasswordUrl = null,
-    ) {
+    public function __construct(public string $name, public string $otp)
+    {
     }
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'Your HECO Partner Application Has Been Received');
+        return new Envelope(subject: 'Your HECO password reset code');
     }
 
     public function content(): Content
     {
-        return new Content(view: 'emails.sp-application-received');
+        return new Content(view: 'emails.password-reset-otp');
     }
 }

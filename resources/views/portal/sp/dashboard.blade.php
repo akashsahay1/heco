@@ -22,6 +22,10 @@
             <span class="badge bg-{{ $provider->status === 'approved' ? 'success' : ($provider->status === 'pending' ? 'warning text-dark' : 'secondary') }} ms-1">{{ ucfirst($provider->status ?? 'pending') }}</span>
         </div>
         <div class="d-flex gap-2">
+            @if(in_array($provider->provider_type, ['hlh', 'osp'], true))
+                {{-- Experiences are authored by the hosts and operators who run them. --}}
+                <a href="{{ route('sp.experiences') }}" class="btn btn-sm sp-btn-primary"><i class="bi bi-layers"></i> My Experiences</a>
+            @endif
             <a href="{{ route('sp.profile.edit') }}" class="btn btn-sm sp-btn-primary"><i class="bi bi-pencil-square"></i> Edit Profile</a>
             <a href="/home" class="btn btn-sm btn-outline-secondary"><i class="bi bi-house"></i> Home</a>
         </div>

@@ -18,9 +18,9 @@ class SpMiddleware
             return redirect('/login')->with('error', 'Access denied.');
         }
 
-        // Only approved service providers get the working dashboard. Pending /
-        // rejected applicants are bounced to the public application page with a
-        // status banner so they understand their application is still in review.
+        // Only approved service providers get the working dashboard. A pending or
+        // rejected applicant is sent to the "application under review" page; one
+        // with no application on file is sent to the form to start one.
         $provider = ServiceProvider::where('user_id', auth()->id())->first();
         if (!$provider || $provider->status !== 'approved') {
             $message = $provider && $provider->status === 'rejected'
@@ -29,7 +29,8 @@ class SpMiddleware
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['error' => $message], 403);
             }
-            return redirect('/join')->with('error', $message);
+            return redirect($provider ? route('sp.status') : route('sp.application'))
+                ->with('error', $message);
         }
 
         return $next($request);

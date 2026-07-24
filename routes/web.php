@@ -41,6 +41,7 @@ Route::domain(config('app.admin_domain'))->group(function () {
         Route::get('/newsletter', [HctController::class, 'newsletter'])->name('hct.newsletter');
         Route::get('/provider-applications', [HctController::class, 'providerApplications'])->name('hct.provider-applications');
         Route::get('/pending-pricing', [HctController::class, 'pendingPricing'])->name('hct.pending-pricing');
+        Route::get('/pending-experiences', [HctController::class, 'pendingExperiences'])->name('hct.pending-experiences');
 
         // Region Management
         Route::get('/regions', [HctController::class, 'regions'])->name('hct.regions');
@@ -116,6 +117,13 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::get('/auth/{provider}/redirect', [SocialAuthController::class, 'redirect'])->name('social.redirect');
     Route::get('/auth/{provider}/callback', [SocialAuthController::class, 'callback'])->name('social.callback');
 
+    // Provider application status — any signed-in provider whose application is
+    // still pending/rejected lands here (approved providers are sent on to the
+    // dashboard by the controller).
+    Route::middleware('auth')->group(function () {
+        Route::get('/application-status', [SpController::class, 'applicationStatus'])->name('sp.status');
+    });
+
     // Traveller (auth required)
     Route::middleware('auth')->group(function () {
         Route::get('/my-itineraries', [TravellerController::class, 'myItineraries'])->name('my-itineraries');
@@ -135,6 +143,7 @@ Route::domain(config('app.portal_domain'))->group(function () {
         Route::get('/sp/dashboard', [SpController::class, 'dashboard'])->name('sp.dashboard');
         Route::get('/sp/profile/edit', [SpController::class, 'editProfile'])->name('sp.profile.edit');
         Route::get('/sp/pricing', [SpController::class, 'pricing'])->name('sp.pricing');
+        Route::get('/sp/experiences', [SpController::class, 'experiences'])->name('sp.experiences');
     });
 
     // AJAX

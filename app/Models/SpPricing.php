@@ -15,6 +15,8 @@ class SpPricing extends Model
         'room_category', 'comfort_tier', 'total_rooms', 'default_occupancy',
         // transport extras
         'vehicle_capacity', 'driver_allowance', 'distance_km',
+        'vehicle_make_model', 'vehicle_registration_no', 'vehicle_year', 'vehicle_photos',
+        'driver_included', 'fuel_tolls_extra',
         // activity / guide extras
         'min_group', 'max_group', 'specialties',
         // approval workflow
@@ -32,6 +34,10 @@ class SpPricing extends Model
             'distance_km' => 'decimal:2',
             'total_rooms' => 'integer',
             'vehicle_capacity' => 'integer',
+            'vehicle_year' => 'integer',
+            'vehicle_photos' => 'array',
+            'driver_included' => 'boolean',
+            'fuel_tolls_extra' => 'boolean',
             'min_group' => 'integer',
             'max_group' => 'integer',
             'is_active' => 'boolean',

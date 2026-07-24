@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class Experience extends Model
 {
     protected $fillable = [
-        'hlh_id', 'region_id', 'regenerative_project_id', 'name', 'slug', 'type',
+        'hlh_id', 'owner_provider_id', 'owner_type',
+        'region_id', 'regenerative_project_id', 'name', 'slug', 'type',
         'short_description', 'long_description', 'unique_description', 'cultural_context',
         'duration_type', 'duration_hours', 'duration_days', 'duration_nights',
         'start_time', 'end_time', 'includes_accommodation', 'accommodation_category',
@@ -26,6 +27,9 @@ class Experience extends Model
         'connectivity_notes', 'cultural_etiquette',
         'operational_risks', 'past_issues', 'backup_options', 'emergency_notes',
         'card_image', 'gallery', 'is_active', 'sort_order',
+        'approval_status', 'submitted_at', 'submitted_by',
+        'approved_at', 'approved_by', 'rejection_reason',
+        'pending_changes', 'pending_submitted_at', 'pending_submitted_by',
     ];
 
     protected function casts(): array
@@ -50,12 +54,84 @@ class Experience extends Model
             'gallery' => 'array',
             'base_cost_per_person' => 'decimal:2',
             'duration_hours' => 'decimal:2',
+            'submitted_at' => 'datetime',
+            'approved_at' => 'datetime',
+            'pending_changes' => 'array',
+            'pending_submitted_at' => 'datetime',
         ];
     }
 
     public function hlh()
     {
         return $this->belongsTo(ServiceProvider::class, 'hlh_id');
+    }
+
+    /**
+     * The provider (HLH or OSP) who authored this experience and may edit it.
+     * See the add_owner_provider_to_experiences_table migration.
+     */
+    public function ownerProvider()
+    {
+        return $this->belongsTo(ServiceProvider::class, 'owner_provider_id');
+    }
+
+    /** Experiences a given provider owns. */
+    public function scopeOwnedBy($query, int $providerId)
+    {
+        return $query->where('owner_provider_id', $providerId);
+    }
+
+    public function submitter()
+    {
+        return $this->belongsTo(User::class, 'submitted_by');
+    }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    /**
+     * Anything sitting in HCT's review queue: a brand-new submission, or a
+     * live experience with an edit parked against it.
+     */
+    public function scopePending($query)
+    {
+        return $query->where(function ($q) {
+            $q->where('approval_status', 'pending')
+              ->orWhereNotNull('pending_changes');
+        });
+    }
+
+    /** A live experience with an unreviewed revision waiting. */
+    public function hasPendingChanges(): bool
+    {
+        return !empty($this->pending_changes);
+    }
+
+    /**
+     * Surfaced to the portal and the app so a live experience can be shown as
+     * "changes under review" without shipping the whole parked payload.
+     */
+    protected $appends = ['has_pending_changes'];
+
+    public function getHasPendingChangesAttribute(): bool
+    {
+        return $this->hasPendingChanges();
+    }
+
+    /**
+     * Reviewed and live. Anything traveller-facing must go through this —
+     * `is_active` alone would also match experiences nobody has approved.
+     */
+    public function scopeLive($query)
+    {
+        return $query->where('approval_status', 'approved')->where('is_active', true);
+    }
+
+    public function isPending(): bool
+    {
+        return $this->approval_status === 'pending';
     }
 
     public function region()

@@ -8016,3 +8016,16 @@
     margin-top: auto;
     min-height: 1.1em;
 }
+
+/* SP experience photos — fixed-size previews so a tall or wide upload cannot
+   stretch the modal. object-fit keeps them from distorting. */
+.heco-portal .sp-exp-card-preview {
+    width: 160px;
+    height: 110px;
+    object-fit: cover;
+}
+.heco-portal .sp-exp-gallery-thumb {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+}

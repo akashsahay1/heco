@@ -49,6 +49,7 @@ use App\Services\SpAvailabilityService;
 use App\Services\RazorpayService;
 use App\Mail\WelcomeEmail;
 use App\Mail\NewsletterWelcomeEmail;
+use App\Mail\AdminNewApplicationEmail;
 use App\Mail\AdminNewSubscriberEmail;
 use App\Mail\NewsletterCampaignEmail;
 use App\Mail\BookingConfirmationEmail;
@@ -542,6 +543,10 @@ class AjaxController extends Controller
         'get_pending_pricing' => 'hct',
         'approve_pricing' => 'hct',
         'reject_pricing' => 'hct',
+        // Provider-authored experiences awaiting HCT review
+        'get_pending_experiences' => 'hct',
+        'approve_experience' => 'hct',
+        'reject_experience' => 'hct',
         'get_room_availability' => 'public',
         'get_support_requests' => 'hct',
         'resolve_support_request' => 'hct',
@@ -562,6 +567,7 @@ class AjaxController extends Controller
         'get_traveller_payments_overview' => 'hct',
         'get_gst_report' => 'hct',
         'get_providers' => 'hct',
+        'add_provider' => 'hct',
         'edit_provider' => 'hct',
         'get_provider_trips' => 'hct',
         'get_provider_payment_history' => 'hct',
@@ -623,6 +629,11 @@ class AjaxController extends Controller
         'sp_sync_ical_now' => 'sp',
         'update_sp_profile' => 'sp',
         'get_sp_assigned_trips' => 'sp',
+        // SP EXPERIENCES (HLH/OSP author their own — see saveSpExperience)
+        'get_sp_experiences' => 'sp',
+        'save_sp_experience' => 'sp',
+        'toggle_sp_experience' => 'sp',
+        'delete_sp_experience' => 'sp',
         // SP AVAILABILITY (Admin)
         'admin_get_sp_calendar' => 'hct',
         'admin_sp_block_dates' => 'hct',
@@ -1121,6 +1132,15 @@ class AjaxController extends Controller
             if ($request->has('reject_pricing')) {
                 return $this->rejectPricing($request);
             }
+            if ($request->has('get_pending_experiences')) {
+                return $this->getPendingExperiences($request);
+            }
+            if ($request->has('approve_experience')) {
+                return $this->approveExperience($request);
+            }
+            if ($request->has('reject_experience')) {
+                return $this->rejectExperience($request);
+            }
             if ($request->has('get_room_availability')) {
                 return $this->getRoomAvailability($request);
             }
@@ -1180,6 +1200,9 @@ class AjaxController extends Controller
             }
             if ($request->has('get_providers')) {
                 return $this->getProviders($request);
+            }
+            if ($request->has('add_provider')) {
+                return $this->addProvider($request);
             }
             if ($request->has('edit_provider')) {
                 return $this->editProvider($request);
@@ -1360,6 +1383,20 @@ class AjaxController extends Controller
             }
             if ($request->has('get_sp_assigned_trips')) {
                 return $this->getSpAssignedTrips($request);
+            }
+
+            // ===== SP EXPERIENCES (HLH / OSP author their own) =====
+            if ($request->has('get_sp_experiences')) {
+                return $this->getSpExperiences($request);
+            }
+            if ($request->has('save_sp_experience')) {
+                return $this->saveSpExperience($request);
+            }
+            if ($request->has('toggle_sp_experience')) {
+                return $this->toggleSpExperience($request);
+            }
+            if ($request->has('delete_sp_experience')) {
+                return $this->deleteSpExperience($request);
             }
 
             // ===== SP AVAILABILITY (Admin) =====
@@ -4484,6 +4521,16 @@ class AjaxController extends Controller
                 // Route distance (km) for per-km pricing (req 3.1): cost = price × distance.
                 "distance_km"       => "nullable|numeric|min:0|max:100000",
                 "unit"              => "required|string|max:50",
+                // Which vehicle this rate is for, and what it covers.
+                "vehicle_make_model"      => "nullable|string|max:120",
+                "vehicle_registration_no" => "nullable|string|max:40",
+                "vehicle_year"            => "nullable|integer|min:1950|max:" . (date('Y') + 1),
+                // New uploads arrive as files; paths the caller wants to keep
+                // come back separately so the two never share a key.
+                "vehicle_photos"          => "nullable|array|max:8",
+                "vehicle_photos.*"        => "image|max:10240",
+                "vehicle_photos_keep"     => "nullable|array|max:8",
+                "vehicle_photos_keep.*"   => "string|max:255",
             ],
             'guide' => [
                 "specialties"       => "nullable|string|max:500",
@@ -4538,6 +4585,23 @@ class AjaxController extends Controller
             $data["is_active"] = $request->boolean("is_active");
         }
 
+        if ($serviceType === 'transport') {
+            $data["vehicle_make_model"]      = $request->input("vehicle_make_model") ?: null;
+            $data["vehicle_registration_no"] = $request->input("vehicle_registration_no") ?: null;
+            $data["vehicle_year"]            = $request->filled("vehicle_year") ? (int) $request->vehicle_year : null;
+            // Only overwrite a stated answer — a form that omits the toggles
+            // (e.g. the bulk rows) must not silently clear what was set before.
+            foreach (['driver_included', 'fuel_tolls_extra'] as $flag) {
+                if ($request->has($flag)) {
+                    $data[$flag] = $request->boolean($flag);
+                }
+            }
+            $photos = $this->storeVehiclePhotos($request);
+            if ($photos !== null) {
+                $data["vehicle_photos"] = $photos;
+            }
+        }
+
         // Approval workflow:
         //   - HCT admins save directly approved (no self-review needed).
         //   - SPs submit pending: NEW rows are created as pending+inactive;
@@ -4578,6 +4642,31 @@ class AjaxController extends Controller
             }
         }
         return response()->json(["success" => true, "row" => $row, "pending" => $row->approval_status === 'pending']);
+    }
+
+    /**
+     * Photos for a transport rate: the paths the caller kept, plus anything
+     * newly uploaded. Returns null when the request said nothing about photos
+     * at all, so the stored column is left alone rather than blanked.
+     */
+    protected function storeVehiclePhotos(Request $request): ?array
+    {
+        $keep = $request->input('vehicle_photos_keep');
+        $files = array_filter((array) $request->file('vehicle_photos', []));
+
+        if ($keep === null && !$files) {
+            return null;
+        }
+
+        $paths = array_values(array_filter((array) $keep, 'is_string'));
+        foreach ($files as $file) {
+            $stored = \App\Services\ImageUploadService::storeUploadedImage($file, 'vehicles', 1200);
+            if ($stored) {
+                $paths[] = $stored;
+            }
+        }
+
+        return $paths;
     }
 
     /**
@@ -5260,6 +5349,77 @@ class AjaxController extends Controller
         return response()->json($providers);
     }
 
+    /**
+     * Admin manually adds a provider (bypassing the public application form).
+     * By default the provider is created already approved and a login + set-
+     * password email is issued via finalizeApproval(), so they can sign in.
+     * Capability sub-lists / bank details can be filled afterwards on the edit
+     * page — this keeps the quick-add form focused.
+     */
+    protected function addProvider(Request $request): JsonResponse
+    {
+        if (!Auth::user()?->isHct()) {
+            return response()->json(["error" => "Unauthorized"], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            "provider_type" => "required|in:hrp,hlh,osp",
+            "name" => "required|string|max:255",
+            "email" => "required|email|unique:service_providers,email",
+            "phone_1" => "required|string|max:20",
+            "region_id" => "required|exists:regions,id",
+            "status" => "nullable|in:pending,approved,rejected",
+        ], [
+            "email.unique" => "A provider with this email already exists.",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $status = $request->input('status', 'approved');
+
+        $provider = ServiceProvider::create([
+            "provider_type" => $request->provider_type,
+            "business_type" => $request->business_type,
+            "registration_number" => $request->registration_number,
+            "year_established" => $request->year_established ?: null,
+            "name" => $request->name,
+            "contact_person" => $request->contact_person,
+            "email" => $request->email,
+            "phone_1" => $request->phone_1,
+            "phone_2" => $request->phone_2,
+            "region_id" => $request->region_id,
+            "address" => $request->address,
+            "city" => $request->city,
+            "postal_code" => $request->postal_code,
+            "country" => $request->country,
+            "bank_name" => $request->bank_name,
+            "bank_ifsc" => $request->bank_ifsc,
+            "bank_account_name" => $request->bank_account_name,
+            "bank_account_number" => $request->bank_account_number,
+            "upi" => $request->upi,
+            "services_offered" => $this->applicationArray($request, 'services_offered'),
+            "accommodation_categories" => $this->applicationArray($request, 'accommodation_categories'),
+            "vehicle_types" => $this->applicationArray($request, 'vehicle_types'),
+            "guide_types" => $this->applicationArray($request, 'guide_types'),
+            "activity_types" => $this->applicationArray($request, 'activity_types'),
+            "notes" => $request->input('notes', $request->input('description')),
+            "status" => $status,
+            "approved_at" => $status === 'approved' ? now() : null,
+            "approved_by" => $status === 'approved' ? Auth::id() : null,
+            "last_updated_by" => Auth::id(),
+            "last_updated_by_role" => 'admin',
+        ]);
+
+        // Approved on creation → issue the login + set-password email so the
+        // provider can sign in (same side-effect as approving an application).
+        if ($status === 'approved') {
+            $this->finalizeApproval($provider->fresh());
+        }
+
+        return response()->json(["success" => true, "provider_id" => $provider->id]);
+    }
+
     protected function editProvider(Request $request): JsonResponse
     {
         // Hard gate — status (and every other admin-controlled field) can only be
@@ -5272,7 +5432,9 @@ class AjaxController extends Controller
 
         $data = $request->only([
             "name", "contact_person", "email", "phone_1", "phone_2",
-            "address", "region_id", "provider_type",
+            "address", "city", "postal_code", "country",
+            "business_type", "registration_number", "year_established",
+            "region_id", "provider_type",
             "bank_name", "bank_ifsc", "bank_account_name",
             "bank_account_number", "upi", "services_offered",
             "accommodation_categories", "vehicle_types", "guide_types", "activity_types",
@@ -5343,24 +5505,43 @@ class AjaxController extends Controller
             return;
         }
 
+        // Approval is the moment the account actually becomes a provider. The
+        // application only linked the user, so promote the role here — but never
+        // touch a staff account.
+        if (!$user->isHct() && $user->user_role !== $provider->provider_type) {
+            $user->update(['user_role' => $provider->provider_type]);
+        }
+
         $providerLabel = match ($provider->provider_type) {
             'hrp' => 'Himalayan Regenerative Partner (HRP)',
             'hlh' => 'Homestay Local Host (HLH)',
             'osp' => 'Other Service Provider (OSP)',
             default => 'Partner',
         };
+        $contactName = $provider->contact_person ?: $provider->name;
         try {
-            $token = Password::createToken($user);
-            $setPasswordUrl = route('password.reset', [
-                'token' => $token,
-                'email' => $user->email,
-            ]);
-            $contactName = $provider->contact_person ?: $provider->name;
-            $this->sendMail(
-                $user->email,
-                new SpApplicationApprovedEmail($contactName, $providerLabel, $setPasswordUrl),
-                'sp_approved:' . $provider->id
-            );
+            if ($user->password_set_at) {
+                // The provider already verified their email and set a password
+                // during signup (OTP flow) — just tell them they're live.
+                $this->sendMail(
+                    $user->email,
+                    new SpApplicationApprovedEmail($contactName, $providerLabel),
+                    'sp_approved:' . $provider->id
+                );
+            } else {
+                // Never completed signup (e.g. an admin-added provider) — include
+                // a link so they can set a password and get in.
+                $token = Password::createToken($user);
+                $setPasswordUrl = route('password.reset', [
+                    'token' => $token,
+                    'email' => $user->email,
+                ]);
+                $this->sendMail(
+                    $user->email,
+                    new SpApplicationApprovedEmail($contactName, $providerLabel, $setPasswordUrl),
+                    'sp_approved:' . $provider->id
+                );
+            }
         } catch (\Throwable $e) {
             Log::error('SP approval email failed [' . $provider->id . ']: ' . $e->getMessage());
         }
@@ -5418,6 +5599,25 @@ class AjaxController extends Controller
      * tripRegions.hrp_id link is also folded in. Returns one row per trip with
      * the day numbers and the services the SP is providing.
      */
+    /**
+     * Trip context an assigned provider legitimately needs to prepare: group
+     * size, where the guests are coming from, and the pickup/drop points.
+     * Deliberately no traveller identity — the portal keeps that from SPs.
+     */
+    protected function spTripContext(Trip $trip): array
+    {
+        return [
+            'region' => $trip->tripRegions->pluck('region.name')->filter()->unique()->implode(', '),
+            'adults' => (int) $trip->adults,
+            'children' => (int) $trip->children,
+            'infants' => (int) $trip->infants,
+            'traveller_origin' => $trip->traveller_origin,
+            'pickup_location' => $trip->pickup_location,
+            'drop_location' => $trip->drop_location,
+            'notes' => $trip->operations_notes,
+        ];
+    }
+
     protected function getSpAssignedTrips(Request $request): JsonResponse
     {
         [$provider, $err] = $this->resolveApprovedSp();
@@ -5427,7 +5627,7 @@ class AjaxController extends Controller
 
         // 1) Per-day services assigned to this SP.
         $services = TripDayService::where('service_provider_id', $provider->id)
-            ->with(['tripDay.trip'])
+            ->with(['tripDay.trip.tripRegions.region'])
             ->get();
         foreach ($services as $svc) {
             $day = $svc->tripDay;
@@ -5443,6 +5643,7 @@ class AjaxController extends Controller
                     'start_date' => $trip->start_date,
                     'end_date' => $trip->end_date,
                     'status' => $trip->status,
+                ] + $this->spTripContext($trip) + [
                     '_days' => [],
                     '_services' => [],
                 ];
@@ -5458,7 +5659,9 @@ class AjaxController extends Controller
         // the provider's region_id is populated at application, whereas hrp_id was
         // never written anywhere, so the old hrp_id match was always empty (#37).
         if (strtolower((string) $provider->provider_type) === 'hrp' && $provider->region_id) {
-            $tripRegions = TripRegion::where('region_id', $provider->region_id)->with('trip')->get();
+            $tripRegions = TripRegion::where('region_id', $provider->region_id)
+                ->with('trip.tripRegions.region')
+                ->get();
             foreach ($tripRegions as $tr) {
                 $trip = $tr->trip;
                 if (!$trip) {
@@ -5472,6 +5675,7 @@ class AjaxController extends Controller
                         'start_date' => $trip->start_date,
                         'end_date' => $trip->end_date,
                         'status' => $trip->status,
+                    ] + $this->spTripContext($trip) + [
                         '_days' => [],
                         '_services' => [],
                     ];
@@ -6138,6 +6342,333 @@ class AjaxController extends Controller
         $experience = Experience::findOrFail($request->id);
         $experience->update(["is_active" => !$experience->is_active]);
         return response()->json(["success" => true, "is_active" => $experience->is_active]);
+    }
+
+    // ===================================================================
+    // SP-AUTHORED EXPERIENCES
+    //
+    // Experiences are created by the providers who actually run them —
+    // HLH (homestay/lodge hosts) and OSP (other service providers) — rather
+    // than by HCT. Ownership lives on experiences.owner_provider_id, so an SP
+    // can only ever see and touch their own rows. HRPs are excluded: they are
+    // regional partners, not the hosts an experience hangs off.
+    // ===================================================================
+
+    /** Resolve the caller as an approved HLH/OSP, or return the error response. */
+    protected function resolveExperienceAuthor(): array
+    {
+        [$sp, $err] = $this->resolveApprovedSp();
+        if ($err) return [null, $err];
+
+        if (!in_array($sp->provider_type, ['hlh', 'osp'], true)) {
+            return [null, response()->json([
+                'error' => 'Only homestay/lodge hosts and other service providers can publish experiences.',
+            ], 403)];
+        }
+        return [$sp, null];
+    }
+
+    /** The caller's own experience by id, or an error response. */
+    protected function resolveOwnExperience(int $id, ServiceProvider $sp): array
+    {
+        $experience = Experience::find($id);
+        if (!$experience || (int) $experience->owner_provider_id !== (int) $sp->id) {
+            return [null, response()->json(['error' => 'Not your experience.'], 403)];
+        }
+        return [$experience, null];
+    }
+
+    protected function getSpExperiences(Request $request): JsonResponse
+    {
+        [$sp, $err] = $this->resolveExperienceAuthor();
+        if ($err) return $err;
+
+        $experiences = Experience::ownedBy($sp->id)
+            ->with(['region', 'priceSlabs', 'days'])
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json(['success' => true, 'experiences' => $experiences]);
+    }
+
+    protected function saveSpExperience(Request $request): JsonResponse
+    {
+        [$sp, $err] = $this->resolveExperienceAuthor();
+        if ($err) return $err;
+
+        $existing = null;
+        if ($request->filled('id')) {
+            [$existing, $ownErr] = $this->resolveOwnExperience((int) $request->id, $sp);
+            if ($ownErr) return $ownErr;
+        }
+
+        // Ownership is never taken from the client. `hlh_id` stays a valid FK:
+        // an HLH hosts its own experience, an OSP may name the host it runs at
+        // and otherwise points the column at itself.
+        $hlhId = $sp->provider_type === 'hlh'
+            ? $sp->id
+            : ($request->input('hlh_id') ?: ($existing->hlh_id ?? $sp->id));
+
+        $request->merge([
+            'owner_provider_id' => $sp->id,
+            'owner_type'        => $sp->provider_type,
+            'hlh_id'            => $hlhId,
+        ]);
+
+        // Fields only HCT controls — a provider must not be able to reorder the
+        // catalogue, publish itself, or stamp its own approval.
+        foreach ([
+            'sort_order', 'approval_status', 'approved_at', 'approved_by', 'rejection_reason',
+            'pending_changes', 'pending_submitted_at', 'pending_submitted_by',
+        ] as $field) {
+            $request->request->remove($field);
+        }
+
+        // Revising an experience that is already live: park the edit and leave
+        // the approved version selling untouched until HCT reviews it.
+        if ($existing && $existing->approval_status === 'approved') {
+            // Uploads cannot live in a JSON column, so store them now and park
+            // the resulting paths. The live row's photos are left alone until
+            // the revision is approved.
+            if ($err = $this->stashExperienceUploads($request, $existing)) {
+                return $err;
+            }
+
+            $existing->update([
+                'pending_changes'      => $this->experiencePayload($request),
+                'pending_submitted_at' => now(),
+                'pending_submitted_by' => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'pending_changes' => true,
+                'message' => 'Your changes are with HECO for review. The live version stays available until then.',
+            ]);
+        }
+
+        // Nothing live to protect — a new experience, or one still pending or
+        // rejected. Save straight onto the row and (re)queue it for review.
+        $request->merge([
+            'approval_status' => 'pending',
+            'is_active'       => false,
+            'submitted_at'    => now(),
+            'submitted_by'    => Auth::id(),
+        ]);
+
+        return $this->saveExperience($request);
+    }
+
+    /**
+     * Move any uploaded photos into storage and replace them on the request
+     * with their stored paths, so a parked revision carries paths rather than
+     * files. Returns an error response if an upload was rejected.
+     */
+    protected function stashExperienceUploads(Request $request, Experience $existing): ?JsonResponse
+    {
+        if ($request->hasFile('card_image')) {
+            $stored = \App\Services\ImageUploadService::storeUploadedImage(
+                $request->file('card_image'), 'experiences', 1200
+            );
+            if (!$stored) {
+                return response()->json(['error' => 'Failed to upload the card image. Use JPG, PNG, or WebP.'], 422);
+            }
+            $request->request->set('card_image', $stored);
+            // Drop the upload itself: Request::all() merges the file bag over
+            // the input bag, so leaving it here would put an UploadedFile —
+            // not the path — into the JSON payload.
+            $request->files->remove('card_image');
+        }
+
+        // New gallery photos are added to whatever the live row already has.
+        $gallery = $existing->gallery ?? [];
+        if (is_string($gallery)) {
+            $gallery = json_decode($gallery, true) ?: [];
+        }
+        foreach ((array) $request->file('gallery', []) as $file) {
+            if (!$file) continue;
+            $stored = \App\Services\ImageUploadService::storeUploadedImage($file, 'experiences', 1200);
+            if ($stored) $gallery[] = $stored;
+        }
+        $request->files->remove('gallery');
+        if (!empty($gallery)) {
+            $request->request->set('gallery', array_values($gallery));
+        }
+
+        return null;
+    }
+
+    /**
+     * The submitted experience fields, as stored in `pending_changes` and
+     * replayed through saveExperience() on approval. Ownership and review
+     * columns are excluded — those are decided at replay time, not by whatever
+     * was posted.
+     */
+    protected function experiencePayload(Request $request): array
+    {
+        // Read the POST bag directly rather than $request->except(): all()
+        // merges in uploaded files, and Request memoises that conversion, so a
+        // file would survive here even after being removed — and an
+        // UploadedFile cannot be stored in a JSON column.
+        $payload = $request->request->all();
+
+        foreach ([
+            '_token', 'save_sp_experience', 'id',
+            'owner_provider_id', 'owner_type',
+            'approval_status', 'is_active', 'sort_order',
+            'submitted_at', 'submitted_by',
+            'approved_at', 'approved_by', 'rejection_reason',
+            'pending_changes', 'pending_submitted_at', 'pending_submitted_by',
+        ] as $field) {
+            unset($payload[$field]);
+        }
+
+        return $payload;
+    }
+
+    protected function toggleSpExperience(Request $request): JsonResponse
+    {
+        [$sp, $err] = $this->resolveExperienceAuthor();
+        if ($err) return $err;
+        [$experience, $ownErr] = $this->resolveOwnExperience((int) $request->id, $sp);
+        if ($ownErr) return $ownErr;
+
+        // Visibility is the provider's to control only once HCT has approved —
+        // otherwise this would be a way to publish unreviewed content.
+        if ($experience->approval_status !== 'approved') {
+            return response()->json([
+                'error' => 'This experience is still under review by HECO.',
+            ], 422);
+        }
+
+        $experience->update(['is_active' => !$experience->is_active]);
+        return response()->json(['success' => true, 'is_active' => $experience->is_active]);
+    }
+
+    // ── HCT review of provider-authored experiences ──────────────────────
+
+    protected function getPendingExperiences(Request $request): JsonResponse
+    {
+        $rows = Experience::pending()
+            ->with([
+                'ownerProvider:id,name,provider_type',
+                'region:id,name',
+                'submitter:id,full_name,email',
+            ])
+            ->orderBy('submitted_at', 'desc')
+            ->paginate(config('pagination.admin_per_page', 20));
+
+        return response()->json([
+            'rows' => $rows->items(),
+            'pagination' => [
+                'current_page' => $rows->currentPage(),
+                'last_page' => $rows->lastPage(),
+                'total' => $rows->total(),
+                'per_page' => $rows->perPage(),
+            ],
+        ]);
+    }
+
+    protected function approveExperience(Request $request): JsonResponse
+    {
+        $experience = Experience::pending()->findOrFail($request->id);
+
+        // A revision of a live experience: replay the parked payload through
+        // the normal save path so slug, headline price, days and price slabs
+        // are all derived exactly as they would be on any other save.
+        if ($experience->hasPendingChanges()) {
+            $parked = $experience->pending_changes;
+
+            $replay = Request::create('/ajax', 'POST', array_merge(
+                $parked,
+                ['id' => $experience->id],
+            ));
+            $replay->setUserResolver($request->getUserResolver());
+
+            $result = $this->saveExperience($replay);
+            if ($result->getStatusCode() !== 200) {
+                return $result;
+            }
+
+            // saveExperience only takes photos as uploaded files; a parked
+            // revision carries already-stored paths, so apply those by hand.
+            $media = [];
+            if (!empty($parked['card_image'])) {
+                $media['card_image'] = $parked['card_image'];
+            }
+            if (!empty($parked['gallery'])) {
+                $media['gallery'] = (array) $parked['gallery'];
+            }
+
+            $experience->refresh()->update($media + [
+                'approval_status'      => 'approved',
+                'is_active'            => true,
+                'approved_at'          => now(),
+                'approved_by'          => Auth::id(),
+                'rejection_reason'     => null,
+                'pending_changes'      => null,
+                'pending_submitted_at' => null,
+                'pending_submitted_by' => null,
+            ]);
+
+            return response()->json(['success' => true]);
+        }
+
+        $experience->update([
+            'approval_status'  => 'approved',
+            'is_active'        => true,
+            'approved_at'      => now(),
+            'approved_by'      => Auth::id(),
+            'rejection_reason' => null,
+        ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    protected function rejectExperience(Request $request): JsonResponse
+    {
+        $request->validate([
+            'id' => 'required|integer',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $experience = Experience::pending()->findOrFail($request->id);
+
+        // Discarding a revision leaves the approved version exactly as it was —
+        // it never stopped selling, so there is nothing to restore.
+        if ($experience->hasPendingChanges()) {
+            $experience->update([
+                'pending_changes'      => null,
+                'pending_submitted_at' => null,
+                'pending_submitted_by' => null,
+                'rejection_reason'     => $request->input('reason') ?: null,
+            ]);
+
+            return response()->json(['success' => true, 'kept_live' => true]);
+        }
+
+        $experience->update([
+            'approval_status'  => 'rejected',
+            'is_active'        => false,
+            'approved_at'      => now(),
+            'approved_by'      => Auth::id(),
+            'rejection_reason' => $request->input('reason') ?: null,
+        ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    protected function deleteSpExperience(Request $request): JsonResponse
+    {
+        [$sp, $err] = $this->resolveExperienceAuthor();
+        if ($err) return $err;
+        [$experience, $ownErr] = $this->resolveOwnExperience((int) $request->id, $sp);
+        if ($ownErr) return $ownErr;
+
+        // Soft-remove: an experience may already sit inside booked itineraries,
+        // so it is deactivated rather than deleted out from under a trip.
+        $experience->update(['is_active' => false]);
+        return response()->json(['success' => true]);
     }
 
     protected function getRegenerativeProjects(Request $request): JsonResponse
@@ -6986,15 +7517,28 @@ class AjaxController extends Controller
             "email" => "required|email|unique:service_providers,email",
             "phone_1" => "required|string|max:20",
             "region_id" => "required|exists:regions,id",
+            // The applicant chooses their password here; the emailed code only
+            // proves the address afterwards.
+            "password" => ["required", "string", "min:8", "regex:/[0-9]/", "regex:/[^A-Za-z0-9]/", "confirmed"],
         ], [
-            "email.unique" => "An application with this email already exists. Please contact us if you need to update your application.",
+            "email.unique" => "An application with this email already exists. Please log in to track it, or contact us to update it.",
+            "password.min" => "Password must be at least 8 characters.",
+            "password.regex" => "Password must include a number and a symbol.",
+            "password.confirmed" => "The passwords do not match.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
+        // Persist any uploaded verification documents first, so the row can carry
+        // their stored paths.
+        $documents = $this->storeApplicationDocuments($request);
+
         $provider = ServiceProvider::create([
             "provider_type" => $request->provider_type,
+            "business_type" => $request->business_type,
+            "registration_number" => $request->registration_number,
+            "year_established" => $request->year_established ?: null,
             "name" => $request->name,
             "contact_person" => $request->contact_person,
             "email" => $request->email,
@@ -7002,25 +7546,134 @@ class AjaxController extends Controller
             "phone_2" => $request->phone_2,
             "region_id" => $request->region_id,
             "address" => $request->address,
-            "services_offered" => $request->services_offered,
-            "accommodation_categories" => $request->accommodation_categories,
-            "vehicle_types" => $request->vehicle_types,
-            "guide_types" => $request->guide_types,
-            "activity_types" => $request->activity_types,
+            "city" => $request->city,
+            "postal_code" => $request->postal_code,
+            "country" => $request->country,
+            "services_offered" => $this->applicationArray($request, 'services_offered'),
+            "accommodation_categories" => $this->applicationArray($request, 'accommodation_categories'),
+            "vehicle_types" => $this->applicationArray($request, 'vehicle_types'),
+            "guide_types" => $this->applicationArray($request, 'guide_types'),
+            "activity_types" => $this->applicationArray($request, 'activity_types'),
+            "documents" => $documents ?: null,
             "notes" => $request->input('description', $request->input('notes')),
             "status" => "pending",
         ]);
 
-        $providerLabel = match ($provider->provider_type) {
+        // Create the applicant's login. An email that already has an account is
+        // linked instead, and that person signs in with their existing password.
+        [$newUser, $redirect] = $this->provisionApplicantAccount($provider);
+
+        // They chose their password on the form, so there is nothing left to
+        // verify — sign them straight in and land them on their status page.
+        if ($newUser) {
+            $newUser->forceFill(['password_set_at' => now()])->save();
+            // Only the web has a session — the mobile API is stateless and signs
+            // in afterwards with the password the applicant just chose.
+            if (request()->hasSession()) {
+                Auth::login($newUser);
+                request()->session()->regenerate();
+            }
+        }
+
+        $providerLabel = $this->providerTypeLabel($provider->provider_type);
+
+        // 1. Confirmation to the applicant.
+        $this->sendMail(
+            $provider->email,
+            new SpApplicationReceivedEmail($provider->contact_person ?: $provider->name, $providerLabel),
+            'sp_application:' . $provider->id
+        );
+
+        // 2. Heads-up to HCT so a new application isn't missed in the queue.
+        $this->sendMail(
+            Setting::getValue('site_email') ?: 'info@heco.eco',
+            new AdminNewApplicationEmail($provider->fresh(['region']), $providerLabel),
+            'admin_new_application:' . $provider->id
+        );
+
+        return response()->json([
+            "success" => true,
+            "redirect" => $redirect,
+            "existing_account" => $newUser === null,
+            "message" => $newUser === null
+                ? "You already have a HECO account. Please log in to track your application."
+                : "Application submitted successfully",
+        ]);
+    }
+
+
+    /** Human label for a provider_type code. */
+    protected function providerTypeLabel(string $type): string
+    {
+        return match ($type) {
             'hrp' => 'Himalayan Regenerative Partner (HRP)',
             'hlh' => 'Homestay Local Host (HLH)',
             'osp' => 'Other Service Provider (OSP)',
             default => 'Partner',
         };
-        $contactName = $provider->contact_person ?: $provider->name;
-        $this->sendMail($provider->email, new SpApplicationReceivedEmail($contactName, $providerLabel), 'sp_application:' . $provider->id);
+    }
 
-        return response()->json(["success" => true, "message" => "Application submitted successfully"]);
+    /**
+     * Normalise a multi-select application field to a clean list (or null).
+     * The wizard posts these as `field[]`; a single value arrives as a scalar.
+     */
+    protected function applicationArray(Request $request, string $key): ?array
+    {
+        $val = $request->input($key);
+        if ($val === null) return null;
+        $val = array_values(array_filter((array) $val, fn($v) => $v !== null && $v !== ''));
+        return $val ?: null;
+    }
+
+    /**
+     * Store uploaded verification documents (optional) and return their
+     * metadata. Files arrive as `documents[]` with parallel `document_labels[]`.
+     */
+    protected function storeApplicationDocuments(Request $request): array
+    {
+        $documents = [];
+        $labels = (array) $request->input('document_labels', []);
+        foreach ((array) $request->file('documents', []) as $i => $file) {
+            if (!$file || !$file->isValid()) continue;
+            $path = $file->store('sp-documents', 'public');
+            $documents[] = [
+                'label' => $labels[$i] ?? 'Document',
+                'path' => $path,
+                'original_name' => $file->getClientOriginalName(),
+            ];
+        }
+        return $documents;
+    }
+
+    /**
+     * Ensure the applicant has a login WITHOUT signing them in, returning
+     * [newUser|null, redirectUrl]. A brand-new email gets a fresh account (the
+     * caller emails it a set-password link) and is sent to the "application
+     * submitted" page; an email that already belongs to a user is linked to the
+     * application (role updated) and sent to log in with its existing password.
+     */
+    protected function provisionApplicantAccount(ServiceProvider $provider): array
+    {
+        // submitSpApplication refuses an email that already has an account, so
+        // this only ever creates. The guard stays for safety: reusing an
+        // existing account here would silently change what it can already do.
+        $existing = User::where('email', $provider->email)->first();
+        if ($existing) {
+            $provider->forceFill(['user_id' => $existing->id])->save();
+            return [null, '/login'];
+        }
+
+        $user = User::create([
+            'full_name' => $provider->contact_person ?: $provider->name,
+            'email'     => $provider->email,
+            // Chosen during signup; falls back to an unusable random secret so a
+            // caller that skips it (admin-created providers) can't be logged into.
+            'password'  => request()->input('password') ?: Str::random(40),
+            'auth_type' => 'email',
+            'user_role' => $provider->provider_type,
+        ]);
+        $provider->forceFill(['user_id' => $user->id])->save();
+        return [$user, '/application-status'];
     }
 
     /**

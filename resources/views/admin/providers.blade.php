@@ -2,11 +2,17 @@
 @section('title', 'Service Providers - HCT')
 @section('content')
 
-@php $regions = \App\Models\Region::where('is_active', 1)->orderBy('name')->get(); @endphp
+@php
+    $regions = \App\Models\Region::where('is_active', 1)->orderBy('name')->get();
+    $serviceTypes = \App\Models\SystemList::ofType('service_type')->get();
+@endphp
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-people"></i> Service Providers</h5>
     <div class="d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-success" id="addProviderBtn">
+            <i class="bi bi-person-plus"></i> Add Provider
+        </button>
         <div class="heco-filter-sm">
             <select class="form-select form-select-sm custom-select" id="providerTypeFilter">
                 <option value="">All Types</option>
@@ -68,6 +74,93 @@
 </div>
 
 <div id="providersPagination" class="mt-3"></div>
+
+{{-- Add Provider (manual) --}}
+<div class="modal fade" id="addProviderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus"></i> Add Provider</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="addProviderAlert"></div>
+                <form id="addProviderForm" class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Provider type *</label>
+                        <select class="form-select custom-select" id="ap_type">
+                            <option value="hrp">HRP — HECO Resource Person</option>
+                            <option value="hlh">HLH — HECO Local Host</option>
+                            <option value="osp" selected>OSP — Other Service Provider</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Name / Organization *</label>
+                        <input type="text" class="form-control" id="ap_name">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Contact person</label>
+                        <input type="text" class="form-control" id="ap_contact">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Email *</label>
+                        <input type="email" class="form-control" id="ap_email">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Phone 1 *</label>
+                        <input type="text" class="form-control" id="ap_phone1">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Phone 2</label>
+                        <input type="text" class="form-control" id="ap_phone2">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Region *</label>
+                        <select class="form-select custom-select" id="ap_region">
+                            <option value="">Select region...</option>
+                            @foreach($regions as $r)
+                                <option value="{{ $r->id }}">{{ $r->name }}, {{ $r->country }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Address</label>
+                        <textarea class="form-control" id="ap_address" rows="2"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Services offered</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            @foreach($serviceTypes as $st)
+                                <label class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="services_offered[]" value="{{ $st->name }}">
+                                    <span class="form-check-label">{{ $st->name }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Status</label>
+                        <select class="form-select custom-select" id="ap_status">
+                            <option value="approved" selected>Approved (can log in)</option>
+                            <option value="pending">Pending (under review)</option>
+                        </select>
+                    </div>
+                </form>
+                <div class="text-muted small mt-3">
+                    <i class="bi bi-info-circle"></i>
+                    An <strong>Approved</strong> provider gets a set-password email so they can sign in.
+                    Bank details and detailed capabilities can be added afterwards from the provider's Edit page.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="addProviderSave">
+                    <i class="bi bi-check-lg"></i> Create provider
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @endsection
 
@@ -264,6 +357,55 @@ $('#providersBulkPermDelete').on('click', function() {
             );
         }
         next(0);
+    });
+});
+
+// ── Add Provider (manual) ────────────────────────────────────────────────
+var addProviderModal = new bootstrap.Modal(document.getElementById('addProviderModal'));
+
+$('#addProviderBtn').on('click', function() {
+    $('#addProviderForm')[0].reset();
+    $('#addProviderAlert').empty();
+    addProviderModal.show();
+});
+
+$('#addProviderSave').on('click', function() {
+    var $btn = $(this);
+    var apWarn = function(msg) {
+        $('#addProviderAlert').html('<div class="alert alert-warning py-2 mb-2">' + msg + '</div>');
+    };
+
+    var email = ($('#ap_email').val() || '').trim();
+    if (!$('#ap_name').val().trim()) return apWarn('Please enter a name / organization.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return apWarn('Please enter a valid email address.');
+    if (!$('#ap_phone1').val().trim()) return apWarn('Please enter a primary phone number.');
+    if (!$('#ap_region').val()) return apWarn('Please choose a region.');
+
+    var data = {
+        add_provider: 1,
+        provider_type: $('#ap_type').val(),
+        name: $('#ap_name').val().trim(),
+        contact_person: $('#ap_contact').val().trim(),
+        email: email,
+        phone_1: $('#ap_phone1').val().trim(),
+        phone_2: $('#ap_phone2').val().trim(),
+        region_id: $('#ap_region').val(),
+        address: $('#ap_address').val().trim(),
+        status: $('#ap_status').val(),
+        services_offered: $('#addProviderForm input[name="services_offered[]"]:checked')
+            .map(function() { return this.value; }).get()
+    };
+
+    $btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Creating...');
+    ajaxPost(data, function() {
+        $btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Create provider');
+        addProviderModal.hide();
+        showAlert('Provider created.', 'success');
+        loadProviders();
+    }, function(xhr) {
+        $btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Create provider');
+        var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Failed to create provider.') : 'Failed to create provider.';
+        apWarn(msg);
     });
 });
 </script>
