@@ -192,11 +192,20 @@ $(document).on('click', '.view-app', function() {
 
     var h = '<div class="text-start">';
     h += row('Type', esc((app.provider_type || '').toUpperCase()));
+    h += row('Business type', esc(app.business_type));
+    h += row('Registration no.', esc(app.registration_number));
+    h += row('Year established', esc(app.year_established));
     h += row('Contact person', esc(app.contact_person));
     h += row('Email', esc(app.email));
     h += row('Phone', [app.phone_1, app.phone_2].filter(Boolean).map(esc).join(' · '));
     h += row('Region', app.region ? esc(app.region.name) : '');
-    h += row('Address', esc(app.address));
+    // Full postal address: street, then "city postal", then country — each on its own line.
+    var addressLines = [];
+    if (app.address) addressLines.push(esc(app.address));
+    var cityLine = [app.city, app.postal_code].filter(Boolean).map(esc).join(' ');
+    if (cityLine) addressLines.push(cityLine);
+    if (app.country) addressLines.push(esc(app.country));
+    h += row('Address', addressLines.join('<br>'));
     h += row('About', esc(app.notes));
     h += chips('Services offered', app.services_offered);
     h += chips('Accommodation categories', app.accommodation_categories);
