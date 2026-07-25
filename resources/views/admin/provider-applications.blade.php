@@ -178,62 +178,119 @@ $(document).on('click', '.view-app', function() {
     var app = appsById[$(this).data('id')];
     if (!app) return;
 
-    function row(label, val) {
+    var ACCENT = '#79a09f';
+
+    // A label + value pair (two grid cells). Empty values render nothing so the
+    // grid never shows a blank row.
+    function field(label, val) {
         if (val === null || val === undefined || val === '') return '';
-        return '<div class="mb-2"><div class="text-muted small text-uppercase" style="letter-spacing:.04em;">'
-            + label + '</div><div>' + val + '</div></div>';
+        return '<div style="color:#9a9a95;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding-top:3px;">' + label + '</div>'
+             + '<div style="color:#33332f;font-size:14px;line-height:1.45;word-break:break-word;">' + val + '</div>';
     }
-    function chips(label, arr) {
+    function grid(inner) {
+        return inner ? '<div style="display:grid;grid-template-columns:120px 1fr;gap:8px 14px;">' + inner + '</div>' : '';
+    }
+    // A titled card. Renders nothing when it has no content.
+    function section(icon, title, inner) {
+        if (!inner) return '';
+        return '<div style="border:1px solid #ececea;border-radius:12px;padding:14px 16px;margin-bottom:12px;background:#fff;">'
+             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+             +   '<i class="bi ' + icon + '" style="color:' + ACCENT + ';font-size:15px;"></i>'
+             +   '<span style="font-weight:600;color:#575753;font-size:12px;text-transform:uppercase;letter-spacing:.06em;">' + title + '</span>'
+             + '</div>' + inner + '</div>';
+    }
+    function chipsVal(arr) {
         arr = asList(arr);
         if (!arr.length) return '';
-        var b = arr.map(function(s) { return '<span class="badge bg-light text-dark border me-1 mb-1">' + esc(s) + '</span>'; }).join('');
-        return '<div class="mb-2"><div class="text-muted small text-uppercase" style="letter-spacing:.04em;">' + label + '</div><div>' + b + '</div></div>';
+        return arr.map(function(s) {
+            return '<span style="display:inline-block;background:#f3f6f5;color:#4b6b6a;border:1px solid #e2e9e8;'
+                 + 'border-radius:20px;padding:2px 10px;font-size:12.5px;margin:0 4px 4px 0;">' + esc(s) + '</span>';
+        }).join('');
+    }
+    function capField(label, arr) {
+        var c = chipsVal(arr);
+        return c ? field(label, c) : '';
     }
 
-    var h = '<div class="text-start">';
-    h += row('Type', esc((app.provider_type || '').toUpperCase()));
-    h += row('Business type', esc(app.business_type));
-    h += row('Registration no.', esc(app.registration_number));
-    h += row('Year established', esc(app.year_established));
-    h += row('Contact person', esc(app.contact_person));
-    h += row('Email', esc(app.email));
-    h += row('Phone', [app.phone_1, app.phone_2].filter(Boolean).map(esc).join(' · '));
-    h += row('Region', app.region ? esc(app.region.name) : '');
-    // Full postal address: street, then "city postal", then country — each on its own line.
+    // ── Header: avatar + name + type & status pills ─────────────────────
+    var typeLabels = {
+        hrp: 'HRP · HECO Resource Person',
+        hlh: 'HLH · HECO Local Host',
+        osp: 'OSP · Other Service Provider',
+    };
+    var name = app.name || 'Application';
+    var initials = name.trim().split(/\s+/).slice(0, 2).map(function(w) { return w.charAt(0); }).join('').toUpperCase();
+    var statusColors = { pending: ['#fff6e5', '#a6791f'], approved: ['#e9f4ee', '#2e7d4f'], rejected: ['#fbeceb', '#b53b34'] };
+    var sc = statusColors[app.status] || ['#eef0ef', '#666'];
+    var submitted = app.created_at ? app.created_at.substring(0, 10) : '';
+
+    var header = '<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;text-align:left;">'
+      + '<div style="flex:none;width:54px;height:54px;border-radius:15px;background:#eef4f3;color:' + ACCENT + ';'
+      +   'display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;">' + esc(initials || '·') + '</div>'
+      + '<div style="min-width:0;">'
+      +   '<div style="font-size:18px;font-weight:700;color:#333330;line-height:1.2;">' + esc(name) + '</div>'
+      +   '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;">'
+      +     '<span style="background:#eef4f3;color:#4b6b6a;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600;">'
+      +        esc(typeLabels[app.provider_type] || (app.provider_type || '').toUpperCase()) + '</span>'
+      +     (app.status ? '<span style="background:' + sc[0] + ';color:' + sc[1] + ';border-radius:20px;padding:2px 10px;'
+      +        'font-size:12px;font-weight:600;text-transform:capitalize;">' + esc(app.status) + '</span>' : '')
+      +     (submitted ? '<span style="color:#9a9a95;font-size:12px;">Submitted ' + esc(submitted) + '</span>' : '')
+      +   '</div>'
+      + '</div></div>';
+
+    // ── Location: full postal address ───────────────────────────────────
     var addressLines = [];
     if (app.address) addressLines.push(esc(app.address));
     var cityLine = [app.city, app.postal_code].filter(Boolean).map(esc).join(' ');
     if (cityLine) addressLines.push(cityLine);
     if (app.country) addressLines.push(esc(app.country));
-    h += row('Address', addressLines.join('<br>'));
-    h += row('About', esc(app.notes));
-    h += chips('Services offered', app.services_offered);
-    h += chips('Accommodation categories', app.accommodation_categories);
-    h += chips('Vehicle types', app.vehicle_types);
-    h += chips('Guide specialisations', app.guide_types);
-    h += chips('Activity types', app.activity_types);
 
-    var docs = asList(app.documents);
+    // ── Documents ───────────────────────────────────────────────────────
+    var docs = asList(app.documents), docHtml;
     if (docs.length) {
-        var d = docs.map(function(doc) {
+        docHtml = docs.map(function(doc) {
             var url = '/storage/' + doc.path;
-            return '<div class="mb-1"><i class="bi bi-paperclip text-muted"></i> '
-                + '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(doc.label || 'Document') + '</a> '
-                + '<span class="text-muted small">' + esc(doc.original_name || '') + '</span></div>';
+            return '<div style="margin-bottom:5px;"><i class="bi bi-paperclip" style="color:#9a9a95;"></i> '
+                 + '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="color:' + ACCENT + ';">' + esc(doc.label || 'Document') + '</a> '
+                 + '<span style="color:#9a9a95;font-size:12px;">' + esc(doc.original_name || '') + '</span></div>';
         }).join('');
-        h += '<div class="mb-2"><div class="text-muted small text-uppercase" style="letter-spacing:.04em;">Documents</div>' + d + '</div>';
     } else {
-        h += row('Documents', '<span class="text-muted">None uploaded</span>');
+        docHtml = '<div style="color:#9a9a95;font-size:14px;">None uploaded</div>';
     }
-    h += '<div class="text-muted small mt-2">Submitted ' + (app.created_at ? app.created_at.substring(0, 10) : '-') + '</div>';
-    h += '</div>';
+
+    var h = '<div style="text-align:left;">'
+      + header
+      + section('bi-person', 'Contact', grid(
+            field('Contact', esc(app.contact_person))
+          + field('Email', esc(app.email))
+          + field('Phone', [app.phone_1, app.phone_2].filter(Boolean).map(esc).join(' · '))
+        ))
+      + section('bi-briefcase', 'Business', grid(
+            field('Business type', esc(app.business_type))
+          + field('Reg. number', esc(app.registration_number))
+          + field('Year est.', esc(app.year_established))
+        ))
+      + section('bi-geo-alt', 'Location', grid(
+            field('Region', app.region ? esc(app.region.name) : '')
+          + field('Address', addressLines.join('<br>'))
+        ))
+      + (app.notes ? section('bi-card-text', 'About',
+            '<div style="color:#33332f;font-size:14px;line-height:1.5;">' + esc(app.notes) + '</div>') : '')
+      + section('bi-stars', 'Services &amp; capabilities', grid(
+            capField('Services', app.services_offered)
+          + capField('Accommodation', app.accommodation_categories)
+          + capField('Vehicle types', app.vehicle_types)
+          + capField('Guide', app.guide_types)
+          + capField('Activity', app.activity_types)
+        ))
+      + section('bi-paperclip', 'Documents', docHtml)
+      + '</div>';
 
     Swal.fire({
-        title: esc(app.name || 'Application'),
         html: h,
-        width: 620,
+        width: 640,
         confirmButtonText: 'Close',
-        confirmButtonColor: '#79a09f',
+        confirmButtonColor: ACCENT,
     });
 });
 </script>
