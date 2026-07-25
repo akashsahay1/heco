@@ -31,6 +31,9 @@ Route::prefix('v1')->group(function () {
     Route::post('auth/reset-password', [AuthController::class, 'resetPassword']);
     Route::get('reference', [ReferenceController::class, 'index']);
     Route::post('providers/applications', [ReferenceController::class, 'submitApplication']);
+    // Finish signup: confirm the emailed code + set a password, then get a token.
+    Route::post('providers/verify-otp', [AuthController::class, 'verifyOtp']);
+    Route::post('providers/resend-otp', [AuthController::class, 'resendOtp']);
 
     // ── Authenticated ────────────────────────────────────────────────────
     Route::middleware('api.token')->group(function () {

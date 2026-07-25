@@ -93,10 +93,16 @@ class MobileApiTest extends TestCase
         $this->getJson('/api/v1/auth/me', ['Authorization' => 'Bearer ' . $access])->assertOk();
     }
 
-    // ── Signup (password chosen on the form) ─────────────────────────────
+    // ── Signup (email OTP, then set password + get a token) ──────────────
 
-    private function submitApplication(): string
+    /**
+     * Submit the application and return [verification token, emailed code].
+     * The app carries the token to the verify step; no password is chosen yet.
+     */
+    private function submitApplication(): array
     {
+        Mail::fake();
+
         $res = $this->postJson('/api/v1/providers/applications', [
             'provider_type' => 'hlh',
             'name' => 'Riverside Homestay',
@@ -106,11 +112,75 @@ class MobileApiTest extends TestCase
             'region_id' => $this->region->id,
             'services_offered' => ['Accommodation'],
             'description' => 'A riverside homestay with home-cooked meals.',
-            'password' => 'Passw0rd!',
-            'password_confirmation' => 'Passw0rd!',
         ])->assertOk();
 
-        return (string) $res->json('redirect');
+        $code = null;
+        Mail::assertSent(\App\Mail\AccountOtpEmail::class, function ($mail) use (&$code) {
+            $code = $mail->otp;
+            return true;
+        });
+
+        return [(string) $res->json('verification'), $code];
+    }
+
+    public function test_mobile_signup_returns_a_verification_token_and_no_login_yet(): void
+    {
+        [$verification, $code] = $this->submitApplication();
+
+        $this->assertNotEmpty($verification);
+        $this->assertNotNull($code);
+
+        $user = User::where('email', 'neha@example.test')->firstOrFail();
+        // Account exists but is not usable until the code is confirmed.
+        $this->assertNull($user->password_set_at);
+    }
+
+    public function test_mobile_verify_otp_sets_the_password_and_issues_a_working_token(): void
+    {
+        [$verification, $code] = $this->submitApplication();
+
+        $res = $this->postJson('/api/v1/providers/verify-otp', [
+            'verification' => $verification,
+            'otp' => $code,
+            'password' => 'Newpass1!',
+            'device' => 'pixel',
+        ])->assertOk();
+
+        $this->assertNotEmpty($res->json('access_token'));
+
+        $user = User::where('email', 'neha@example.test')->firstOrFail();
+        $this->assertTrue(Hash::check('Newpass1!', $user->password));
+        $this->assertNotNull($user->password_set_at);
+        $this->assertNotNull($user->email_verified_at);
+
+        // The freshly-minted token authenticates a follow-up call.
+        $this->withHeaders(['Authorization' => 'Bearer ' . $res->json('access_token')])
+            ->getJson('/api/v1/auth/me')
+            ->assertOk();
+    }
+
+    public function test_mobile_verify_otp_rejects_a_wrong_code(): void
+    {
+        [$verification, $code] = $this->submitApplication();
+        $wrong = $code === '000000' ? '111111' : '000000';
+
+        $this->postJson('/api/v1/providers/verify-otp', [
+            'verification' => $verification,
+            'otp' => $wrong,
+            'password' => 'Newpass1!',
+        ])->assertStatus(422);
+
+        $this->assertNull(User::where('email', 'neha@example.test')->firstOrFail()->password_set_at);
+    }
+
+    public function test_mobile_resend_otp_emails_a_fresh_code(): void
+    {
+        [$verification] = $this->submitApplication();
+
+        // A second Mail::fake() so the count is clean from this point on.
+        Mail::fake();
+        $this->postJson('/api/v1/providers/resend-otp', ['verification' => $verification])->assertOk();
+        Mail::assertSent(\App\Mail\AccountOtpEmail::class, 1);
     }
 
     public function test_mobile_signup_uploads_documents(): void
@@ -125,8 +195,6 @@ class MobileApiTest extends TestCase
             'phone_1' => '9811122233',
             'region_id' => $this->region->id,
             'services_offered' => ['Accommodation'],
-            'password' => 'Passw0rd!',
-            'password_confirmation' => 'Passw0rd!',
             'documents' => [\Illuminate\Http\UploadedFile::fake()->image('id.jpg')],
             'document_labels' => ['Government ID'],
         ])->assertOk();

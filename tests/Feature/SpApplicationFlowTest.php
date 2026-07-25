@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\AccountOtpEmail;
 use App\Mail\AdminNewApplicationEmail;
 use App\Mail\SpApplicationReceivedEmail;
 use App\Mail\SpApplicationApprovedEmail;
@@ -61,18 +62,30 @@ class SpApplicationFlowTest extends TestCase
             'accommodation_categories' => ['Cat C - Standard'],
             'guide_types' => ['Local Guide'],
             'description' => 'We host travellers in a riverside homestay with local guides and home food.',
-            'password' => 'Passw0rd!',
-            'password_confirmation' => 'Passw0rd!',
         ], $overrides);
     }
 
-    public function test_submitting_creates_the_account_and_signs_them_in(): void
+    /** Submit the application and return the 6-digit code we emailed. */
+    private function submitAndCaptureCode(array $overrides = []): string
+    {
+        $this->ajax($this->validPayload($overrides))->assertOk();
+
+        $code = null;
+        Mail::assertSent(AccountOtpEmail::class, function ($mail) use (&$code) {
+            $code = $mail->otp;
+            return true;
+        });
+        $this->assertNotNull($code, 'A verification code should have been emailed.');
+        return $code;
+    }
+
+    public function test_submitting_creates_a_pending_account_and_emails_a_code(): void
     {
         $res = $this->ajax($this->validPayload());
 
         $res->assertOk()->assertJson([
             'success' => true,
-            'redirect' => '/application-status',
+            'redirect' => '/create-password',
         ]);
 
         $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
@@ -82,13 +95,15 @@ class SpApplicationFlowTest extends TestCase
 
         $user = User::find($provider->user_id);
         $this->assertSame('hlh', $user->user_role);
-        // The password came from the form, so they are signed in immediately.
-        $this->assertTrue(Hash::check('Passw0rd!', $user->password));
-        $this->assertNotNull($user->password_set_at);
-        $this->assertAuthenticatedAs($user);
+        // No usable password yet, and they are NOT signed in — that happens only
+        // after the emailed code is confirmed on the create-password screen.
+        $this->assertNull($user->password_set_at);
+        $this->assertGuest();
+
+        Mail::assertSent(AccountOtpEmail::class, fn ($m) => $m->hasTo('aarav.mehta@example.test'));
     }
 
-    public function test_submitting_emails_both_the_applicant_and_hct(): void
+    public function test_submitting_emails_the_applicant_and_hct(): void
     {
         $this->ajax($this->validPayload());
 
@@ -96,9 +111,103 @@ class SpApplicationFlowTest extends TestCase
         Mail::assertSent(AdminNewApplicationEmail::class);
     }
 
-    public function test_approval_after_signup_sends_a_login_notice_not_a_set_password_link(): void
+    public function test_the_create_password_page_renders_for_a_pending_applicant(): void
     {
         $this->ajax($this->validPayload());
+
+        $this->get("http://{$this->portal}/create-password")
+            ->assertOk()
+            ->assertSee('Application submitted')
+            ->assertSee('aarav.mehta@example.test');
+    }
+
+    public function test_the_create_password_page_bounces_a_visitor_with_no_pending_session(): void
+    {
+        $this->get("http://{$this->portal}/create-password")
+            ->assertRedirect('/join');
+    }
+
+    public function test_verifying_the_code_sets_the_password_and_signs_them_in(): void
+    {
+        $code = $this->submitAndCaptureCode();
+
+        $this->ajax([
+            'verify_and_set_password' => 1,
+            'otp' => $code,
+            'password' => 'Passw0rd!',
+            'password_confirmation' => 'Passw0rd!',
+        ])->assertOk()->assertJson([
+            'success' => true,
+            'redirect' => '/application-status',
+        ]);
+
+        $user = User::where('email', 'aarav.mehta@example.test')->firstOrFail();
+        $this->assertTrue(Hash::check('Passw0rd!', $user->password));
+        $this->assertNotNull($user->password_set_at);
+        $this->assertNotNull($user->email_verified_at);
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_a_wrong_code_is_rejected(): void
+    {
+        $code = $this->submitAndCaptureCode();
+        $wrong = $code === '000000' ? '111111' : '000000';
+
+        $this->ajax([
+            'verify_and_set_password' => 1,
+            'otp' => $wrong,
+            'password' => 'Passw0rd!',
+            'password_confirmation' => 'Passw0rd!',
+        ])->assertStatus(422);
+
+        $user = User::where('email', 'aarav.mehta@example.test')->firstOrFail();
+        $this->assertNull($user->password_set_at);
+        $this->assertGuest();
+    }
+
+    public function test_a_weak_password_is_rejected_at_verify(): void
+    {
+        $code = $this->submitAndCaptureCode();
+
+        $this->ajax([
+            'verify_and_set_password' => 1,
+            'otp' => $code,
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ])->assertStatus(422);
+
+        $this->assertNull(User::where('email', 'aarav.mehta@example.test')->firstOrFail()->password_set_at);
+    }
+
+    public function test_verify_without_a_pending_session_is_refused(): void
+    {
+        // No submit first — there is no pending user tied to this session.
+        $this->ajax([
+            'verify_and_set_password' => 1,
+            'otp' => '123456',
+            'password' => 'Passw0rd!',
+            'password_confirmation' => 'Passw0rd!',
+        ])->assertStatus(419);
+    }
+
+    public function test_resending_emails_a_fresh_code(): void
+    {
+        $this->ajax($this->validPayload())->assertOk();
+        Mail::assertSent(AccountOtpEmail::class, 1);
+
+        $this->ajax(['resend_account_otp' => 1])->assertOk()->assertJson(['success' => true]);
+        Mail::assertSent(AccountOtpEmail::class, 2);
+    }
+
+    public function test_approval_after_signup_sends_a_login_notice_not_a_set_password_link(): void
+    {
+        $code = $this->submitAndCaptureCode();
+        $this->ajax([
+            'verify_and_set_password' => 1,
+            'otp' => $code,
+            'password' => 'Passw0rd!',
+            'password_confirmation' => 'Passw0rd!',
+        ])->assertOk();
 
         $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->firstOrFail();
         $admin = User::create([
@@ -111,16 +220,6 @@ class SpApplicationFlowTest extends TestCase
             ->assertOk();
 
         Mail::assertSent(SpApplicationApprovedEmail::class, fn ($mail) => $mail->setPasswordUrl === null);
-    }
-
-    public function test_a_weak_password_is_rejected_at_signup(): void
-    {
-        $this->ajax($this->validPayload([
-            'password' => 'password',
-            'password_confirmation' => 'password',
-        ]))->assertStatus(422);
-
-        $this->assertDatabaseMissing('service_providers', ['email' => 'aarav.mehta@example.test']);
     }
 
     public function test_capability_arrays_and_documents_are_stored(): void

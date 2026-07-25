@@ -70,7 +70,6 @@ class ReferenceController extends Controller
             'provider_type', 'business_type', 'registration_number', 'year_established',
             'name', 'contact_person', 'email', 'phone_1', 'phone_2',
             'region_id', 'address', 'city', 'postal_code', 'country',
-            'password', 'password_confirmation',
             'services_offered', 'accommodation_categories',
             'vehicle_types', 'guide_types', 'activity_types', 'description', 'notes',
             'document_labels',

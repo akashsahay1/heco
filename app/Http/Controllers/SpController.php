@@ -34,6 +34,30 @@ class SpController extends Controller
 
 
     /**
+     * "Create password" step — the applicant confirms the 6-digit code we
+     * emailed at submit time and chooses their password, all on-site (no web
+     * link). Gated by the `sp_pending_uid` session written by submitSpApplication;
+     * without it there is nothing to verify, so send them back to the form.
+     */
+    public function createPassword()
+    {
+        $uid = session('sp_pending_uid');
+        if (!$uid) {
+            return redirect()->route('sp.application')
+                ->with('status', 'Start your application to continue.');
+        }
+
+        $user = \App\Models\User::find($uid);
+        if (!$user) {
+            session()->forget('sp_pending_uid');
+            return redirect()->route('sp.application')
+                ->with('status', 'Start your application to continue.');
+        }
+
+        return view('portal.sp.create-password', ['email' => $user->email]);
+    }
+
+    /**
      * "Application under review" page. Mirrors the mobile app's waiting-approval
      * screen: a signed-in provider whose application is still pending or was
      * rejected sees their status and the lifecycle timeline. Approved providers

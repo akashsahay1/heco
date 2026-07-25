@@ -91,6 +91,10 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::get('/home', [HomepageController::class, 'home'])->name('home');
     Route::get('/experience/{slug}', [HomepageController::class, 'experienceDetail'])->name('experience.detail');
     Route::get('/join', [SpController::class, 'application'])->name('sp.application');
+    // On-site signup step: verify the emailed code + set a password. Public
+    // because the applicant is not signed in yet — the sp_pending_uid session
+    // gates access, enforced inside the controller.
+    Route::get('/create-password', [SpController::class, 'createPassword'])->name('sp.create-password');
     Route::get('/csrf-token', fn() => response()->json(['token' => csrf_token()]));
     Route::get('/opcache-reset', fn() => (function_exists('opcache_reset') && opcache_reset()) ? 'cleared' : 'no opcache');
 
