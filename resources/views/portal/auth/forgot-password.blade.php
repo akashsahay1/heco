@@ -6,7 +6,7 @@
     <div class="forgotwrap-card">
         <div class="forgotwrap-hero">
             <h1 class="forgotwrap-heading">Forgot your password?</h1>
-            <p class="forgotwrap-subheading">Enter your email and we'll send you a reset link</p>
+            <p class="forgotwrap-subheading">Enter your email and we'll send you a 6-digit reset code</p>
         </div>
 
         <div class="forgotwrap-body">
@@ -23,7 +23,7 @@
                 </div>
 
                 <button type="submit" class="btn btn-success submit_btn" id="btnForgotSubmit">
-                    <i class="bi bi-envelope-paper me-2"></i> Send Reset Link
+                    <i class="bi bi-envelope-paper me-2"></i> Send Reset Code
                 </button>
             </form>
         </div>
@@ -60,15 +60,16 @@ jQuery(function() {
             headers: { 'Accept': 'application/json' },
             skipGlobalError: true,
             success: function(resp) {
-                forgot_btn.prop('disabled', false).html(original_html);
                 if (resp.success) {
                     show_alert('success',
                         '<i class="bi bi-check-circle me-1"></i> ' +
-                        (resp.message || 'A password reset link has been sent to your email.')
+                        (resp.message || 'A 6-digit reset code has been sent to your email.')
                     );
-                    forgot_form.find('input[name="email"]').val('');
+                    // Move on to the on-site code + new-password step.
+                    window.location.href = resp.redirect || '/reset-password-otp';
                 } else {
-                    show_alert('danger', resp.error || resp.message || 'Could not send reset link.');
+                    forgot_btn.prop('disabled', false).html(original_html);
+                    show_alert('danger', resp.error || resp.message || 'Could not send reset code.');
                 }
             },
             error: function(xhr) {

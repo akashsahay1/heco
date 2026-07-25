@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use App\Models\User;
+use App\Services\PasswordResetOtpService;
 
 class AuthController extends Controller
 {
@@ -42,27 +43,103 @@ class AuthController extends Controller
         return view("portal.auth.forgot-password");
     }
 
+    /**
+     * Email a 6-digit reset code (no web link) and open the on-site OTP step.
+     *
+     * A code is only sent for a real account, but the response is identical
+     * either way and both cases land on the OTP page, so it can't be used to
+     * discover which emails are registered. The verify step is gated by the
+     * `pwreset_uid` session written here.
+     */
     public function send_reset_link(Request $request)
     {
         $validator = Validator::make($request->all(), [
             "email" => "required|email",
         ]);
-
-        if ($request->expectsJson()) {
-            if ($validator->fails()) {
+        if ($validator->fails()) {
+            if ($request->expectsJson()) {
                 return response()->json(["success" => false, "error" => $validator->errors()->first()], 422);
             }
-            $status = Password::sendResetLink($request->only("email"));
-            $ok = $status === Password::RESET_LINK_SENT;
-            return response()->json([
-                "success" => $ok,
-                "message" => __($status),
-            ], $ok ? 200 : 422);
+            return back()->withErrors(["email" => $validator->errors()->first()]);
         }
 
-        $validator->validate();
-        $status = Password::sendResetLink($request->only("email"));
-        return back()->with("status", __($status));
+        $email = $request->input("email");
+        $user = User::where("email", $email)->first();
+        if ($user) {
+            app(PasswordResetOtpService::class)->sendCode($user);
+            session(["pwreset_uid" => $user->id]);
+        }
+        // Always remember the email so both existing and unknown addresses reach
+        // the OTP page identically (no account enumeration).
+        session(["pwreset_email" => $email]);
+
+        $message = "If that email is registered, a 6-digit code is on its way.";
+        if ($request->expectsJson()) {
+            return response()->json([
+                "success" => true,
+                "message" => $message,
+                "redirect" => "/reset-password-otp",
+            ]);
+        }
+        return redirect("/reset-password-otp")->with("status", $message);
+    }
+
+    /** The on-site OTP + new-password step. Gated by the pwreset_email session. */
+    public function show_reset_otp()
+    {
+        $email = session("pwreset_email");
+        if (!$email) {
+            return redirect()->route("password.request")
+                ->with("status", "Start a password reset to continue.");
+        }
+        return view("portal.auth.reset-password-otp", ["email" => $email]);
+    }
+
+    /** Verify the emailed code and set the new password, then send them to login. */
+    public function reset_with_otp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            "otp" => "required|digits:6",
+            "password" => ["required", "string", "min:8", "regex:/[0-9]/", "regex:/[^A-Za-z0-9]/", "confirmed"],
+        ], [
+            "otp.digits" => "Enter the 6-digit code we emailed you.",
+            "password.min" => "Password must be at least 8 characters.",
+            "password.regex" => "Password must include a number and a symbol.",
+            "password.confirmed" => "The passwords do not match.",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["success" => false, "error" => $validator->errors()->first()], 422);
+        }
+
+        $uid = session("pwreset_uid");
+        $otp = app(PasswordResetOtpService::class);
+
+        // Same generic message whether the email was never registered (no uid)
+        // or the code is simply wrong — neither reveals whether the email exists.
+        if (!$uid) {
+            return response()->json(["success" => false, "error" => "That code is incorrect. Please try again."], 422);
+        }
+        if ($error = $otp->verify($uid, $request->input("otp"))) {
+            return response()->json(["success" => false, "error" => $error], 422);
+        }
+
+        $user = User::find($uid);
+        if (!$user) {
+            return response()->json(["success" => false, "error" => "That code is incorrect. Please try again."], 422);
+        }
+
+        $user->password = $request->input("password");
+        $user->password_set_at = now();
+        $user->setRememberToken(Str::random(60));
+        $user->save();
+
+        $request->session()->forget(["pwreset_uid", "pwreset_email"]);
+
+        return response()->json([
+            "success" => true,
+            "message" => "Your password has been updated.",
+            "redirect" => "/login",
+        ]);
     }
 
     public function show_reset_password(string $token)

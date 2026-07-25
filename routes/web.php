@@ -110,6 +110,10 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/forgot-password', [AuthController::class, 'show_forgot_password'])->name('password.request');
     Route::post('/forgot-password', [AuthController::class, 'send_reset_link'])->name('password.email');
+    // On-site OTP reset (no web link): the emailed code is confirmed here.
+    Route::get('/reset-password-otp', [AuthController::class, 'show_reset_otp'])->name('password.otp');
+    Route::post('/reset-password-otp', [AuthController::class, 'reset_with_otp'])->name('password.otp.update');
+    // Token link, still used for admin-added providers' set-password email.
     Route::get('/reset-password/{token}', [AuthController::class, 'show_reset_password'])->name('password.reset');
     Route::post('/reset-password', [AuthController::class, 'reset_password'])->name('password.update');
 
