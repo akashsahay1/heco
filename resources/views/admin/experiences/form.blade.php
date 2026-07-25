@@ -508,8 +508,81 @@
                         </div>
                         <div class="col-md-12">
                             <label class="form-label">Seasonal Price Variation</label>
-                            <textarea class="form-control" name="seasonal_price_variation" rows="3">{{ $e && $e->seasonal_price_variation ? json_encode($e->seasonal_price_variation, JSON_PRETTY_PRINT) : '' }}</textarea>
-                            <small class="text-muted">JSON array of seasonal price adjustments</small>
+                            <p class="text-muted small mb-2">
+                                Charge more (or less) in certain seasons. Name the period and set how much the
+                                per-person price changes — use a minus for a discount. Leave empty if the price is
+                                the same all year.
+                            </p>
+                            @php
+                                // Normalise whatever is stored into {label, adjustment_percent} rows.
+                                $seasonRows = collect($e->seasonal_price_variation ?? [])
+                                    ->map(fn ($r) => is_array($r) ? [
+                                        'label' => $r['label'] ?? ($r['season'] ?? ''),
+                                        'adjustment_percent' => $r['adjustment_percent'] ?? ($r['adjustment'] ?? ''),
+                                    ] : ['label' => (string) $r, 'adjustment_percent' => ''])
+                                    ->filter(fn ($r) => $r['label'] !== '')
+                                    ->values();
+                            @endphp
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle" id="seasonalTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width:220px;">Season / period</th>
+                                            <th style="width:200px;">Price change</th>
+                                            <th style="width:48px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="seasonalRows">
+                                        @forelse ($seasonRows as $i => $row)
+                                            <tr class="seasonal-row">
+                                                <td>
+                                                    <input type="text" class="form-control form-control-sm season-label"
+                                                        name="seasonal_price_variation[{{ $i }}][label]"
+                                                        value="{{ $row['label'] }}" placeholder="e.g. Peak — Oct to Nov">
+                                                </td>
+                                                <td>
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="number" class="form-control season-adjust"
+                                                            name="seasonal_price_variation[{{ $i }}][adjustment_percent]"
+                                                            value="{{ $row['adjustment_percent'] }}" step="1" placeholder="e.g. 20 or -15">
+                                                        <span class="input-group-text">%</span>
+                                                    </div>
+                                                </td>
+                                                <td class="text-center">
+                                                    <button type="button" class="btn btn-sm btn-outline-danger season-remove" title="Remove">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        @empty
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-success" id="seasonalAddRow">
+                                <i class="bi bi-plus-lg me-1"></i> Add season
+                            </button>
+                            {{-- Row template (index filled in by JS on add). --}}
+                            <template id="seasonalRowTpl">
+                                <tr class="seasonal-row">
+                                    <td>
+                                        <input type="text" class="form-control form-control-sm season-label"
+                                            name="seasonal_price_variation[__IDX__][label]" placeholder="e.g. Peak — Oct to Nov">
+                                    </td>
+                                    <td>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" class="form-control season-adjust"
+                                                name="seasonal_price_variation[__IDX__][adjustment_percent]" step="1" placeholder="e.g. 20 or -15">
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger season-remove" title="Remove">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -670,6 +743,17 @@ var dayCounter = 0;
 jQuery(function() {
     toggleDurationFields();
     toggleAccommodationCategory();
+
+    // ── Seasonal price variation: friendly add/remove rows (no JSON typing) ──
+    var seasonalIdx = jQuery('#seasonalRows .seasonal-row').length;
+    jQuery('#seasonalAddRow').on('click', function() {
+        var html = jQuery('#seasonalRowTpl').html().replace(/__IDX__/g, seasonalIdx++);
+        jQuery('#seasonalRows').append(html);
+    });
+    // Delegated so it also catches rows added after load.
+    jQuery('#seasonalRows').on('click', '.season-remove', function() {
+        jQuery(this).closest('tr.seasonal-row').remove();
+    });
 
     // Update currency symbols when currency dropdown changes
     jQuery('#priceCurrency').on('change', function() {

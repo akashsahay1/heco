@@ -6258,6 +6258,21 @@ class AjaxController extends Controller
             }
         }
 
+        // Seasonal price variation now comes from the friendly row editor
+        // (label + % change) rather than a raw JSON textarea. Keep only rows the
+        // admin actually named, and store the % as a clean number.
+        if (isset($data["seasonal_price_variation"]) && is_array($data["seasonal_price_variation"])) {
+            $data["seasonal_price_variation"] = array_values(array_filter(array_map(function ($row) {
+                if (!is_array($row)) return null;
+                $label = trim((string) ($row["label"] ?? ""));
+                if ($label === "") return null;
+                return [
+                    "label" => $label,
+                    "adjustment_percent" => (float) ($row["adjustment_percent"] ?? 0),
+                ];
+            }, $data["seasonal_price_variation"]))) ?: null;
+        }
+
         if (!empty($data["slug"])) {
             $data["slug"] = Str::slug($data["slug"]);
         } elseif (!empty($data["name"])) {
