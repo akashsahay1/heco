@@ -37,7 +37,6 @@ use App\Models\NewsletterSubscriber;
 use App\Models\PdfTemplate;
 use App\Models\Review;
 use App\Models\SpAvailability;
-use App\Services\AccountOtpService;
 use App\Services\OllamaService;
 use App\Services\GeminiService;
 use App\Services\GroqService;
@@ -622,11 +621,6 @@ class AjaxController extends Controller
         'recalculate_trip_cost' => 'hct',
         // SP APPLICATION
         'submit_sp_application' => 'public',
-        // Finish signup on-site: confirm the emailed code + set a password.
-        // Public because the applicant is not signed in yet — the pending-user
-        // session (web) / verification token (implicit) gates them, not auth.
-        'verify_and_set_password' => 'public',
-        'resend_account_otp' => 'public',
         // SP AVAILABILITY (Portal - service provider)
         'get_sp_calendar' => 'sp',
         'sp_block_dates' => 'sp',
@@ -1366,12 +1360,6 @@ class AjaxController extends Controller
             // ===== SP APPLICATION =====
             if ($request->has('submit_sp_application')) {
                 return $this->submitSpApplication($request);
-            }
-            if ($request->has('verify_and_set_password')) {
-                return $this->verifyAndSetPassword($request);
-            }
-            if ($request->has('resend_account_otp')) {
-                return $this->resendAccountOtp($request);
             }
 
             // ===== SP AVAILABILITY (Portal) =====
@@ -7529,11 +7517,13 @@ class AjaxController extends Controller
             "email" => "required|email|unique:service_providers,email",
             "phone_1" => "required|string|max:20",
             "region_id" => "required|exists:regions,id",
-            // No password here — the applicant sets it on the next screen after
-            // confirming the code we email them (email verification + password
-            // in one step). This keeps signup entirely on-site, no web link.
+            // The applicant chooses their password on the signup form itself.
+            "password" => ["required", "string", "min:8", "regex:/[0-9]/", "regex:/[^A-Za-z0-9]/", "confirmed"],
         ], [
             "email.unique" => "An application with this email already exists. Please log in to track it, or contact us to update it.",
+            "password.min" => "Password must be at least 8 characters.",
+            "password.regex" => "Password must include a number and a symbol.",
+            "password.confirmed" => "The passwords do not match.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -7572,19 +7562,15 @@ class AjaxController extends Controller
         // linked instead, and that person signs in with their existing password.
         [$newUser, $redirect] = $this->provisionApplicantAccount($provider);
 
-        // For a brand-new account, email a verification code and open the
-        // "create password" step. The account exists but has no usable password
-        // yet (provisionApplicantAccount gave it an unusable random secret), so
-        // nobody can sign in until the code is confirmed. We do NOT auto-login.
-        $verification = null;
+        // They chose their password on the form, so there is nothing left to
+        // verify — sign them straight in and land them on their status page.
         if ($newUser) {
-            $otp = app(AccountOtpService::class);
-            $otp->sendCode($newUser, $provider->contact_person ?: $provider->name);
-            $verification = $otp->startSession($newUser);
-            // The web flow ties this browser to the pending user; the mobile app
-            // carries the stateless $verification token instead.
+            $newUser->forceFill(['password_set_at' => now()])->save();
+            // Only the web has a session — the mobile API is stateless and signs
+            // in afterwards with the password the applicant just chose.
             if (request()->hasSession()) {
-                session(['sp_pending_uid' => $newUser->id]);
+                Auth::login($newUser);
+                request()->session()->regenerate();
             }
         }
 
@@ -7608,95 +7594,9 @@ class AjaxController extends Controller
             "success" => true,
             "redirect" => $redirect,
             "existing_account" => $newUser === null,
-            // The mobile app carries this to the verify step; the web flow uses
-            // the session and ignores it.
-            "verification" => $verification,
             "message" => $newUser === null
                 ? "You already have a HECO account. Please log in to track your application."
                 : "Application submitted successfully",
-        ]);
-    }
-
-    /**
-     * Finish an on-site signup: confirm the emailed code and set the password,
-     * then sign the applicant in and send them to their status page. Web only —
-     * gated by the `sp_pending_uid` session written at submit time. The mobile
-     * app uses {@see \App\Http\Controllers\Api\V1\AuthController::verifyOtp}.
-     */
-    protected function verifyAndSetPassword(Request $request): JsonResponse
-    {
-        $uid = session('sp_pending_uid');
-        if (!$uid) {
-            return response()->json([
-                "error" => "Your session has expired. Please start your application again.",
-            ], 419);
-        }
-
-        $validator = Validator::make($request->all(), [
-            "otp" => "required|digits:6",
-            "password" => ["required", "string", "min:8", "regex:/[0-9]/", "regex:/[^A-Za-z0-9]/", "confirmed"],
-        ], [
-            "otp.digits" => "Enter the 6-digit code we emailed you.",
-            "password.min" => "Password must be at least 8 characters.",
-            "password.regex" => "Password must include a number and a symbol.",
-            "password.confirmed" => "The passwords do not match.",
-        ]);
-        if ($validator->fails()) {
-            return response()->json(["error" => $validator->errors()->first()], 422);
-        }
-
-        $user = User::find($uid);
-        if (!$user) {
-            $request->session()->forget('sp_pending_uid');
-            return response()->json([
-                "error" => "We couldn't find your application. Please start again.",
-            ], 422);
-        }
-
-        $otp = app(AccountOtpService::class);
-        if ($error = $otp->verify($user->id, $request->input('otp'))) {
-            return response()->json(["error" => $error], 422);
-        }
-
-        // Email confirmed + password chosen: the account is now fully set up.
-        // password_set_at is what finalizeApproval() reads to decide the approval
-        // email needs no set-password link.
-        $user->password = $request->input('password');
-        $user->password_set_at = now();
-        $user->email_verified_at = $user->email_verified_at ?: now();
-        $user->save();
-
-        $request->session()->forget('sp_pending_uid');
-        Auth::login($user);
-        $request->session()->regenerate();
-
-        return response()->json([
-            "success" => true,
-            "redirect" => '/application-status',
-            "message" => "Your email is verified and your password is set.",
-        ]);
-    }
-
-    /** Re-send the signup verification code to the pending applicant (web). */
-    protected function resendAccountOtp(Request $request): JsonResponse
-    {
-        $uid = session('sp_pending_uid');
-        $user = $uid ? User::find($uid) : null;
-        if (!$user) {
-            return response()->json([
-                "error" => "Your session has expired. Please start your application again.",
-            ], 419);
-        }
-
-        $provider = ServiceProvider::where('user_id', $user->id)->first();
-        app(AccountOtpService::class)->sendCode(
-            $user,
-            $provider?->contact_person ?: $user->full_name
-        );
-
-        return response()->json([
-            "success" => true,
-            "message" => "We've sent a new code to your email.",
         ]);
     }
 
@@ -7746,11 +7646,10 @@ class AjaxController extends Controller
 
     /**
      * Ensure the applicant has a login WITHOUT signing them in, returning
-     * [newUser|null, redirectUrl]. A brand-new email gets a fresh account with an
-     * unusable password (the caller emails a code, and the applicant sets a real
-     * password on the "create password" step) and is sent there; an email that
-     * already belongs to a user is linked to the application (role updated) and
-     * sent to log in with its existing password.
+     * [newUser|null, redirectUrl]. A brand-new email gets a fresh account (with
+     * the password chosen on the signup form) and is sent to the "application
+     * submitted" page; an email that already belongs to a user is linked to the
+     * application (role updated) and sent to log in with its existing password.
      */
     protected function provisionApplicantAccount(ServiceProvider $provider): array
     {
@@ -7766,14 +7665,14 @@ class AjaxController extends Controller
         $user = User::create([
             'full_name' => $provider->contact_person ?: $provider->name,
             'email'     => $provider->email,
-            // Unusable secret until the applicant verifies the emailed code and
-            // sets their real password — nobody can sign in before then.
-            'password'  => Str::random(40),
+            // Chosen during signup; falls back to an unusable random secret so a
+            // caller that skips it (admin-created providers) can't be logged into.
+            'password'  => request()->input('password') ?: Str::random(40),
             'auth_type' => 'email',
             'user_role' => $provider->provider_type,
         ]);
         $provider->forceFill(['user_id' => $user->id])->save();
-        return [$user, '/create-password'];
+        return [$user, '/application-status'];
     }
 
     /**

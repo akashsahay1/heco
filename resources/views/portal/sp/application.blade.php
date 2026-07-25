@@ -65,12 +65,16 @@
                                 @endforeach
                             </select>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Create password *</label>
+                            <input type="password" class="form-control" name="password" autocomplete="new-password" required>
+                            <div class="form-text">At least 8 characters, with a number and a symbol.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Confirm password *</label>
+                            <input type="password" class="form-control" name="password_confirmation" autocomplete="new-password" required>
+                        </div>
                     </div>
-                    <p class="form-text mt-2 mb-0">
-                        <i class="bi bi-shield-lock sp-accent"></i>
-                        After you submit, we'll email a code to verify your address and
-                        help you set a password.
-                    </p>
                 </div>
 
                 {{-- Business --}}
@@ -256,7 +260,9 @@ jQuery(function() {
             country: jQuery('select[name="country"]').val() || '',
             business_type: jQuery('select[name="business_type"]').val() || '',
             registration_number: jQuery('input[name="registration_number"]').val().trim(),
-            year_established: jQuery('input[name="year_established"]').val().trim()
+            year_established: jQuery('input[name="year_established"]').val().trim(),
+            password: jQuery('input[name="password"]').val(),
+            password_confirmation: jQuery('input[name="password_confirmation"]').val()
         };
     }
 
@@ -269,6 +275,10 @@ jQuery(function() {
         if (!d.region_id) return warn('Please choose your city / region.');
         if (!d.name) return warn('Please enter your business / trading name.');
         if (d.description.length < 20) return warn('Please describe your business (at least 20 characters).');
+        if (d.password.length < 8 || !/[0-9]/.test(d.password) || !/[^A-Za-z0-9]/.test(d.password)) {
+            return warn('Password must be at least 8 characters and include a number and a symbol.');
+        }
+        if (d.password !== d.password_confirmation) return warn('The passwords do not match.');
         if (!jQuery('input[name="services_offered[]"]:checked').length) return warn('Select at least one service you provide.');
         if (!jQuery('#acceptTerms').is(':checked')) return warn('Please accept the partner terms to continue.');
         return true;
@@ -301,7 +311,7 @@ jQuery(function() {
             url: '/ajax', method: 'POST', data: fd, processData: false, contentType: false,
             success: function(resp) {
                 if (resp.success) {
-                    window.location.href = resp.redirect || '/create-password';
+                    window.location.href = resp.redirect || '/application-status';
                 } else {
                     $btn.prop('disabled', false).html(original);
                 }

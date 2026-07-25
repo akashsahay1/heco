@@ -7,7 +7,6 @@ use App\Http\Resources\ProviderAccountResource;
 use App\Models\ApiToken;
 use App\Models\ServiceProvider;
 use App\Models\User;
-use App\Services\AccountOtpService;
 use App\Services\PasswordResetOtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -223,87 +222,6 @@ class AuthController extends Controller
                 'user_role' => $user->user_role,
             ],
             'provider' => ProviderAccountResource::make($provider),
-        ]);
-    }
-
-    /**
-     * Finish an app signup: confirm the code emailed when the application was
-     * submitted, set the password, and hand back a token pair so the app lands
-     * straight on the "under review" screen. The provider is still pending
-     * approval — that is a separate gate from having a working login.
-     */
-    public function verifyOtp(Request $request): JsonResponse
-    {
-        $request->validate([
-            'verification' => 'required|string',
-            'otp' => 'required|digits:6',
-            'password' => ['required', 'string', 'min:8', 'regex:/[0-9]/', 'regex:/[^A-Za-z0-9]/'],
-            'device' => 'nullable|string|max:120',
-        ], [
-            'password.min' => 'Password must be at least 8 characters.',
-            'password.regex' => 'Password must include a number and a symbol.',
-        ]);
-
-        $otp = app(AccountOtpService::class);
-        $user = $otp->userFor($request->input('verification'));
-
-        // Same message whether the token is a decoy, expired, or the code is
-        // simply wrong — nothing here reveals whether the email exists.
-        if (!$user) {
-            return response()->json(['error' => 'That code is incorrect. Please try again.'], 422);
-        }
-        if ($error = $otp->verify($user->id, $request->input('otp'))) {
-            return response()->json(['error' => $error], 422);
-        }
-
-        // Email confirmed + password chosen: the account is now fully set up.
-        // password_set_at is what finalizeApproval() reads to skip the emailed
-        // set-password link when approving.
-        $user->password = $request->input('password');
-        $user->password_set_at = now();
-        $user->email_verified_at = $user->email_verified_at ?: now();
-        $user->save();
-
-        $otp->clearSession($request->input('verification'));
-
-        [$access, $refresh] = ApiToken::issuePair($user, $request->input('device'));
-
-        $provider = ServiceProvider::with('region')->where('user_id', $user->id)->first();
-
-        return response()->json([
-            'success' => true,
-            'token_type' => 'Bearer',
-            'access_token' => $access,
-            'refresh_token' => $refresh,
-            'expires_in_days' => ApiToken::ACCESS_DAYS,
-            'user' => [
-                'id' => $user->id,
-                'full_name' => $user->full_name,
-                'email' => $user->email,
-                'user_role' => $user->user_role,
-            ],
-            'provider' => ProviderAccountResource::make($provider),
-        ]);
-    }
-
-    /** Re-send the signup verification code the app is waiting on. */
-    public function resendOtp(Request $request): JsonResponse
-    {
-        $request->validate(['verification' => 'required|string']);
-
-        $otp = app(AccountOtpService::class);
-        $user = $otp->userFor($request->input('verification'));
-
-        // Silent success for an unknown/expired token so a caller can't probe
-        // which tokens are live.
-        if ($user) {
-            $provider = ServiceProvider::where('user_id', $user->id)->first();
-            $otp->sendCode($user, $provider?->contact_person ?: $user->full_name);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'If your code has expired, a new one is on its way.',
         ]);
     }
 }
