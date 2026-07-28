@@ -7932,6 +7932,34 @@ class AjaxController extends Controller
     // SP APPLICATION
     // ===========================
 
+    /**
+     * The work-experience rows an HRP listed, with the blank ones dropped —
+     * a repeater always leaves an empty row behind, and an entry with no role
+     * and no organisation says nothing.
+     */
+    protected function applicationWorkExperience(Request $request): ?array
+    {
+        $rows = [];
+        foreach ((array) $request->input('work_experience', []) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $role = trim((string) ($row['role'] ?? ''));
+            $organisation = trim((string) ($row['organisation'] ?? ''));
+            if ($role === '' && $organisation === '') {
+                continue;
+            }
+            $rows[] = [
+                'role' => $role,
+                'organisation' => $organisation,
+                'years' => trim((string) ($row['years'] ?? '')),
+                'description' => trim((string) ($row['description'] ?? '')),
+            ];
+        }
+
+        return $rows ?: null;
+    }
+
     protected function submitSpApplication(Request $request): JsonResponse
     {
         // A trading name is only asked for when there is a business, and the
@@ -7965,6 +7993,20 @@ class AjaxController extends Controller
             "service_categories" => "nullable|array",
             "service_categories.*" => "string|max:120",
             "other_services" => "nullable|string|max:255",
+            // A regional partner sells nothing, so their background is the
+            // application: "For HRPs, we'd rather collect information about
+            // their background and skills."
+            "education_level" => "nullable|string|max:100",
+            "education_notes" => "nullable|string|max:1000",
+            "english_level" => "nullable|string|max:100",
+            "computer_skill_level" => "nullable|string|max:100",
+            "work_experience" => "nullable|array|max:10",
+            "work_experience.*.role" => "nullable|string|max:255",
+            "work_experience.*.organisation" => "nullable|string|max:255",
+            "work_experience.*.years" => "nullable|string|max:100",
+            "work_experience.*.description" => "nullable|string|max:1000",
+            "causes_note" => "nullable|string|max:2000",
+            "community_note" => "nullable|string|max:2000",
             // Verification documents. The client caps these at 2 MB; the type
             // list keeps an applicant from posting something that is not a
             // document at all. Enforced here as well as in the app, because the
@@ -8001,6 +8043,8 @@ class AjaxController extends Controller
         $hasBusiness = $request->has('has_business')
             ? $request->boolean('has_business')
             : null;
+
+        $isRegionalPartner = in_array('hrp', $types, true);
 
         $provider = ServiceProvider::create([
             "provider_type" => $request->provider_type,
@@ -8044,6 +8088,18 @@ class AjaxController extends Controller
             "vehicle_types" => $this->applicationArray($request, 'vehicle_types'),
             "guide_types" => $this->applicationArray($request, 'guide_types'),
             "activity_types" => $this->applicationArray($request, 'activity_types'),
+            // Competences belong to a regional partner. Someone who never
+            // ticked HRP has none, and storing them would put answers on a
+            // record nobody will ever read them from.
+            ...($isRegionalPartner ? [
+                "education_level" => $request->education_level,
+                "education_notes" => $request->education_notes,
+                "english_level" => $request->english_level,
+                "computer_skill_level" => $request->computer_skill_level,
+                "work_experience" => $this->applicationWorkExperience($request),
+                "causes_note" => $request->causes_note,
+                "community_note" => $request->community_note,
+            ] : []),
             "documents" => $documents ?: null,
             "notes" => $request->input('description', $request->input('notes')),
             "status" => "pending",

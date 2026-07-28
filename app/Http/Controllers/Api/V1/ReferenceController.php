@@ -98,6 +98,11 @@ class ReferenceController extends Controller
             'speaks_english', 'speaks_hindi', 'other_languages',
             // What they offer, per role held.
             'experience_categories', 'service_categories', 'other_services',
+            // A regional partner offers no catalogue, so their background is
+            // what the application is judged on.
+            'education_level', 'education_notes', 'english_level',
+            'computer_skill_level', 'work_experience',
+            'causes_note', 'community_note',
             'services_offered', 'accommodation_categories',
             'vehicle_types', 'guide_types', 'activity_types', 'description', 'notes',
             // "Many users won't regularly check their email."

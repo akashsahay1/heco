@@ -159,6 +159,58 @@ class MobileSignupFieldsTest extends TestCase
     }
 
     /**
+     * A regional partner sells nothing, so their background is the whole of
+     * their application — "For HRPs, we'd rather collect information about
+     * their background and skills." The app's role screen promises this is
+     * asked; it has to arrive.
+     */
+    public function test_a_regional_partners_background_is_saved(): void
+    {
+        $sp = $this->apply([
+            'email' => 'hrp@example.test',
+            'provider_type' => 'hrp',
+            'provider_types' => ['hrp'],
+            'education_level' => "Bachelor's degree",
+            'education_notes' => 'BA in Geography, HP University.',
+            'english_level' => 'Conversational',
+            'computer_skill_level' => 'Intermediate',
+            'work_experience' => [
+                ['role' => 'Field coordinator', 'organisation' => 'Himalayan Trust',
+                 'years' => '2018-2023', 'description' => 'Ran village programmes.'],
+                // A repeater always leaves one of these behind.
+                ['role' => '', 'organisation' => '', 'years' => '', 'description' => ''],
+            ],
+            'causes_note' => 'Volunteer with a river clean-up group.',
+            'community_note' => 'Born in Kinnaur; known to every panchayat here.',
+        ]);
+
+        $this->assertSame("Bachelor's degree", $sp->education_level);
+        $this->assertSame('Conversational', $sp->english_level);
+        $this->assertSame('Intermediate', $sp->computer_skill_level);
+        $this->assertStringContainsString('river clean-up', $sp->causes_note);
+        $this->assertStringContainsString('panchayat', $sp->community_note);
+
+        $this->assertCount(1, $sp->work_experience, 'the blank row is dropped');
+        $this->assertSame('Field coordinator', $sp->work_experience[0]['role']);
+        $this->assertSame('Himalayan Trust', $sp->work_experience[0]['organisation']);
+    }
+
+    /** A host has no competences to record, and storing them would mislead. */
+    public function test_a_host_does_not_pick_up_competences(): void
+    {
+        $sp = $this->apply([
+            'email' => 'host@example.test',
+            'provider_type' => 'hlh',
+            'provider_types' => ['hlh'],
+            'education_level' => "Master's degree or above",
+            'english_level' => 'Fluent',
+        ]);
+
+        $this->assertNull($sp->education_level);
+        $this->assertNull($sp->english_level);
+    }
+
+    /**
      * The portal's own web form posts straight to /ajax, so it never had this
      * problem — which is exactly why the app's path needs its own cover.
      */
