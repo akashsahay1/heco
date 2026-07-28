@@ -164,10 +164,13 @@ class SpController extends Controller
         $occupancyUnits          = SystemList::ofType("occupancy_unit")->get();
         $mealPlans               = SystemList::ofType("meal_plan")->get();
         $roomCategories          = SystemList::ofType("room_category")->get();
+        // "Other langages (from a list)" for a guide — HCT extends the list
+        // from the control panel like every other one.
+        $languages               = SystemList::ofType("language")->get();
         return view("portal.sp.pricing", compact(
             "provider",
             "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes",
-            "occupancyUnits", "mealPlans", "roomCategories"
+            "occupancyUnits", "mealPlans", "roomCategories", "languages"
         ));
     }
 }

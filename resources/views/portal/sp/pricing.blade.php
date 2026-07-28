@@ -74,6 +74,7 @@
                 <option value="transport">🚙 Transport</option>
                 <option value="guide">👤 Guide</option>
                 <option value="activity">🏔 Activity</option>
+                <option value="rental">🎒 Rental</option>
                 <option value="other">📦 Other</option>
             </select>
         </div>
@@ -286,6 +287,30 @@
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
             </div>
+            {{-- A hotel is a place before it is a rate. Optional, because a
+                 provider adding a second room type has already told us once. --}}
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-4">
+                    <label class="form-label small">Latitude</label>
+                    <input type="number" step="0.0000001" min="-90" max="90" class="form-control form-control-sm"
+                           name="latitude" placeholder="e.g. 31.6234567">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Longitude</label>
+                    <input type="number" step="0.0000001" min="-180" max="180" class="form-control form-control-sm"
+                           name="longitude" placeholder="e.g. 77.3456789">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Guests it sleeps</label>
+                    <input type="number" min="1" max="2000" class="form-control form-control-sm"
+                           name="guest_capacity" placeholder="e.g. 14">
+                </div>
+            </div>
+            <div class="mb-2">
+                <label class="form-label small">Seasonality</label>
+                <input type="text" maxlength="1000" class="form-control form-control-sm"
+                       name="seasonality_notes" placeholder="e.g. Closed in January; best April to June">
+            </div>
             <input type="hidden" name="unit_accommodation" value="per night">
         </div>
 
@@ -360,6 +385,40 @@
                     </div>
                 </div>
             </div>
+
+            {{-- A hill kilometre costs more to drive than a plains one, so the
+                 two are quoted separately. The plains rate is what a per-km
+                 booking is billed at unless the route says otherwise. --}}
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-4">
+                    <label class="form-label small">Cost per km — plains (₹)</label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                           name="price_per_km_plains" placeholder="e.g. 14.50">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Cost per km — hills (₹)</label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                           name="price_per_km_hills" placeholder="e.g. 22">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Number of vehicles</label>
+                    <input type="number" min="1" max="500" class="form-control form-control-sm"
+                           name="vehicle_count" placeholder="e.g. 3">
+                </div>
+            </div>
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="ac_available" id="spAcAvailable" value="1">
+                        <label class="form-check-label small" for="spAcAvailable">Air conditioning available</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Extra cost for AC (₹)</label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                           name="ac_extra_cost" placeholder="optional">
+                </div>
+            </div>
         </div>
 
         {{-- GUIDE --}}
@@ -385,7 +444,75 @@
                 <label class="form-label small">Specialties (optional)</label>
                 <input type="text" class="form-control form-control-sm" name="specialties_guide" placeholder="e.g. Bird-watching, Hindi + English, IMF-certified">
             </div>
+            {{-- The day rate above is for one day. A booking where the guide
+                 stays the night is a rate of its own, not a multiple of it. --}}
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-6">
+                    <label class="form-label small">Rate per day — multi-day with night stay (₹)</label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                           name="wage_multi_day" placeholder="optional">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Other languages</label>
+                    <select class="form-select form-select-sm" name="languages[]" id="spGuideLanguages" multiple size="4">
+                        @foreach($languages as $l)
+                            <option value="{{ $l->name }}">{{ $l->name }}</option>
+                        @endforeach
+                    </select>
+                    <small class="text-muted d-block mt-1">Hold Ctrl (or ⌘) to pick more than one.</small>
+                </div>
+            </div>
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="speaks_english" id="spGuideEnglish" value="1">
+                        <label class="form-check-label small" for="spGuideEnglish">Speaks English</label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="is_certified" id="spGuideCertified" value="1">
+                        <label class="form-check-label small" for="spGuideCertified">Certified guide</label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="has_first_aid" id="spGuideFirstAid" value="1">
+                        <label class="form-check-label small" for="spGuideFirstAid">First-aid trained</label>
+                    </div>
+                </div>
+            </div>
             <input type="hidden" name="unit_guide" value="per day">
+        </div>
+
+        {{-- RENTAL --}}
+        <div class="svc-fields d-none" data-svc="rental">
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-7">
+                    <label class="form-label small">Item on rent <span class="text-danger">*</span></label>
+                    <input type="text" maxlength="150" class="form-control form-control-sm"
+                           name="rental_item" placeholder="e.g. Trekking tent (2 person), Mountain bike">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label small">Charges per day (₹) <span class="text-danger">*</span></label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                           name="price_rental" placeholder="e.g. 400">
+                </div>
+            </div>
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-5">
+                    {{-- Held against damage and returned, so it is not income. --}}
+                    <label class="form-label small">Security deposit (₹)</label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                           name="security_deposit" placeholder="optional">
+                </div>
+                <div class="col-md-7">
+                    <label class="form-label small">Other details</label>
+                    <input type="text" class="form-control form-control-sm"
+                           name="notes_rental" placeholder="e.g. Sizes S–XL, returned by 6 pm">
+                </div>
+            </div>
+            <input type="hidden" name="unit_rental" value="per day">
         </div>
 
         {{-- ACTIVITY --}}
@@ -930,6 +1057,32 @@ jQuery(function() {
         $f.find('[name=price_activity]').val(r && r.service_type === 'activity' ? r.price : '');
         $f.find('[name=unit_activity]').val(r && r.service_type === 'activity' ? (r.unit || '') : '');
 
+        // Where the property stands and when it is open.
+        $f.find('[name=latitude]').val(r ? (r.latitude || '') : '');
+        $f.find('[name=longitude]').val(r ? (r.longitude || '') : '');
+        $f.find('[name=guest_capacity]').val(r ? (r.guest_capacity || '') : '');
+        $f.find('[name=seasonality_notes]').val(r ? (r.seasonality_notes || '') : '');
+
+        // The taxi's two per-km rates and its fleet.
+        $f.find('[name=price_per_km_plains]').val(r ? (r.price_per_km_plains || '') : '');
+        $f.find('[name=price_per_km_hills]').val(r ? (r.price_per_km_hills || '') : '');
+        $f.find('[name=vehicle_count]').val(r ? (r.vehicle_count || '') : '');
+        $f.find('[name=ac_extra_cost]').val(r ? (r.ac_extra_cost || '') : '');
+        $f.find('[name=ac_available]').prop('checked', r ? !!r.ac_available : false);
+
+        // The guide's languages and qualifications. `languages` arrives as an
+        // array from the JSON cast, so a missing one has to become one here.
+        $f.find('[name="languages[]"]').val(r && Array.isArray(r.languages) ? r.languages : []);
+        $f.find('[name=wage_multi_day]').val(r ? (r.wage_multi_day || '') : '');
+        $f.find('[name=speaks_english]').prop('checked', r ? !!r.speaks_english : false);
+        $f.find('[name=is_certified]').prop('checked', r ? !!r.is_certified : false);
+        $f.find('[name=has_first_aid]').prop('checked', r ? !!r.has_first_aid : false);
+
+        $f.find('[name=rental_item]').val(r ? (r.rental_item || '') : '');
+        $f.find('[name=security_deposit]').val(r ? (r.security_deposit || '') : '');
+        $f.find('[name=price_rental]').val(r && r.service_type === 'rental' ? r.price : '');
+        $f.find('[name=notes_rental]').val(r && r.service_type === 'rental' ? (r.notes || '') : '');
+
         $f.find('[name=category_other]').val(r && r.service_type === 'other' ? (r.category || '') : '');
         $f.find('[name=price_other]').val(r && r.service_type === 'other' ? r.price : '');
         $f.find('[name=unit_other]').val(r && r.service_type === 'other' ? (r.unit || '') : '');
@@ -1353,6 +1506,10 @@ jQuery(function() {
             data.price         = jQuery(this).find('[name=price_accommodation]').val();
             data.unit          = jQuery(this).find('[name=unit_accommodation]').val();
             data.category      = data.room_category;
+            data.latitude          = jQuery(this).find('[name=latitude]').val();
+            data.longitude         = jQuery(this).find('[name=longitude]').val();
+            data.guest_capacity    = jQuery(this).find('[name=guest_capacity]').val();
+            data.seasonality_notes = jQuery(this).find('[name=seasonality_notes]').val();
         } else if (type === 'transport') {
             data.vehicle_type     = jQuery(this).find('[name=vehicle_type]').val();
             data.vehicle_capacity = jQuery(this).find('[name=vehicle_capacity]').val();
@@ -1364,11 +1521,29 @@ jQuery(function() {
             data.vehicle_year            = jQuery(this).find('[name=vehicle_year]').val();
             data.driver_included  = jQuery(this).find('[name=driver_included]').is(':checked') ? 1 : 0;
             data.fuel_tolls_extra = jQuery(this).find('[name=fuel_tolls_extra]').is(':checked') ? 1 : 0;
+            data.price_per_km_plains = jQuery(this).find('[name=price_per_km_plains]').val();
+            data.price_per_km_hills  = jQuery(this).find('[name=price_per_km_hills]').val();
+            data.vehicle_count       = jQuery(this).find('[name=vehicle_count]').val();
+            data.ac_extra_cost       = jQuery(this).find('[name=ac_extra_cost]').val();
+            data.ac_available        = jQuery(this).find('[name=ac_available]').is(':checked') ? 1 : 0;
         } else if (type === 'guide') {
             data.category    = jQuery(this).find('[name=category_guide]').val();
             data.specialties = jQuery(this).find('[name=specialties_guide]').val();
             data.price       = jQuery(this).find('[name=price_guide]').val();
             data.unit        = jQuery(this).find('[name=unit_guide]').val();
+            // An empty array still has to reach the server as a stated answer,
+            // or clearing every language would read as "no answer given".
+            data.languages      = jQuery(this).find('[name="languages[]"]').val() || [];
+            data.wage_multi_day = jQuery(this).find('[name=wage_multi_day]').val();
+            data.speaks_english = jQuery(this).find('[name=speaks_english]').is(':checked') ? 1 : 0;
+            data.is_certified   = jQuery(this).find('[name=is_certified]').is(':checked') ? 1 : 0;
+            data.has_first_aid  = jQuery(this).find('[name=has_first_aid]').is(':checked') ? 1 : 0;
+        } else if (type === 'rental') {
+            data.rental_item      = jQuery(this).find('[name=rental_item]').val();
+            data.price            = jQuery(this).find('[name=price_rental]').val();
+            data.unit             = jQuery(this).find('[name=unit_rental]').val();
+            data.security_deposit = jQuery(this).find('[name=security_deposit]').val();
+            data.notes            = jQuery(this).find('[name=notes_rental]').val();
         } else if (type === 'activity') {
             data.category    = jQuery(this).find('[name=category_activity]').val();
             data.min_group   = jQuery(this).find('[name=min_group]').val();

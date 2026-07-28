@@ -4519,7 +4519,7 @@ class AjaxController extends Controller
         $serviceType = $request->input('service_type');
         $baseRules = [
             "provider_id"  => "required|exists:service_providers,id",
-            "service_type" => "required|in:accommodation,transport,guide,activity,meal,other",
+            "service_type" => "required|in:accommodation,transport,guide,activity,meal,rental,other",
             "price"        => "required|numeric|min:0",
         ];
 
@@ -4535,14 +4535,35 @@ class AjaxController extends Controller
                 "default_occupancy" => "nullable|string|max:50",
                 "meal_plan"         => "nullable|string|max:100",
                 "unit"              => "nullable|string|max:50",
+                // A hotel is a place before it is a rate: where it stands, how
+                // many it sleeps, and when it is open.
+                "latitude"          => "nullable|numeric|between:-90,90",
+                "longitude"         => "nullable|numeric|between:-180,180",
+                "guest_capacity"    => "nullable|integer|min:1|max:2000",
+                "seasonality_notes" => "nullable|string|max:1000",
+                "photos"            => "nullable|array|max:8",
+                "photos.*"          => "image|max:10240",
+                "photos_keep"       => "nullable|array|max:8",
+                "photos_keep.*"     => "string|max:255",
             ],
             'transport' => [
+                // A per-km taxi states the plains rate instead of a flat price,
+                // and that rate becomes the row's price below — so the trip
+                // cost calculation keeps working off a single field.
+                "price"             => "required_without:price_per_km_plains|nullable|numeric|min:0",
+                // A taxi priced per kilometre needs no unit picker — the rate
+                // itself says what the unit is.
+                "unit"              => "required_without:price_per_km_plains|nullable|string|max:50",
                 "vehicle_type"      => "required|string|max:100",
+                "ac_available"      => "nullable|boolean",
+                "vehicle_count"     => "nullable|integer|min:1|max:500",
+                "price_per_km_plains" => "nullable|numeric|min:0",
+                "price_per_km_hills"  => "nullable|numeric|min:0",
+                "ac_extra_cost"       => "nullable|numeric|min:0",
                 "vehicle_capacity"  => "nullable|integer|min:1|max:80",
                 "driver_allowance"  => "nullable|numeric|min:0",
                 // Route distance (km) for per-km pricing (req 3.1): cost = price × distance.
                 "distance_km"       => "nullable|numeric|min:0|max:100000",
-                "unit"              => "required|string|max:50",
                 // Which vehicle this rate is for, and what it covers.
                 "vehicle_make_model"      => "nullable|string|max:120",
                 "vehicle_registration_no" => "nullable|string|max:40",
@@ -4557,6 +4578,20 @@ class AjaxController extends Controller
             'guide' => [
                 "specialties"       => "nullable|string|max:500",
                 "unit"              => "required|string|max:50",
+                // `price` is the one-day wage. A multi-day booking where the
+                // guide stays the night is a rate of its own, not a multiple.
+                "speaks_english"    => "nullable|boolean",
+                "languages"         => "nullable|array|max:20",
+                "languages.*"       => "string|max:60",
+                "wage_multi_day"    => "nullable|numeric|min:0",
+                "is_certified"      => "nullable|boolean",
+                "has_first_aid"     => "nullable|boolean",
+            ],
+            'rental' => [
+                // `price` is the daily charge; the deposit is held, not earned.
+                "rental_item"       => "required|string|max:150",
+                "security_deposit"  => "nullable|numeric|min:0",
+                "unit"              => "nullable|string|max:50",
             ],
             'activity' => [
                 "category"          => "nullable|string|max:100",
@@ -4607,6 +4642,11 @@ class AjaxController extends Controller
             $data["is_active"] = $request->boolean("is_active");
         }
 
+        // Only the fields the chosen service actually asks for are written, so
+        // a taxi row never carries a stray deposit and a guide row never a
+        // per-kilometre rate.
+        $this->applyServiceTypeFields($request, $serviceType, $data);
+
         if ($serviceType === 'transport') {
             $data["vehicle_make_model"]      = $request->input("vehicle_make_model") ?: null;
             $data["vehicle_registration_no"] = $request->input("vehicle_registration_no") ?: null;
@@ -4643,6 +4683,11 @@ class AjaxController extends Controller
                 SpPricing::where('pending_for_id', $existing->id)
                     ->where('approval_status', 'pending')
                     ->delete();
+                // The pending row replaces the live one wholesale once
+                // approved, so it starts as a copy of it. Without this, any
+                // field the submitting form did not show — the hill rate, the
+                // vehicle photos — would be silently dropped on approval.
+                $data = array_merge($this->copyableAttributes($existing), $data);
                 $row = SpPricing::create(array_merge($data, [
                     'is_active'        => false,
                     'approval_status'  => 'pending',
@@ -4667,6 +4712,104 @@ class AjaxController extends Controller
     }
 
     /**
+     * What carries over from a live rate row to the pending edit of it.
+     *
+     * Identity, timestamps and the approval trail belong to the row that holds
+     * them and must not be copied; everything else is the offer itself.
+     */
+    protected function copyableAttributes(SpPricing $row): array
+    {
+        return collect($row->getAttributes())
+            ->except([
+                'id', 'created_at', 'updated_at',
+                'approval_status', 'pending_for_id',
+                'submitted_at', 'submitted_by',
+                'approved_at', 'approved_by', 'rejection_reason',
+                'is_active',
+            ])
+            ->all();
+    }
+
+    /**
+     * The per-service fields from the client's data-collection document.
+     *
+     * A field is written only when the request mentions it, so a form that
+     * never showed a section — the bulk-add rows, or the app's shorter
+     * editor — leaves what was already stored alone instead of blanking it.
+     */
+    protected function applyServiceTypeFields(Request $request, string $serviceType, array &$data): void
+    {
+        $numeric = function (string $key) use ($request, &$data) {
+            if ($request->has($key)) {
+                $data[$key] = $request->filled($key) ? (float) $request->input($key) : null;
+            }
+        };
+        $integer = function (string $key) use ($request, &$data) {
+            if ($request->has($key)) {
+                $data[$key] = $request->filled($key) ? (int) $request->input($key) : null;
+            }
+        };
+        $flag = function (string $key) use ($request, &$data) {
+            if ($request->has($key)) {
+                $data[$key] = $request->boolean($key);
+            }
+        };
+        $text = function (string $key) use ($request, &$data) {
+            if ($request->has($key)) {
+                $data[$key] = $request->input($key) ?: null;
+            }
+        };
+
+        switch ($serviceType) {
+            case 'transport':
+                $flag('ac_available');
+                $integer('vehicle_count');
+                $numeric('price_per_km_plains');
+                $numeric('price_per_km_hills');
+                $numeric('ac_extra_cost');
+
+                // The trip cost calculation reads one price and one unit, so a
+                // taxi quoted per kilometre answers with its plains rate. The
+                // hill rate stays alongside for a route that needs it.
+                if (!$request->filled('price') && $request->filled('price_per_km_plains')) {
+                    $data['price'] = (float) $request->input('price_per_km_plains');
+                    $data['unit'] = $data['unit'] ?: 'per km';
+                }
+                break;
+
+            case 'guide':
+                $flag('speaks_english');
+                $numeric('wage_multi_day');
+                $flag('is_certified');
+                $flag('has_first_aid');
+                if ($request->has('languages')) {
+                    $languages = array_values(array_filter(
+                        array_map('trim', (array) $request->input('languages', [])),
+                        fn ($l) => $l !== ''
+                    ));
+                    $data['languages'] = $languages ?: null;
+                }
+                break;
+
+            case 'rental':
+                $text('rental_item');
+                $numeric('security_deposit');
+                break;
+
+            case 'accommodation':
+                $numeric('latitude');
+                $numeric('longitude');
+                $integer('guest_capacity');
+                $text('seasonality_notes');
+                $photos = $this->storeServicePhotos($request);
+                if ($photos !== null) {
+                    $data['photos'] = $photos;
+                }
+                break;
+        }
+    }
+
+    /**
      * Photos for a transport rate: the paths the caller kept, plus anything
      * newly uploaded. Returns null when the request said nothing about photos
      * at all, so the stored column is left alone rather than blanked.
@@ -4683,6 +4826,31 @@ class AjaxController extends Controller
         $paths = array_values(array_filter((array) $keep, 'is_string'));
         foreach ($files as $file) {
             $stored = \App\Services\ImageUploadService::storeUploadedImage($file, 'vehicles', 1200);
+            if ($stored) {
+                $paths[] = $stored;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * The same contract as storeVehiclePhotos, for the property photos a
+     * standard accommodation carries. Null means "the request said nothing",
+     * which is different from "the provider removed them all".
+     */
+    protected function storeServicePhotos(Request $request): ?array
+    {
+        $keep = $request->input('photos_keep');
+        $files = array_filter((array) $request->file('photos', []));
+
+        if ($keep === null && !$files) {
+            return null;
+        }
+
+        $paths = array_values(array_filter((array) $keep, 'is_string'));
+        foreach ($files as $file) {
+            $stored = \App\Services\ImageUploadService::storeUploadedImage($file, 'services', 1200);
             if ($stored) {
                 $paths[] = $stored;
             }
