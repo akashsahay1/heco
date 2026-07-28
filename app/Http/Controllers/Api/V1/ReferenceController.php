@@ -72,16 +72,36 @@ class ReferenceController extends Controller
         ]);
     }
 
-    /** `submit_sp_application` — the public "become a partner" form. */
+    /**
+     * `submit_sp_application` — the public "become a partner" form.
+     *
+     * This list is an allow-list: anything the app sends that is not named here
+     * is dropped silently, before the handler ever sees it. A field added to
+     * both the app and the handler still arrives empty until it is added here
+     * too, and nothing complains — so every new question on the signup screens
+     * has to be added to this list in the same change.
+     */
     public function submitApplication(Request $request): JsonResponse
     {
         return $this->ajax('submit_sp_application', $this->only($request, [
-            'provider_type', 'business_type', 'registration_number', 'year_established',
+            // An applicant can hold more than one role; `provider_type` stays
+            // for older builds that only ever sent one.
+            'provider_type', 'provider_types',
+            'business_type', 'registration_number', 'year_established',
+            // Whether there is a business at all. Null is a real answer here —
+            // it means the question was never put to them.
+            'has_business',
             'name', 'contact_person', 'email', 'phone_1', 'phone_2',
             'region_id', 'address', 'city', 'postal_code', 'country',
             'password', 'password_confirmation',
+            // Which travellers they can host.
+            'speaks_english', 'speaks_hindi', 'other_languages',
+            // What they offer, per role held.
+            'experience_categories', 'service_categories', 'other_services',
             'services_offered', 'accommodation_categories',
             'vehicle_types', 'guide_types', 'activity_types', 'description', 'notes',
+            // "Many users won't regularly check their email."
+            'contact_by_email', 'contact_by_whatsapp',
             'document_labels',
         ]), $request); // forward uploaded `documents[]` files
     }
