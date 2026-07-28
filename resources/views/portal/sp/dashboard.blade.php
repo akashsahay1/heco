@@ -1,15 +1,6 @@
 @extends('portal.layout')
 @section('title', 'Service Provider Dashboard - HECO Portal')
 
-@php
-    $providerTypeLabels = [
-        'hrp' => 'Himalayan Regenerative Partner (HRP)',
-        'hlh' => 'Homestay Local Host (HLH)',
-        'osp' => 'Other Service Provider (OSP)',
-    ];
-    $providerType = strtolower((string) $provider->provider_type);
-    $providerTypeLabel = $providerTypeLabels[$providerType] ?? ucfirst((string) $provider->provider_type);
-@endphp
 
 @section('content')
 <div class="container py-4">
@@ -18,12 +9,16 @@
         <div>
             <h4 class="mb-1"><i class="bi bi-building"></i> Service Provider Dashboard</h4>
             <span class="text-muted">{{ $provider->name }}</span>
-            <span class="badge sp-type-badge ms-2">{{ $providerTypeLabel }}</span>
+            {{-- One badge per role — a host that also supplies services is both,
+                 and showing only the primary type would hide half of what they do. --}}
+            @foreach($provider->typeLabels() as $label)
+                <span class="badge sp-type-badge ms-2">{{ $label }}</span>
+            @endforeach
             <span class="badge bg-{{ $provider->status === 'approved' ? 'success' : ($provider->status === 'pending' ? 'warning text-dark' : 'secondary') }} ms-1">{{ ucfirst($provider->status ?? 'pending') }}</span>
         </div>
         <div class="d-flex gap-2">
-            @if(in_array($provider->provider_type, ['hlh', 'osp'], true))
-                {{-- Experiences are authored by the hosts and operators who run them. --}}
+            @if($provider->isHost())
+                {{-- Experiences are authored by the hosts who run them. --}}
                 <a href="{{ route('sp.experiences') }}" class="btn btn-sm sp-btn-primary"><i class="bi bi-layers"></i> My Experiences</a>
             @endif
             <a href="{{ route('sp.profile.edit') }}" class="btn btn-sm sp-btn-primary"><i class="bi bi-pencil-square"></i> Edit Profile</a>
@@ -75,7 +70,11 @@
                             <tr>
                                 <td class="text-muted small">Type</td>
                                 <td class="small">
-                                    <span class="badge sp-type-badge">{{ strtoupper($providerType) }}</span> {{ $providerTypeLabel }}
+                                    @foreach($provider->types() as $type)
+                                        <span class="badge sp-type-badge">{{ strtoupper($type) }}</span>
+                                        {{ \App\Models\ServiceProvider::TYPE_LABELS[$type] ?? ucfirst($type) }}
+                                        @if(!$loop->last)<br>@endif
+                                    @endforeach
                                 </td>
                             </tr>
                             <tr>
@@ -207,7 +206,9 @@
                 </div>
             </div>
 
-            {{-- Services & Pricing --}}
+            {{-- Services & Pricing — a rate card is what an OSP sells, so this is
+                 hidden from a provider who did not sign up as one. --}}
+            @if($provider->suppliesServices())
             <div class="card mb-3">
                 <div class="card-header py-2 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0"><i class="bi bi-list-check"></i> Services, Rooms &amp; Pricing</h6>
@@ -376,9 +377,10 @@
                     @endif
                 </div>
             </div>
+            @endif
 
             {{-- HLH: My Experiences --}}
-            @if($providerType === 'hlh')
+            @if($provider->isHost())
                 <div class="card mb-3">
                     <div class="card-header py-2">
                         <h6 class="mb-0"><i class="bi bi-star"></i> My Experiences</h6>
@@ -430,7 +432,7 @@
             @endif
 
             {{-- HRP: My Region --}}
-            @if($providerType === 'hrp' && $provider->region)
+            @if($provider->hasType('hrp') && $provider->region)
                 <div class="card mb-3">
                     <div class="card-header py-2">
                         <h6 class="mb-0"><i class="bi bi-map"></i> My Region</h6>
@@ -488,12 +490,21 @@
                         @else
                             <p class="text-muted small mb-0">No trips currently assigned to your region.</p>
                         @endif
+
+                        {{-- The providers this partner coordinates. Read-only:
+                             an HRP oversees local development, they do not
+                             approve or administer anyone. --}}
+                        <hr>
+                        <h6 class="small fw-bold">Hosts &amp; Providers in My Region</h6>
+                        <div id="hrpRegionProviders">
+                            <p class="text-muted small mb-0">Loading...</p>
+                        </div>
                     </div>
                 </div>
             @endif
 
             {{-- OSP: My Services --}}
-            @if($providerType === 'osp')
+            @if($provider->suppliesServices())
                 <div class="card mb-3">
                     <div class="card-header py-2">
                         <h6 class="mb-0"><i class="bi bi-tools"></i> My Services</h6>
@@ -851,6 +862,45 @@ jQuery(function() {
     });
 
     loadCalendar();
+
+    // ── HRP: the hosts and providers in this partner's region ───────────
+    // Read-only. An HRP coordinates local development; approving providers and
+    // handling their money stays with HCT, so nothing here is actionable.
+    if (jQuery('#hrpRegionProviders').length) {
+        ajaxPost({ get_hrp_region_providers: 1 }, function(resp) {
+            var rows = resp.providers || [];
+            var box = jQuery('#hrpRegionProviders');
+
+            if (!rows.length) {
+                box.html('<p class="text-muted small mb-0">' +
+                    'No approved hosts or providers in your region yet.</p>');
+                return;
+            }
+
+            var html = '<div class="table-responsive"><table class="table table-sm table-bordered mb-0">' +
+                '<thead class="table-light"><tr>' +
+                '<th class="small">Name</th><th class="small">Role</th>' +
+                '<th class="small">Offers</th><th class="small">Contact</th>' +
+                '</tr></thead><tbody>';
+
+            rows.forEach(function(p) {
+                var offers = (p.experience_categories || []).concat(p.service_categories || []);
+                html += '<tr>' +
+                    '<td class="small fw-bold">' + esc(p.name) + '</td>' +
+                    '<td class="small">' + (p.type_labels || []).map(esc).join('<br>') + '</td>' +
+                    '<td class="small">' + (offers.length ? offers.map(esc).join(', ') : '-') + '</td>' +
+                    '<td class="small">' + esc(p.contact_person || '-') +
+                        (p.phone_1 ? '<br>' + esc(p.phone_1) : '') + '</td>' +
+                    '</tr>';
+            });
+
+            box.html(html + '</tbody></table></div>');
+        });
+    }
+
+    function esc(v) {
+        return jQuery('<div>').text(v == null ? '' : v).html();
+    }
 });
 </script>
 @endsection

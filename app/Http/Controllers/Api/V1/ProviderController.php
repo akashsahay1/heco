@@ -69,6 +69,15 @@ class ProviderController extends Controller
         return $this->ajax('get_sp_assigned_trips');
     }
 
+    /**
+     * `get_hrp_region_providers` — the hosts and suppliers a regional partner
+     * oversees. Read-only; the ajax handler refuses anyone who is not an HRP.
+     */
+    public function regionProviders(): JsonResponse
+    {
+        return $this->ajax('get_hrp_region_providers');
+    }
+
     // ── Rate card (sp_pricing) ───────────────────────────────────────────
 
     public function pricing(): JsonResponse
@@ -120,7 +129,7 @@ class ProviderController extends Controller
         return $this->ajax('sp_sync_ical_now');
     }
 
-    // ── Experiences (HLH / OSP author their own) ─────────────────────────
+    // ── Experiences (HLH hosts author their own) ─────────────────────────
 
     public function experiences(): JsonResponse
     {
@@ -147,6 +156,11 @@ class ProviderController extends Controller
             'price_currency', 'cost_accommodation', 'cost_logistics', 'cost_guide',
             'cost_activities', 'cost_other', 'single_supplement', 'seasonal_price_variation',
             'price_slabs', 'experience_days',
+            // Category decides the form's shape; add-ons hang off the listing;
+            // save_as_draft keeps a half-finished listing out of HCT's queue.
+            'category', 'addons', 'save_as_draft',
+            // An experiential stay's capacity and its occupancy × meal-plan grid.
+            'total_rooms', 'total_guests', 'room_rates',
             'osps_involved', 'osp_services', 'traveller_bring_list',
             'clothing_recommendations', 'health_notes', 'connectivity_notes', 'cultural_etiquette',
             'operational_risks', 'past_issues', 'backup_options', 'emergency_notes',

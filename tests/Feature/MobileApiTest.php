@@ -28,6 +28,10 @@ class MobileApiTest extends TestCase
     protected User $ospUser;
     protected ServiceProvider $osp;
     protected string $token;
+    /** Only an HLH hosts experiences, so authoring is exercised through this one. */
+    protected User $hlhUser;
+    protected ServiceProvider $hlh;
+    protected string $hostToken;
 
     protected function setUp(): void
     {
@@ -59,11 +63,37 @@ class MobileApiTest extends TestCase
         ]);
 
         [, $this->token] = ApiToken::issueFor($this->ospUser, 'test-device');
+
+        $this->hlhUser = User::create([
+            'full_name' => 'Tirthan Host',
+            'email' => 'host@example.test',
+            'password' => Hash::make('secret123'),
+            'user_role' => 'hlh',
+            'status' => 'active',
+        ]);
+
+        $this->hlh = ServiceProvider::create([
+            'user_id' => $this->hlhUser->id,
+            'provider_type' => 'hlh',
+            'name' => 'Tirthan Eco Retreat',
+            'email' => 'host@example.test',
+            'phone_1' => '9000000002',
+            'region_id' => $this->region->id,
+            'status' => 'approved',
+        ]);
+
+        [, $this->hostToken] = ApiToken::issueFor($this->hlhUser, 'host-device');
     }
 
     private function authed(array $headers = []): array
     {
         return array_merge(['Authorization' => 'Bearer ' . $this->token], $headers);
+    }
+
+    /** Bearer headers for the HLH host — the only provider that may author. */
+    private function hostAuthed(array $headers = []): array
+    {
+        return array_merge(['Authorization' => 'Bearer ' . $this->hostToken], $headers);
     }
 
     // ── Auth ─────────────────────────────────────────────────────────────
@@ -284,7 +314,8 @@ class MobileApiTest extends TestCase
         ApiToken::query()->update(['expires_at' => now()->subDay()]);
 
         $this->getJson('/api/v1/provider/profile', $this->authed())->assertStatus(401);
-        $this->assertSame(0, ApiToken::count());
+        // Only the presented token is discarded — other devices are untouched.
+        $this->assertSame(0, ApiToken::where('user_id', $this->ospUser->id)->count());
     }
 
     public function test_me_returns_the_token_owner(): void
@@ -381,14 +412,14 @@ class MobileApiTest extends TestCase
                 ['day_number' => 1, 'title' => 'Arrive', 'inclusions' => ['dinner']],
                 ['day_number' => 2, 'title' => 'Walk', 'inclusions' => ['breakfast', 'guide']],
             ],
-        ], $this->authed())->assertOk();
+        ], $this->hostAuthed())->assertOk();
 
         $experience = Experience::firstWhere('name', 'Riverside Forest Walk');
-        $this->assertSame($this->osp->id, (int) $experience->owner_provider_id);
-        $this->assertSame('osp', $experience->owner_type);
+        $this->assertSame($this->hlh->id, (int) $experience->owner_provider_id);
+        $this->assertSame('hlh', $experience->owner_type);
         $this->assertCount(2, $experience->days);
 
-        $listed = $this->getJson('/api/v1/provider/experiences', $this->authed())->assertOk();
+        $listed = $this->getJson('/api/v1/provider/experiences', $this->hostAuthed())->assertOk();
         $this->assertSame('Riverside Forest Walk', $listed->json('experiences.0.name'));
     }
 
@@ -402,10 +433,53 @@ class MobileApiTest extends TestCase
             'short_description' => 'A walk in the woods.',
             'duration_type' => 'single_day',
             'card_image' => \Illuminate\Http\UploadedFile::fake()->image('trail.jpg', 900, 600),
-        ], $this->authed())->assertOk();
+        ], $this->hostAuthed())->assertOk();
 
         $experience = Experience::firstWhere('name', 'Forest Trail With A Photo');
         $this->assertNotEmpty($experience->card_image);
+    }
+
+    /**
+     * The app swaps a regional partner's Services tab for their region, so the
+     * endpoint behind it has to exist — and stay shut to everyone else.
+     */
+    public function test_the_region_overview_is_for_regional_partners_only(): void
+    {
+        $this->getJson('/api/v1/provider/region/providers', $this->authed())
+            ->assertStatus(403);
+        $this->getJson('/api/v1/provider/region/providers', $this->hostAuthed())
+            ->assertStatus(403);
+
+        $hrpUser = User::create([
+            'full_name' => 'Regional Partner',
+            'email' => 'partner@example.test',
+            'password' => Hash::make('secret123'),
+            'user_role' => 'hrp',
+            'status' => 'active',
+        ]);
+        ServiceProvider::create([
+            'user_id' => $hrpUser->id,
+            'provider_type' => 'hrp',
+            'provider_types' => ['hrp'],
+            'name' => 'Tirthan Regional Partner',
+            'email' => 'partner@example.test',
+            'phone_1' => '9000000003',
+            'region_id' => $this->region->id,
+            'status' => 'approved',
+        ]);
+        [, $partnerToken] = ApiToken::issueFor($hrpUser, 'partner-device');
+
+        $response = $this->getJson(
+            '/api/v1/provider/region/providers',
+            ['Authorization' => 'Bearer ' . $partnerToken],
+        )->assertOk();
+
+        // The OSP and the HLH from setUp both sit in this region.
+        $names = collect($response->json('providers'))->pluck('name');
+        $this->assertEqualsCanonicalizing(
+            ['Mountain View Hotel', 'Tirthan Eco Retreat'],
+            $names->all(),
+        );
     }
 
     /** The bridge must not become a way around ACTION_LEVELS. */
@@ -436,6 +510,16 @@ class MobileApiTest extends TestCase
             'short_description' => 'Nope.',
             'duration_type' => 'single_day',
         ], ['Authorization' => 'Bearer ' . $hrpToken])->assertStatus(403);
+
+        // An OSP supplies services into an experience but never hosts one.
+        $this->postJson('/api/v1/provider/experiences', [
+            'name' => 'Should Also Fail',
+            'region_id' => $this->region->id,
+            'type' => 'Nature',
+            'short_description' => 'Nope.',
+            'duration_type' => 'single_day',
+        ], $this->authed())->assertStatus(403);
+        $this->assertDatabaseMissing('experiences', ['name' => 'Should Also Fail']);
 
         $this->assertDatabaseMissing('experiences', ['name' => 'Should Fail']);
     }

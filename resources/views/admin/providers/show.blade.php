@@ -105,6 +105,69 @@
         </div>
     </div>
 
+    {{-- Competences — a regional partner has no catalogue to judge, so this is
+         what HCT reads when deciding whether to place them on a region. --}}
+    @if($provider->isRegionalPartner())
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="border-bottom pb-2"><i class="bi bi-mortarboard"></i> Competences</h6>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-0">Education</label>
+                        <div class="small">{{ $provider->education_level ?: '—' }}</div>
+                        @if($provider->education_notes)
+                            <div class="small text-muted">{{ $provider->education_notes }}</div>
+                        @endif
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-0">English</label>
+                        <div class="small">{{ $provider->english_level ?: '—' }}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-0">Computer skills</label>
+                        <div class="small">{{ $provider->computer_skill_level ?: '—' }}</div>
+                    </div>
+                </div>
+
+                <hr class="my-3">
+                <label class="form-label small text-muted">Work experience</label>
+                @forelse(($provider->work_experience ?: []) as $role)
+                    <div class="border-start border-3 ps-2 mb-2">
+                        <div class="small fw-semibold">
+                            {{ $role['role'] ?? '—' }}
+                            @if(!empty($role['organisation']))
+                                <span class="text-muted fw-normal">· {{ $role['organisation'] }}</span>
+                            @endif
+                            @if(!empty($role['years']))
+                                <span class="text-muted fw-normal">· {{ $role['years'] }}</span>
+                            @endif
+                        </div>
+                        @if(!empty($role['description']))
+                            <div class="small text-muted">{{ $role['description'] }}</div>
+                        @endif
+                    </div>
+                @empty
+                    <p class="text-muted small">None listed</p>
+                @endforelse
+
+                <hr class="my-3">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted mb-0">Dedication to social / environmental causes</label>
+                        <div class="small">{{ $provider->causes_note ?: '—' }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted mb-0">Understanding of the local community</label>
+                        <div class="small">{{ $provider->community_note ?: '—' }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <div class="col-12">
         <div class="card">
             <div class="card-body">

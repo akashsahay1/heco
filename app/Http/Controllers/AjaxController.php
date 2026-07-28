@@ -629,7 +629,9 @@ class AjaxController extends Controller
         'sp_sync_ical_now' => 'sp',
         'update_sp_profile' => 'sp',
         'get_sp_assigned_trips' => 'sp',
-        // SP EXPERIENCES (HLH/OSP author their own — see saveSpExperience)
+        // A regional partner overseeing the providers in their region.
+        'get_hrp_region_providers' => 'sp',
+        // SP EXPERIENCES (HLH hosts author their own — see saveSpExperience)
         'get_sp_experiences' => 'sp',
         'save_sp_experience' => 'sp',
         'toggle_sp_experience' => 'sp',
@@ -1381,11 +1383,15 @@ class AjaxController extends Controller
             if ($request->has('update_sp_profile')) {
                 return $this->updateSpProfile($request);
             }
+            if ($request->has('get_hrp_region_providers')) {
+                return $this->getHrpRegionProviders($request);
+            }
+
             if ($request->has('get_sp_assigned_trips')) {
                 return $this->getSpAssignedTrips($request);
             }
 
-            // ===== SP EXPERIENCES (HLH / OSP author their own) =====
+            // ===== SP EXPERIENCES (HLH hosts author their own) =====
             if ($request->has('get_sp_experiences')) {
                 return $this->getSpExperiences($request);
             }
@@ -4491,6 +4497,22 @@ class AjaxController extends Controller
             }
         }
 
+        // Cap only what a provider adds for itself — HCT is never limited.
+        // Shadow rows (a parked edit, pending_for_id set) are not listings, so
+        // counting them would block a provider merely for editing what it has.
+        $user = Auth::user();
+        if (!$request->filled('id') && $user && !$user->isHct()) {
+            $capErr = $this->listingCapError(
+                'max_services_per_provider',
+                SpPricing::where('service_provider_id', $providerId)
+                    ->whereNull('pending_for_id')
+                    ->where('approval_status', '!=', 'rejected')
+                    ->count(),
+                'services',
+            );
+            if ($capErr) return $capErr;
+        }
+
         // Per-service-type validation. The dynamic modal in the UI only shows
         // the relevant fields for each service_type, but server-side we still
         // enforce the right combination.
@@ -5513,9 +5535,9 @@ class AjaxController extends Controller
         }
 
         $providerLabel = match ($provider->provider_type) {
-            'hrp' => 'Himalayan Regenerative Partner (HRP)',
-            'hlh' => 'Homestay Local Host (HLH)',
-            'osp' => 'Other Service Provider (OSP)',
+            'hrp' => ServiceProvider::TYPE_LABELS['hrp'],
+            'hlh' => ServiceProvider::TYPE_LABELS['hlh'],
+            'osp' => ServiceProvider::TYPE_LABELS['osp'],
             default => 'Partner',
         };
         $contactName = $provider->contact_person ?: $provider->name;
@@ -5575,6 +5597,18 @@ class AjaxController extends Controller
             "guide_types.*" => "string|max:100",
             "activity_types" => "nullable|array",
             "activity_types.*" => "string|max:100",
+            // HRP competences — see the add_hrp_competences migration.
+            "education_level" => "nullable|string|max:100",
+            "education_notes" => "nullable|string|max:1000",
+            "english_level" => "nullable|string|max:100",
+            "computer_skill_level" => "nullable|string|max:100",
+            "work_experience" => "nullable|array",
+            "work_experience.*.role" => "nullable|string|max:255",
+            "work_experience.*.organisation" => "nullable|string|max:255",
+            "work_experience.*.years" => "nullable|string|max:100",
+            "work_experience.*.description" => "nullable|string|max:1000",
+            "causes_note" => "nullable|string|max:2000",
+            "community_note" => "nullable|string|max:2000",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -5587,6 +5621,21 @@ class AjaxController extends Controller
             "bank_account_number", "upi", "services_offered",
             "accommodation_categories", "vehicle_types", "guide_types", "activity_types",
         ]);
+
+        // Competences belong to a regional partner. Silently dropping them for
+        // anyone else keeps a non-HRP from stuffing the column via a raw post.
+        if ($provider->isRegionalPartner()) {
+            $data += $request->only([
+                "education_level", "education_notes", "english_level",
+                "computer_skill_level", "causes_note", "community_note",
+            ]);
+            // Blank rows the repeater leaves behind should not be stored.
+            $roles = array_values(array_filter(
+                $request->input('work_experience', []) ?: [],
+                fn ($row) => is_array($row) && trim(implode('', array_map('strval', $row))) !== '',
+            ));
+            $data['work_experience'] = $roles;
+        }
         $data['last_updated_by'] = $user->id;
         $data['last_updated_by_role'] = 'provider';
         $provider->update($data);
@@ -6221,8 +6270,26 @@ class AjaxController extends Controller
             "region_id"         => "required|integer|exists:regions,id",
             "hlh_id"            => "required|integer|exists:service_providers,id",
             "type"              => "required|string|max:100",
+            // Which of the three structural categories this is — it decides
+            // which fields the form even shows. Nullable so rows created before
+            // categories existed can still be saved by HCT.
+            "category"          => "nullable|string|max:120",
             "short_description" => "required|string|max:500",
             "duration_type"     => "required|in:less_than_day,single_day,multi_day",
+            // Capacity of an experiential stay — the client's "no of rooms, no
+            // guests". Distinct from group_size_max, which is the largest party
+            // this experience will take rather than what the place sleeps.
+            "total_rooms"       => "nullable|integer|min:1|max:500",
+            "total_guests"      => "nullable|integer|min:1|max:2000",
+            "room_rates"        => "nullable|array|max:40",
+            "room_rates.*.occupancy" => "nullable|string|max:100",
+            "room_rates.*.meal_plan" => "nullable|string|max:100",
+            "room_rates.*.price"     => "nullable|numeric|min:0",
+            "addons"            => "nullable|array|max:20",
+            "addons.*.name"     => "nullable|string|max:150",
+            "addons.*.description" => "nullable|string|max:1000",
+            "addons.*.price"    => "nullable|numeric|min:0",
+            "addons.*.price_unit"  => "nullable|string|max:50",
         ], [
             "name.required"              => "Please enter an experience name.",
             "region_id.required"         => "Please choose a region.",
@@ -6328,28 +6395,81 @@ class AjaxController extends Controller
             $experience->update(["gallery" => array_values(array_merge($existingGallery, $newPaths))]);
         }
 
-        // Save day-wise details
-        $experience->days()->delete();
-        $daysData = $request->input('experience_days', []);
-        foreach ($daysData as $idx => $dayData) {
-            $experience->days()->create([
-                'day_number' => $dayData['day_number'] ?? ($idx + 1),
-                'title' => $dayData['title'] ?? null,
-                'short_description' => $dayData['short_description'] ?? null,
-                'start_time' => $dayData['start_time'] ?? null,
-                'end_time' => $dayData['end_time'] ?? null,
-                'inclusions' => $dayData['inclusions'] ?? [],
-                'sort_order' => $idx,
-            ]);
+        // Day-wise itinerary. Replaced ONLY when the caller sent it — these used
+        // to be deleted and rebuilt unconditionally, so any save that omitted
+        // them wiped the itinerary. That is no longer a rare edge: per-category
+        // forms omit whole sections by design (an experiential stay has no
+        // day-by-day plan), and the mobile API can post a partial update too.
+        if ($request->has('experience_days')) {
+            $experience->days()->delete();
+            foreach ((array) $request->input('experience_days', []) as $idx => $dayData) {
+                $experience->days()->create([
+                    'day_number' => $dayData['day_number'] ?? ($idx + 1),
+                    'title' => $dayData['title'] ?? null,
+                    'short_description' => $dayData['short_description'] ?? null,
+                    'start_time' => $dayData['start_time'] ?? null,
+                    'end_time' => $dayData['end_time'] ?? null,
+                    'inclusions' => $dayData['inclusions'] ?? [],
+                    'sort_order' => $idx,
+                ]);
+            }
         }
 
-        // Replace the experience's per-person price slabs (req 3.2).
-        $experience->priceSlabs()->delete();
-        foreach ($slabs as $mp => $pp) {
-            $experience->priceSlabs()->create(['min_persons' => $mp, 'price_per_person' => $pp]);
+        // Per-person price slabs (req 3.2) — same rule, same reason.
+        if ($request->has('price_slabs')) {
+            $experience->priceSlabs()->delete();
+            foreach ($slabs as $mp => $pp) {
+                $experience->priceSlabs()->create(['min_persons' => $mp, 'price_per_person' => $pp]);
+            }
         }
 
-        return response()->json(["success" => true, "experience" => $experience->load('priceSlabs')]);
+        // An experiential stay's occupancy × meal-plan grid. Same rule again:
+        // only replaced when the caller actually sent it.
+        if ($request->has('room_rates')) {
+            $experience->roomRates()->delete();
+            $seen = [];
+            foreach ((array) $request->input('room_rates', []) as $idx => $rate) {
+                $occupancy = trim((string) ($rate['occupancy'] ?? ''));
+                $mealPlan = trim((string) ($rate['meal_plan'] ?? ''));
+                $price = $rate['price'] ?? '';
+                if ($occupancy === '' || $mealPlan === '' || $price === '') continue;
+
+                // The grid must have one answer per cell; a repeated pair would
+                // make the price ambiguous, so the first one entered wins.
+                $cell = $occupancy . '|' . $mealPlan;
+                if (isset($seen[$cell])) continue;
+                $seen[$cell] = true;
+
+                $experience->roomRates()->create([
+                    'occupancy' => $occupancy,
+                    'meal_plan' => $mealPlan,
+                    'price' => $price,
+                    'sort_order' => $idx,
+                ]);
+            }
+        }
+
+        // Optional extras hung off this experience.
+        if ($request->has('addons')) {
+            $experience->addons()->delete();
+            foreach ((array) $request->input('addons', []) as $idx => $addon) {
+                $name = trim((string) ($addon['name'] ?? ''));
+                if ($name === '') continue; // blank repeater rows are not add-ons
+                $experience->addons()->create([
+                    'name' => $name,
+                    'description' => $addon['description'] ?? null,
+                    'price' => ($addon['price'] ?? '') === '' ? null : $addon['price'],
+                    'price_unit' => $addon['price_unit'] ?? null,
+                    'is_active' => filter_var($addon['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                    'sort_order' => $idx,
+                ]);
+            }
+        }
+
+        return response()->json([
+            "success" => true,
+            "experience" => $experience->load(['priceSlabs', 'addons', 'roomRates']),
+        ]);
     }
 
     protected function disableExperience(Request $request): JsonResponse
@@ -6362,22 +6482,25 @@ class AjaxController extends Controller
     // ===================================================================
     // SP-AUTHORED EXPERIENCES
     //
-    // Experiences are created by the providers who actually run them —
-    // HLH (homestay/lodge hosts) and OSP (other service providers) — rather
-    // than by HCT. Ownership lives on experiences.owner_provider_id, so an SP
-    // can only ever see and touch their own rows. HRPs are excluded: they are
-    // regional partners, not the hosts an experience hangs off.
+    // An experience hangs off the host that runs it, so only a provider acting
+    // as an HLH (homestay/lodge host) authors them — alongside HCT, who keeps
+    // full control from the admin side. Ownership lives on
+    // experiences.owner_provider_id, so a host can only ever see and touch
+    // their own rows. A provider that is only an HRP or only an OSP is
+    // excluded: a regional partner and a service supplier feed services into
+    // an experience, they do not host one. Note a provider may be several
+    // types at once, so this asks hasType() rather than reading provider_type.
     // ===================================================================
 
-    /** Resolve the caller as an approved HLH/OSP, or return the error response. */
+    /** Resolve the caller as an approved host, or return the error response. */
     protected function resolveExperienceAuthor(): array
     {
         [$sp, $err] = $this->resolveApprovedSp();
         if ($err) return [null, $err];
 
-        if (!in_array($sp->provider_type, ['hlh', 'osp'], true)) {
+        if (!$sp->isHost()) {
             return [null, response()->json([
-                'error' => 'Only homestay/lodge hosts and other service providers can publish experiences.',
+                'error' => 'Only homestay/lodge hosts can publish experiences.',
             ], 403)];
         }
         return [$sp, null];
@@ -6393,13 +6516,104 @@ class AjaxController extends Controller
         return [$experience, null];
     }
 
+    /**
+     * How many listings a provider may create for itself.
+     *
+     * A bad-faith signup could otherwise bury HCT's review queue, so
+     * self-service creation is capped. The limit lives in settings rather than
+     * in code so HCT can lift it for a genuinely large provider without a
+     * deploy, and 0 (or a blank setting) means no cap at all.
+     */
+    protected function listingCap(string $key): int
+    {
+        $value = Setting::getValue($key, 10);
+        return is_numeric($value) ? (int) $value : 10;
+    }
+
+    /**
+     * Refuse a NEW listing once the cap is reached. Editing an existing row is
+     * never blocked, and HCT is never capped — the cap exists to protect them.
+     *
+     * Rejected listings are deliberately not counted by the callers. An
+     * experience cannot be deleted at all (it may sit inside a booked trip, so
+     * it is only ever hidden), which would otherwise let ten refusals lock a
+     * provider out for good. Leaving rejections uncounted still bounds what
+     * reaches HCT, because a rejected row only returns to the queue by being
+     * edited and resubmitted — at which point it is pending, and counts again.
+     */
+    protected function listingCapError(string $key, int $current, string $noun): ?JsonResponse
+    {
+        $cap = $this->listingCap($key);
+        if ($cap <= 0 || $current < $cap) {
+            return null;
+        }
+        return response()->json([
+            'error' => "You have reached the limit of {$cap} {$noun}. "
+                     . "Please contact HECO if you need to list more.",
+        ], 422);
+    }
+
+    /**
+     * The hosts and service providers a regional partner oversees.
+     *
+     * The client's brief: "HRPs should have a dashboard listing all HLHs and
+     * OSPs within their region so they can oversee local development." It is
+     * READ-ONLY on purpose — no document gives an HRP approval powers, and MVP
+     * doc 8.2.1 keeps their MVP role to coordination rather than decisions.
+     *
+     * Scoped to the partner's own region, and to approved providers only: a
+     * pending applicant has not been vetted by HCT yet and is not yet theirs to
+     * oversee. Bank details and documents are deliberately not returned — an
+     * HRP coordinates these providers, they do not administer them.
+     */
+    protected function getHrpRegionProviders(Request $request): JsonResponse
+    {
+        [$sp, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
+
+        if (!$sp->isRegionalPartner()) {
+            return response()->json([
+                'error' => 'Only regional partners oversee a region.',
+            ], 403);
+        }
+
+        if (!$sp->region_id) {
+            return response()->json(['success' => true, 'region' => null, 'providers' => []]);
+        }
+
+        $providers = ServiceProvider::where('region_id', $sp->region_id)
+            ->where('status', 'approved')
+            ->where('id', '!=', $sp->id)
+            ->orderBy('name')
+            ->get()
+            ->filter(fn ($p) => $p->isHost() || $p->suppliesServices())
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'contact_person' => $p->contact_person,
+                'email' => $p->email,
+                'phone_1' => $p->phone_1,
+                'types' => $p->types(),
+                'type_labels' => $p->typeLabels(),
+                'experience_categories' => $p->experience_categories ?: [],
+                'service_categories' => $p->service_categories ?: [],
+            ])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'region' => $sp->region?->only(['id', 'name', 'country']),
+            'providers' => $providers,
+        ]);
+    }
+
     protected function getSpExperiences(Request $request): JsonResponse
     {
         [$sp, $err] = $this->resolveExperienceAuthor();
         if ($err) return $err;
 
         $experiences = Experience::ownedBy($sp->id)
-            ->with(['region', 'priceSlabs', 'days'])
+            ->with(['region', 'priceSlabs', 'days', 'roomRates', 'addons'])
             ->orderByDesc('id')
             ->get();
 
@@ -6415,6 +6629,15 @@ class AjaxController extends Controller
         if ($request->filled('id')) {
             [$existing, $ownErr] = $this->resolveOwnExperience((int) $request->id, $sp);
             if ($ownErr) return $ownErr;
+        }
+
+        if (!$existing) {
+            $capErr = $this->listingCapError(
+                'max_experiences_per_provider',
+                Experience::ownedBy($sp->id)->where('approval_status', '!=', 'rejected')->count(),
+                'experiences',
+            );
+            if ($capErr) return $capErr;
         }
 
         // Ownership is never taken from the client. `hlh_id` stays a valid FK:
@@ -6462,14 +6685,31 @@ class AjaxController extends Controller
             ]);
         }
 
-        // Nothing live to protect — a new experience, or one still pending or
-        // rejected. Save straight onto the row and (re)queue it for review.
+        // Nothing live to protect — a new experience, or one still pending, a
+        // draft, or rejected.
+        //
+        // "Save as draft" keeps it out of HCT's queue entirely: the client's
+        // reason is that "many users won't have all the information or photos
+        // ready in one session", so a half-finished listing must be storable
+        // without asking anyone to review it. A draft is never submitted, so it
+        // carries no submitted_at/by — those record an actual submission.
+        //
+        // Note this branch is only reached when nothing is live. Editing an
+        // APPROVED listing always parks as a revision above, which is right: a
+        // member should not be able to pull a selling listing back into a draft.
+        $asDraft = $request->boolean('save_as_draft');
+
         $request->merge([
-            'approval_status' => 'pending',
+            'approval_status' => $asDraft ? 'draft' : 'pending',
             'is_active'       => false,
-            'submitted_at'    => now(),
-            'submitted_by'    => Auth::id(),
         ]);
+
+        if (!$asDraft) {
+            $request->merge([
+                'submitted_at' => now(),
+                'submitted_by' => Auth::id(),
+            ]);
+        }
 
         return $this->saveExperience($request);
     }
@@ -7532,6 +7772,30 @@ class AjaxController extends Controller
             "email" => "required|email|unique:service_providers,email",
             "phone_1" => "required|string|max:20",
             "region_id" => "required|exists:regions,id",
+            // An applicant may be more than one thing at once — a host that also
+            // runs a taxi ticks HLH and OSP. Optional, so the older single-type
+            // web form keeps working unchanged.
+            "provider_types" => "nullable|array|min:1",
+            "provider_types.*" => "in:hrp,hlh,osp",
+            // Spoken languages (screen 6) and the business gate (screen 7).
+            "speaks_english" => "nullable|boolean",
+            "speaks_hindi" => "nullable|boolean",
+            "other_languages" => "nullable|string|max:255",
+            "has_business" => "nullable|boolean",
+            // What they offer (screen 8), one list per role they picked.
+            "experience_categories" => "nullable|array",
+            "experience_categories.*" => "string|max:120",
+            "service_categories" => "nullable|array",
+            "service_categories.*" => "string|max:120",
+            "other_services" => "nullable|string|max:255",
+            // Verification documents. The client caps these at 2 MB; the type
+            // list keeps an applicant from posting something that is not a
+            // document at all. Enforced here as well as in the app, because the
+            // app is not the only thing that can reach this endpoint.
+            "documents" => "nullable|array|max:8",
+            "documents.*" => "file|mimes:jpg,jpeg,png,pdf|max:2048",
+            "contact_by_email" => "nullable|boolean",
+            "contact_by_whatsapp" => "nullable|boolean",
             // The applicant chooses their password on the signup form itself.
             "password" => ["required", "string", "min:8", "regex:/[0-9]/", "regex:/[^A-Za-z0-9]/", "confirmed"],
         ], [
@@ -7548,16 +7812,51 @@ class AjaxController extends Controller
         // their stored paths.
         $documents = $this->storeApplicationDocuments($request);
 
+        // The set always contains the primary type, so a caller that sends only
+        // the enum still ends up with a usable provider_types list.
+        $types = array_values(array_unique(array_merge(
+            [$request->provider_type],
+            $this->applicationArray($request, 'provider_types') ?: [],
+        )));
+
+        // "No" on screen 7 skips the business screen entirely, so its fields are
+        // dropped rather than stored half-filled from an earlier pass.
+        $hasBusiness = $request->has('has_business')
+            ? $request->boolean('has_business')
+            : null;
+
         $provider = ServiceProvider::create([
             "provider_type" => $request->provider_type,
-            "business_type" => $request->business_type,
-            "registration_number" => $request->registration_number,
-            "year_established" => $request->year_established ?: null,
+            "provider_types" => $types,
+            "has_business" => $hasBusiness,
+            "business_type" => $hasBusiness === false ? null : $request->business_type,
+            "registration_number" => $hasBusiness === false ? null : $request->registration_number,
+            "year_established" => $hasBusiness === false ? null : ($request->year_established ?: null),
             "name" => $request->name,
             "contact_person" => $request->contact_person,
             "email" => $request->email,
             "phone_1" => $request->phone_1,
             "phone_2" => $request->phone_2,
+            "speaks_english" => $request->boolean('speaks_english'),
+            "speaks_hindi" => $request->boolean('speaks_hindi'),
+            "other_languages" => $request->other_languages,
+            // Categories only belong to a role they actually picked, so a
+            // host's experience picks are dropped if they never ticked HLH.
+            "experience_categories" => in_array('hlh', $types, true)
+                ? $this->applicationArray($request, 'experience_categories')
+                : null,
+            "service_categories" => in_array('osp', $types, true)
+                ? $this->applicationArray($request, 'service_categories')
+                : null,
+            "other_services" => in_array('osp', $types, true) ? $request->other_services : null,
+            // Default to reachable — a missing key means an older client that
+            // never asked, not a member who declined.
+            "contact_by_email" => $request->has('contact_by_email')
+                ? $request->boolean('contact_by_email')
+                : true,
+            "contact_by_whatsapp" => $request->has('contact_by_whatsapp')
+                ? $request->boolean('contact_by_whatsapp')
+                : true,
             "region_id" => $request->region_id,
             "address" => $request->address,
             "city" => $request->city,
@@ -7620,9 +7919,9 @@ class AjaxController extends Controller
     protected function providerTypeLabel(string $type): string
     {
         return match ($type) {
-            'hrp' => 'Himalayan Regenerative Partner (HRP)',
-            'hlh' => 'Homestay Local Host (HLH)',
-            'osp' => 'Other Service Provider (OSP)',
+            'hrp' => ServiceProvider::TYPE_LABELS['hrp'],
+            'hlh' => ServiceProvider::TYPE_LABELS['hlh'],
+            'osp' => ServiceProvider::TYPE_LABELS['osp'],
             default => 'Partner',
         };
     }

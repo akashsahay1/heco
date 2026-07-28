@@ -68,7 +68,7 @@
                 <div class="how-step-number">02</div>
                 <h4 class="how-step-title">Connect with Locals</h4>
                 <p class="how-step-text">
-                    Meet the HECO Resource Persons (HRP), Local Hosts (HLH), and Other Service
+                    Meet the Heco Regional Partners (HRP), Local Hosts (HLH), and Other Service
                     Providers (OSP) who will guide your journey with genuine hospitality.
                 </p>
             </div>

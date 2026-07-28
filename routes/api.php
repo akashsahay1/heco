@@ -45,6 +45,9 @@ Route::prefix('v1')->group(function () {
 
             Route::get('bookings', [ProviderController::class, 'bookings']);
 
+            // A regional partner overseeing the providers in their region.
+            Route::get('region/providers', [ProviderController::class, 'regionProviders']);
+
             Route::get('pricing', [ProviderController::class, 'pricing']);
             Route::post('pricing', [ProviderController::class, 'savePricing']);
             Route::delete('pricing/{id}', [ProviderController::class, 'deletePricing'])->whereNumber('id');

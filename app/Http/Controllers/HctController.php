@@ -280,7 +280,7 @@ class HctController extends Controller
         return view("admin.pending-pricing", compact('pendingCount'));
     }
 
-    /** Experiences submitted by HLH/OSP providers awaiting review. */
+    /** Experiences submitted by HLH providers awaiting review. */
     public function pendingExperiences()
     {
         $pendingCount = \App\Models\Experience::pending()->count();

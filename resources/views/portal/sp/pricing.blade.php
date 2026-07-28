@@ -14,7 +14,7 @@
             </p>
         </div>
         <div class="d-flex gap-2">
-            @if(in_array($provider->provider_type, ['hlh', 'osp'], true))
+            @if($provider->isHost())
                 {{-- Rates and experiences are different things; providers look
                      for one while on the other, so link across. --}}
                 <a href="{{ route('sp.experiences') }}" class="btn btn-sm btn-outline-secondary">

@@ -37,9 +37,14 @@
                     </tbody>
                 </table>
             </div>
-            <button type="button" class="btn btn-sm sp-btn-primary mt-2" id="spExpAdd">
-                <i class="bi bi-plus-lg me-1"></i> Add Experience
-            </button>
+            <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+                <button type="button" class="btn btn-sm sp-btn-primary" id="spExpAdd">
+                    <i class="bi bi-plus-lg me-1"></i> Add Experience
+                </button>
+                {{-- The server refuses an eleventh listing, so say so here
+                     rather than letting a host fill the form and lose it. --}}
+                <span class="small text-muted" id="spExpCount"></span>
+            </div>
         </div>
     </div>
 </div>
@@ -76,6 +81,26 @@
                 </h2>
                 <div id="spSecBasic" class="accordion-collapse collapse show" data-bs-parent="#spExpAccordion">
                     <div class="accordion-body">
+                        {{-- The category is chosen first and decides which
+                             sections below apply — "the user should first choose
+                             the category that best describes their experience,
+                             and then be presented with a form specifically
+                             designed for that category". --}}
+                        <div class="row g-2 mb-3">
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">
+                                    What kind of experience is this? <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select form-select-sm custom-select" name="category" id="spExpCategory" required>
+                                    <option value="">Choose a category...</option>
+                                    @foreach($experienceCategories as $c)
+                                        <option value="{{ $c }}">{{ $c }}</option>
+                                    @endforeach
+                                </select>
+                                <small class="text-muted" id="spExpCategoryHint"></small>
+                            </div>
+                        </div>
+
                         <div class="row g-2">
                             <div class="col-md-7">
                                 <label class="form-label small">Name <span class="text-danger">*</span></label>
@@ -135,7 +160,7 @@
             </div>
 
             {{-- 2. Duration --}}
-            <div class="accordion-item">
+            <div class="accordion-item" data-exp-categories="Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecDuration">
                         <i class="bi bi-clock me-2"></i> Duration &amp; Schedule
@@ -178,7 +203,7 @@
             </div>
 
             {{-- 3. Inclusions --}}
-            <div class="accordion-item">
+            <div class="accordion-item" data-exp-categories="Experiential accommodation|Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecInclusions">
                         <i class="bi bi-check2-square me-2"></i> Inclusions
@@ -221,7 +246,7 @@
             </div>
 
             {{-- 4. Location --}}
-            <div class="accordion-item">
+            <div class="accordion-item" data-exp-categories="Experiential accommodation|Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecLocation">
                         <i class="bi bi-geo-alt me-2"></i> Location
@@ -276,7 +301,7 @@
             </div>
 
             {{-- 5. Requirements --}}
-            <div class="accordion-item">
+            <div class="accordion-item" data-exp-categories="Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecReq">
                         <i class="bi bi-clipboard-check me-2"></i> Requirements
@@ -333,7 +358,7 @@
             </div>
 
             {{-- 6. Seasonality --}}
-            <div class="accordion-item">
+            <div class="accordion-item" data-exp-categories="Experiential accommodation|Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecSeason">
                         <i class="bi bi-calendar-event me-2"></i> Seasonality
@@ -380,7 +405,7 @@
             </div>
 
             {{-- 7. Costing --}}
-            <div class="accordion-item">
+            <div class="accordion-item" data-exp-categories="Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecCost">
                         <i class="bi bi-cash-stack me-2"></i> Costing
@@ -443,8 +468,130 @@
                 </div>
             </div>
 
+            {{-- Rooms & pricing — only for an experiential stay, which charges
+                 by room and board rather than per head.
+
+                 One row per price rather than a room-type × meal-plan grid: ten
+                 room types and six meal plans would be sixty cells, nearly all
+                 of them blank, and a host would have to work out which ones to
+                 ignore. A row states one price plainly and they add only the
+                 ones they actually have. --}}
+            <div class="accordion-item" data-exp-categories="Experiential accommodation">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecRooms">
+                        <i class="bi bi-door-open me-2"></i> Rooms &amp; Pricing
+                    </button>
+                </h2>
+                <div id="spSecRooms" class="accordion-collapse collapse" data-bs-parent="#spExpAccordion">
+                    <div class="accordion-body">
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label small">Number of rooms</label>
+                                <input type="number" min="1" class="form-control form-control-sm" name="total_rooms">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small">Guests you can host</label>
+                                <input type="number" min="1" class="form-control form-control-sm" name="total_guests">
+                                <small class="text-muted">How many the place sleeps in total.</small>
+                            </div>
+                        </div>
+
+                        <label class="form-label small fw-bold">Room pricing</label>
+                        <p class="text-muted small mb-2">
+                            Add one line for each price you offer. Only add the ones you actually have.
+                        </p>
+                        <div id="spRoomRates"></div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="spRoomRateAdd">
+                            <i class="bi bi-plus-lg"></i> Add a price
+                        </button>
+
+                        {{-- Templates the repeater clones. --}}
+                        <template id="spRoomRateTpl">
+                            <div class="row g-2 align-items-end mb-2 sp-room-rate">
+                                <div class="col-md-4">
+                                    <select class="form-select form-select-sm custom-select" data-key="occupancy">
+                                        <option value="">Room type...</option>
+                                        @foreach($roomCategories as $rc)
+                                            <option value="{{ $rc }}">{{ $rc }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select class="form-select form-select-sm custom-select" data-key="meal_plan">
+                                        <option value="">Meal plan...</option>
+                                        @foreach($mealPlans as $mp)
+                                            <option value="{{ $mp }}">{{ $mp }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                                           data-key="price" placeholder="Price">
+                                </div>
+                                <div class="col-md-1">
+                                    <button type="button" class="btn btn-sm btn-outline-danger w-100 sp-room-rate-remove"
+                                            title="Remove">&times;</button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Add-ons — optional extras hung off the main experience, so a
+                 host showcases everything without creating a listing for each.
+                 Not offered on Workshops, per the client's field lists. --}}
+            <div class="accordion-item"
+                 data-exp-categories="Experiential accommodation|Guided Cultural &amp; Outdoor Activities">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecAddons">
+                        <i class="bi bi-plus-square me-2"></i> Add-ons
+                    </button>
+                </h2>
+                <div id="spSecAddons" class="accordion-collapse collapse" data-bs-parent="#spExpAccordion">
+                    <div class="accordion-body">
+                        <p class="text-muted small mb-2">
+                            Optional extras a traveller can add — a guided village walk, a cooking
+                            class, birdwatching. Leave the price blank if it is included.
+                        </p>
+                        <div id="spAddons"></div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="spAddonAdd">
+                            <i class="bi bi-plus-lg"></i> Add an extra
+                        </button>
+
+                        <template id="spAddonTpl">
+                            <div class="border rounded p-2 mb-2 sp-addon">
+                                <div class="row g-2">
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control form-control-sm"
+                                               data-key="name" placeholder="Name — e.g. Guided village walk">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                                               data-key="price" placeholder="Price (optional)">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="text" class="form-control form-control-sm"
+                                               data-key="price_unit" placeholder="per person">
+                                    </div>
+                                    <div class="col-md-1">
+                                        <button type="button" class="btn btn-sm btn-outline-danger w-100 sp-addon-remove"
+                                                title="Remove">&times;</button>
+                                    </div>
+                                    <div class="col-12">
+                                        <textarea class="form-control form-control-sm" rows="2"
+                                                  data-key="description" placeholder="What it involves (optional)"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
             {{-- 8. Day-wise itinerary --}}
-            <div class="accordion-item">
+            <div class="accordion-item"
+                 data-exp-categories="Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecDays">
                         <i class="bi bi-signpost-split me-2"></i> Day-wise Itinerary
@@ -464,7 +611,7 @@
             </div>
 
             {{-- 9. Practical --}}
-            <div class="accordion-item">
+            <div class="accordion-item" data-exp-categories="Experiential accommodation|Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecPractical">
                         <i class="bi bi-backpack me-2"></i> Practical Information
@@ -505,7 +652,7 @@
             </div>
 
             {{-- 10. Operational --}}
-            <div class="accordion-item">
+            <div class="accordion-item" data-exp-categories="Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecOps">
                         <i class="bi bi-exclamation-triangle me-2"></i> Operational Notes
@@ -531,7 +678,7 @@
             </div>
 
             {{-- 11. Photos --}}
-            <div class="accordion-item">
+            <div class="accordion-item" data-exp-categories="Experiential accommodation|Guided Cultural &amp; Outdoor Activities|Workshops, Handicrafts, Local Knowledge &amp; Storytelling">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#spSecMedia">
                         <i class="bi bi-images me-2"></i> Photos
@@ -561,9 +708,17 @@
 
         </div>
 
-        <button type="submit" class="btn sp-btn-primary w-100 mt-3" id="spExpSaveBtn">
-            <i class="bi bi-send me-1"></i> Submit for review
-        </button>
+        <div class="d-flex gap-2 mt-3">
+            {{-- "Many users won't have all the information or photos ready in
+                 one session" — so a half-finished listing can be put down and
+                 picked up later without going anywhere near HECO's queue. --}}
+            <button type="button" class="btn btn-outline-secondary flex-shrink-0" id="spExpDraftBtn">
+                <i class="bi bi-save me-1"></i> Save draft
+            </button>
+            <button type="submit" class="btn sp-btn-primary flex-grow-1" id="spExpSaveBtn">
+                <i class="bi bi-send me-1"></i> Submit for review
+            </button>
+        </div>
     </form></div>
 </div></div></div>
 
@@ -619,10 +774,36 @@ function spDurationLabel(row) {
     return 'Single day';
 }
 
+// 0 means no limit. Rejected listings are not counted — an experience can only
+// ever be hidden, never deleted, so counting refusals would lock a host out.
+var SP_EXP_CAP = {{ (int) $experienceCap }};
+
+function spApplyExperienceCap() {
+    var used = spExpRows.filter(function(r) { return r.approval_status !== 'rejected'; }).length;
+    var label = jQuery('#spExpCount');
+    var btn = jQuery('#spExpAdd');
+
+    if (SP_EXP_CAP <= 0) {
+        label.text('');
+        btn.prop('disabled', false).removeAttr('title');
+        return;
+    }
+
+    label.text(used + ' of ' + SP_EXP_CAP + ' experiences used');
+    if (used >= SP_EXP_CAP) {
+        btn.prop('disabled', true).attr('title', 'Limit reached — contact HECO to list more');
+        label.addClass('text-danger').removeClass('text-muted');
+    } else {
+        btn.prop('disabled', false).removeAttr('title');
+        label.addClass('text-muted').removeClass('text-danger');
+    }
+}
+
 function spLoadExperiences() {
     ajaxPost({ get_sp_experiences: 1 }, function(res) {
         spExpRows = res.experiences || [];
         var body = jQuery('#spExpBody').empty();
+        spApplyExperienceCap();
 
         if (!spExpRows.length) {
             body.append('<tr><td colspan="7" class="text-center text-muted small py-3">' +
@@ -741,11 +922,35 @@ function spAddSlabRow(slab) {
     jQuery('#spSlabRows').append(row);
 }
 
+// Category decides which sections apply.
+//
+// Sections are hidden, never removed: switching category back must not lose
+// what was already typed, and hidden fields are skipped on submit rather than
+// posted — so the server, which only replaces a section it was actually sent,
+// leaves the rest of the record alone.
+function spApplyCategory() {
+    var chosen = jQuery('#spExpCategory').val();
+
+    jQuery('#spExpAccordion .accordion-item[data-exp-categories]').each(function() {
+        var item = jQuery(this);
+        var applies = !chosen ||
+            item.data('exp-categories').split('|').indexOf(chosen) !== -1;
+        item.toggleClass('d-none', !applies);
+        if (!applies) item.find('.accordion-collapse').removeClass('show');
+    });
+
+    jQuery('#spExpCategoryHint').text(chosen
+        ? 'The form below now asks only what this kind of experience needs.'
+        : 'Choose one and we will only ask what it needs.');
+}
+
 // ── Modal ───────────────────────────────────────────────────────────────
 function spOpenExperience(row) {
     var form = jQuery('#spExpForm')[0];
     form.reset();
     jQuery('#spSlabRows').empty();
+    jQuery('#spRoomRates').empty();
+    jQuery('#spAddons').empty();
     spSlabCounter = 0;
     jQuery('#spExpRejected').addClass('d-none');
     jQuery('#spExpLiveEdit').addClass('d-none');
@@ -774,6 +979,24 @@ function spOpenExperience(row) {
         });
 
         jQuery.each(row.price_slabs || [], function(n, slab) { spAddSlabRow(slab); });
+
+        // Repeaters are rebuilt from the saved rows rather than the generic
+        // field loop, which only knows about plain inputs.
+        jQuery.each(row.room_rates || [], function(n, rate) {
+            var el = jQuery(jQuery('#spRoomRateTpl').html());
+            el.find('[data-key=occupancy]').val(rate.occupancy);
+            el.find('[data-key=meal_plan]').val(rate.meal_plan);
+            el.find('[data-key=price]').val(rate.price);
+            jQuery('#spRoomRates').append(el);
+        });
+        jQuery.each(row.addons || [], function(n, addon) {
+            var el = jQuery(jQuery('#spAddonTpl').html());
+            el.find('[data-key=name]').val(addon.name);
+            el.find('[data-key=description]').val(addon.description);
+            el.find('[data-key=price]').val(addon.price);
+            el.find('[data-key=price_unit]').val(addon.price_unit);
+            jQuery('#spAddons').append(el);
+        });
 
         // These two are stored as JSON, so the raw value would render as
         // "[object Object]" through the generic field loop above.
@@ -809,6 +1032,10 @@ function spOpenExperience(row) {
     spRebuildDays(row ? row.days : null);
     spRecalcBaseCost();
     jQuery('#spAccomCatGroup').toggle(jQuery('#spIncAccom').is(':checked'));
+
+    // Apply the category AFTER the row has populated the form, so an existing
+    // experience opens showing exactly the sections its category uses.
+    spApplyCategory();
 
     new bootstrap.Modal(jQuery('#spExpModal')[0]).show();
 }
@@ -872,25 +1099,84 @@ jQuery(function() {
         jQuery('#spAccomCatGroup').toggle(jQuery(this).is(':checked'));
     });
 
-    jQuery('#spExpForm').on('submit', function(e) {
-        e.preventDefault();
-        var btn = jQuery('#spExpSaveBtn');
-        var reset = function() {
-            btn.prop('disabled', false).html('<i class="bi bi-send me-1"></i> Submit for review');
-        };
-        btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Submitting...');
+    jQuery(document).on('change', '#spExpCategory', spApplyCategory);
+
+    // ── Repeaters: room prices and add-ons ──────────────────────────────
+    function spAddRow(listSel, tplSel) {
+        jQuery(listSel).append(jQuery(tplSel).html());
+    }
+    jQuery(document).on('click', '#spRoomRateAdd', function() {
+        spAddRow('#spRoomRates', '#spRoomRateTpl');
+    });
+    jQuery(document).on('click', '#spAddonAdd', function() {
+        spAddRow('#spAddons', '#spAddonTpl');
+    });
+    jQuery(document).on('click', '.sp-room-rate-remove', function() {
+        jQuery(this).closest('.sp-room-rate').remove();
+    });
+    jQuery(document).on('click', '.sp-addon-remove', function() {
+        jQuery(this).closest('.sp-addon').remove();
+    });
+
+    /** Rows from a repeater, skipping any the host left blank. */
+    function spRepeaterRows(rowSel, requiredKey) {
+        var rows = [];
+        jQuery(rowSel).each(function() {
+            var row = {};
+            jQuery(this).find('[data-key]').each(function() {
+                row[jQuery(this).data('key')] = jQuery(this).val();
+            });
+            if ((row[requiredKey] || '').toString().trim() !== '') rows.push(row);
+        });
+        return rows;
+    }
+
+    function spSubmitExperience(asDraft) {
+        var form = jQuery('#spExpForm')[0];
+        var btn = asDraft ? jQuery('#spExpDraftBtn') : jQuery('#spExpSaveBtn');
+        var label = btn.html();
+        var reset = function() { btn.prop('disabled', false).html(label); };
+        btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Saving...');
 
         // FormData, not serializeArray — the photo inputs are files, and
         // serializeArray silently drops them.
-        var data = new FormData(this);
+        var data = new FormData(form);
         data.append('save_sp_experience', 1);
+        if (asDraft) data.append('save_as_draft', 1);
+
+        // Drop anything belonging to a section this category does not use. The
+        // server leaves untouched whatever it is not sent, so a stay never
+        // destroys an itinerary it simply has no place for.
+        jQuery('#spExpAccordion .accordion-item.d-none').find('[name]').each(function() {
+            var name = jQuery(this).attr('name');
+            if (name) data.delete(name.replace('[]', ''));
+        });
 
         // Unchecked boxes post nothing; send an explicit 0 so clearing sticks.
         jQuery('#spExpForm input[type=checkbox]').each(function() {
             var name = jQuery(this).attr('name');
-            if (name.indexOf('[]') !== -1) return;
+            if (!name || name.indexOf('[]') !== -1) return;
+            if (jQuery(this).closest('.accordion-item').hasClass('d-none')) return;
             if (!jQuery(this).is(':checked')) data.append(name, 0);
         });
+
+        // Repeaters are not plain inputs, so they are gathered by hand — and
+        // only when their section applies.
+        if (!jQuery('#spSecRooms').closest('.accordion-item').hasClass('d-none')) {
+            spRepeaterRows('.sp-room-rate', 'price').forEach(function(r, i) {
+                data.append('room_rates[' + i + '][occupancy]', r.occupancy || '');
+                data.append('room_rates[' + i + '][meal_plan]', r.meal_plan || '');
+                data.append('room_rates[' + i + '][price]', r.price || '');
+            });
+        }
+        if (!jQuery('#spSecAddons').closest('.accordion-item').hasClass('d-none')) {
+            spRepeaterRows('.sp-addon', 'name').forEach(function(r, i) {
+                data.append('addons[' + i + '][name]', r.name || '');
+                data.append('addons[' + i + '][description]', r.description || '');
+                data.append('addons[' + i + '][price]', r.price || '');
+                data.append('addons[' + i + '][price_unit]', r.price_unit || '');
+            });
+        }
 
         jQuery.ajax({
             url: '/ajax',
@@ -900,7 +1186,12 @@ jQuery(function() {
             contentType: false,
             success: function() {
                 bootstrap.Modal.getInstance(jQuery('#spExpModal')[0]).hide();
-                showAlert('Submitted — HECO will review it shortly.', 'success');
+                showAlert(
+                    asDraft
+                        ? 'Saved as a draft. Come back and finish it whenever you like.'
+                        : 'Submitted — HECO will review it shortly.',
+                    'success',
+                );
                 reset();
                 spLoadExperiences();
             },
@@ -911,6 +1202,17 @@ jQuery(function() {
                 showAlert(msg, 'danger');
             }
         });
+    }
+
+    jQuery('#spExpForm').on('submit', function(e) {
+        e.preventDefault();
+        spSubmitExperience(false);
+    });
+
+    // A draft is stored without being reviewed, so it skips the form's own
+    // validation — the whole point is that it is not finished yet.
+    jQuery(document).on('click', '#spExpDraftBtn', function() {
+        spSubmitExperience(true);
     });
 });
 </script>

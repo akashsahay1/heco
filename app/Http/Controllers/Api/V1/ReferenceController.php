@@ -33,10 +33,19 @@ class ReferenceController extends Controller
         'room_category',
         'business_type',
         'document_type',
-        // Experience authoring (HLH/OSP).
+        // Experience authoring (HLH).
         'experience_type',
         'day_inclusion',
         'best_season',
+        // What a member offers (signup screen 8) — and what they can then list.
+        // Kept separate per role: an HLH's "Experiential accommodation" and an
+        // OSP's "Standard accommodation" are different products.
+        'experience_category',
+        'service_category',
+        // HRP competences.
+        'education_level',
+        'english_level',
+        'computer_skill_level',
     ];
 
     public function index(): JsonResponse

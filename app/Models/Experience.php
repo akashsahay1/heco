@@ -8,10 +8,11 @@ class Experience extends Model
 {
     protected $fillable = [
         'hlh_id', 'owner_provider_id', 'owner_type',
-        'region_id', 'regenerative_project_id', 'name', 'slug', 'type',
+        'region_id', 'regenerative_project_id', 'name', 'slug', 'type', 'category',
         'short_description', 'long_description', 'unique_description', 'cultural_context',
         'duration_type', 'duration_hours', 'duration_days', 'duration_nights',
         'start_time', 'end_time', 'includes_accommodation', 'accommodation_category',
+        'total_rooms', 'total_guests',
         'includes_meals_breakfast', 'includes_meals_lunch', 'includes_meals_dinner',
         'includes_guide', 'includes_transport',
         'start_latitude', 'start_longitude', 'end_latitude', 'end_longitude', 'area',
@@ -67,7 +68,7 @@ class Experience extends Model
     }
 
     /**
-     * The provider (HLH or OSP) who authored this experience and may edit it.
+     * The HLH host who authored this experience and may edit it.
      * See the add_owner_provider_to_experiences_table migration.
      */
     public function ownerProvider()
@@ -152,6 +153,37 @@ class Experience extends Model
     public function priceSlabs()
     {
         return $this->hasMany(ExperiencePriceSlab::class)->orderBy('min_persons');
+    }
+
+    /**
+     * Optional extras a host hangs off the main experience — a village walk, a
+     * cooking class, birdwatching. The client's reason for them: it "gives
+     * travellers much more flexibility while encouraging HLHs to showcase
+     * everything they have to offer instead of creating many separate
+     * experiences" — which also keeps them under the listing cap.
+     */
+    public function addons()
+    {
+        return $this->hasMany(ExperienceAddon::class)->orderBy('sort_order');
+    }
+
+    /**
+     * The pricing grid for an experiential stay — occupancy × meal plan. Empty
+     * for the other two categories, which price per person instead.
+     */
+    public function roomRates()
+    {
+        return $this->hasMany(ExperienceRoomRate::class)->orderBy('sort_order');
+    }
+
+    /**
+     * Saved but never submitted. A draft is invisible to travellers and absent
+     * from HCT's review queue — scopePending() only matches pending rows and
+     * parked revisions, so nothing extra is needed to keep drafts out of it.
+     */
+    public function isDraft(): bool
+    {
+        return $this->approval_status === 'draft';
     }
 
     /**

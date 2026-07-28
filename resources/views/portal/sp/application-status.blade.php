@@ -3,11 +3,8 @@
 
 @php
     $status = $provider->status; // pending | approved | rejected
-    $typeLabel = [
-        'hrp' => 'Himalayan Regenerative Partner (HRP)',
-        'hlh' => 'Homestay Local Host (HLH)',
-        'osp' => 'Other Service Provider (OSP)',
-    ][$provider->provider_type] ?? 'Partner';
+    // Every role they applied as, not just the primary one.
+    $typeLabel = implode(' · ', $provider->typeLabels()) ?: 'Partner';
     $firstName = $provider->contact_person ?: $provider->name;
 @endphp
 

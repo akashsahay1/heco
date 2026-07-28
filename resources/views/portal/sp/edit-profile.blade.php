@@ -92,6 +92,9 @@
                     </div>
                 </div>
 
+                {{-- Capabilities describe what a provider sells, so a partner who
+                     sells nothing does not need them. --}}
+                @if($provider->isHost() || $provider->suppliesServices())
                 <div class="card">
                     <div class="card-body">
                         <h6 class="border-bottom pb-2"><i class="bi bi-gear"></i> Capabilities</h6>
@@ -129,6 +132,91 @@
                         @endforeach
                     </div>
                 </div>
+                @endif
+
+                {{-- Competences — a regional partner has no catalogue, so this
+                     profile is what HCT reads when placing them on a region. --}}
+                @if($provider->isRegionalPartner())
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <h6 class="border-bottom pb-2"><i class="bi bi-mortarboard"></i> Competences</h6>
+
+                        <div class="mb-2">
+                            <label class="form-label small text-muted">Education background</label>
+                            <select name="education_level" class="form-select form-select-sm">
+                                <option value="">Select...</option>
+                                @foreach($educationLevels as $opt)
+                                    <option value="{{ $opt->name }}" {{ $provider->education_level === $opt->name ? 'selected' : '' }}>{{ $opt->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <textarea name="education_notes" class="form-control form-control-sm" rows="2"
+                                      placeholder="Field of study, institution, year — optional">{{ $provider->education_notes }}</textarea>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label small text-muted">English level</label>
+                                <select name="english_level" class="form-select form-select-sm">
+                                    <option value="">Select...</option>
+                                    @foreach($englishLevels as $opt)
+                                        <option value="{{ $opt->name }}" {{ $provider->english_level === $opt->name ? 'selected' : '' }}>{{ $opt->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">Computer skills</label>
+                                <select name="computer_skill_level" class="form-select form-select-sm">
+                                    <option value="">Select...</option>
+                                    @foreach($computerSkillLevels as $opt)
+                                        <option value="{{ $opt->name }}" {{ $provider->computer_skill_level === $opt->name ? 'selected' : '' }}>{{ $opt->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+
+                        <label class="form-label small text-muted">Work experience</label>
+                        <div id="workExpRows">
+                            @forelse($provider->work_experience ?? [] as $row)
+                                <div class="work-exp-row border rounded p-2 mb-2">
+                                    <div class="row g-2">
+                                        <div class="col-6"><input type="text" class="form-control form-control-sm" data-key="role" placeholder="Role" value="{{ $row['role'] ?? '' }}"></div>
+                                        <div class="col-6"><input type="text" class="form-control form-control-sm" data-key="organisation" placeholder="Organisation" value="{{ $row['organisation'] ?? '' }}"></div>
+                                        <div class="col-12"><input type="text" class="form-control form-control-sm" data-key="years" placeholder="Years (e.g. 2019-2023)" value="{{ $row['years'] ?? '' }}"></div>
+                                        <div class="col-12"><textarea class="form-control form-control-sm" data-key="description" rows="2" placeholder="What you did">{{ $row['description'] ?? '' }}</textarea></div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-link text-danger p-0 mt-1 work-exp-remove">Remove</button>
+                                </div>
+                            @empty
+                                <div class="work-exp-row border rounded p-2 mb-2">
+                                    <div class="row g-2">
+                                        <div class="col-6"><input type="text" class="form-control form-control-sm" data-key="role" placeholder="Role"></div>
+                                        <div class="col-6"><input type="text" class="form-control form-control-sm" data-key="organisation" placeholder="Organisation"></div>
+                                        <div class="col-12"><input type="text" class="form-control form-control-sm" data-key="years" placeholder="Years (e.g. 2019-2023)"></div>
+                                        <div class="col-12"><textarea class="form-control form-control-sm" data-key="description" rows="2" placeholder="What you did"></textarea></div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-link text-danger p-0 mt-1 work-exp-remove">Remove</button>
+                                </div>
+                            @endforelse
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary mb-3" id="workExpAdd">
+                            <i class="bi bi-plus-lg"></i> Add another role
+                        </button>
+
+                        <div class="mb-2">
+                            <label class="form-label small text-muted">Dedication to social / environmental causes</label>
+                            <textarea name="causes_note" class="form-control form-control-sm" rows="3"
+                                      placeholder="Causes you work on and what you have actually done">{{ $provider->causes_note }}</textarea>
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label small text-muted">Understanding of the local community</label>
+                            <textarea name="community_note" class="form-control form-control-sm" rows="3"
+                                      placeholder="Your links to the community and the languages spoken there">{{ $provider->community_note }}</textarea>
+                        </div>
+                    </div>
+                </div>
+                @endif
             </div>
         </div>
 
@@ -184,6 +272,23 @@ jQuery(function() {
     });
 });
 
+// === Work-experience repeater ===
+jQuery(document).on('click', '#workExpAdd', function() {
+    var $first = jQuery('#workExpRows .work-exp-row').first();
+    var $row = $first.clone();
+    $row.find('input, textarea').val('');
+    jQuery('#workExpRows').append($row);
+});
+
+jQuery(document).on('click', '.work-exp-remove', function() {
+    // Always leave one row behind, otherwise there is nothing to type into.
+    if (jQuery('#workExpRows .work-exp-row').length > 1) {
+        jQuery(this).closest('.work-exp-row').remove();
+    } else {
+        jQuery(this).closest('.work-exp-row').find('input, textarea').val('');
+    }
+});
+
 jQuery('#spProfileForm').on('submit', function(e) {
     e.preventDefault();
     var btn = jQuery('#spSaveBtn');
@@ -197,9 +302,26 @@ jQuery('#spProfileForm').on('submit', function(e) {
         guide_types:              getDdValues('guide_types'),
         activity_types:           getDdValues('activity_types')
     };
-    jQuery(this).find('input, textarea').each(function() {
+    // `select` belongs here too — the competence levels are dropdowns, and
+    // leaving it out silently dropped them from the payload.
+    jQuery(this).find('input, textarea, select').each(function() {
         if (this.name) data[this.name] = jQuery(this).val();
     });
+
+    // Work experience is a repeater, so it is gathered row by row rather than
+    // by field name. Empty rows are dropped server-side as well.
+    var roles = [];
+    jQuery('#workExpRows .work-exp-row').each(function() {
+        var row = {};
+        var filled = false;
+        jQuery(this).find('[data-key]').each(function() {
+            var val = jQuery(this).val() || '';
+            row[jQuery(this).data('key')] = val;
+            if (val.trim() !== '') filled = true;
+        });
+        if (filled) roles.push(row);
+    });
+    if (jQuery('#workExpRows').length) data.work_experience = roles;
 
     ajaxPost(data, function() {
         showAlert('Profile updated successfully.', 'success');

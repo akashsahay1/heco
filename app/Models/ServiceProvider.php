@@ -7,13 +7,20 @@ use Illuminate\Database\Eloquent\Model;
 class ServiceProvider extends Model
 {
     protected $fillable = [
-        'user_id', 'provider_type', 'business_type', 'registration_number',
+        'user_id', 'provider_type', 'provider_types', 'has_business',
+        'experience_categories', 'service_categories', 'other_services',
+        'business_type', 'registration_number',
         'year_established', 'name', 'contact_person', 'email',
-        'phone_1', 'phone_2', 'region_id', 'address', 'city', 'postal_code',
+        'phone_1', 'phone_2', 'speaks_english', 'speaks_hindi', 'other_languages',
+        'contact_by_email', 'contact_by_whatsapp',
+        'region_id', 'address', 'city', 'postal_code',
         'country', 'bank_name',
         'bank_ifsc', 'bank_account_name', 'bank_account_number', 'upi',
         'services_offered', 'accommodation_categories', 'vehicle_types',
-        'guide_types', 'activity_types', 'documents', 'notes', 'ical_url', 'ical_last_synced_at',
+        'guide_types', 'activity_types',
+        'education_level', 'education_notes', 'english_level',
+        'computer_skill_level', 'work_experience', 'causes_note', 'community_note',
+        'documents', 'notes', 'ical_url', 'ical_last_synced_at',
         'status', 'markup_percent', 'approved_at', 'approved_by',
         'last_updated_by', 'last_updated_by_role',
     ];
@@ -22,15 +29,93 @@ class ServiceProvider extends Model
     {
         return [
             'markup_percent' => 'decimal:2',
+            'provider_types' => 'array',
+            'experience_categories' => 'array',
+            'service_categories' => 'array',
+            'has_business' => 'boolean',
+            'speaks_english' => 'boolean',
+            'speaks_hindi' => 'boolean',
+            'contact_by_email' => 'boolean',
+            'contact_by_whatsapp' => 'boolean',
             'services_offered' => 'array',
             'accommodation_categories' => 'array',
             'vehicle_types' => 'array',
             'guide_types' => 'array',
             'activity_types' => 'array',
+            'work_experience' => 'array',
             'documents' => 'array',
             'approved_at' => 'datetime',
             'ical_last_synced_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Display names for the three roles, in one place because four different
+     * views used to keep their own copy — and they had drifted: the portal said
+     * "Homestay Local Host" where both client documents say "Heco Local Host".
+     */
+    public const TYPE_LABELS = [
+        'hlh' => 'Heco Local Host (HLH)',
+        'osp' => 'Other Service Provider (OSP)',
+        'hrp' => 'Heco Regional Partner (HRP)',
+    ];
+
+    /**
+     * Labels for every role this provider holds, in a fixed order so a provider
+     * who is both always reads the same way round.
+     */
+    public function typeLabels(): array
+    {
+        $held = $this->types();
+        return array_values(array_filter(
+            array_map(
+                fn ($type) => in_array($type, $held, true) ? self::TYPE_LABELS[$type] : null,
+                array_keys(self::TYPE_LABELS),
+            ),
+        ));
+    }
+
+    /**
+     * Every type this provider signed up as.
+     *
+     * A provider can be several things at once (an HLH that also runs a taxi is
+     * an HLH and an OSP), so capability questions go through here rather than
+     * through provider_type, which only names the primary one. Rows created
+     * before provider_types existed fall back to that primary type.
+     */
+    public function types(): array
+    {
+        $types = $this->provider_types;
+        return is_array($types) && $types !== []
+            ? $types
+            : array_filter([$this->provider_type]);
+    }
+
+    /** Does this provider act as the given type at all? */
+    public function hasType(string $type): bool
+    {
+        return in_array($type, $this->types(), true);
+    }
+
+    /** Hosts author experiences; HCT reviews them. */
+    public function isHost(): bool
+    {
+        return $this->hasType('hlh');
+    }
+
+    /** Service suppliers keep a rate card (rooms, taxi, guide, rental, other). */
+    public function suppliesServices(): bool
+    {
+        return $this->hasType('osp');
+    }
+
+    /**
+     * Regional partners sell nothing, so they fill in competences instead of a
+     * catalogue — see the add_hrp_competences migration.
+     */
+    public function isRegionalPartner(): bool
+    {
+        return $this->hasType('hrp');
     }
 
     /**

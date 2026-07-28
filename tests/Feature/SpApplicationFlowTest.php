@@ -66,6 +66,200 @@ class SpApplicationFlowTest extends TestCase
         ], $overrides);
     }
 
+    /**
+     * The client's screen 5 allows several roles at once — a host that also
+     * runs a taxi ticks HLH and OSP. The primary type still lands in the enum
+     * column so nothing that reads it has to change.
+     */
+    public function test_an_applicant_can_be_more_than_one_type(): void
+    {
+        $this->ajax($this->validPayload([
+            'provider_type' => 'hlh',
+            'provider_types' => ['hlh', 'osp'],
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
+
+        $this->assertSame('hlh', $provider->provider_type);
+        $this->assertEqualsCanonicalizing(['hlh', 'osp'], $provider->provider_types);
+        $this->assertTrue($provider->isHost());
+        $this->assertTrue($provider->suppliesServices());
+        $this->assertFalse($provider->isRegionalPartner());
+    }
+
+    /** The older single-type web form still produces a usable set. */
+    public function test_a_single_type_application_still_fills_the_set(): void
+    {
+        $this->ajax($this->validPayload(['provider_type' => 'osp']))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
+
+        $this->assertSame(['osp'], $provider->provider_types);
+        $this->assertTrue($provider->suppliesServices());
+        $this->assertFalse($provider->isHost());
+    }
+
+    /** A junk role must not reach the column. */
+    public function test_an_unknown_type_in_the_set_is_rejected(): void
+    {
+        $this->ajax($this->validPayload([
+            'provider_types' => ['hlh', 'hacker'],
+        ]))->assertStatus(422);
+
+        $this->assertDatabaseMissing('service_providers', ['email' => 'aarav.mehta@example.test']);
+    }
+
+    /** Screen 6 — which languages a member speaks decides who they can host. */
+    public function test_spoken_languages_are_stored(): void
+    {
+        $this->ajax($this->validPayload([
+            'speaks_english' => true,
+            'speaks_hindi' => true,
+            'other_languages' => 'Pahari, Ladakhi',
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
+
+        $this->assertTrue($provider->speaks_english);
+        $this->assertTrue($provider->speaks_hindi);
+        $this->assertSame('Pahari, Ladakhi', $provider->other_languages);
+    }
+
+    /**
+     * Screen 7 — answering No skips the business screen, so nothing from it may
+     * be stored. A member without a business must not be given a business type.
+     */
+    public function test_answering_no_to_business_stores_no_business_details(): void
+    {
+        $this->ajax($this->validPayload([
+            'has_business' => false,
+            'business_type' => 'Registered company',
+            'registration_number' => 'U74999HP2020PTC00001',
+            'year_established' => '2020',
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
+
+        $this->assertFalse($provider->has_business);
+        $this->assertNull($provider->business_type);
+        $this->assertNull($provider->registration_number);
+        $this->assertNull($provider->year_established);
+    }
+
+    public function test_answering_yes_to_business_keeps_the_details(): void
+    {
+        $this->ajax($this->validPayload([
+            'has_business' => true,
+            'business_type' => 'Registered company',
+            'registration_number' => 'U74999HP2020PTC00001',
+            'year_established' => '2020',
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
+
+        $this->assertTrue($provider->has_business);
+        $this->assertSame('Registered company', $provider->business_type);
+        $this->assertSame('U74999HP2020PTC00001', $provider->registration_number);
+    }
+
+    /**
+     * Screen 8 — "whatever has been selected in your screen 5 comes here but
+     * with the different categories". A host that also runs a taxi declares
+     * from both lists, and the two are stored apart because an HLH's
+     * experiential accommodation and an OSP's standard accommodation are
+     * different products that merely share a word.
+     */
+    public function test_a_dual_role_member_declares_from_both_category_lists(): void
+    {
+        $this->ajax($this->validPayload([
+            'provider_type' => 'hlh',
+            'provider_types' => ['hlh', 'osp'],
+            'experience_categories' => ['Experiential accommodation'],
+            'service_categories' => ['Taxi services'],
+            'other_services' => 'Airport pickups at odd hours',
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
+
+        $this->assertSame(['Experiential accommodation'], $provider->experience_categories);
+        $this->assertSame(['Taxi services'], $provider->service_categories);
+        $this->assertSame('Airport pickups at odd hours', $provider->other_services);
+    }
+
+    /** Categories belong to a role — picks for a role they did not take are dropped. */
+    public function test_categories_for_a_role_they_did_not_pick_are_discarded(): void
+    {
+        $this->ajax($this->validPayload([
+            'provider_type' => 'hlh',
+            'provider_types' => ['hlh'],
+            'experience_categories' => ['Experiential accommodation'],
+            'service_categories' => ['Taxi services'],
+            'other_services' => 'Should not be stored',
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
+
+        $this->assertSame(['Experiential accommodation'], $provider->experience_categories);
+        $this->assertNull($provider->service_categories);
+        $this->assertNull($provider->other_services);
+    }
+
+    /**
+     * The client asked for WhatsApp/SMS alongside email "since many users won't
+     * regularly check their email" — an approval notice nobody reads is worse
+     * than one message too many.
+     */
+    public function test_contact_consent_is_stored(): void
+    {
+        $this->ajax($this->validPayload([
+            'contact_by_email' => true,
+            'contact_by_whatsapp' => false,
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
+
+        $this->assertTrue($provider->contact_by_email);
+        $this->assertFalse($provider->contact_by_whatsapp);
+    }
+
+    /** A caller that never asks means "reachable", not "declined". */
+    public function test_contact_consent_defaults_to_reachable(): void
+    {
+        $this->ajax($this->validPayload())->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->first();
+
+        $this->assertTrue($provider->contact_by_email);
+        $this->assertTrue($provider->contact_by_whatsapp);
+    }
+
+    /** The client capped uploads at 2 MB, and the app is not the only caller. */
+    public function test_an_oversized_document_is_rejected(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $this->ajax($this->validPayload([
+            'documents' => [
+                \Illuminate\Http\UploadedFile::fake()->create('id.pdf', 3000), // 3 MB
+            ],
+            'document_labels' => ['Government ID'],
+        ]))->assertStatus(422);
+
+        $this->assertDatabaseMissing('service_providers', ['email' => 'aarav.mehta@example.test']);
+    }
+
+    public function test_a_document_of_the_wrong_type_is_rejected(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $this->ajax($this->validPayload([
+            'documents' => [
+                \Illuminate\Http\UploadedFile::fake()->create('payload.exe', 10),
+            ],
+            'document_labels' => ['Government ID'],
+        ]))->assertStatus(422);
+    }
+
     public function test_submitting_creates_the_account_and_signs_them_in(): void
     {
         $res = $this->ajax($this->validPayload());

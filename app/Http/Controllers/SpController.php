@@ -7,6 +7,7 @@ use App\Models\Currency;
 use App\Models\Region;
 use App\Models\RegenerativeProject;
 use App\Models\ServiceProvider;
+use App\Models\Setting;
 use App\Models\SystemList;
 
 class SpController extends Controller
@@ -76,28 +77,34 @@ class SpController extends Controller
         $vehicleTypes            = SystemList::ofType("vehicle_type")->get();
         $guideTypes              = SystemList::ofType("guide_preference")->get();
         $activityTypes           = SystemList::ofType("activity_type")->get();
+        // Competence options — only a regional partner is shown these.
+        $educationLevels    = SystemList::ofType("education_level")->get();
+        $englishLevels      = SystemList::ofType("english_level")->get();
+        $computerSkillLevels = SystemList::ofType("computer_skill_level")->get();
         return view("portal.sp.edit-profile", compact(
             "provider", "regions",
-            "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes"
+            "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes",
+            "educationLevels", "englishLevels", "computerSkillLevels"
         ));
     }
 
     /**
      * SP self-service experiences page.
      *
-     * Only HLH (hosts) and OSP (operators) author experiences — an HRP is a
-     * regional partner, not a host, so the page is refused for them. Everything
-     * submitted here goes to HCT for review before travellers see it.
+     * Only a provider acting as an HLH (host) authors experiences — an HRP is a
+     * regional partner and an OSP supplies services into an experience, neither
+     * hosts one, so the page is refused unless "hlh" is among their types.
+     * Everything submitted here goes to HCT for review before travellers see it.
      */
     public function experiences()
     {
         $user = auth()->user();
         $provider = ServiceProvider::where("user_id", $user->id)->firstOrFail();
 
-        if (!in_array($provider->provider_type, ["hlh", "osp"], true)) {
+        if (!$provider->isHost()) {
             return redirect()->route("sp.dashboard")->with(
                 "status",
-                "Experiences are managed by homestay/lodge hosts and other service providers."
+                "Experiences are managed by homestay/lodge hosts."
             );
         }
 
@@ -110,11 +117,21 @@ class SpController extends Controller
         // portal and the provider app never drift apart.
         $bestSeasons             = SystemList::ofType("best_season")->pluck("name");
         $dayInclusions           = SystemList::ofType("day_inclusion")->pluck("name");
+        // The three structural categories. Chosen first; each shows a different
+        // set of sections.
+        $experienceCategories    = SystemList::ofType("experience_category")->pluck("name");
+        $roomCategories          = SystemList::ofType("room_category")->pluck("name");
+        $mealPlans               = SystemList::ofType("meal_plan")->pluck("name");
+
+        // How many listings this host may hold. HCT edits it in the control
+        // panel (Settings → Providers); 0 means no limit.
+        $experienceCap = (int) Setting::getValue("max_experiences_per_provider", 10);
 
         return view("portal.sp.experiences", compact(
             "provider", "regions", "regenerativeProjects",
             "accommodationCategories", "serviceTypes", "currencies",
-            "bestSeasons", "dayInclusions"
+            "bestSeasons", "dayInclusions", "experienceCap",
+            "experienceCategories", "roomCategories", "mealPlans"
         ));
     }
 
@@ -122,11 +139,23 @@ class SpController extends Controller
      * SP self-service "Services, Rooms & Pricing" page — mirrors the admin
      * /providers/{id}/edit pricing card so SPs can manage their own room
      * inventory + rates without going through HCT.
+     *
+     * A rate card is what an OSP sells, so it is offered only to providers who
+     * signed up as one. A pure host gets experiences instead; a host that also
+     * ticked OSP (it runs a taxi as well as a homestay) gets both.
      */
     public function pricing()
     {
         $user = auth()->user();
         $provider = ServiceProvider::where("user_id", $user->id)->firstOrFail();
+
+        if (!$provider->suppliesServices()) {
+            return redirect()->route("sp.dashboard")->with(
+                "status",
+                "Rates and services are managed by providers offering services."
+            );
+        }
+
         $serviceTypes            = SystemList::ofType("service_type")->get();
         $accommodationCategories = SystemList::ofType("accommodation_category")->get();
         $vehicleTypes            = SystemList::ofType("vehicle_type")->get();

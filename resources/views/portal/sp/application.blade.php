@@ -19,7 +19,7 @@
                     <h5>Provider type</h5>
                     <div class="row g-3 mb-1">
                         @foreach([
-                            ['hrp','HRP','HECO Resource Person — Regional operations partner'],
+                            ['hrp','HRP','Heco Regional Partner — Coordinates a region'],
                             ['hlh','HLH','HECO Local Host — Experience provider'],
                             ['osp','OSP','Other Service Provider — Accommodation, transport, etc.'],
                         ] as [$val,$code,$desc])

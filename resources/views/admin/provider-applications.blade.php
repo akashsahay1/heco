@@ -214,7 +214,7 @@ $(document).on('click', '.view-app', function() {
 
     // ── Header: avatar + name + type & status pills ─────────────────────
     var typeLabels = {
-        hrp: 'HRP · HECO Resource Person',
+        hrp: 'HRP · Heco Regional Partner',
         hlh: 'HLH · HECO Local Host',
         osp: 'OSP · Other Service Provider',
     };
@@ -258,6 +258,32 @@ $(document).on('click', '.view-app', function() {
         docHtml = '<div style="color:#9a9a95;font-size:14px;">None uploaded</div>';
     }
 
+    // ── Competences: an HRP has no catalogue, so this is what the decision
+    //    to place them on a region actually rests on. ────────────────────
+    var roles = asList(app.work_experience);
+    var roleHtml = roles.map(function(r) {
+        var meta = [r.organisation, r.years].filter(Boolean).map(esc).join(' · ');
+        return '<div style="border-left:3px solid #e2e9e8;padding-left:8px;margin-bottom:6px;">'
+             + '<div style="color:#33332f;font-size:13.5px;font-weight:600;">' + esc(r.role || '—')
+             + (meta ? ' <span style="color:#9a9a95;font-weight:400;">· ' + meta + '</span>' : '') + '</div>'
+             + (r.description ? '<div style="color:#575753;font-size:12.5px;">' + esc(r.description) + '</div>' : '')
+             + '</div>';
+    }).join('');
+
+    var competenceGrid = grid(
+        field('Education', [app.education_level, app.education_notes].filter(Boolean).map(esc).join('<br>'))
+      + field('English', esc(app.english_level))
+      + field('Computer', esc(app.computer_skill_level))
+      + field('Causes', esc(app.causes_note))
+      + field('Community', esc(app.community_note))
+    );
+    var competenceHtml = (app.provider_type === 'hrp' || (asList(app.provider_types).indexOf('hrp') !== -1))
+        ? competenceGrid + (roleHtml
+            ? '<div style="margin-top:10px;"><div style="color:#9a9a95;font-size:11px;text-transform:uppercase;'
+              + 'letter-spacing:.05em;margin-bottom:4px;">Work experience</div>' + roleHtml + '</div>'
+            : '')
+        : '';
+
     var h = '<div style="text-align:left;">'
       + header
       + section('bi-person', 'Contact', grid(
@@ -283,6 +309,7 @@ $(document).on('click', '.view-app', function() {
           + capField('Guide', app.guide_types)
           + capField('Activity', app.activity_types)
         ))
+      + section('bi-mortarboard', 'Competences', competenceHtml)
       + section('bi-paperclip', 'Documents', docHtml)
       + '</div>';
 

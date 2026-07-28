@@ -11,11 +11,12 @@ use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 /**
- * Experiences are authored by the providers who run them (HLH and OSP) rather
- * than by HCT. These drive the real POST /ajax on the portal domain and cover
- * the three things that matter: who may author, that ownership is taken from
- * the session rather than the payload, and that one provider cannot reach
- * another's rows.
+ * Experiences are authored by the HLH hosts that run them — HCT keeps its own
+ * admin-side control, while an HRP (regional partner) and an OSP (service
+ * supplier) get no authoring at all. These drive the real POST /ajax on the
+ * portal domain and cover the three things that matter: who may author, that
+ * ownership is taken from the session rather than the payload, and that one
+ * host cannot reach another's rows.
  */
 class SpExperienceAuthoringTest extends TestCase
 {
@@ -24,8 +25,12 @@ class SpExperienceAuthoringTest extends TestCase
     protected string $portal;
     protected Region $region;
     protected ServiceProvider $hlh;
+    /** A second host, so ownership isolation is tested between two authors. */
+    protected ServiceProvider $hlh2;
     protected ServiceProvider $osp;
     protected ServiceProvider $hrp;
+    /** Signed up as both a host and a service supplier. */
+    protected ServiceProvider $hlhOsp;
 
     protected function setUp(): void
     {
@@ -39,24 +44,34 @@ class SpExperienceAuthoringTest extends TestCase
         ]);
 
         $this->hlh = $this->makeProvider('hlh', 'host@example.test');
+        $this->hlh2 = $this->makeProvider('hlh', 'host2@example.test');
         $this->osp = $this->makeProvider('osp', 'osp@example.test');
         $this->hrp = $this->makeProvider('hrp', 'hrp@example.test');
+        // A homestay that also runs a taxi — both catalogues at once.
+        $this->hlhOsp = $this->makeProvider(['hlh', 'osp'], 'both@example.test');
     }
 
-    private function makeProvider(string $type, string $email, string $status = 'approved'): ServiceProvider
+    /**
+     * @param string|string[] $type One or more types; the first is the primary.
+     */
+    private function makeProvider($type, string $email, string $status = 'approved'): ServiceProvider
     {
+        $types = (array) $type;
+        $primary = $types[0];
+
         $user = User::create([
-            'full_name' => strtoupper($type) . ' User',
+            'full_name' => strtoupper($primary) . ' User',
             'email' => $email,
             'password' => 'password',
-            'user_role' => $type,
+            'user_role' => $primary,
             'status' => 'active',
         ]);
 
         return ServiceProvider::create([
             'user_id' => $user->id,
-            'provider_type' => $type,
-            'name' => strtoupper($type) . ' Provider',
+            'provider_type' => $primary,
+            'provider_types' => $types,
+            'name' => strtoupper($primary) . ' Provider',
             'email' => $email,
             'phone_1' => '9000000000',
             'region_id' => $this->region->id,
@@ -95,16 +110,16 @@ class SpExperienceAuthoringTest extends TestCase
         $this->assertSame($this->hlh->id, (int) $experience->hlh_id);
     }
 
-    public function test_osp_can_create_an_experience_it_owns(): void
+    /**
+     * An OSP supplies services into an experience (taxi, guide, rental) but does
+     * not host one, so authoring is refused the same way it is for an HRP.
+     */
+    public function test_osp_cannot_author_experiences(): void
     {
         $this->actingAs($this->osp->user);
 
-        $this->ajax($this->validPayload(['name' => 'Rafting Descent']))->assertOk();
-
-        $experience = Experience::firstWhere('name', 'Rafting Descent');
-        $this->assertNotNull($experience);
-        $this->assertSame($this->osp->id, (int) $experience->owner_provider_id);
-        $this->assertSame('osp', $experience->owner_type);
+        $this->ajax($this->validPayload(['name' => 'Rafting Descent']))->assertStatus(403);
+        $this->assertDatabaseMissing('experiences', ['name' => 'Rafting Descent']);
     }
 
     public function test_hrp_cannot_author_experiences(): void
@@ -123,7 +138,7 @@ class SpExperienceAuthoringTest extends TestCase
     /** Ownership comes from the session, never from the posted payload. */
     public function test_owner_cannot_be_spoofed_via_payload(): void
     {
-        $this->actingAs($this->osp->user);
+        $this->actingAs($this->hlh2->user);
 
         $this->ajax($this->validPayload([
             'name' => 'Spoof Attempt',
@@ -132,8 +147,8 @@ class SpExperienceAuthoringTest extends TestCase
         ]))->assertOk();
 
         $experience = Experience::firstWhere('name', 'Spoof Attempt');
-        $this->assertSame($this->osp->id, (int) $experience->owner_provider_id);
-        $this->assertSame('osp', $experience->owner_type);
+        $this->assertSame($this->hlh2->id, (int) $experience->owner_provider_id);
+        $this->assertSame('hlh', $experience->owner_type);
     }
 
     public function test_provider_cannot_edit_another_providers_experience(): void
@@ -142,7 +157,7 @@ class SpExperienceAuthoringTest extends TestCase
         $this->ajax($this->validPayload())->assertOk();
         $experience = Experience::firstWhere('name', 'Riverside Forest Walk');
 
-        $this->actingAs($this->osp->user);
+        $this->actingAs($this->hlh2->user);
         $this->ajax($this->validPayload([
             'id' => $experience->id,
             'name' => 'Hijacked',
@@ -156,13 +171,13 @@ class SpExperienceAuthoringTest extends TestCase
         $this->actingAs($this->hlh->user);
         $this->ajax($this->validPayload())->assertOk();
 
-        $this->actingAs($this->osp->user);
-        $this->ajax($this->validPayload(['name' => 'OSP Only']))->assertOk();
+        $this->actingAs($this->hlh2->user);
+        $this->ajax($this->validPayload(['name' => 'Second Host Only']))->assertOk();
 
         $response = $this->ajax(['get_sp_experiences' => 1])->assertOk();
         $names = collect($response->json('experiences'))->pluck('name')->all();
 
-        $this->assertContains('OSP Only', $names);
+        $this->assertContains('Second Host Only', $names);
         $this->assertNotContains('Riverside Forest Walk', $names);
     }
 
@@ -172,8 +187,8 @@ class SpExperienceAuthoringTest extends TestCase
         $this->ajax($this->validPayload())->assertOk();
         $experience = Experience::firstWhere('name', 'Riverside Forest Walk');
 
-        // Another provider cannot flip it.
-        $this->actingAs($this->osp->user);
+        // Another host cannot flip it.
+        $this->actingAs($this->hlh2->user);
         $this->ajax(['toggle_sp_experience' => 1, 'id' => $experience->id])->assertStatus(403);
         $this->ajax(['delete_sp_experience' => 1, 'id' => $experience->id])->assertStatus(403);
 
@@ -537,48 +552,124 @@ class SpExperienceAuthoringTest extends TestCase
             ->assertSee('Day-wise Itinerary');
     }
 
-    public function test_the_sp_experiences_page_renders_for_an_operator(): void
+    /**
+     * Neither an HRP (regional partner) nor an OSP (service supplier) hosts an
+     * experience, so the page is refused for both.
+     */
+    public function test_the_sp_experiences_page_is_refused_for_non_hosts(): void
     {
-        $this->actingAs($this->osp->user)
-            ->get("http://{$this->portal}/sp/experiences")
-            ->assertOk()
-            ->assertSee('Add Experience');
-    }
-
-    /** An HRP is a regional partner, not a host — no experiences page for them. */
-    public function test_the_sp_experiences_page_is_refused_for_an_hrp(): void
-    {
-        $this->actingAs($this->hrp->user)
-            ->get("http://{$this->portal}/sp/experiences")
-            ->assertRedirect(route('sp.dashboard'));
-    }
-
-    /** The page is reached from the dashboard, so the link has to be there. */
-    public function test_the_dashboard_links_to_experiences_for_hosts_and_operators(): void
-    {
-        foreach ([$this->hlh, $this->osp] as $provider) {
+        foreach ([$this->hrp, $this->osp] as $provider) {
             $this->actingAs($provider->user)
-                ->get("http://{$this->portal}/sp/dashboard")
-                ->assertOk()
-                ->assertSee('My Experiences')
-                ->assertSee('/sp/experiences');
+                ->get("http://{$this->portal}/sp/experiences")
+                ->assertRedirect(route('sp.dashboard'));
         }
     }
 
-    public function test_the_dashboard_hides_experiences_from_an_hrp(): void
+    /** The page is reached from the dashboard, so the link has to be there. */
+    public function test_the_dashboard_links_to_experiences_for_a_host(): void
     {
-        $this->actingAs($this->hrp->user)
+        $this->actingAs($this->hlh->user)
             ->get("http://{$this->portal}/sp/dashboard")
             ->assertOk()
-            ->assertDontSee('My Experiences');
+            ->assertSee('My Experiences')
+            ->assertSee('/sp/experiences');
     }
 
+    public function test_the_dashboard_hides_experiences_from_non_hosts(): void
+    {
+        foreach ([$this->hrp, $this->osp] as $provider) {
+            $this->actingAs($provider->user)
+                ->get("http://{$this->portal}/sp/dashboard")
+                ->assertOk()
+                ->assertDontSee('My Experiences');
+        }
+    }
+
+    /**
+     * Only a provider who is both sees both catalogues, so the cross-link is
+     * exercised through one — a pure host has no rate card to link from.
+     */
     public function test_the_pricing_page_links_across_to_experiences(): void
     {
-        $this->actingAs($this->osp->user)
+        $this->actingAs($this->hlhOsp->user)
             ->get("http://{$this->portal}/sp/pricing")
             ->assertOk()
             ->assertSee('/sp/experiences');
+    }
+
+    /**
+     * A rate card is what an OSP sells. A pure host has none, so the page is
+     * refused and the dashboard card is hidden.
+     */
+    public function test_the_pricing_page_is_refused_for_a_pure_host(): void
+    {
+        $this->actingAs($this->hlh->user)
+            ->get("http://{$this->portal}/sp/pricing")
+            ->assertRedirect(route('sp.dashboard'));
+
+        $this->actingAs($this->hlh->user)
+            ->get("http://{$this->portal}/sp/dashboard")
+            ->assertOk()
+            ->assertDontSee('Services, Rooms &amp; Pricing', false);
+    }
+
+    /**
+     * The client's screen 5 allows several answers: an HLH that also runs a
+     * taxi ticks OSP too and must get BOTH catalogues, not one or the other.
+     */
+    public function test_a_host_that_also_supplies_services_gets_both_catalogues(): void
+    {
+        $this->actingAs($this->hlhOsp->user)
+            ->get("http://{$this->portal}/sp/dashboard")
+            ->assertOk()
+            ->assertSee('My Experiences')
+            ->assertSee('Services, Rooms &amp; Pricing', false);
+
+        $this->actingAs($this->hlhOsp->user)
+            ->get("http://{$this->portal}/sp/experiences")
+            ->assertOk();
+    }
+
+    /**
+     * A provider who is both must be shown as both. The dashboard used to read
+     * the single primary type, so a host that also supplied services appeared
+     * to be only a host.
+     */
+    public function test_the_dashboard_names_every_role_a_provider_holds(): void
+    {
+        $this->actingAs($this->hlhOsp->user)
+            ->get("http://{$this->portal}/sp/dashboard")
+            ->assertOk()
+            ->assertSee('Heco Local Host (HLH)')
+            ->assertSee('Other Service Provider (OSP)');
+
+        // A pure host is not mislabelled as a supplier.
+        $this->actingAs($this->hlh->user)
+            ->get("http://{$this->portal}/sp/dashboard")
+            ->assertOk()
+            ->assertSee('Heco Local Host (HLH)')
+            ->assertDontSee('Other Service Provider (OSP)');
+    }
+
+    /** Authoring follows the type set, not the single primary type. */
+    public function test_a_provider_whose_primary_type_is_not_hlh_can_still_author(): void
+    {
+        $ospThenHost = $this->makeProvider(['osp', 'hlh'], 'osp-host@example.test');
+        $this->actingAs($ospThenHost->user);
+
+        $this->ajax($this->validPayload(['name' => 'Taxi Owner Homestay Walk']))->assertOk();
+
+        $experience = Experience::firstWhere('name', 'Taxi Owner Homestay Walk');
+        $this->assertSame($ospThenHost->id, (int) $experience->owner_provider_id);
+    }
+
+    /** An old row predating provider_types still resolves from its enum. */
+    public function test_a_provider_with_no_type_set_falls_back_to_its_primary_type(): void
+    {
+        $this->hlh->forceFill(['provider_types' => null])->save();
+
+        $this->actingAs($this->hlh->user);
+        $this->ajax($this->validPayload())->assertOk();
     }
 
     /**

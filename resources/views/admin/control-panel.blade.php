@@ -274,7 +274,11 @@ jQuery(function() {
             if (!rows.length) { jQuery('#cpSettingsBody').html('<tr><td colspan="2" class="text-center text-muted small">No settings in this group.</td></tr>'); return; }
             var html = '';
             rows.forEach(function(s) {
-                html += '<tr><td class="small text-muted">' + escapeHtml(s.key) + '</td>';
+                // Read the setting, not the column name — the raw key stays
+                // underneath so it is still greppable against the code.
+                var label = s.key.replace(/_/g, ' ').replace(/^./, function(c) { return c.toUpperCase(); });
+                html += '<tr><td><div class="small">' + escapeHtml(label) + '</div>'
+                     +  '<div class="text-muted" style="font-size:11px;">' + escapeHtml(s.key) + '</div></td>';
                 html += '<td><input type="text" class="form-control form-control-sm cp-setting-input" data-key="' + escapeHtml(s.key) + '" value="' + escapeHtml(s.value) + '"></td></tr>';
             });
             jQuery('#cpSettingsBody').html(html);

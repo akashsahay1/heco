@@ -89,7 +89,7 @@
                     <div class="col-md-4">
                         <label class="form-label">Provider type *</label>
                         <select class="form-select custom-select" id="ap_type">
-                            <option value="hrp">HRP — HECO Resource Person</option>
+                            <option value="hrp">HRP — Heco Regional Partner</option>
                             <option value="hlh">HLH — HECO Local Host</option>
                             <option value="osp" selected>OSP — Other Service Provider</option>
                         </select>

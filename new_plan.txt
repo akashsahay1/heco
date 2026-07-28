@@ -162,7 +162,7 @@ isServiceProvider()). Teeno same SP infra share karte; code mein
 SIRF HRP ka 1 special branch hai (getSpAssignedTrips 4817), HLH aur
 OSP code-level pe IDENTICAL treat hote (sirf semantic + schema farq).
 
-  HRP = Himalayan Regenerative Partner — region-based partner,
+  HRP = Heco Regional Partner — region-based partner,
         region_id linked, default 10% margin.
   HLH = Homestay Local Host — experiences host (Experience.hlh_id),
         accommodation/homestay.
