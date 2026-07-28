@@ -215,9 +215,17 @@ $(document).on('click', '.view-app', function() {
     // ── Header: avatar + name + type & status pills ─────────────────────
     var typeLabels = {
         hrp: 'HRP · Heco Regional Partner',
-        hlh: 'HLH · HECO Local Host',
+        hlh: 'HLH · Heco Local Host',
         osp: 'OSP · Other Service Provider',
     };
+    // An applicant can hold more than one role — "an HLH can also select OSP".
+    // Showing only the first would hide half of what they applied to do.
+    var heldTypes = asList(app.provider_types);
+    if (!heldTypes.length && app.provider_type) heldTypes = [app.provider_type];
+    var typePills = heldTypes.map(function(t) {
+        return '<span style="background:#eef4f3;color:#4b6b6a;border-radius:20px;padding:2px 10px;'
+             + 'font-size:12px;font-weight:600;">' + esc(typeLabels[t] || String(t).toUpperCase()) + '</span>';
+    }).join('');
     var name = app.name || 'Application';
     var initials = name.trim().split(/\s+/).slice(0, 2).map(function(w) { return w.charAt(0); }).join('').toUpperCase();
     var statusColors = { pending: ['#fff6e5', '#a6791f'], approved: ['#e9f4ee', '#2e7d4f'], rejected: ['#fbeceb', '#b53b34'] };
@@ -230,8 +238,7 @@ $(document).on('click', '.view-app', function() {
       + '<div style="min-width:0;">'
       +   '<div style="font-size:18px;font-weight:700;color:#333330;line-height:1.2;">' + esc(name) + '</div>'
       +   '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;">'
-      +     '<span style="background:#eef4f3;color:#4b6b6a;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600;">'
-      +        esc(typeLabels[app.provider_type] || (app.provider_type || '').toUpperCase()) + '</span>'
+      +     typePills
       +     (app.status ? '<span style="background:' + sc[0] + ';color:' + sc[1] + ';border-radius:20px;padding:2px 10px;'
       +        'font-size:12px;font-weight:600;text-transform:capitalize;">' + esc(app.status) + '</span>' : '')
       +     (submitted ? '<span style="color:#9a9a95;font-size:12px;">Submitted ' + esc(submitted) + '</span>' : '')
@@ -284,6 +291,31 @@ $(document).on('click', '.view-app', function() {
             : '')
         : '';
 
+    // Whether there is a business at all. "No" is an answer worth showing —
+    // most members will not have one, and an empty Business card alone does
+    // not say whether they were asked.
+    var businessAnswer = app.has_business === null || app.has_business === undefined
+        ? ''
+        : (Number(app.has_business) ? 'Yes' : 'No, not yet');
+
+    // Which travellers they can host.
+    var spokenLanguages = [];
+    if (Number(app.speaks_english)) spokenLanguages.push('English');
+    if (Number(app.speaks_hindi)) spokenLanguages.push('Hindi');
+    var languageHtml = grid(
+        field('Speaks', spokenLanguages.length ? esc(spokenLanguages.join(' · ')) : '')
+      + field('Other', esc(app.other_languages))
+    );
+
+    // How we are allowed to reach them. A declined channel matters more than an
+    // accepted one, so both are stated rather than only what they agreed to.
+    var contactHtml = (app.contact_by_email === undefined && app.contact_by_whatsapp === undefined)
+        ? ''
+        : grid(
+            field('Email', Number(app.contact_by_email) ? 'Yes' : 'No — do not email')
+          + field('WhatsApp / SMS', Number(app.contact_by_whatsapp) ? 'Yes' : 'No — do not message')
+        );
+
     var h = '<div style="text-align:left;">'
       + header
       + section('bi-person', 'Contact', grid(
@@ -292,24 +324,31 @@ $(document).on('click', '.view-app', function() {
           + field('Phone', [app.phone_1, app.phone_2].filter(Boolean).map(esc).join(' · '))
         ))
       + section('bi-briefcase', 'Business', grid(
-            field('Business type', esc(app.business_type))
+            field('Has a business', esc(businessAnswer))
+          + field('Business type', esc(app.business_type))
           + field('Reg. number', esc(app.registration_number))
           + field('Year est.', esc(app.year_established))
         ))
+      + section('bi-translate', 'Languages', languageHtml)
       + section('bi-geo-alt', 'Location', grid(
             field('Region', app.region ? esc(app.region.name) : '')
           + field('Address', addressLines.join('<br>'))
         ))
       + (app.notes ? section('bi-card-text', 'About',
             '<div style="color:#33332f;font-size:14px;line-height:1.5;">' + esc(app.notes) + '</div>') : '')
-      + section('bi-stars', 'Services &amp; capabilities', grid(
-            capField('Services', app.services_offered)
+      + section('bi-stars', 'What they offer', grid(
+            // The categories chosen per role held — this is the application.
+            capField('Experiences', app.experience_categories)
+          + capField('Services', app.service_categories)
+          + field('Also offers', esc(app.other_services))
+          + capField('Listed', app.services_offered)
           + capField('Accommodation', app.accommodation_categories)
           + capField('Vehicle types', app.vehicle_types)
           + capField('Guide', app.guide_types)
           + capField('Activity', app.activity_types)
         ))
       + section('bi-mortarboard', 'Competences', competenceHtml)
+      + section('bi-chat-dots', 'How we may contact them', contactHtml)
       + section('bi-paperclip', 'Documents', docHtml)
       + '</div>';
 

@@ -133,6 +133,32 @@ class MobileSignupFieldsTest extends TestCase
     }
 
     /**
+     * The client's brief is explicit that most members will not have a
+     * business — "You don't need to own a business." The trading name is only
+     * asked for behind the "yes" answer, so someone who says no never supplies
+     * one, and the application used to be refused for a field they were never
+     * shown. Nobody without a business could join at all.
+     */
+    public function test_someone_without_a_business_can_still_apply(): void
+    {
+        $sp = $this->apply([
+            'email' => 'individual@example.test',
+            'has_business' => false,
+            'name' => '',
+            'business_type' => '',
+            'registration_number' => '',
+            'year_established' => '',
+        ]);
+
+        $this->assertSame(
+            'Aarav Mehta',
+            $sp->name,
+            'their own name is the name we know them by'
+        );
+        $this->assertFalse((bool) $sp->has_business);
+    }
+
+    /**
      * The portal's own web form posts straight to /ajax, so it never had this
      * problem — which is exactly why the app's path needs its own cover.
      */

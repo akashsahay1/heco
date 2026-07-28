@@ -7934,6 +7934,15 @@ class AjaxController extends Controller
 
     protected function submitSpApplication(Request $request): JsonResponse
     {
+        // A trading name is only asked for when there is a business, and the
+        // client's brief is explicit that most members will not have one:
+        // "You don't need to own a business." For them their own name is the
+        // name we know them by, so it stands in rather than the application
+        // being refused for a field they were never shown.
+        if (!$request->filled('name') && $request->filled('contact_person')) {
+            $request->merge(['name' => $request->input('contact_person')]);
+        }
+
         $validator = Validator::make($request->all(), [
             "provider_type" => "required|in:hrp,hlh,osp",
             "name" => "required|string|max:255",
