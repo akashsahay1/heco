@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'HECO Admin')</title>
+    <link rel="icon" href="{{ url('favicon.ico') }}" sizes="any">
+    <link rel="apple-touch-icon" href="{{ url('images/logo/apple-touch-icon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -33,7 +35,9 @@
     <!-- Sidebar -->
     <aside class="hct-sidebar" id="hctSidebar">
         <div class="hct-sidebar-brand">
-            <i class="bi bi-mountain"></i> HECO Admin
+            {{-- The sidebar is dark, so it takes the white wordmark. --}}
+            <img src="{{ url('images/logo/heco-logo-light.png') }}" alt="HECO" class="hct-brand-logo">
+            <span>Admin</span>
         </div>
         <nav class="hct-sidebar-nav">
             <div class="hct-nav-section">OVERVIEW</div>
@@ -98,20 +102,17 @@
                     <span class="badge bg-danger ms-auto">{{ $pendingPricingCount }}</span>
                 @endif
             </a>
-            @php $pendingExperienceCount = \App\Models\Experience::pending()->count(); @endphp
-            <a href="{{ url('/pending-experiences') }}" class="hct-nav-link {{ request()->routeIs('hct.pending-experiences') ? 'active' : '' }}">
-                <i class="bi bi-layers"></i> Pending Experiences
-                @if($pendingExperienceCount > 0)
-                    <span class="badge bg-danger ms-auto">{{ $pendingExperienceCount }}</span>
-                @endif
-            </a>
 
             <div class="hct-nav-section">CONTENT</div>
             <a href="{{ url('/regions') }}" class="hct-nav-link {{ request()->routeIs('hct.regions*') ? 'active' : '' }}">
                 <i class="bi bi-globe-americas"></i> Regions
             </a>
+            @php $pendingExperienceCount = \App\Models\Experience::pending()->count(); @endphp
             <a href="{{ url('/experiences') }}" class="hct-nav-link {{ request()->routeIs('hct.experiences*') ? 'active' : '' }}">
                 <i class="bi bi-compass"></i> Experiences
+                @if($pendingExperienceCount > 0)
+                    <span class="badge bg-danger ms-auto">{{ $pendingExperienceCount }}</span>
+                @endif
             </a>
             <a href="{{ url('/regenerative-projects') }}" class="hct-nav-link {{ request()->routeIs('hct.rp*') ? 'active' : '' }}">
                 <i class="bi bi-tree"></i> Regenerative Projects

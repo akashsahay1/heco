@@ -101,6 +101,12 @@
     color: var(--admin-primary-light);
 }
 
+/* Sized by height so the wordmark keeps its proportions whatever the file is. */
+.hct-brand-logo {
+    height: 26px;
+    width: auto;
+}
+
 /* Sidebar Navigation */
 .hct-sidebar-nav {
     padding: 16px 0;

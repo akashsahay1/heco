@@ -62,7 +62,7 @@ class TrekPricingModelTest extends TestCase
         // Experience with per-person slabs: 1p = 15000, 2p = 12000.
         $exp = Experience::create([
             'region_id' => $region->id, 'name' => 'GHNP Trek', 'slug' => 'ghnp', 'type' => 'nature',
-            'short_description' => 'x', 'duration_type' => 'days', 'is_active' => true,
+            'short_description' => 'x', 'duration_type' => 'single_day', 'is_active' => true,
             'base_cost_per_person' => 15000,
         ]);
         ExperiencePriceSlab::create(['experience_id' => $exp->id, 'min_persons' => 1, 'price_per_person' => 15000]);
@@ -124,7 +124,7 @@ class TrekPricingModelTest extends TestCase
         ]);
         $exp = Experience::create([
             'region_id' => $region->id, 'name' => 'Trek', 'slug' => 'trek2', 'type' => 'nature',
-            'short_description' => 'x', 'duration_type' => 'days', 'is_active' => true,
+            'short_description' => 'x', 'duration_type' => 'single_day', 'is_active' => true,
             'base_cost_per_person' => 15000,
         ]);
         foreach ([[1, 15000], [2, 12000], [4, 10000]] as [$n, $p]) {

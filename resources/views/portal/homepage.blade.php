@@ -868,8 +868,9 @@ jQuery(function() {
                 popupHtml += '<div class="map-popup-desc">' + desc + '</div>';
             }
             popupHtml += '<div class="map-popup-footer">';
-            if (exp.base_cost_per_person > 0) {
-                popupHtml += '<span class="map-popup-price">' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + '/person</span>';
+            var popupPrice = expPriceFrom(exp);
+            if (popupPrice) {
+                popupHtml += '<span class="map-popup-price">' + popupPrice.text + '/' + popupPrice.unit.replace('per ', '') + '</span>';
             }
             popupHtml += '</div>';
             popupHtml += '</div></div>';
@@ -1217,8 +1218,9 @@ jQuery(function() {
         h += '<p class="exp-card-duration"><i class="bi bi-clock"></i> ' + durationText + '</p>';
         // Price + stars + heart row
         h += '<div class="exp-card-bottom">';
-        if (exp.base_cost_per_person > 0) {
-            h += '<span class="exp-card-price">From ' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + '</span>';
+        var cardPrice = expPriceFrom(exp);
+        if (cardPrice) {
+            h += '<span class="exp-card-price">From ' + cardPrice.text + '</span>';
         }
         var avg = parseFloat(exp.reviews_avg_rating) || 0;
         var rounded = Math.round(avg);
@@ -1621,8 +1623,9 @@ jQuery(function() {
                 if (thumb) html += '<img src="' + thumb + '" alt="" class="exp-thumb">';
                 html += '<div class="exp-info">';
                 html += '<span class="exp-name">' + name + '</span>';
-                if (exp && exp.base_cost_per_person > 0) {
-                    html += '<span class="exp-price">' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + ' <span class="exp-price-unit">/ person</span></span>';
+                var itinPrice = expPriceFrom(exp);
+                if (itinPrice) {
+                    html += '<span class="exp-price">' + itinPrice.text + ' <span class="exp-price-unit">/ ' + itinPrice.unit.replace('per ', '') + '</span></span>';
                 }
                 html += '<span class="exp-id">exp id: #' + item.experience_id + '</span>';
                 html += '</div>';
@@ -1787,7 +1790,8 @@ jQuery(function() {
                     html += '<div></div>';
                     html += '<div class="tl-insert-line"></div>';
                     var firstExpId = firstExp ? firstExp.id : '';
-                    var firstExpPrice = firstExp && firstExp.base_cost_per_person ? fmtCurrency(firstExp.base_cost_per_person) + '/person' : '';
+                    var firstFrom = expPriceFrom(firstExp);
+                    var firstExpPrice = firstFrom ? firstFrom.text + '/' + firstFrom.unit.replace('per ', '') : '';
                     html += '<div class="timeline-exp-group-title">';
                     html += '<span>' + firstExpName + (firstExpId ? ' <span class="timeline-exp-group-id">#' + firstExpId + '</span>' : '') + '</span>';
                     if (firstExpPrice) html += '<span class="timeline-exp-group-price">' + firstExpPrice + '</span>';

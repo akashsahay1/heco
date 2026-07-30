@@ -452,4 +452,64 @@ class SpApplicationFlowTest extends TestCase
             ->assertSee('Welcome to HECO')
             ->assertSee('Go to dashboard');
     }
+
+    /**
+     * Screen 10 collects the profile picture among the documents, and the
+     * member who uploaded their own face expects to see it — not their
+     * initials — the first time they open their profile.
+     */
+    public function test_the_profile_photo_document_also_becomes_the_avatar(): void
+    {
+        Storage::fake('public');
+
+        $this->ajax($this->validPayload([
+            'documents' => [
+                UploadedFile::fake()->create('id.pdf', 12),
+                UploadedFile::fake()->image('me.jpg', 800, 800),
+            ],
+            'document_labels' => ['Government ID', 'Profile photo'],
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->firstOrFail();
+
+        // The avatar goes through ImageUploadService, which writes under
+        // public/uploads and returns a web-relative path — not the documents disk.
+        $this->assertNotEmpty($provider->photo, 'the uploaded profile photo never became the avatar');
+        $this->assertFileExists(public_path(ltrim($provider->photo, '/')));
+        // It remains a document too — HCT still verifies what was submitted.
+        $this->assertCount(2, $provider->documents);
+
+        @unlink(public_path(ltrim($provider->photo, '/')));
+    }
+
+    /** Without that slot filled there is simply no avatar — not a broken path. */
+    public function test_an_applicant_who_uploads_no_photo_has_no_avatar(): void
+    {
+        Storage::fake('public');
+
+        $this->ajax($this->validPayload([
+            'documents' => [UploadedFile::fake()->create('id.pdf', 12)],
+            'document_labels' => ['Government ID'],
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->firstOrFail();
+        $this->assertNull($provider->photo);
+    }
+
+    /** HCT can rename the slot; the pairing is a setting, not a literal. */
+    public function test_the_avatar_slot_is_configurable(): void
+    {
+        Storage::fake('public');
+        \App\Models\Setting::setValue('signup_avatar_document', 'Passport photo');
+
+        $this->ajax($this->validPayload([
+            'documents' => [UploadedFile::fake()->image('me.jpg', 800, 800)],
+            'document_labels' => ['Passport photo'],
+        ]))->assertOk();
+
+        $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->firstOrFail();
+        $this->assertNotEmpty($provider->photo);
+
+        @unlink(public_path(ltrim($provider->photo, '/')));
+    }
 }

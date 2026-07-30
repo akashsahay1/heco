@@ -8,6 +8,10 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h4 class="mb-1"><i class="bi bi-building"></i> Service Provider Dashboard</h4>
+            @if($provider->photo)
+                <img src="{{ $provider->photo }}" alt=""
+                     class="rounded-circle border me-1" style="width:28px;height:28px;object-fit:cover;">
+            @endif
             <span class="text-muted">{{ $provider->name }}</span>
             {{-- One badge per role — a host that also supplies services is both,
                  and showing only the primary type would hide half of what they do. --}}
@@ -414,8 +418,8 @@
                                             @elseif($experience->duration_days)
                                                 <span class="ms-2"><i class="bi bi-clock"></i> {{ $experience->duration_days }}d{{ $experience->duration_nights ? '/' . $experience->duration_nights . 'n' : '' }}</span>
                                             @endif
-                                            @if($experience->base_cost_per_person)
-                                                <span class="ms-2 text-success">&#8377;{{ number_format($experience->base_cost_per_person, 2) }}/pp</span>
+                                            @if($experience->price_from)
+                                                <span class="ms-2 text-success">&#8377;{{ number_format($experience->price_from['amount'], 2) }}/{{ $experience->price_from['unit'] === 'per night' ? 'night' : 'pp' }}</span>
                                             @endif
                                         </div>
                                         @if($experience->short_description)

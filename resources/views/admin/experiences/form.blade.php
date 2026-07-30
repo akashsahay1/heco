@@ -605,10 +605,29 @@
                                 <label class="form-check-label" for="ospsInvolved"><i class="bi bi-people"></i> OSPs Involved</label>
                             </div>
                         </div>
+                        {{-- Was a textarea asking for a hand-written JSON array.
+                             Nobody running this dashboard should have to know
+                             JSON, and one stray comma silently emptied the
+                             field. Same options the app offers, from the same
+                             system list. --}}
                         <div class="col-md-12">
                             <label class="form-label">OSP Services</label>
-                            <textarea class="form-control" name="osp_services" rows="3">{{ $e && $e->osp_services ? json_encode($e->osp_services, JSON_PRETTY_PRINT) : '' }}</textarea>
-                            <small class="text-muted">JSON array of OSP service details</small>
+                            @php
+                                $selectedOspServices = $e && is_array($e->osp_services) ? $e->osp_services : [];
+                            @endphp
+                            <div class="d-flex flex-wrap gap-3">
+                                @foreach($serviceTypes as $serviceType)
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="osp_services[]"
+                                               value="{{ $serviceType }}"
+                                               id="ospService{{ $loop->index }}"
+                                               {{ in_array($serviceType, $selectedOspServices, true) ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="ospService{{ $loop->index }}">{{ $serviceType }}</label>
+                                    </div>
+                                @endforeach
+                            </div>
+                            <small class="text-muted">Which kinds of provider this experience needs.</small>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Traveller Bring List</label>

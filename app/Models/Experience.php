@@ -6,6 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 
 class Experience extends Model
 {
+    /**
+     * The one category sold by the room rather than by the head — a remote
+     * homestay, a heritage house, a boutique property. Its price lives in
+     * experience_room_rates (occupancy × meal plan), not in
+     * base_cost_per_person, so it needs its own answer to "from how much?".
+     */
+    public const CATEGORY_STAY = 'Experiential accommodation';
+
     protected $fillable = [
         'hlh_id', 'owner_provider_id', 'owner_type',
         'region_id', 'regenerative_project_id', 'name', 'slug', 'type', 'category',
@@ -62,6 +70,59 @@ class Experience extends Model
         ];
     }
 
+    /** Sold by the room, not by the head. */
+    public function isStay(): bool
+    {
+        return $this->category === self::CATEGORY_STAY;
+    }
+
+    /**
+     * Carry the cheapest room rate on a list query so price_from can answer
+     * without fetching rates one card at a time.
+     *
+     * A rate of 0 means "on request", not free, so it is not a candidate for
+     * the "from" price. This scope and the accessor's fallback have to agree on
+     * that, which is why the rule lives here rather than at each call site.
+     */
+    public function scopeWithRoomRateFrom($query)
+    {
+        return $query->withMin(
+            ['roomRates as room_rates_min_price' => fn ($q) => $q->where('price', '>', 0)],
+            'price',
+        );
+    }
+
+    /**
+     * The headline price for a card: amount plus the unit it is charged in.
+     *
+     * A stay quotes the cheapest room it offers, per night. Everything else
+     * quotes per person — base_cost_per_person already holds the cheapest slab
+     * (saveExperience keeps them in lockstep), so no relation is needed.
+     *
+     * Returns null when there is no price to show, which is what the views
+     * already treat as "say nothing" rather than printing a zero.
+     */
+    public function getPriceFromAttribute(): ?array
+    {
+        if (!$this->isStay()) {
+            $amount = (float) $this->base_cost_per_person;
+            return $amount > 0
+                ? ['amount' => $amount, 'unit' => 'per person', 'currency' => $this->price_currency ?: 'INR']
+                : null;
+        }
+
+        // Prefer the aggregate a list query added with withRoomRateFrom(), so a
+        // page of stays does not fire one query per card.
+        $cheapest = $this->room_rates_min_price
+            ?? ($this->relationLoaded('roomRates')
+                ? $this->roomRates->where('price', '>', 0)->min('price')
+                : $this->roomRates()->where('price', '>', 0)->min('price'));
+
+        return $cheapest > 0
+            ? ['amount' => (float) $cheapest, 'unit' => 'per night', 'currency' => $this->price_currency ?: 'INR']
+            : null;
+    }
+
     public function hlh()
     {
         return $this->belongsTo(ServiceProvider::class, 'hlh_id');
@@ -114,7 +175,12 @@ class Experience extends Model
      * Surfaced to the portal and the app so a live experience can be shown as
      * "changes under review" without shipping the whole parked payload.
      */
-    protected $appends = ['has_pending_changes'];
+    /**
+     * price_from travels with every listing so the eight places that render a
+     * headline price do not each re-derive it — and so a stay does not fall
+     * through to base_cost_per_person, which is 0 for it.
+     */
+    protected $appends = ['has_pending_changes', 'price_from'];
 
     public function getHasPendingChangesAttribute(): bool
     {

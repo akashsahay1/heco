@@ -707,12 +707,22 @@ class SpExperienceAuthoringTest extends TestCase
         $this->assertSame([], $missing, 'Missing from the provider form: ' . implode(', ', $missing));
     }
 
-    public function test_the_admin_review_page_renders(): void
+    /**
+     * Review no longer has its own page — it happens in the Experiences list,
+     * filtered. The old URL still has to land somewhere useful.
+     */
+    public function test_the_admin_reviews_experiences_in_the_experiences_list(): void
     {
-        $this->actingAs($this->hctAdmin())
+        $admin = $this->hctAdmin();
+
+        $this->actingAs($admin)
             ->get('http://' . config('app.admin_domain') . '/pending-experiences')
+            ->assertRedirect(route('hct.experiences', ['status' => 'pending']));
+
+        $this->actingAs($admin)
+            ->get('http://' . config('app.admin_domain') . '/experiences')
             ->assertOk()
-            ->assertSee('Pending Experience Approvals');
+            ->assertSee('Pending review');
     }
 
     public function test_pending_provider_cannot_author(): void

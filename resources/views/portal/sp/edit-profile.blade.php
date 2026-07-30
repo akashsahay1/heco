@@ -28,6 +28,30 @@
                 <div class="card">
                     <div class="card-body">
                         <h6 class="border-bottom pb-2"><i class="bi bi-person-vcard"></i> Identity & Contact</h6>
+
+                        {{-- The picture members see beside their name, here and
+                             in the app. For a homestay it is the house; for a
+                             regional partner, themselves. --}}
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <img id="spPhotoPreview"
+                                 src="{{ $provider->photo ?: '/images/placeholder.png' }}"
+                                 alt="Profile picture"
+                                 class="rounded-circle border"
+                                 style="width:72px;height:72px;object-fit:cover;">
+                            <div>
+                                <label for="spPhotoInput" class="btn btn-sm btn-outline-secondary mb-1">
+                                    <i class="bi bi-camera"></i> Choose a photo
+                                </label>
+                                <input type="file" name="photo" id="spPhotoInput" accept="image/*" class="d-none">
+                                <button type="button" id="spPhotoRemove"
+                                        class="btn btn-sm btn-link text-danger mb-1 {{ $provider->photo ? '' : 'd-none' }}">
+                                    Remove
+                                </button>
+                                <input type="hidden" name="remove_photo" id="spPhotoRemoveFlag" value="0">
+                                <div class="text-muted small">JPG, PNG or WebP.</div>
+                            </div>
+                        </div>
+
                         <div class="mb-2">
                             <label class="form-label small text-muted">Provider Name</label>
                             <input type="text" name="name" class="form-control form-control-sm" value="{{ $provider->name }}" required>
@@ -289,6 +313,22 @@ jQuery(document).on('click', '.work-exp-remove', function() {
     }
 });
 
+// Show the chosen picture before saving, so nobody uploads the wrong one.
+jQuery('#spPhotoInput').on('change', function() {
+    var file = this.files[0];
+    if (!file) return;
+    jQuery('#spPhotoPreview').attr('src', URL.createObjectURL(file));
+    jQuery('#spPhotoRemove').removeClass('d-none');
+    jQuery('#spPhotoRemoveFlag').val('0');
+});
+
+jQuery('#spPhotoRemove').on('click', function() {
+    jQuery('#spPhotoInput').val('');
+    jQuery('#spPhotoPreview').attr('src', '/images/placeholder.png');
+    jQuery('#spPhotoRemoveFlag').val('1');
+    jQuery(this).addClass('d-none');
+});
+
 jQuery('#spProfileForm').on('submit', function(e) {
     e.preventDefault();
     var btn = jQuery('#spSaveBtn');
@@ -322,6 +362,28 @@ jQuery('#spProfileForm').on('submit', function(e) {
         if (filled) roles.push(row);
     });
     if (jQuery('#workExpRows').length) data.work_experience = roles;
+
+    // A chosen photo turns the whole payload into FormData — arrays keep their
+    // bracket notation so PHP still reads them as arrays.
+    var photoFile = jQuery('#spPhotoInput')[0] && jQuery('#spPhotoInput')[0].files[0];
+    if (photoFile) {
+        var form = new FormData();
+        jQuery.each(data, function(key, value) {
+            if (jQuery.isArray(value)) {
+                jQuery.each(value, function(i, item) {
+                    if (jQuery.isPlainObject(item)) {
+                        jQuery.each(item, function(k, v) { form.append(key + '[' + i + '][' + k + ']', v); });
+                    } else {
+                        form.append(key + '[]', item);
+                    }
+                });
+            } else if (value !== null && value !== undefined) {
+                form.append(key, value);
+            }
+        });
+        form.append('photo', photoFile);
+        data = form;
+    }
 
     ajaxPost(data, function() {
         showAlert('Profile updated successfully.', 'success');

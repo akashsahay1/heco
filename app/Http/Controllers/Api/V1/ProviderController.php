@@ -39,6 +39,18 @@ class ProviderController extends Controller
     }
 
     /**
+     * `update_sp_photo` — the profile picture on its own.
+     *
+     * Separate from updateProfile because that is a PUT, and PHP does not parse
+     * a multipart body on PUT — and because changing a picture should not mean
+     * re-posting the whole profile.
+     */
+    public function updatePhoto(Request $request): JsonResponse
+    {
+        return $this->ajax('update_sp_photo', $this->only($request, ['remove_photo']), $request);
+    }
+
+    /**
      * `update_sp_profile` — identity, contact, bank and the capability sets.
      *
      * Returns the saved record rather than a bare `{success:true}` so the app
@@ -52,7 +64,10 @@ class ProviderController extends Controller
             'bank_name', 'bank_ifsc', 'bank_account_name', 'bank_account_number', 'upi',
             'services_offered', 'accommodation_categories', 'vehicle_types',
             'guide_types', 'activity_types',
-        ]));
+            // The picture itself travels in the file bag, not here; this is the
+            // flag that clears one.
+            'remove_photo',
+        ]), $request);
 
         if ($result->getStatusCode() !== 200) {
             return $result;
@@ -94,6 +109,16 @@ class ProviderController extends Controller
             'vehicle_make_model', 'vehicle_registration_no', 'vehicle_year',
             'vehicle_photos_keep', 'driver_included', 'fuel_tolls_extra',
             'min_group', 'max_group', 'specialties', 'is_active',
+            // The fields the client's service forms ask for. Anything not
+            // listed here is dropped in silence, so a rate saved from the app
+            // came back with every one of these empty.
+            'ac_available', 'ac_extra_cost', 'vehicle_count',
+            'price_per_km_plains', 'price_per_km_hills',
+            'speaks_english', 'languages', 'wage_multi_day',
+            'is_certified', 'has_first_aid',
+            'rental_item', 'security_deposit',
+            'latitude', 'longitude', 'guest_capacity', 'seasonality_notes',
+            'photos_keep',
         ]), $request); // forward uploaded `vehicle_photos[]` files
     }
 

@@ -91,9 +91,10 @@ jQuery(function() {
             html += '</div>';
             html += '<div class="wishlist-price-row">';
             html += '<div class="wishlist-price-left">';
-            if (exp.base_cost_per_person > 0) {
-                html += '<span class="exp-price-amount">' + fmtCurrency(exp.base_cost_per_person, exp.price_currency || 'INR') + '</span>';
-                html += '<span class="exp-price-label">/ person</span>';
+            var wishPrice = expPriceFrom(exp);
+            if (wishPrice) {
+                html += '<span class="exp-price-amount">' + wishPrice.text + '</span>';
+                html += '<span class="exp-price-label">/ ' + wishPrice.unit.replace('per ', '') + '</span>';
             }
             html += '</div>';
             html += '<div class="wishlist-price-actions">';

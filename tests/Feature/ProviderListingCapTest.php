@@ -190,44 +190,30 @@ class ProviderListingCapTest extends TestCase
         $this->ajax($this->experiencePayload(['name' => 'Still Blocked']))->assertStatus(422);
     }
 
-    public function test_the_service_cap_is_separate_from_the_experience_cap(): void
+    public function test_the_experience_cap_does_not_touch_the_rate_card(): void
     {
         $this->seedExperiences(10);
         $this->actingAs($this->provider->user);
 
-        // Ten experiences must not consume the rate card's allowance.
+        // Ten experiences is the ceiling for experiences and nothing else.
         $this->ajax($this->servicePayload())->assertOk();
         $this->assertSame(1, SpPricing::where('service_provider_id', $this->provider->id)->count());
     }
 
-    public function test_the_eleventh_service_is_refused(): void
+    /**
+     * Rates are not capped at all. The limit exists so HCT is not handed an
+     * unbounded catalogue of experiences to review; a supplier's rate card is a
+     * different thing, and a taxi operator with several vehicles priced for
+     * both plains and hills passes ten without doing anything unusual.
+     */
+    public function test_a_rate_card_is_not_capped(): void
     {
         $this->seedServices(10);
         $this->actingAs($this->provider->user);
 
-        $this->ajax($this->servicePayload(['specialties' => 'Should not save']))
-            ->assertStatus(422);
+        $this->ajax($this->servicePayload(['specialties' => 'The eleventh rate']))->assertOk();
 
-        $this->assertSame(10, SpPricing::where('service_provider_id', $this->provider->id)->count());
-    }
-
-    /**
-     * A parked edit is a shadow row, not a listing. Counting it would block a
-     * provider for the crime of editing what it already offers.
-     */
-    public function test_parked_edits_do_not_count_towards_the_service_cap(): void
-    {
-        $this->seedServices(8);
-        $live = SpPricing::where('service_provider_id', $this->provider->id)->first();
-        $this->seedServices(2, ['pending_for_id' => $live->id]);
-
-        $this->actingAs($this->provider->user);
-        $this->ajax($this->servicePayload())->assertOk();
-
-        $this->assertSame(
-            9,
-            SpPricing::where('service_provider_id', $this->provider->id)->whereNull('pending_for_id')->count(),
-        );
+        $this->assertSame(11, SpPricing::where('service_provider_id', $this->provider->id)->count());
     }
 
     /** The cap protects HCT, so it must not be applied to HCT. */

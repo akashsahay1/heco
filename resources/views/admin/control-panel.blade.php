@@ -191,7 +191,15 @@
             <div class="col-md-4"><label class="form-label small">Model</label><input type="text" class="form-control form-control-sm" name="model"></div>
             <div class="col-md-3"><label class="form-label small">Temperature</label><input type="number" step="0.01" min="0" max="2" class="form-control form-control-sm" name="temperature"></div>
             <div class="col-md-3"><label class="form-label small">Max tokens</label><input type="number" min="1" class="form-control form-control-sm" name="max_tokens"></div>
-            <div class="col-md-2"><label class="form-label small">Format</label><input type="text" class="form-control form-control-sm" name="response_format"></div>
+            {{-- Two values, and a typo here silently changes what the model is
+                 asked to return — itinerary generation only parses JSON. --}}
+            <div class="col-md-2">
+                <label class="form-label small">Format</label>
+                <select class="form-select form-select-sm" name="response_format">
+                    <option value="text">Text</option>
+                    <option value="json">JSON</option>
+                </select>
+            </div>
         </div>
         <div class="mb-2"><label class="form-label small">Notes</label><textarea class="form-control form-control-sm" name="notes" rows="2"></textarea></div>
         <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" name="is_active" value="1" checked id="cpPromptActive"><label class="form-check-label small" for="cpPromptActive">Active</label></div>

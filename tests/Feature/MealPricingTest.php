@@ -26,8 +26,12 @@ class MealPricingTest extends TestCase
             'password' => 'password', 'user_role' => 'hlh', 'status' => 'active',
         ]);
         $region = Region::create(['name' => 'Valley', 'slug' => 'valley', 'is_active' => true]);
+        // A rate card belongs to a supplier, so this homestay supplies too —
+        // meals sold by the plate are a service, not the all-in experience an
+        // HLH publishes.
         $provider = ServiceProvider::create([
-            'provider_type' => 'hlh', 'name' => 'Homestay', 'email' => 'host@meal.test',
+            'provider_type' => 'hlh', 'provider_types' => ['hlh', 'osp'],
+            'name' => 'Homestay', 'email' => 'host@meal.test',
             'phone_1' => '9990001111', 'region_id' => $region->id, 'status' => 'approved',
             'user_id' => $spUser->id,
         ]);

@@ -13,7 +13,7 @@ class ServiceProvider extends Model
         'year_established', 'name', 'contact_person', 'email',
         'phone_1', 'phone_2', 'speaks_english', 'speaks_hindi', 'other_languages',
         'contact_by_email', 'contact_by_whatsapp',
-        'region_id', 'address', 'city', 'postal_code',
+        'region_id', 'address', 'photo', 'city', 'postal_code',
         'country', 'bank_name',
         'bank_ifsc', 'bank_account_name', 'bank_account_number', 'upi',
         'services_offered', 'accommodation_categories', 'vehicle_types',
@@ -95,6 +95,27 @@ class ServiceProvider extends Model
     public function hasType(string $type): bool
     {
         return in_array($type, $this->types(), true);
+    }
+
+    /**
+     * Providers holding a given role, primary or not — the query-side twin of
+     * hasType(). An HLH that also runs a taxi must appear under OSP as well,
+     * and must not vanish from the host list just because OSP happens to be
+     * its primary type. Rows saved before provider_types existed fall back to
+     * provider_type, exactly as types() does.
+     */
+    public function scopeOfType($query, string $type)
+    {
+        return $query->where(function ($q) use ($type) {
+            $q->whereJsonContains('provider_types', $type)
+                ->orWhere(function ($legacy) use ($type) {
+                    $legacy->where('provider_type', $type)
+                        ->where(function ($empty) {
+                            $empty->whereNull('provider_types')
+                                ->orWhereJsonLength('provider_types', 0);
+                        });
+                });
+        });
     }
 
     /** Hosts author experiences; HCT reviews them. */

@@ -173,6 +173,36 @@ function formatLastUpdated(p) {
     return '<span class="text-muted small">-</span>';
 }
 
+// Badge classes in a fixed order, so a provider holding several roles always
+// reads the same way round.
+var TYPE_BADGE_CLASS = {
+    hlh: 'badge bg-success',
+    osp: 'badge bg-warning text-dark',
+    hrp: 'badge bg-info'
+};
+
+// A provider can be more than one thing at once — an HLH that also runs a taxi
+// is an HLH and an OSP. provider_type only names the primary role, so reading
+// it alone showed that provider as a plain HLH. Rows saved before
+// provider_types existed still only have the primary one; fall back to it.
+function renderTypes(p) {
+    var held = (Array.isArray(p.provider_types) && p.provider_types.length)
+        ? p.provider_types
+        : (p.provider_type ? [p.provider_type] : []);
+    if (!held.length) return '<span class="badge bg-secondary">-</span>';
+
+    var known = Object.keys(TYPE_BADGE_CLASS).filter(function(t) {
+        return held.indexOf(t) !== -1;
+    });
+    var unknown = held.filter(function(t) { return !TYPE_BADGE_CLASS[t]; });
+
+    return known.map(function(t) {
+        return '<span class="' + TYPE_BADGE_CLASS[t] + '">' + t.toUpperCase() + '</span>';
+    }).concat(unknown.map(function(t) {
+        return '<span class="badge bg-secondary">' + String(t).toUpperCase() + '</span>';
+    })).join(' ');
+}
+
 function loadProviders(page) {
     ajaxPost({
         get_providers: 1,
@@ -188,11 +218,7 @@ function loadProviders(page) {
             html = '<tr><td colspan="8" class="text-center text-muted">No providers found</td></tr>';
         }
         items.forEach(function(p) {
-            var typeBadge = '';
-            if (p.provider_type === 'hrp') typeBadge = '<span class="badge bg-info">HRP</span>';
-            else if (p.provider_type === 'hlh') typeBadge = '<span class="badge bg-success">HLH</span>';
-            else if (p.provider_type === 'osp') typeBadge = '<span class="badge bg-warning text-dark">OSP</span>';
-            else typeBadge = '<span class="badge bg-secondary">' + (p.provider_type || '-') + '</span>';
+            var typeBadge = renderTypes(p);
 
             var statusBadge = '';
             if (p.status === 'approved') statusBadge = '<span class="badge bg-success">Approved</span>';

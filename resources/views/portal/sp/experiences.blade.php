@@ -819,7 +819,12 @@ function spLoadExperiences() {
             tr += '<td class="small">' + spEsc(row.type || '-') + '</td>';
             tr += '<td class="small">' + spEsc(row.region ? row.region.name : '-') + '</td>';
             tr += '<td class="small">' + spDurationLabel(row) + '</td>';
-            tr += '<td class="small">' + (row.base_cost_per_person || 0) + '</td>';
+            // A stay is priced by the room, so it has no per-person figure —
+            // reading base_cost_per_person alone printed 0 for every homestay.
+            var rowPrice = row.price_from;
+            tr += '<td class="small">' + (rowPrice && rowPrice.amount > 0
+                ? Number(rowPrice.amount).toLocaleString() + ' <span class="text-muted">/' + (rowPrice.unit === 'per night' ? 'night' : 'pp') + '</span>'
+                : '-') + '</td>';
             tr += '<td>' + spStatusBadge(row) + '</td>';
             tr += '<td class="text-nowrap">';
             tr += '<button type="button" class="btn btn-sm btn-outline-secondary sp-exp-edit" data-id="' + row.id + '" title="Edit"><i class="bi bi-pencil"></i></button> ';

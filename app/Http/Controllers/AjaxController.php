@@ -628,6 +628,7 @@ class AjaxController extends Controller
         'sp_save_ical_url' => 'sp',
         'sp_sync_ical_now' => 'sp',
         'update_sp_profile' => 'sp',
+        'update_sp_photo' => 'sp',
         'get_sp_assigned_trips' => 'sp',
         // A regional partner overseeing the providers in their region.
         'get_hrp_region_providers' => 'sp',
@@ -1380,6 +1381,9 @@ class AjaxController extends Controller
             if ($request->has('sp_sync_ical_now')) {
                 return $this->spSyncIcalNow($request);
             }
+            if ($request->has('update_sp_photo')) {
+                return $this->updateSpPhoto($request);
+            }
             if ($request->has('update_sp_profile')) {
                 return $this->updateSpProfile($request);
             }
@@ -1798,7 +1802,10 @@ class AjaxController extends Controller
 
     protected function getExperiencesForDiscover(Request $request): JsonResponse
     {
-        $query = Experience::where("is_active", true)->with(["region", "hlh", "days"]);
+        $query = Experience::where("is_active", true)->with(["region", "hlh", "days"])
+            // A stay quotes the cheapest room it offers; without this
+            // aggregate every stay card would fetch its own rates.
+            ->withRoomRateFrom();
 
         if ($request->filled("continent")) {
             $query->whereHas("region", function ($q) use ($request) {
@@ -2082,7 +2089,7 @@ class AjaxController extends Controller
         //      the trip's regions → send a lightweight catalog for THAT region.
         //   C) Nothing in scope → send an empty catalog AND a region list so
         //      the AI asks the traveller which region first instead of inventing.
-        $expCols = ['id', 'name', 'type', 'region_id', 'duration_type', 'duration_days', 'difficulty_level', 'base_cost_per_person', 'available_months'];
+        $expCols = ['id', 'name', 'type', 'region_id', 'category', 'duration_type', 'duration_days', 'difficulty_level', 'base_cost_per_person', 'price_currency', 'available_months'];
         $expMap = fn($e) => [
             'id' => $e->id,
             'name' => $e->name,
@@ -2091,7 +2098,8 @@ class AjaxController extends Controller
             'region_id' => $e->region_id,
             'duration' => $e->duration_type === 'multi_day' ? ($e->duration_days ?? 1) . 'd' : '1d',
             'difficulty' => $e->difficulty_level,
-            'price' => $e->base_cost_per_person,
+            'price' => $e->price_from['amount'] ?? 0,
+            'price_unit' => $e->price_from['unit'] ?? 'per person',
             'months' => $e->available_months,
         ];
 
@@ -2101,7 +2109,8 @@ class AjaxController extends Controller
         if (!empty($selectedExpIds)) {
             // (A) Send the selected experiences as-is.
             $experiencesJson = Experience::whereIn('id', $selectedExpIds)
-                ->select($expCols)->with('region:id,name,continent,country')
+                ->select($expCols)->withRoomRateFrom()
+                ->with('region:id,name,continent,country')
                 ->get()->map($expMap)->toJson();
             $activeRegionId = (int) Experience::whereIn('id', $selectedExpIds)->value('region_id') ?: null;
         } else {
@@ -2121,7 +2130,8 @@ class AjaxController extends Controller
                 // (B) Region is in scope — send only that region's active experiences.
                 $experiencesJson = Experience::where('region_id', $activeRegionId)
                     ->where('is_active', true)
-                    ->select($expCols)->with('region:id,name,continent,country')
+                    ->select($expCols)->withRoomRateFrom()
+                ->with('region:id,name,continent,country')
                     ->get()->map($expMap)->toJson();
             } else {
                 // (C) No region in scope — empty experiences list, and a region list
@@ -4465,6 +4475,17 @@ class AjaxController extends Controller
         if ($user && $user->isServiceProvider()) {
             $sp = ServiceProvider::where('user_id', $user->id)->where('status', 'approved')->first();
             if (!$sp) return response()->json(['error' => 'Unauthorized'], 403);
+
+            // A rate card is a supplier's. SpController already turns a host or
+            // a regional partner away from the page, but the app talks to this
+            // endpoint directly — so a regional partner, who sells nothing at
+            // all, could still keep one.
+            if (!$sp->suppliesServices()) {
+                return response()->json([
+                    'error' => 'Rates and services are managed by providers offering services.',
+                ], 403);
+            }
+
             // SP can only act on its own pricing; ignore any provider_id they send.
             return $sp->id;
         }
@@ -4497,21 +4518,11 @@ class AjaxController extends Controller
             }
         }
 
-        // Cap only what a provider adds for itself — HCT is never limited.
-        // Shadow rows (a parked edit, pending_for_id set) are not listings, so
-        // counting them would block a provider merely for editing what it has.
-        $user = Auth::user();
-        if (!$request->filled('id') && $user && !$user->isHct()) {
-            $capErr = $this->listingCapError(
-                'max_services_per_provider',
-                SpPricing::where('service_provider_id', $providerId)
-                    ->whereNull('pending_for_id')
-                    ->where('approval_status', '!=', 'rejected')
-                    ->count(),
-                'services',
-            );
-            if ($capErr) return $capErr;
-        }
+        // Rates are deliberately NOT capped. The ten-listing limit belongs to
+        // experiences alone: a host offering more than ten experiences is a
+        // catalogue HCT wants to look at, whereas a supplier legitimately
+        // carries a long rate card — a taxi operator with several vehicles and
+        // both plains and hill rates passes ten without doing anything unusual.
 
         // Per-service-type validation. The dynamic modal in the UI only shows
         // the relevant fields for each service_type, but server-side we still
@@ -5523,8 +5534,10 @@ class AjaxController extends Controller
         } elseif (empty($status)) {
             $query->where("status", "!=", "removed");
         }
+        // Any role the provider holds, not just the primary one — an HLH that
+        // also runs a taxi has to appear under OSP too.
         if ($request->filled("provider_type")) {
-            $query->where("provider_type", $request->provider_type);
+            $query->ofType($request->provider_type);
         }
         if ($request->filled("region_id")) {
             $query->where("region_id", $request->region_id);
@@ -5737,6 +5750,62 @@ class AjaxController extends Controller
         }
     }
 
+    /**
+     * Take a profile picture off the request, if it sent one.
+     *
+     * Shared by the portal's profile form, which posts everything at once, and
+     * the app's photo-only endpoint. Says nothing about the photo when the
+     * request says nothing — a save of other fields must not wipe it.
+     *
+     * Returns an error response, or null when there is nothing wrong.
+     */
+    protected function applyProviderPhoto(Request $request, array &$data): ?JsonResponse
+    {
+        if ($request->hasFile('photo')) {
+            $stored = \App\Services\ImageUploadService::storeUploadedImage(
+                $request->file('photo'), 'providers', 600
+            );
+            if (!$stored) {
+                return response()->json(['error' => 'Failed to upload the photo. Use JPG, PNG, or WebP.'], 422);
+            }
+            $data['photo'] = $stored;
+        } elseif ($request->boolean('remove_photo')) {
+            $data['photo'] = null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Change just the profile picture.
+     *
+     * Its own action because the app's profile endpoint is a PUT, and PHP does
+     * not parse a multipart body on PUT — and because changing a picture should
+     * not mean re-posting the whole profile.
+     */
+    protected function updateSpPhoto(Request $request): JsonResponse
+    {
+        [$provider, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
+
+        $data = [];
+        if ($errResponse = $this->applyProviderPhoto($request, $data)) {
+            return $errResponse;
+        }
+        if (!array_key_exists('photo', $data)) {
+            return response()->json(['error' => 'No photo was sent.'], 422);
+        }
+
+        $data['last_updated_by'] = Auth::id();
+        $data['last_updated_by_role'] = 'provider';
+        $provider->update($data);
+
+        return response()->json([
+            'success' => true,
+            'provider' => \App\Http\Resources\ProviderAccountResource::make($provider->fresh()),
+        ]);
+    }
+
     protected function updateSpProfile(Request $request): JsonResponse
     {
         [$provider, $err] = $this->resolveApprovedSp();
@@ -5804,10 +5873,18 @@ class AjaxController extends Controller
             ));
             $data['work_experience'] = $roles;
         }
+        if ($err = $this->applyProviderPhoto($request, $data)) {
+            return $err;
+        }
+
         $data['last_updated_by'] = $user->id;
         $data['last_updated_by_role'] = 'provider';
         $provider->update($data);
-        return response()->json(["success" => true]);
+
+        return response()->json([
+            'success' => true,
+            'photo'   => $provider->fresh()->photo,
+        ]);
     }
 
     /**
@@ -6411,9 +6488,22 @@ class AjaxController extends Controller
         if ($request->filled("difficulty")) {
             $query->where("difficulty_level", $request->difficulty);
         }
-        // Status: "1" => active, "0" => inactive, blank => no filter.
-        if ($request->filled("status") && in_array((string) $request->status, ["0", "1"], true)) {
-            $query->where("is_active", (bool) $request->status);
+        // One Status filter covering both axes, so HCT does not need a separate
+        // page to find what is waiting on them:
+        //   "1" / "0"                    → live or switched off
+        //   draft|pending|approved|...   → where it stands in review
+        //
+        // They stay separate columns because they answer different questions —
+        // an approved listing switched off for the season is not "pending".
+        if ($request->filled("status")) {
+            $status = (string) $request->status;
+            if (in_array($status, ["0", "1"], true)) {
+                $query->where("is_active", (bool) $status);
+            } elseif (in_array($status, ["draft", "pending", "approved", "rejected"], true)) {
+                $status === "pending"
+                    ? $query->pending()      // includes a live listing with a parked edit
+                    : $query->where("approval_status", $status);
+            }
         }
 
         $experiences = $query->orderBy("sort_order")->paginate(config('pagination.admin_per_page', 20));
@@ -6432,18 +6522,30 @@ class AjaxController extends Controller
 
     protected function saveExperience(Request $request): JsonResponse
     {
+        // A draft is a half-finished listing kept for later — the client's
+        // reason being that "many users won't have all the information or
+        // photos ready in one session". Demanding a full field set in order to
+        // store one defeats the point, so a draft insists only on the name:
+        // without it the provider cannot find their own draft again. Nothing is
+        // published or reviewed off a draft, and submitting for review still
+        // validates in full.
+        $isDraft = $request->input('approval_status') === 'draft';
+        $unlessDraft = fn (string $rules) => $isDraft
+            ? str_replace('required', 'nullable', $rules)
+            : $rules;
+
         $validator = Validator::make($request->all(), [
             "id"                => "nullable|integer|exists:experiences,id",
             "name"              => "required|string|max:255",
-            "region_id"         => "required|integer|exists:regions,id",
+            "region_id"         => $unlessDraft("required|integer|exists:regions,id"),
             "hlh_id"            => "required|integer|exists:service_providers,id",
-            "type"              => "required|string|max:100",
+            "type"              => $unlessDraft("required|string|max:100"),
             // Which of the three structural categories this is — it decides
             // which fields the form even shows. Nullable so rows created before
             // categories existed can still be saved by HCT.
             "category"          => "nullable|string|max:120",
-            "short_description" => "required|string|max:500",
-            "duration_type"     => "required|in:less_than_day,single_day,multi_day",
+            "short_description" => $unlessDraft("required|string|max:500"),
+            "duration_type"     => $unlessDraft("required|in:less_than_day,single_day,multi_day"),
             // Capacity of an experiential stay — the client's "no of rooms, no
             // guests". Distinct from group_size_max, which is the largest party
             // this experience will take rather than what the place sleeps.
@@ -6577,7 +6679,11 @@ class AjaxController extends Controller
                     'short_description' => $dayData['short_description'] ?? null,
                     'start_time' => $dayData['start_time'] ?? null,
                     'end_time' => $dayData['end_time'] ?? null,
-                    'inclusions' => $dayData['inclusions'] ?? [],
+                    // Always a list. The column is cast to array and every
+                    // reader — the admin table, the detail page, the app —
+                    // iterates it, so a string stored here takes those screens
+                    // down rather than showing one odd row.
+                    'inclusions' => $this->normaliseInclusions($dayData['inclusions'] ?? []),
                     'sort_order' => $idx,
                 ]);
             }
@@ -6786,6 +6892,58 @@ class AjaxController extends Controller
             ->get();
 
         return response()->json(['success' => true, 'experiences' => $experiences]);
+    }
+
+    /**
+     * Operational periods as a clean list of {start, end} rows.
+     *
+     * Accepts the rows the form posts, and still accepts a JSON string so a
+     * project saved before the date-row editor existed keeps its data.
+     */
+    protected function normalisePeriods(mixed $value): array
+    {
+        if (is_string($value)) {
+            $value = json_decode($value, true);
+        }
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $periods = [];
+        foreach ($value as $row) {
+            $start = is_array($row) ? trim((string) ($row['start'] ?? '')) : '';
+            $end   = is_array($row) ? trim((string) ($row['end'] ?? '')) : '';
+            if ($start === '' && $end === '') {
+                continue;
+            }
+            $periods[] = ['start' => $start ?: null, 'end' => $end ?: null];
+        }
+
+        return $periods;
+    }
+
+    /**
+     * A day's inclusions as a clean list of non-empty strings.
+     *
+     * The column is cast to array and every reader iterates it, so anything
+     * else stored here breaks a whole screen rather than one row. Comma-
+     * separated text is accepted because that is what a plain form field or an
+     * import naturally sends.
+     */
+    protected function normaliseInclusions(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : explode(',', $value);
+        }
+        if (!is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            fn ($item) => is_scalar($item) ? trim((string) $item) : '',
+            $value,
+        ), fn ($item) => $item !== ''));
     }
 
     protected function saveSpExperience(Request $request): JsonResponse
@@ -7147,10 +7305,17 @@ class AjaxController extends Controller
             unset($data["main_image"]);
         }
 
-        foreach (["active_periods", "paused_periods", "fallback_for_regions"] as $jsonField) {
-            if (isset($data[$jsonField]) && is_string($data[$jsonField])) {
-                $data[$jsonField] = json_decode($data[$jsonField], true);
+        if (isset($data["fallback_for_regions"]) && is_string($data["fallback_for_regions"])) {
+            $data["fallback_for_regions"] = json_decode($data["fallback_for_regions"], true);
+        }
+
+        // The form posts these as rows of two dates. A repeater always leaves
+        // an empty row behind, and a row with neither date says nothing.
+        foreach (["active_periods", "paused_periods"] as $periodField) {
+            if (!array_key_exists($periodField, $data)) {
+                continue;
             }
+            $data[$periodField] = $this->normalisePeriods($data[$periodField]);
         }
 
         $editId = $request->input("project_id", $request->input("id"));
@@ -7603,7 +7768,8 @@ class AjaxController extends Controller
 
     protected function searchExperiencesForTrip(Request $request): JsonResponse
     {
-        $query = Experience::where("is_active", true)->with(["region", "hlh"]);
+        $query = Experience::where("is_active", true)->with(["region", "hlh"])
+            ->withRoomRateFrom();
 
         if ($request->filled("search")) {
             $search = $request->search;
@@ -8101,6 +8267,7 @@ class AjaxController extends Controller
                 "community_note" => $request->community_note,
             ] : []),
             "documents" => $documents ?: null,
+            "photo" => $this->applicationAvatar($request),
             "notes" => $request->input('description', $request->input('notes')),
             "status" => "pending",
         ]);
@@ -8189,6 +8356,41 @@ class AjaxController extends Controller
             ];
         }
         return $documents;
+    }
+
+    /**
+     * The picture an applicant attached to the "Profile photo" slot is also
+     * their avatar.
+     *
+     * Screen 10 asks for it among the verification documents, so it arrives as
+     * one of `documents[]` — but a member who has just uploaded their own face
+     * expects to see it on their profile, not their initials. Stored through
+     * the same service the profile screen uses, so it is resized and served
+     * identically however it was supplied.
+     *
+     * Which slot is the avatar is data, not code: the labels come from the
+     * `document_type` list, which HCT can rename, so the pairing lives in a
+     * setting rather than in this method.
+     */
+    protected function applicationAvatar(Request $request): ?string
+    {
+        $wanted = (string) Setting::getValue('signup_avatar_document', 'Profile photo');
+        if ($wanted === '') {
+            return null;
+        }
+
+        $labels = (array) $request->input('document_labels', []);
+        foreach ((array) $request->file('documents', []) as $i => $file) {
+            if (!$file || !$file->isValid() || ($labels[$i] ?? null) !== $wanted) {
+                continue;
+            }
+            // A PDF is a valid document but not a usable avatar; the service
+            // returns null for anything it cannot render, and the document
+            // itself is still stored either way.
+            return \App\Services\ImageUploadService::storeUploadedImage($file, 'providers', 600) ?: null;
+        }
+
+        return null;
     }
 
     /**

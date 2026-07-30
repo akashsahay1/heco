@@ -280,11 +280,14 @@ class HctController extends Controller
         return view("admin.pending-pricing", compact('pendingCount'));
     }
 
-    /** Experiences submitted by HLH providers awaiting review. */
+    /**
+     * Was a separate review queue. Experiences are now reviewed in the one
+     * Experiences list, filtered — so this keeps existing links working rather
+     * than 404ing anyone who bookmarked it.
+     */
     public function pendingExperiences()
     {
-        $pendingCount = \App\Models\Experience::pending()->count();
-        return view("admin.pending-experiences", compact('pendingCount'));
+        return redirect()->route('hct.experiences', ['status' => 'pending']);
     }
 
     public function regions()
@@ -305,18 +308,22 @@ class HctController extends Controller
     public function createExperience()
     {
         $regions = Region::where("is_active", true)->orderBy("name")->get();
-        $hlhs = ServiceProvider::where("provider_type", "hlh")->where("status", "approved")->get();
+        // ofType, not provider_type: a host that also supplies services would
+        // otherwise be missing from the host list.
+        $hlhs = ServiceProvider::ofType("hlh")->where("status", "approved")->orderBy("name")->get();
         $rps = RegenerativeProject::where("is_active", true)->get();
-        return view("admin.experiences.form", compact("regions", "hlhs", "rps"));
+        $serviceTypes = SystemList::ofType("service_type")->orderBy("sort_order")->pluck("name");
+        return view("admin.experiences.form", compact("regions", "hlhs", "rps", "serviceTypes"));
     }
 
     public function editExperience(int $id)
     {
         $experience = Experience::with('days')->findOrFail($id);
         $regions = Region::where("is_active", true)->orderBy("name")->get();
-        $hlhs = ServiceProvider::where("provider_type", "hlh")->where("status", "approved")->get();
+        $hlhs = ServiceProvider::ofType("hlh")->where("status", "approved")->orderBy("name")->get();
         $rps = RegenerativeProject::where("is_active", true)->get();
-        return view("admin.experiences.form", compact("experience", "regions", "hlhs", "rps"));
+        $serviceTypes = SystemList::ofType("service_type")->orderBy("sort_order")->pluck("name");
+        return view("admin.experiences.form", compact("experience", "regions", "hlhs", "rps", "serviceTypes"));
     }
 
     public function regenerativeProjects()

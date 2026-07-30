@@ -32,7 +32,7 @@ class DayProviderReplaceTest extends TestCase
         // Experience bundles accommodation 1000 + activities 1000.
         $exp = Experience::create([
             'region_id' => $region->id, 'name' => 'Trek', 'slug' => 'trek', 'type' => 'nature',
-            'short_description' => 'x', 'duration_type' => 'days', 'is_active' => true,
+            'short_description' => 'x', 'duration_type' => 'single_day', 'is_active' => true,
             'base_cost_per_person' => 2000, 'cost_accommodation' => 1000, 'cost_activities' => 1000,
         ]);
         // adults=1 -> peopleFactor=1, no comfort prefs -> multipliers=1.0.

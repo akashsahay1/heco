@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\ServiceProvider;
+use App\Models\Setting;
 
 /**
  * The `service_providers` row as the mobile app expects it.
@@ -21,7 +22,12 @@ class ProviderAccountResource
 
         return [
             'id' => $provider->id,
+            // provider_type names only the primary role. A provider can hold
+            // several at once — an HLH that also runs a taxi is an HLH and an
+            // OSP — and the app decides which tabs to show from this, so it
+            // needs the whole set or it hides half of what they signed up for.
             'provider_type' => $provider->provider_type,
+            'provider_types' => $provider->types(),
             'status' => $provider->status,
             'name' => $provider->name,
             'contact_person' => $provider->contact_person,
@@ -31,6 +37,19 @@ class ProviderAccountResource
             'region_id' => $provider->region_id,
             'region_name' => $provider->region?->name,
             'address' => $provider->address,
+            // How many experiences this member may file. The server already
+            // refuses the eleventh; the app shows how much room is left, and
+            // must read the number from here rather than repeat it, because
+            // HCT can change it in settings at any time.
+            //
+            // Only experiences are capped — a supplier's rate card is not, so
+            // there is deliberately no second number here to report.
+            'limits' => [
+                'experiences' => self::cap('max_experiences_per_provider'),
+            ],
+            // The app has always been able to render this — it just never had
+            // one to render, so every member saw their initials.
+            'avatar_url' => $provider->photo ?: null,
             'services_offered' => self::list($provider->services_offered),
             'accommodation_categories' => self::list($provider->accommodation_categories),
             'vehicle_types' => self::list($provider->vehicle_types),
@@ -48,6 +67,18 @@ class ProviderAccountResource
             'approved_at' => $provider->approved_at,
             'created_at' => $provider->created_at,
         ];
+    }
+
+    /**
+     * A listing cap as a number. Mirrors AjaxController::listingCap — the
+     * setting is free text, so a blank or nonsense value falls back to the
+     * same default the server enforces rather than reading as "no limit".
+     */
+    private static function cap(string $key): int
+    {
+        $value = Setting::getValue($key, 10);
+
+        return is_numeric($value) ? (int) $value : 10;
     }
 
     private static function list(mixed $value): array

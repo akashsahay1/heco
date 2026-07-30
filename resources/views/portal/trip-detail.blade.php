@@ -184,7 +184,8 @@ jQuery(function() {
                 var expName = firstExp ? firstExp.name : '';
                 if (expName && !shownGroups[expName]) {
                     shownGroups[expName] = true;
-                    var expPrice = firstExp && firstExp.base_cost_per_person ? fmtCurrency(firstExp.base_cost_per_person) + '/person' : '';
+                    var expFrom = expPriceFrom(firstExp);
+                    var expPrice = expFrom ? expFrom.text + '/' + expFrom.unit.replace('per ', '') : '';
                     html += '<div class="td-group-header">';
                     html += '<div></div><div class="td-day-line"></div>';
                     html += '<div class="td-group-title"><span>' + expName + ' <span class="td-exp-id-tag">#' + firstExp.id + '</span></span>';

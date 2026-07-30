@@ -45,7 +45,7 @@ class ExperienceToDayPricingTest extends TestCase
         $exp = Experience::create([
             'region_id' => $region->id,
             'name' => 'GHNP Trek', 'slug' => 'ghnp-trek', 'type' => 'nature',
-            'short_description' => 'Trek.', 'duration_type' => 'days', 'is_active' => true,
+            'short_description' => 'Trek.', 'duration_type' => 'single_day', 'is_active' => true,
             'base_cost_per_person' => 13000,
             'cost_accommodation' => 3000,
             'cost_logistics'     => 4000,

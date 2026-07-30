@@ -45,6 +45,9 @@ class HomepageController extends Controller
         $regions = Region::where("is_active", true)->orderBy("sort_order")->get();
         $experiences = Experience::where("is_active", true)
             ->with(["region", "hlh"])
+            // A stay's price_from reads the cheapest room rate; without this
+            // aggregate each stay card would fire its own query.
+            ->withRoomRateFrom()
             ->orderBy("sort_order")
             ->paginate(12);
 
@@ -212,7 +215,9 @@ class HomepageController extends Controller
     {
         $experience = Experience::where("slug", $slug)
             ->where("is_active", true)
-            ->with(["region", "hlh", "regenerativeProject"])
+            // roomRates carry the price of a stay, which is quoted by the room
+            // rather than per person — the detail page reads them directly.
+            ->with(["region", "hlh", "regenerativeProject", "roomRates"])
             ->withCount('reviews')
             ->firstOrFail();
 

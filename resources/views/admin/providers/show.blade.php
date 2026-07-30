@@ -7,7 +7,15 @@
         <a href="{{ route('hct.providers') }}" class="text-muted text-decoration-none small">
             <i class="bi bi-arrow-left"></i> Back to Providers
         </a>
-        <h5 class="mb-0 mt-1"><i class="bi bi-person-badge"></i> {{ $provider->name ?: '-' }}</h5>
+        <h5 class="mb-0 mt-1 d-flex align-items-center gap-2">
+            @if($provider->photo)
+                <img src="{{ $provider->photo }}" alt=""
+                     class="rounded-circle border" style="width:36px;height:36px;object-fit:cover;">
+            @else
+                <i class="bi bi-person-badge"></i>
+            @endif
+            {{ $provider->name ?: '-' }}
+        </h5>
     </div>
     <div class="d-flex align-items-center gap-2">
         @php
@@ -16,13 +24,27 @@
                 'pending' => 'bg-warning text-dark',
                 'rejected' => 'bg-danger',
             ][$provider->status] ?? 'bg-secondary';
-            $typeClass = [
-                'hrp' => 'bg-info',
+            // Every role this provider holds, not just the primary one — an HLH
+            // that also runs a taxi read as a plain HLH here.
+            $typeClasses = [
                 'hlh' => 'bg-success',
                 'osp' => 'bg-warning text-dark',
-            ][$provider->provider_type] ?? 'bg-secondary';
+                'hrp' => 'bg-info',
+            ];
+            // Fixed order, so a provider holding several always reads the same
+            // way round here and in the list.
+            $held = $provider->types();
+            $heldTypes = array_values(array_filter(
+                array_keys($typeClasses),
+                fn ($t) => in_array($t, $held, true),
+            ));
+            $heldTypes = array_merge($heldTypes, array_diff($held, array_keys($typeClasses)));
         @endphp
-        <span class="badge {{ $typeClass }}">{{ strtoupper($provider->provider_type ?: '-') }}</span>
+        @forelse($heldTypes as $type)
+            <span class="badge {{ $typeClasses[$type] ?? 'bg-secondary' }}">{{ strtoupper($type) }}</span>
+        @empty
+            <span class="badge bg-secondary">-</span>
+        @endforelse
         <span class="badge {{ $statusClass }}">{{ ucfirst($provider->status ?: '-') }}</span>
         <a href="{{ route('hct.providers.edit', $provider->id) }}" class="btn btn-sm btn-success ms-2">
             <i class="bi bi-pencil-square"></i> Edit

@@ -2,6 +2,12 @@
 @section('title', $experience->name . ' - HECO Portal')
 
 @section('content')
+{{-- The headline price and the unit it is charged in: per night for a stay,
+     per person for everything else. Null when there is nothing to quote. --}}
+@php
+    $priceFrom = $experience->price_from;
+@endphp
+
 {{-- Hero Section --}}
 <div class="hero-section {{ $experience->card_image ? '' : 'hero-no-image' }}"
     @if($experience->card_image)
@@ -78,13 +84,15 @@
                         <div class="card-body p-3">
                             <div class="stat-icon"><i class="bi bi-currency-exchange"></i></div>
                             <div class="stat-value">
-                                @if($experience->base_cost_per_person > 0)
-                                    <span class="js-price" data-amount="{{ $experience->base_cost_per_person }}" data-currency="{{ $experience->price_currency ?? 'INR' }}"></span>
+                                @if($priceFrom)
+                                    <span class="js-price" data-amount="{{ $priceFrom['amount'] }}" data-currency="{{ $priceFrom['currency'] }}"></span>
                                 @else
                                     On Request
                                 @endif
                             </div>
-                            <div class="stat-label">Per Person</div>
+                            {{-- A stay is quoted by the room, so labelling its price
+                                 "per person" would state a number nobody offered. --}}
+                            <div class="stat-label">{{ $priceFrom ? ucfirst($priceFrom['unit']) : 'Per Person' }}</div>
                         </div>
                     </div>
                 </div>
@@ -520,10 +528,11 @@
             <div class="sticky-action">
                 <div class="card shadow-sm mb-3">
                     <div class="card-body p-4 text-center">
-                        @if($experience->base_cost_per_person > 0)
+                        @if($priceFrom)
                             <div class="mb-2">
-                                <span class="fs-3 fw-bold text-success js-price" data-amount="{{ $experience->base_cost_per_person }}" data-currency="{{ $experience->price_currency ?? 'INR' }}"></span>
-                                <span class="text-muted">/ person</span>
+                                <span class="text-muted small">From</span>
+                                <span class="fs-3 fw-bold text-success js-price" data-amount="{{ $priceFrom['amount'] }}" data-currency="{{ $priceFrom['currency'] }}"></span>
+                                <span class="text-muted">/ {{ str_replace('per ', '', $priceFrom['unit']) }}</span>
                             </div>
                         @else
                             <p class="text-muted mb-2">Price on request</p>
@@ -581,6 +590,48 @@
         </div>
     </div>
 </div>
+
+{{-- ===== Room rates the host set on this listing =====
+     A stay is priced by the room, not by the head, so the grid the host filled
+     in (occupancy × meal plan) is the price — there is no per-person figure to
+     fall back on. Distinct from the live availability block below, which reads
+     the host's rate card. --}}
+@if($experience->isStay() && $experience->roomRates->isNotEmpty())
+    <div class="container mt-4">
+        <div class="exp-detail-card">
+            <h5 class="mb-3"><i class="bi bi-cash-coin me-2"></i>Room rates</h5>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">Occupancy</th>
+                            <th scope="col">Meals</th>
+                            <th scope="col" class="text-end">Per night</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($experience->roomRates as $rate)
+                            <tr>
+                                <td>{{ $rate->occupancy ?: '—' }}</td>
+                                <td class="text-muted">{{ $rate->meal_plan ?: '—' }}</td>
+                                <td class="text-end">
+                                    @if($rate->price > 0)
+                                        <span class="js-price" data-amount="{{ $rate->price }}" data-currency="{{ $experience->price_currency ?? 'INR' }}"></span>
+                                    @else
+                                        On request
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-muted small mb-0 mt-2">
+                <i class="bi bi-info-circle me-1"></i> Rates are per room per night.
+            </p>
+        </div>
+    </div>
+@endif
 
 {{-- ===== Stay options (live availability from hosting HLH) ===== --}}
 @if($hostHasRooms ?? false)

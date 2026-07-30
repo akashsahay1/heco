@@ -72,7 +72,7 @@ class AccommodationBookingFlowTest extends TestCase
             'slug'              => 'river-walk',
             'type'              => 'nature',
             'short_description' => 'A gentle riverside walk.',
-            'duration_type'     => 'hours',
+            'duration_type'     => 'less_than_day',
             'is_active'         => true,
             'base_cost_per_person' => 5000,
             'cost_accommodation'   => 1000,

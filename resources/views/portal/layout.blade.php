@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'HECO Portal - Regenerative Travel')</title>
+    {{-- The wordmark is far too wide to read at 16px, so the tab shows the
+         four-hue motif taken from it. --}}
+    <link rel="icon" href="{{ url('favicon.ico') }}" sizes="any">
+    <link rel="apple-touch-icon" href="{{ url('images/logo/apple-touch-icon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -328,10 +332,16 @@
 
         // AJAX Post Helper
         window.ajaxPost = function(data, callback, errorCallback) {
+            // A plain object is form-encoded as before. FormData carries files,
+            // and jQuery must be told to leave it alone or the browser never
+            // sets the multipart boundary.
+            var isForm = (typeof FormData !== 'undefined') && (data instanceof FormData);
             jQuery.ajax({
                 url: '/ajax',
                 method: 'POST',
                 data: data,
+                processData: !isForm,
+                contentType: isForm ? false : undefined,
                 success: function(response) {
                     if (callback) callback(response);
                 },
@@ -442,6 +452,19 @@
             window.fmt = function(num) {
                 if (num === null || num === undefined || num === '--') return '--';
                 return Number(num).toLocaleString();
+            };
+
+            // The headline price for an experience card, with the unit it is
+            // charged in. An experiential stay is sold by the room, so it is
+            // quoted per night and has no per-person figure at all — cards that
+            // read base_cost_per_person showed such a listing with no price.
+            // The server puts the answer on every experience as price_from.
+            window.expPriceFrom = function(exp) {
+                if (!exp || !exp.price_from || !(exp.price_from.amount > 0)) return null;
+                return {
+                    text: window.fmtCurrency(exp.price_from.amount, exp.price_from.currency || 'INR'),
+                    unit: exp.price_from.unit || 'per person'
+                };
             };
 
             window.getCurrentCurrency = function() { return currentCurrency; };

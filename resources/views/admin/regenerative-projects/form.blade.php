@@ -108,16 +108,38 @@
         <div class="card-header"><h6 class="mb-0"><i class="bi bi-clock-history"></i> Operational Periods</h6></div>
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label">Active Periods</label>
-                    <textarea class="form-control" name="active_periods" rows="3">{{ $p && $p->active_periods ? json_encode($p->active_periods, JSON_PRETTY_PRINT) : '' }}</textarea>
-                    <small class="text-muted">JSON array of active period objects</small>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Paused Periods</label>
-                    <textarea class="form-control" name="paused_periods" rows="3">{{ $p && $p->paused_periods ? json_encode($p->paused_periods, JSON_PRETTY_PRINT) : '' }}</textarea>
-                    <small class="text-muted">JSON array of paused period objects</small>
-                </div>
+                {{-- Both were textareas asking for a hand-written JSON array of
+                     period objects. A period is a pair of dates, so it is asked
+                     for as a pair of dates. --}}
+                @foreach([
+                    ['active_periods', 'Active Periods', 'When the project is running.'],
+                    ['paused_periods', 'Paused Periods', 'When it is on hold — monsoon, funding gaps.'],
+                ] as [$field, $label, $hint])
+                    <div class="col-md-4">
+                        <label class="form-label">{{ $label }}</label>
+                        @php
+                            $periods = $p && is_array($p->$field) ? $p->$field : [];
+                        @endphp
+                        <div class="period-rows" data-field="{{ $field }}">
+                            @foreach($periods as $i => $period)
+                                <div class="input-group input-group-sm mb-1 period-row">
+                                    <input type="date" class="form-control" name="{{ $field }}[{{ $i }}][start]"
+                                           value="{{ $period['start'] ?? '' }}" aria-label="Start date">
+                                    <span class="input-group-text">to</span>
+                                    <input type="date" class="form-control" name="{{ $field }}[{{ $i }}][end]"
+                                           value="{{ $period['end'] ?? '' }}" aria-label="End date">
+                                    <button type="button" class="btn btn-outline-secondary remove-period" title="Remove">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div>
+                            @endforeach
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary add-period" data-field="{{ $field }}">
+                            <i class="bi bi-plus"></i> Add period
+                        </button>
+                        <small class="text-muted d-block mt-1">{{ $hint }}</small>
+                    </div>
+                @endforeach
                 <div class="col-md-4">
                     <label class="form-label">Operational Constraints</label>
                     <textarea class="form-control" name="operational_constraints" rows="3">{{ $p->operational_constraints ?? '' }}</textarea>
@@ -196,6 +218,26 @@
 
 @section('js')
 <script>
+// Operational periods are a repeating pair of dates. Row indexes only have to
+// be unique within a field — the server drops blanks and re-packs the list.
+$(document).on('click', '.add-period', function() {
+    var field = $(this).data('field');
+    var rows = $('.period-rows[data-field="' + field + '"]');
+    var i = rows.children('.period-row').length;
+    rows.append(
+        '<div class="input-group input-group-sm mb-1 period-row">' +
+        '<input type="date" class="form-control" name="' + field + '[' + i + '][start]" aria-label="Start date">' +
+        '<span class="input-group-text">to</span>' +
+        '<input type="date" class="form-control" name="' + field + '[' + i + '][end]" aria-label="End date">' +
+        '<button type="button" class="btn btn-outline-secondary remove-period" title="Remove"><i class="bi bi-x"></i></button>' +
+        '</div>'
+    );
+});
+
+$(document).on('click', '.remove-period', function() {
+    $(this).closest('.period-row').remove();
+});
+
 $('#projectForm').on('submit', function(e) {
     e.preventDefault();
 

@@ -44,7 +44,7 @@ class GuestVsLoginPricingTest extends TestCase
         $region = Region::create(['name' => 'Valley', 'slug' => 'valley', 'is_active' => true]);
         $this->exp = Experience::create([
             'region_id' => $region->id, 'name' => 'Trek', 'slug' => 'trek', 'type' => 'nature',
-            'short_description' => 'x', 'duration_type' => 'days', 'is_active' => true,
+            'short_description' => 'x', 'duration_type' => 'single_day', 'is_active' => true,
             'base_cost_per_person' => 13000,
             'cost_accommodation' => 3000, 'cost_logistics' => 4000,
             'cost_guide' => 4000, 'cost_activities' => 2000, 'cost_other' => 0,

@@ -52,8 +52,16 @@
                 <label class="form-label small mb-1">Status</label>
                 <select class="form-select form-select-sm custom-select" id="filterStatus">
                     <option value="">All</option>
-                    <option value="1">Active</option>
-                    <option value="0">Inactive</option>
+                    <optgroup label="Review">
+                        <option value="pending">Pending review</option>
+                        <option value="draft">Draft</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </optgroup>
+                    <optgroup label="Visibility">
+                        <option value="1">Active</option>
+                        <option value="0">Inactive</option>
+                    </optgroup>
                 </select>
             </div>
             <div class="col-md-3">
@@ -129,6 +137,23 @@ function difficultyBadge(level) {
     return '<span class="badge bg-' + cls + '">' + (level || '-') + '</span>';
 }
 
+// Where a listing stands in review. Shown in the list so HCT can see what is
+// waiting on them without a separate page.
+function approvalBadge(e) {
+    if (e.pending_changes) {
+        return '<span class="badge bg-warning text-dark" title="Live, with an edit waiting for review">Edit pending</span>';
+    }
+    var map = {
+        pending:  ['bg-warning text-dark', 'Pending'],
+        draft:    ['bg-secondary', 'Draft'],
+        approved: ['bg-success', 'Approved'],
+        rejected: ['bg-danger', 'Rejected']
+    };
+    var badge = map[e.approval_status];
+    if (!badge) return '<span class="badge bg-light text-dark">' + (e.approval_status || '-') + '</span>';
+    return '<span class="badge ' + badge[0] + '">' + badge[1] + '</span>';
+}
+
 function loadExperiences(page) {
     if (page) currentPage = page;
     var params = {
@@ -186,8 +211,13 @@ function loadExperiences(page) {
             html += '<td><div class="exp-inc-row">' + (incHtml || '<small class="text-muted">-</small>') + '</div></td>';
             html += '<td>' + difficultyBadge(e.difficulty_level) + '</td>';
             html += '<td>' + (e.base_cost_per_person ? '<i class="bi bi-currency-rupee"></i>' + Number(e.base_cost_per_person).toLocaleString() : '-') + '</td>';
+            // Two things live in this column, because they answer different
+            // questions: where the listing stands in review, and whether it is
+            // switched on. A live listing with a parked edit is still waiting
+            // on HCT, so it reads as pending too.
             html += '<td>';
-            html += '<div class="form-check form-switch">';
+            html += approvalBadge(e);
+            html += '<div class="form-check form-switch mt-1">';
             html += '<input class="form-check-input toggle-status" type="checkbox" data-id="' + e.id + '"' + (e.is_active ? ' checked' : '') + '>';
             html += '</div>';
             html += '</td>';
@@ -247,7 +277,15 @@ function renderPagination(pagination) {
     $('#paginationList').html(html);
 }
 
-$(function() { loadExperiences(1); });
+$(function() {
+    // ?status=pending — how the old Pending Experiences page now arrives here.
+    var wanted = new URLSearchParams(window.location.search).get('status');
+    if (wanted && $('#filterStatus option[value="' + wanted + '"]').length) {
+        $('#filterStatus').val(wanted);
+        if (window.buildCustomDropdown) buildCustomDropdown($('#filterStatus')[0]);
+    }
+    loadExperiences(1);
+});
 
 $('#filterRegion, #filterType, #filterDifficulty, #filterStatus').on('change', function() {
     loadExperiences(1);

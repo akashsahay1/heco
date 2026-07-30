@@ -62,7 +62,7 @@ class GuideExclusiveTest extends TestCase
     {
         $exp = Experience::create([
             'region_id' => $this->region->id, 'name' => 'Trek ' . $costGuide, 'slug' => 'trek-' . $costGuide,
-            'type' => 'nature', 'short_description' => 'x', 'duration_type' => 'days', 'is_active' => true,
+            'type' => 'nature', 'short_description' => 'x', 'duration_type' => 'single_day', 'is_active' => true,
             'base_cost_per_person' => 5000, 'cost_activities' => 3000, 'cost_guide' => $costGuide,
         ]);
         $trip = Trip::create([
