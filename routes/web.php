@@ -84,7 +84,7 @@ Route::domain(config('app.admin_domain'))->group(function () {
 // ============================================
 // PORTAL DOMAIN (hecoportal.test)
 // ============================================
-Route::domain(config('app.portal_domain'))->group(function () {
+//Route::domain(config('app.portal_domain'))->group(function () {
 
     // Public
     Route::get('/', [HomepageController::class, 'landing']);
@@ -152,4 +152,4 @@ Route::domain(config('app.portal_domain'))->group(function () {
 
     // AJAX
     Route::post('/ajax', [AjaxController::class, 'portalIndex'])->name('portal.ajax');
-});
+//});

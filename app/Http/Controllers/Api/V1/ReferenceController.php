@@ -69,7 +69,31 @@ class ReferenceController extends Controller
                 ->pluck('country')
                 ->values(),
             'system_lists' => $lists,
+            'links' => self::links(),
         ]);
+    }
+
+    /**
+     * The pages the app links out to — terms, privacy, help.
+     *
+     * Built from this installation's own routes rather than written into the
+     * app, for two reasons. The app shipped pointing at heco.travel/legal/…,
+     * which does not exist, so every one of those links was dead. And the
+     * address differs per environment — these resolve against whatever host
+     * the request arrived on, so a device gets a URL it can actually open.
+     */
+    public static function links(): array
+    {
+        $portal = fn (string $name) => route($name, [], true);
+
+        return [
+            'terms' => $portal('terms'),
+            'privacy' => $portal('privacy'),
+            'help' => $portal('help'),
+            'contact' => $portal('contact'),
+            'guidelines' => $portal('guidelines'),
+            'data_deletion' => $portal('data-deletion'),
+        ];
     }
 
     /**
