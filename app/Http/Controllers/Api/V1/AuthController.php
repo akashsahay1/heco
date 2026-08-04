@@ -32,23 +32,35 @@ class AuthController extends Controller
             'device' => 'nullable|string|max:120',
         ]);
 
-        $user = User::where('email', $request->input('email'))->first();
+        // Scoped to provider roles: an email is unique per role, so the same
+        // address may also carry the owner's traveller account. This app is a
+        // provider client, and matching on email alone could hand it the
+        // traveller row and reject a perfectly good provider login.
+        $user = User::findByCredentials(
+            $request->input('email'),
+            $request->input('password'),
+            User::PROVIDER_ROLES
+        );
 
-        // One message for both cases — never reveal which emails exist.
-        if (!$user || !Hash::check($request->input('password'), $user->password)) {
+        if (!$user) {
+            // A traveller who tried the provider app is told where to go, but
+            // only once their password checks out — otherwise this would answer
+            // whether an address is registered. One message for every other
+            // case: never reveal which emails exist.
+            if (User::findByCredentials($request->input('email'), $request->input('password'), ['traveller'])) {
+                return response()->json([
+                    'error' => 'This app is for HECO service providers. Please use the web portal.',
+                ], 403);
+            }
             throw ValidationException::withMessages([
                 'email' => ['Incorrect email or password.'],
             ]);
         }
 
-        if (!$user->isServiceProvider()) {
-            return response()->json([
-                'error' => 'This app is for HECO service providers. Please use the web portal.',
-            ], 403);
-        }
-
         if ($user->status !== 'active') {
-            return response()->json(['error' => 'This account is not active.'], 403);
+            // Deliberately says nothing about why. A banned provider lands
+            // here, and must not learn that from the message.
+            return response()->json(['error' => 'This account is currently out of service. Please contact HECO.'], 403);
         }
 
         $provider = ServiceProvider::with('region')->where('user_id', $user->id)->first();
@@ -92,7 +104,9 @@ class AuthController extends Controller
         }
 
         if ($token->user->status !== 'active') {
-            return response()->json(['error' => 'This account is not active.'], 403);
+            // Deliberately says nothing about why. A banned provider lands
+            // here, and must not learn that from the message.
+            return response()->json(['error' => 'This account is currently out of service. Please contact HECO.'], 403);
         }
 
         $device = $token->device;
@@ -110,10 +124,27 @@ class AuthController extends Controller
         ]);
     }
 
-    /** The account behind the current token — used on app start. */
+    /**
+     * The account behind the current token — used on app start, and polled
+     * while an application is under review.
+     *
+     * The role is checked here, not just at login. An email may now belong to
+     * several accounts, and the one this token was minted for can stop being a
+     * provider afterwards — a removed provider is demoted back to traveller
+     * rather than deleted, and its tokens outlive the demotion. Reading the
+     * role from the token's own user is what tells those apart; the address
+     * cannot, because the traveller account shares it.
+     */
     public function me(Request $request): JsonResponse
     {
         $user = Auth::user();
+
+        if (!$user->isServiceProvider()) {
+            return response()->json([
+                'error' => 'This account is no longer a HECO service provider.',
+            ], 403);
+        }
+
         $provider = ServiceProvider::with('region')->where('user_id', $user->id)->first();
 
         if (!$provider) {
@@ -124,6 +155,14 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
+            // Same block login and the password reset return, so the app reads
+            // the signed-in role from one shape wherever it asks.
+            'user' => [
+                'id' => $user->id,
+                'full_name' => $user->full_name,
+                'email' => $user->email,
+                'user_role' => $user->user_role,
+            ],
             'provider' => ProviderAccountResource::make($provider),
         ]);
     }
@@ -152,7 +191,9 @@ class AuthController extends Controller
         $request->validate(['email' => 'required|email']);
 
         $otp = app(PasswordResetOtpService::class);
-        $user = User::where('email', $request->input('email'))->first();
+        // Provider roles only — resetting from this app must never reach the
+        // traveller account that may share the address.
+        $user = User::findByEmailForRoles($request->input('email'), User::PROVIDER_ROLES);
 
         // Only real provider accounts get a code, but a token is always minted
         // so the response is identical either way and cannot enumerate accounts.

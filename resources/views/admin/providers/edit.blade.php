@@ -92,10 +92,18 @@
                     <div class="mb-2">
                         <label class="form-label small text-muted">Status</label>
                         <select name="status" class="form-select form-select-sm custom-select">
-                            <option value="approved" @selected($provider->status === 'approved')>Approved</option>
-                            <option value="pending" @selected($provider->status === 'pending')>Pending</option>
-                            <option value="rejected" @selected($provider->status === 'rejected')>Rejected</option>
+                            @foreach(\App\Models\ServiceProvider::STATUS_LABELS as $value => $label)
+                                <option value="{{ $value }}" @selected($provider->status === $value)>{{ $label }}</option>
+                            @endforeach
                         </select>
+                        {{-- Admin-only wording. The provider is never told which
+                             of the two they are on — both read "out of service"
+                             to them and to travellers. --}}
+                        <small class="text-muted d-block mt-1">
+                            <strong>Banned</strong> shuts their login and signs out every device.
+                            <strong>Hidden</strong> is a pause — they keep working, they just stop being offered to travellers.
+                            Neither is named to the member: both show as <em>out of service</em>.
+                        </small>
                     </div>
                     <div class="mb-0">
                         <label class="form-label small text-muted">Internal Notes</label>
@@ -219,57 +227,34 @@
         \App\Models\SpPricing::where('service_provider_id', $provider->id)->pluck('id'))
         ->whereIn('status', ['held', 'confirmed'])->count();
     $hostedExperiencesCount = \App\Models\Experience::where('hlh_id', $provider->id)->count();
-    $isRemoved = $provider->status === 'removed';
+    $blockerPayments = \App\Models\SpPayment::where('service_provider_id', $provider->id)->count();
+    $canDelete = $blockerPayments === 0;
 @endphp
 <div class="card mb-5 border-danger-subtle" id="providerDangerZone">
     <div class="card-body">
         <h6 class="border-bottom pb-2 text-danger"><i class="bi bi-exclamation-triangle"></i> Danger zone</h6>
 
-        @if($isRemoved)
-            @php
-                $blockerPayments = \App\Models\SpPayment::where('service_provider_id', $provider->id)->count();
-                $hostedExperiencesNow = \App\Models\Experience::where('hlh_id', $provider->id)->count();
-                $canHardDelete = $blockerPayments === 0;
-            @endphp
-            <p class="mb-2 small">This provider is currently <strong>removed</strong> — they cannot log in, their pricing is inactive, and their inventory is hidden from Trip Manager &amp; travellers. Historical trips and references are preserved.</p>
-            <div class="d-flex gap-2 flex-wrap mb-2">
-                <button type="button" class="btn btn-sm btn-success" id="btnRestoreProvider" data-provider-id="{{ $provider->id }}">
-                    <i class="bi bi-arrow-counterclockwise me-1"></i> Restore Provider
-                </button>
-                <button type="button" class="btn btn-sm btn-danger" id="btnPermanentDeleteProvider" data-provider-id="{{ $provider->id }}"
-                    data-hosted-count="{{ $hostedExperiencesNow }}"
-                    {{ $canHardDelete ? '' : 'disabled' }}>
-                    <i class="bi bi-trash3 me-1"></i> Permanently Delete
-                </button>
-            </div>
-            @if(!$canHardDelete)
-                <small class="text-muted d-block"><i class="bi bi-info-circle me-1"></i>
-                    Permanent delete blocked — {{ $blockerPayments }} payment {{ \Illuminate\Support\Str::plural('record', $blockerPayments) }} reference this provider. Archive those first.
-                </small>
-            @else
-                <small class="text-muted d-block"><i class="bi bi-exclamation-triangle me-1"></i>
-                    Permanent delete <strong>cannot be undone</strong>. All pricing, availability blocks, and room bookings will be wiped.
-                    @if($hostedExperiencesNow > 0)
-                        <strong>{{ $hostedExperiencesNow }} hosted {{ \Illuminate\Support\Str::plural('experience', $hostedExperiencesNow) }}</strong> will be auto-detached (host set to none, deactivated). Historical trip lines stay but lose the provider link.
-                    @else
-                        Historical trip lines stay but lose the provider link.
-                    @endif
-                </small>
+        <p class="mb-1 small">Deleting a provider <em>cannot be undone</em>:</p>
+        <ul class="small text-muted mb-2">
+            <li>The provider record is deleted, so <strong>{{ $provider->email }}</strong> is free to apply again</li>
+            <li>The linked login is deleted only if it belongs to this provider and nothing else — an account that is also a traveller's is kept, minus its provider role</li>
+            <li><strong>{{ $activePricingCount }}</strong> pricing {{ \Illuminate\Support\Str::plural('row', $activePricingCount) }} and every availability block go with it</li>
+            <li><strong>{{ $activeBookingsCount }}</strong> active room {{ \Illuminate\Support\Str::plural('booking', $activeBookingsCount) }} released (no longer reserve inventory)</li>
+            @if($hostedExperiencesCount > 0)
+                <li class="text-warning"><i class="bi bi-info-circle me-1"></i><strong>{{ $hostedExperiencesCount }}</strong> hosted {{ \Illuminate\Support\Str::plural('experience', $hostedExperiencesCount) }} auto-detached (host set to none, deactivated)</li>
             @endif
-        @else
-            <p class="mb-1 small">Removing a provider does the following <em>(reversible — admin can restore later)</em>:</p>
-            <ul class="small text-muted mb-2">
-                <li>Provider status set to <strong>removed</strong></li>
-                <li>Linked user account marked <strong>inactive</strong> (can't log in)</li>
-                <li><strong>{{ $activePricingCount }}</strong> pricing {{ \Illuminate\Support\Str::plural('row', $activePricingCount) }} marked inactive (hidden from Trip Manager / travellers)</li>
-                <li><strong>{{ $activeBookingsCount }}</strong> active room {{ \Illuminate\Support\Str::plural('booking', $activeBookingsCount) }} released (no longer reserve inventory)</li>
-                @if($hostedExperiencesCount > 0)
-                    <li class="text-warning"><i class="bi bi-info-circle me-1"></i><strong>{{ $hostedExperiencesCount }}</strong> hosted {{ \Illuminate\Support\Str::plural('experience', $hostedExperiencesCount) }} will lose this provider as host — experiences stay but show no host until reassigned.</li>
-                @endif
-            </ul>
-            <button type="button" class="btn btn-sm btn-outline-danger" id="btnRemoveProvider" data-provider-id="{{ $provider->id }}">
-                <i class="bi bi-trash me-1"></i> Remove Provider
-            </button>
+            <li>Historical trip lines stay but lose the provider link</li>
+        </ul>
+        <button type="button" class="btn btn-sm btn-outline-danger" id="btnRemoveProvider"
+            data-provider-id="{{ $provider->id }}"
+            data-hosted-count="{{ $hostedExperiencesCount }}"
+            {{ $canDelete ? '' : 'disabled' }}>
+            <i class="bi bi-trash me-1"></i> Delete Provider
+        </button>
+        @if(!$canDelete)
+            <small class="text-muted d-block mt-2"><i class="bi bi-info-circle me-1"></i>
+                Delete blocked — {{ $blockerPayments }} payment {{ \Illuminate\Support\Str::plural('record', $blockerPayments) }} reference this provider. Archive those first.
+            </small>
         @endif
     </div>
 </div>
@@ -940,26 +925,8 @@ jQuery(function() {
     });
 });
 
-// ─── Danger zone: Remove / Restore provider ──────────────────────────
+// ─── Danger zone: delete provider ────────────────────────────────────
 jQuery('#btnRemoveProvider').on('click', function() {
-    var id = jQuery(this).data('provider-id');
-    Swal.fire({
-        title: 'Remove this provider?',
-        text: 'They will not be able to log in. Their pricing and bookings will be deactivated. You can restore them later.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, remove',
-        confirmButtonColor: '#b54a4a',
-    }).then(function(res) {
-        if (!res.isConfirmed) return;
-        ajaxPost({ remove_provider: 1, provider_id: id }, function() {
-            showAlert('Provider removed.', 'success');
-            setTimeout(function() { location.reload(); }, 700);
-        });
-    });
-});
-
-jQuery('#btnPermanentDeleteProvider').on('click', function() {
     var $btn = jQuery(this);
     var id = $btn.data('provider-id');
     var hosted = parseInt($btn.data('hosted-count') || 0, 10);
@@ -968,24 +935,29 @@ jQuery('#btnPermanentDeleteProvider').on('click', function() {
             + '</strong> will be auto-detached (host set to none, deactivated).<br>'
         : '';
     Swal.fire({
-        title: 'Permanently delete this provider?',
+        title: 'Delete this provider?',
         html: '<strong>This cannot be undone.</strong><br><br>'
+            + 'The provider record is deleted outright, so their email is free to apply again.<br>'
             + 'All pricing rows, availability blocks, and room bookings will be wiped.<br>'
             + hostedLine
-            + 'Historical trip lines remain but lose the link to this provider. '
-            + 'The linked user account will also be deleted.',
+            + 'Historical trip lines remain but lose the link to this provider.<br>'
+            + 'The linked user account is deleted only if it belongs to this provider and nothing else — '
+            + 'an account that is also a traveller\'s is kept, minus its provider role.',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'Yes, permanently delete',
+        confirmButtonText: 'Yes, delete',
         confirmButtonColor: '#b54a4a',
         focusCancel: true,
     }).then(function(res) {
         if (!res.isConfirmed) return;
-        ajaxPost({ permanently_delete_provider: 1, provider_id: id }, function(resp) {
+        ajaxPost({ remove_provider: 1, provider_id: id }, function(resp) {
             var detached = resp && resp.detached_experiences ? resp.detached_experiences : 0;
-            var msg = detached
-                ? 'Provider deleted. ' + detached + ' experience' + (detached === 1 ? '' : 's') + ' detached.'
-                : 'Provider permanently deleted.';
+            // The server's message carries the account outcome (deleted vs
+            // kept for a traveller), which the count alone can't say.
+            var msg = (resp && resp.message) || 'Provider deleted.';
+            if (detached) {
+                msg += ' ' + detached + ' experience' + (detached === 1 ? '' : 's') + ' detached.';
+            }
             // Stash the toast for the providers listing to pick up after
             // navigation. Redirect immediately so the user can't refresh
             // the now-orphan edit URL during a delay window and trip a 404.
@@ -994,24 +966,6 @@ jQuery('#btnPermanentDeleteProvider').on('click', function() {
         }, function(xhr) {
             var msg = (xhr.responseJSON || {}).error || 'Delete failed.';
             window.showError && window.showError(msg);
-        });
-    });
-});
-
-jQuery('#btnRestoreProvider').on('click', function() {
-    var id = jQuery(this).data('provider-id');
-    Swal.fire({
-        title: 'Restore this provider?',
-        text: 'Their account will be reactivated (status: approved). Pricing rows stay inactive — re-enable individually as needed.',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, restore',
-        confirmButtonColor: '#79a09f',
-    }).then(function(res) {
-        if (!res.isConfirmed) return;
-        ajaxPost({ restore_provider: 1, provider_id: id }, function() {
-            showAlert('Provider restored.', 'success');
-            setTimeout(function() { location.reload(); }, 700);
         });
     });
 });

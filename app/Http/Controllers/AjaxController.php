@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -577,8 +578,7 @@ class AjaxController extends Controller
         'approve_provider' => 'hct',
         'reject_provider' => 'hct',
         'remove_provider' => 'hct_admin',
-        'restore_provider' => 'hct_admin',
-        'permanently_delete_provider' => 'hct_admin',
+        'bulk_remove_providers' => 'hct_admin',
         // REGION
         'get_regions_list' => 'hct',
         'save_region' => 'hct',
@@ -1234,11 +1234,8 @@ class AjaxController extends Controller
             if ($request->has('remove_provider')) {
                 return $this->removeProvider($request);
             }
-            if ($request->has('restore_provider')) {
-                return $this->restoreProvider($request);
-            }
-            if ($request->has('permanently_delete_provider')) {
-                return $this->permanentlyDeleteProvider($request);
+            if ($request->has('bulk_remove_providers')) {
+                return $this->bulkRemoveProviders($request);
             }
 
             // ===== REGION MANAGEMENT =====
@@ -1480,18 +1477,23 @@ class AjaxController extends Controller
             return response()->json(['error' => $validator->errors()->first()], 422);
         }
 
-        if (Auth::attempt(['email' => $request->email, 'password' => $request->password])) {
-            $user = Auth::user();
-            if (!$user->isHct()) {
-                Auth::logout();
-                $request->session()->invalidate();
+        // Scoped to HCT roles rather than matching on email alone: the same
+        // address may also belong to a traveller, and an unscoped lookup would
+        // find that row first and reject the admin who owns this door.
+        $user = User::findByCredentials($request->email, $request->password, User::HCT_ROLES);
+        if (!$user) {
+            // Distinguish "not an admin" from "wrong password" only when the
+            // credentials are otherwise good, so this stays useless as an
+            // account-probe for anyone who does not already know the password.
+            if (User::findByCredentials($request->email, $request->password, User::PORTAL_ROLES)) {
                 return response()->json(['error' => 'Admin accounts only. Use the portal to log in.'], 403);
             }
-            $request->session()->regenerate();
-            return response()->json(['success' => true, 'redirect' => '/dashboard']);
+            return response()->json(['error' => 'Invalid credentials'], 401);
         }
 
-        return response()->json(['error' => 'Invalid credentials'], 401);
+        Auth::login($user);
+        $request->session()->regenerate();
+        return response()->json(['success' => true, 'redirect' => '/dashboard']);
     }
 
     // ===========================
@@ -1512,9 +1514,17 @@ class AjaxController extends Controller
         $guestTrip = session('guest_trip');
         $guestChat = session('guest_chat');
 
-        if (Auth::attempt(["email" => $request->email, "password" => $request->password], $request->boolean("remember"))) {
+        // Portal-side roles first — this door belongs to travellers and
+        // providers, so when an address is held by both a traveller and an HCT
+        // login it is the traveller's account that opens here. An HCT-only
+        // address still gets in (and is redirected to the admin domain below),
+        // which is how it has always worked.
+        $user = User::findByCredentials($request->email, $request->password, User::PORTAL_ROLES)
+            ?: User::findByCredentials($request->email, $request->password, User::HCT_ROLES);
+
+        if ($user) {
+            Auth::login($user, $request->boolean("remember"));
             $request->session()->regenerate();
-            $user = Auth::user();
 
             // Sync guest trip directly into DB (don't rely on separate AJAX call)
             $syncedTripId = null;
@@ -1551,7 +1561,10 @@ class AjaxController extends Controller
 
         $validator = Validator::make($request->all(), [
             "full_name" => "required|string|max:255",
-            "email" => "required|email|unique:users,email",
+            // Unique among travellers, not across the whole table: the address
+            // may already carry this person's provider or HCT login, and that
+            // is not a reason to refuse them a traveller account.
+            "email" => ["required", "email", User::uniqueEmailRule(['traveller'])],
             "password" => "required|min:8|confirmed",
             "phone" => "nullable|string|max:20",
             "address1" => "nullable|string|max:500",
@@ -3415,11 +3428,10 @@ class AjaxController extends Controller
 
         $email = strtolower(trim($request->email));
 
-        // If this email belongs to a registered user, flip their opt-in.
-        $user = User::where("email", $email)->first();
-        if ($user) {
-            $user->update(["newsletter_optin" => true]);
-        }
+        // If this email belongs to registered users, flip their opt-in. Every
+        // account on the address, not the first one found — the subscription
+        // belongs to the inbox, not to one of its roles.
+        User::where("email", $email)->update(["newsletter_optin" => true]);
 
         // Upsert into the canonical subscribers table. If the email was
         // previously unsubscribed, re-subscribe them.
@@ -4177,7 +4189,9 @@ class AjaxController extends Controller
     {
         $validator = Validator::make($request->all(), [
             "full_name" => "required|string|max:255",
-            "email" => "required|email|unique:users,email",
+            // Unique among staff logins only — the same person may already be
+            // a traveller or a provider on this address.
+            "email" => ["required", "email", User::uniqueEmailRule(User::HCT_ROLES)],
             "password" => "required|min:8",
             "user_role" => "required|in:hct_admin,hct_collaborator",
         ]);
@@ -4200,6 +4214,25 @@ class AjaxController extends Controller
     protected function updateHctUser(Request $request): JsonResponse
     {
         $user = User::findOrFail($request->user_id);
+
+        // Validated rather than handed straight to update(): a clashing email
+        // used to surface as a raw integrity-constraint 500 instead of saying
+        // which field was wrong. Uniqueness is scoped to the role the row will
+        // hold, and ignores this row so a no-op save doesn't collide with
+        // itself.
+        $targetRole = $request->input("user_role", $user->user_role);
+        $validator = Validator::make($request->all(), [
+            "full_name" => "sometimes|required|string|max:255",
+            "email" => ["sometimes", "required", "email", User::uniqueEmailRule([$targetRole], $user->id)],
+            "user_role" => "sometimes|required|in:hct_admin,hct_collaborator",
+            "password" => "sometimes|min:8",
+        ], [
+            "email.unique" => "Another {$targetRole} account already uses this email.",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
         $data = $request->only(["full_name", "email", "user_role", "mobile", "photo"]);
         if ($request->filled("password")) {
             $data["password"] = $request->password;
@@ -4270,7 +4303,13 @@ class AjaxController extends Controller
 
         try {
             $token = Password::createToken($user);
-            $resetUrl = route("password.reset", ["token" => $token, "email" => $user->email]);
+            // The role rides along: the reset page is shared with the portal,
+            // and this address may also carry a traveller account.
+            $resetUrl = route("password.reset", [
+                "token" => $token,
+                "email" => $user->email,
+                "role" => $user->user_role,
+            ]);
             $this->sendMail($user->email, new PasswordResetEmail($user->full_name ?: $user->email, $resetUrl), "hct_pw_reset:" . $user->id);
         } catch (\Throwable $e) {
             Log::error("HCT password reset email failed [" . $user->id . "]: " . $e->getMessage());
@@ -5526,13 +5565,11 @@ class AjaxController extends Controller
     {
         $query = ServiceProvider::with(["region", "lastUpdatedBy:id,full_name,email"]);
 
-        // Status filter — blank means hide removed (default), "all" means
-        // include removed too, anything else is honoured as-is.
+        // Blank means every provider — removal deletes the row, so there is no
+        // archived state left to hide.
         $status = $request->get("status", "");
         if (!empty($status) && $status !== "all") {
             $query->where("status", $status);
-        } elseif (empty($status)) {
-            $query->where("status", "!=", "removed");
         }
         // Any role the provider holds, not just the primary one — an HLH that
         // also runs a taxi has to appear under OSP too.
@@ -5631,7 +5668,20 @@ class AjaxController extends Controller
             return response()->json(["error" => "Unauthorized"], 403);
         }
         $provider = ServiceProvider::findOrFail($request->provider_id);
-        $wasApproved = $provider->status === 'approved';
+        $previousStatus = $provider->status;
+        $wasApproved = $previousStatus === 'approved';
+
+        // The status drives who can sign in and who gets sold, so it is the one
+        // field here that cannot be taken on trust — an unknown value used to
+        // reach the enum column and come back as a 500.
+        if ($request->has('status')) {
+            $validator = Validator::make($request->all(), [
+                'status' => ['required', Rule::in(array_keys(ServiceProvider::STATUS_LABELS))],
+            ], ['status.in' => 'That is not a status a provider can be set to.']);
+            if ($validator->fails()) {
+                return response()->json(['error' => $validator->errors()->first()], 422);
+            }
+        }
 
         $data = $request->only([
             "name", "contact_person", "email", "phone_1", "phone_2",
@@ -5658,6 +5708,8 @@ class AjaxController extends Controller
         $data['last_updated_by_role'] = 'admin';
         $provider->update($data);
 
+        $this->applyProviderBan($provider->fresh(), $previousStatus);
+
         // If status flipped to approved here (not just via the Provider Applications
         // tab), run the same side-effects as approveProvider: ensure the SP has a
         // User account and email them the set-password link. Without this, the SP
@@ -5670,12 +5722,64 @@ class AjaxController extends Controller
     }
 
     /**
+     * Keep the linked login in step with a ban.
+     *
+     * A ban is the one status that shuts the door: the account is deactivated,
+     * so neither the app nor the portal will authenticate it, and every API
+     * token it holds stops working. Any other status hands the login back —
+     * that is what un-banning is, and it has to be symmetrical or an admin
+     * could ban someone and never let them back in.
+     *
+     * 'hidden' deliberately does nothing here. It is a pause, not a
+     * punishment: the provider keeps their login and their data, they are just
+     * not offered to travellers while it lasts.
+     *
+     * An HCT login is never touched — staff sign in to the admin with it, and
+     * a provider record must not be able to lock the admin out.
+     *
+     * Only the transition acts. Reading the new status alone would reactivate
+     * an account on every unrelated save, undoing a deactivation that was done
+     * for some other reason entirely.
+     */
+    protected function applyProviderBan(ServiceProvider $provider, string $previousStatus): void
+    {
+        $wasBanned = $previousStatus === 'banned';
+        if ($wasBanned === $provider->isBanned() || !$provider->user_id) {
+            return;
+        }
+        $user = \App\Models\User::find($provider->user_id);
+        if (!$user || $user->isHct()) {
+            return;
+        }
+
+        $user->update(['status' => $provider->isBanned() ? 'inactive' : 'active']);
+        if ($provider->isBanned()) {
+            // Every way in closes at once. The status alone only stops the next
+            // sign-in — an app already holding a token, or a browser already
+            // holding a session, would carry on working until either expired.
+            \App\Models\ApiToken::where('user_id', $user->id)->delete();
+            if (config('session.driver') === 'database') {
+                \DB::table(config('session.table', 'sessions'))
+                    ->where('user_id', $user->id)
+                    ->delete();
+            }
+        }
+        // Audit trail only. There is no "un-banned" state to record — the ban
+        // coming off just means the login goes back to active, so that is what
+        // this says.
+        $this->logActivity(
+            $provider->isBanned() ? 'provider_banned' : 'provider_activated',
+            'ServiceProvider',
+            $provider->id
+        );
+    }
+
+    /**
      * Side-effects of approving an SP — runs from approveProvider AND from
      * editProvider when status flips to approved.
      *
-     * 1. Ensures the SP has a linked User account (creates one if missing,
-     *    finds an existing one by email, or updates the role on an existing
-     *    user with a different email-matching).
+     * 1. Ensures the SP has a linked User account — reusing their existing
+     *    provider account for this address, or creating one.
      * 2. Generates a password-reset token and emails the SP a set-password
      *    link via SpApplicationApprovedEmail.
      *
@@ -5684,34 +5788,39 @@ class AjaxController extends Controller
      */
     protected function finalizeApproval(ServiceProvider $provider): void
     {
-        // 1. Ensure linked User exists.
-        if (!$provider->user_id && $provider->email) {
-            $user = User::where('email', $provider->email)->first();
-            if (!$user) {
-                $user = User::create([
+        // 1. Ensure the provider has a login of its own.
+        //
+        // The role is checked, not just the link. Matching on email alone used
+        // to find the applicant's *traveller* account and overwrite its
+        // user_role, costing them their traveller identity to gain a provider
+        // one — and rows linked that way before emails were unique per role are
+        // still in the table. A traveller account found here is therefore left
+        // exactly as it is and a provider account is used in its place.
+        $user = $provider->user_id ? User::find($provider->user_id) : null;
+
+        if ($provider->email && (!$user || (!$user->isServiceProvider() && !$user->isHct()))) {
+            $user = User::findByEmailForRoles($provider->email, User::PROVIDER_ROLES)
+                ?: User::create([
                     'full_name' => $provider->name,
                     'email'     => $provider->email,
                     'password'  => Str::random(40),
                     'auth_type' => 'email',
                     'user_role' => $provider->provider_type,
                 ]);
-            } else {
-                $user->update(['user_role' => $provider->provider_type]);
-            }
             $provider->forceFill(['user_id' => $user->id])->save();
         }
 
         // 2. Email the SP a set-password link so they can log in.
-        $user = $provider->user_id ? User::find($provider->user_id) : null;
         if (!$user || !$user->email) {
             Log::warning('finalizeApproval: SP has no linked user/email; skipping mail', ['provider_id' => $provider->id]);
             return;
         }
 
-        // Approval is the moment the account actually becomes a provider. The
-        // application only linked the user, so promote the role here — but never
-        // touch a staff account.
-        if (!$user->isHct() && $user->user_role !== $provider->provider_type) {
+        // Their primary type can change between applying and being reviewed, so
+        // approval is where the account's role is brought back in line with it.
+        // Only ever a provider account: a staff login that also hosts keeps the
+        // role it signs in to the admin with.
+        if ($user->isServiceProvider() && $user->user_role !== $provider->provider_type) {
             $user->update(['user_role' => $provider->provider_type]);
         }
 
@@ -5738,6 +5847,9 @@ class AjaxController extends Controller
                 $setPasswordUrl = route('password.reset', [
                     'token' => $token,
                     'email' => $user->email,
+                    // Their traveller account may share this address; the link
+                    // must set the password on the provider login it approved.
+                    'role' => $user->user_role,
                 ]);
                 $this->sendMail(
                     $user->email,
@@ -6105,53 +6217,117 @@ class AjaxController extends Controller
     }
 
     /**
-     * Soft-archive a service provider. HCT admin only.
-     * Side effects:
-     *   - provider.status        → 'removed'
-     *   - linked user.status     → 'inactive' (so they can't log in)
-     *   - sp_pricing.is_active   → false   (so trip-manager/traveller skip them)
-     *   - sp_room_bookings.status → 'released' on any held/confirmed rows
+     * Decide what the account behind a provider is allowed to suffer when that
+     * provider is removed or deleted.
      *
-     * The provider row is kept (NOT hard-deleted) so historical trips,
-     * payments, and references stay intact. Admin can flip back to approved
-     * via restoreProvider().
+     * A provider is not always only a provider. Someone can travel with HECO
+     * first and sign up to host later — and approveProvider() overwrites
+     * users.user_role with the provider type when they do, so the row stops
+     * saying 'traveller' while their trips stay behind. Reading the role alone
+     * therefore misses exactly the case this guards against, and the traveller
+     * footprint has to be counted as well.
+     *
+     * Returns:
+     *   keep_login — the account outlives this provider (traveller history or
+     *                HCT staff). It must not be deactivated or deleted; it only
+     *                loses its provider role.
+     *   deletable  — the user row may be physically deleted: provider-only, and
+     *                nothing anywhere still points at it. Every reference
+     *                checked below is a RESTRICT foreign key, so deleting under
+     *                one fails at the database — they are checked up front
+     *                rather than discovered as a 500.
+     *
+     * @return array{keep_login: bool, deletable: bool, reason: ?string}
      */
-    protected function removeProvider(Request $request): JsonResponse
+    protected function providerUserDisposition(?int $userId): array
     {
-        if (!Auth::user() || !Auth::user()->isHctAdmin()) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+        if (!$userId) {
+            return ['keep_login' => false, 'deletable' => false, 'reason' => null];
         }
-        $provider = ServiceProvider::findOrFail($request->provider_id);
+        $user = \App\Models\User::find($userId);
+        if (!$user) {
+            return ['keep_login' => false, 'deletable' => false, 'reason' => null];
+        }
+        if ($user->isHct()) {
+            return ['keep_login' => true, 'deletable' => false, 'reason' => 'account is an HCT staff login'];
+        }
 
-        $provider->update([
-            'status'             => 'removed',
-            'last_updated_by'    => Auth::id(),
-            'last_updated_by_role' => 'admin',
+        // Traveller-side belongings. Any one of these means a real person still
+        // uses this login for something other than hosting.
+        $travellerOwned = [
+            'trip'    => \App\Models\Trip::where('user_id', $userId)->count(),
+            'lead'    => \App\Models\Lead::where('user_id', $userId)->count(),
+            'payment' => \App\Models\TravellerPayment::where('user_id', $userId)->count(),
+        ];
+        $held = array_filter($travellerOwned);
+
+        if ($user->isTraveller() || !empty($held)) {
+            return [
+                'keep_login' => true,
+                'deletable'  => false,
+                'reason'     => empty($held)
+                    ? 'account is also a traveller'
+                    : 'account is also a traveller (' . $this->describeCounts($held) . ')',
+            ];
+        }
+
+        // Provider-only, but rows that are neither traveller history nor
+        // provider inventory can still block the delete. Keeping the (now
+        // deactivated) user row is better than destroying their support or
+        // chat history to force one through.
+        $otherOwned = array_filter([
+            'support request' => \App\Models\SupportRequest::where('user_id', $userId)->count(),
+            'AI conversation' => \App\Models\AiConversation::where('user_id', $userId)->count(),
         ]);
-        if ($provider->user_id) {
-            \App\Models\User::where('id', $provider->user_id)->update(['status' => 'inactive']);
+        if (!empty($otherOwned)) {
+            return [
+                'keep_login' => false,
+                'deletable'  => false,
+                'reason'     => 'account still owns ' . $this->describeCounts($otherOwned),
+            ];
         }
-        SpPricing::where('service_provider_id', $provider->id)->update(['is_active' => false]);
-        // Release every active room booking against this SP's pricing rows.
-        $pricingIds = SpPricing::where('service_provider_id', $provider->id)->pluck('id');
-        if ($pricingIds->isNotEmpty()) {
-            \App\Models\SpRoomBooking::whereIn('sp_pricing_id', $pricingIds)
-                ->whereIn('status', ['held', 'confirmed'])
-                ->update(['status' => 'released']);
-        }
-        $this->logActivity('provider_removed', 'ServiceProvider', $provider->id);
-        return response()->json(['success' => true]);
+
+        return ['keep_login' => false, 'deletable' => true, 'reason' => null];
     }
 
     /**
-     * Hard-delete a provider. HCT admin only. Requires the provider to already
-     * be in 'removed' state (so admins always go through the soft-archive
-     * step first and can't accidentally nuke a live provider).
+     * "2 trips, 1 payment" — for the toast that explains why an account was
+     * kept. Keys are singular labels, values their counts.
+     */
+    protected function describeCounts(array $counts): string
+    {
+        $parts = [];
+        foreach ($counts as $label => $n) {
+            $parts[] = $n . ' ' . \Illuminate\Support\Str::plural($label, $n);
+        }
+        return implode(', ', $parts);
+    }
+
+    /**
+     * Strip the provider role off an account that is being kept, so the portal
+     * stops offering provider screens while the traveller side keeps working.
+     * Scoped to the three provider roles — an HCT login is never rewritten.
+     */
+    protected function demoteProviderUserToTraveller(int $userId): void
+    {
+        \App\Models\User::where('id', $userId)
+            ->whereIn('user_role', ['hrp', 'hlh', 'osp'])
+            ->update(['user_role' => 'traveller']);
+    }
+
+    /**
+     * Delete a provider — the shared body of the single-row and bulk paths;
+     * both callers check for HCT admin first.
      *
-     * Blocked if:
-     *   - any sp_payments rows reference this provider (financial history)
-     *   - any experiences are still hosted by this provider
-     * Both must be cleaned up manually by the admin before hard delete.
+     * Removal is a real delete, not a status flag. A row kept under a 'removed'
+     * status still owns its email, and `unique:service_providers,email` counts
+     * it — so a member who was taken off the platform could never apply again,
+     * and was told "an application with this email already exists" instead.
+     * Nothing is archived here: once the row is gone the address is free and a
+     * fresh application behaves like any other.
+     *
+     * Blocked if any sp_payments rows reference this provider (financial
+     * history) — those must be archived by the admin first.
      *
      * Cascades automatically via DB FKs:
      *   - sp_pricing            → cascadeOnDelete
@@ -6160,36 +6336,40 @@ class AjaxController extends Controller
      *   - trip_day_services     → service_provider_id set NULL (history kept)
      *   - trip_day_services     → sp_pricing_id set NULL via sp_pricing FK
      *
-     * Linked user row is deleted explicitly.
+     * The linked user row is deleted only when it belongs to this provider and
+     * nothing else — see providerUserDisposition(). A login that is also a
+     * traveller's survives, minus its provider role.
+     *
+     * Returns a blocker rather than throwing, so a bulk caller can skip this
+     * provider and carry on with the rest of the selection.
+     *
+     * @return array{ok: bool, error: ?string, blockers: ?array, user: string, reason: ?string, detached_experiences: int}
      */
-    protected function permanentlyDeleteProvider(Request $request): JsonResponse
+    protected function hardDeleteProvider(ServiceProvider $provider): array
     {
-        if (!Auth::user() || !Auth::user()->isHctAdmin()) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-        $provider = ServiceProvider::findOrFail($request->provider_id);
-        if ($provider->status !== 'removed') {
-            return response()->json([
-                'error' => 'Provider must be in "removed" state before permanent deletion. Use Remove first.',
-            ], 422);
-        }
+        $fail = fn (string $error, ?array $blockers = null) => [
+            'ok' => false, 'error' => $error, 'blockers' => $blockers,
+            'user' => 'none', 'reason' => null, 'detached_experiences' => 0,
+        ];
 
-        // Only sp_payments still hard-blocks — financial history must be
-        // archived separately. Experiences are auto-detached: hlh_id set to
-        // NULL (now nullable as of 2026_05_16_140000) and the experience
-        // deactivated so it stops appearing in active listings.
+        // Only sp_payments hard-blocks — financial history must be archived
+        // separately. Experiences are auto-detached: hlh_id set to NULL (now
+        // nullable as of 2026_05_16_140000) and the experience deactivated so
+        // it stops appearing in active listings.
         $paymentCount = \App\Models\SpPayment::where('service_provider_id', $provider->id)->count();
         if ($paymentCount > 0) {
-            return response()->json([
-                'error' => "Cannot permanently delete — provider has {$paymentCount} payment record(s). Archive those first.",
-                'blockers' => ['sp_payments' => $paymentCount],
-            ], 422);
+            return $fail(
+                "Cannot delete — provider has {$paymentCount} payment record(s). Archive those first.",
+                ['sp_payments' => $paymentCount]
+            );
         }
 
         $userId = $provider->user_id;
+        $providerId = $provider->id;
+        $disposition = $this->providerUserDisposition($userId);
         $detachedExperiences = \App\Models\Experience::where('hlh_id', $provider->id)->count();
 
-        \DB::transaction(function () use ($provider, $userId) {
+        \DB::transaction(function () use ($provider, $userId, $disposition) {
             // Detach hosted experiences (hlh_id → NULL, is_active → false)
             // so traveller listings stop surfacing them. Admin can reassign
             // them to a new HLH later if needed.
@@ -6198,39 +6378,117 @@ class AjaxController extends Controller
                 'is_active' => false,
             ]);
             $provider->delete();  // cascades to sp_pricing, sp_availability, sp_room_bookings
-            if ($userId) {
+            if (!$userId) {
+                return;
+            }
+            if ($disposition['deletable']) {
                 \App\Models\User::where('id', $userId)->delete();
+                return;
+            }
+            // service_providers.user_id is nullOnDelete, so the link is already
+            // gone. Hand the account back to the traveller side — it keeps its
+            // trips and can sign in to the portal, it just stops being a
+            // provider. Its email is free for a fresh application either way,
+            // because uniqueness is per role.
+            $this->demoteProviderUserToTraveller($userId);
+            if ($disposition['keep_login']) {
+                \App\Models\User::where('id', $userId)->update(['status' => 'active']);
             }
         });
-        return response()->json([
-            'success' => true,
+
+        $userOutcome = 'none';
+        if ($userId) {
+            $userOutcome = $disposition['deletable']
+                ? 'deleted'
+                : ($disposition['keep_login'] ? 'kept' : 'orphaned');
+        }
+        $this->logActivity('provider_deleted', 'ServiceProvider', $providerId);
+
+        return [
+            'ok' => true, 'error' => null, 'blockers' => null,
+            'user' => $userOutcome,
+            'reason' => $disposition['reason'],
             'detached_experiences' => $detachedExperiences,
-        ]);
+        ];
     }
 
     /**
-     * Reverse a removeProvider() — admin only. Flips status back to 'approved'
-     * and reactivates the linked user. Pricing rows stay inactive so the
-     * admin can review and re-enable individual rates intentionally.
+     * Delete one provider. HCT admin only.
      */
-    protected function restoreProvider(Request $request): JsonResponse
+    protected function removeProvider(Request $request): JsonResponse
     {
         if (!Auth::user() || !Auth::user()->isHctAdmin()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
         $provider = ServiceProvider::findOrFail($request->provider_id);
-        if ($provider->status !== 'removed') {
-            return response()->json(['error' => 'Provider is not in removed state'], 422);
+        $result = $this->hardDeleteProvider($provider);
+
+        if (!$result['ok']) {
+            return response()->json(array_filter([
+                'error'    => $result['error'],
+                'blockers' => $result['blockers'],
+            ]), 422);
         }
-        $provider->update([
-            'status'             => 'approved',
-            'last_updated_by'    => Auth::id(),
-            'last_updated_by_role' => 'admin',
+
+        $message = 'Provider deleted.';
+        if ($result['user'] === 'kept') {
+            $message .= ' Login kept — ' . $result['reason'] . '.';
+        } elseif ($result['user'] === 'orphaned') {
+            $message .= ' Login kept (deactivated) — ' . $result['reason'] . '.';
+        }
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'user'    => $result['user'],
+            'detached_experiences' => $result['detached_experiences'],
         ]);
-        if ($provider->user_id) {
-            \App\Models\User::where('id', $provider->user_id)->update(['status' => 'active']);
+    }
+
+    /**
+     * Bulk delete. Each provider goes through the same blocker and account
+     * checks as the single-row path; a blocked one is named in the summary and
+     * the rest still go through.
+     */
+    protected function bulkRemoveProviders(Request $request): JsonResponse
+    {
+        if (!Auth::user() || !Auth::user()->isHctAdmin()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
         }
-        return response()->json(['success' => true]);
+        $ids = $this->bulkIds($request);
+        if (empty($ids)) {
+            return response()->json(['error' => 'No providers selected'], 422);
+        }
+
+        $deleted = 0;
+        $keptLogins = [];
+        $blocked = [];
+        foreach (ServiceProvider::whereIn('id', $ids)->get() as $provider) {
+            $name = $provider->name;
+            $result = $this->hardDeleteProvider($provider);
+            if (!$result['ok']) {
+                $blocked[] = $name . ' — ' . $result['error'];
+                continue;
+            }
+            if (in_array($result['user'], ['kept', 'orphaned'], true)) {
+                $keptLogins[] = $name;
+            }
+            $deleted++;
+        }
+
+        $msg = $deleted . ' provider(s) deleted';
+        if (!empty($keptLogins)) {
+            $msg .= '. Login kept: ' . implode(', ', $keptLogins);
+        }
+        if (!empty($blocked)) {
+            $msg .= '. Blocked: ' . implode('; ', $blocked);
+        }
+        return response()->json([
+            'success'     => true,
+            'message'     => $msg,
+            'deleted'     => $deleted,
+            'kept_logins' => count($keptLogins),
+            'blocked'     => count($blocked),
+        ]);
     }
 
     // ===========================
@@ -6564,8 +6822,11 @@ class AjaxController extends Controller
             "name.required"              => "Please enter an experience name.",
             "region_id.required"         => "Please choose a region.",
             "region_id.exists"           => "The selected region is invalid.",
-            "hlh_id.required"            => "Please choose an HLH (host).",
-            "hlh_id.exists"              => "The selected HLH is invalid.",
+            // Says what to do, not just what is wrong: with no active host on
+            // the platform the dropdown is empty, and this is the only thing
+            // that tells the admin one has to be added and activated first.
+            "hlh_id.required"            => "No provider selected. An experience must belong to an active provider — add and activate one first.",
+            "hlh_id.exists"              => "The selected provider no longer exists.",
             "type.required"              => "Please choose an experience type.",
             "short_description.required" => "Please write a short description.",
             "duration_type.required"     => "Please choose a duration type.",
@@ -6574,6 +6835,10 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
+        // Which providers may host is decided by the form's dropdown, which
+        // lists active HLHs only. There is no second check here: this action is
+        // HCT-only, so the only way to post anything else is an HCT user going
+        // round their own form.
         $data = $request->except(["_token", "save_experience", "experience_days", "gallery", "price_slabs"]);
 
         if ($request->hasFile("card_image")) {
@@ -8402,10 +8667,12 @@ class AjaxController extends Controller
      */
     protected function provisionApplicantAccount(ServiceProvider $provider): array
     {
-        // submitSpApplication refuses an email that already has an account, so
-        // this only ever creates. The guard stays for safety: reusing an
-        // existing account here would silently change what it can already do.
-        $existing = User::where('email', $provider->email)->first();
+        // submitSpApplication refuses an email that already has a provider
+        // account, so this only ever creates. The guard stays for safety:
+        // reusing an existing account here would silently change what it can
+        // already do. Scoped to provider roles — the applicant's traveller
+        // account is a different account that happens to share the address.
+        $existing = User::findByEmailForRoles($provider->email, User::PROVIDER_ROLES);
         if ($existing) {
             $provider->forceFill(['user_id' => $existing->id])->save();
             return [null, '/login'];

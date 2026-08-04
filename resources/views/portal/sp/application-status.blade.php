@@ -27,12 +27,21 @@
                     </a>
                 </div>
             @else
-                @php $isRejected = $status === 'rejected'; @endphp
+                @php
+                    $isRejected = $status === 'rejected';
+                    // Banned and hidden read identically here, and neither is
+                    // named. Which one it is, and why, is HCT's to say.
+                    $isOutOfService = in_array($status, ['banned', 'hidden'], true);
+                @endphp
 
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <span class="app-status-badge {{ $isRejected ? 'is-rejected' : '' }}">
                         <span class="dot"></span>
-                        {{ $isRejected ? 'Application not approved' : 'Pending approval' }}
+                        @if($isOutOfService)
+                            Out of service
+                        @else
+                            {{ $isRejected ? 'Application not approved' : 'Pending approval' }}
+                        @endif
                     </span>
                     <form method="POST" action="{{ route('logout') }}" class="m-0">
                         @csrf
@@ -42,7 +51,13 @@
                     </form>
                 </div>
 
-                @if($isRejected)
+                @if($isOutOfService)
+                    <h2 class="mb-2">Your account is out of service</h2>
+                    <p class="text-muted mb-4">
+                        Your HECO {{ $typeLabel }} account is not taking bookings at the moment.
+                        Please contact the HECO team if you think this is a mistake.
+                    </p>
+                @elseif($isRejected)
                     <h2 class="mb-2">Your application was not approved</h2>
                     <p class="text-muted mb-4">
                         Unfortunately your application to join HECO as a {{ $typeLabel }} was not approved.
@@ -63,7 +78,13 @@
                             <i class="bi {{ $isRejected ? 'bi-x-circle' : 'bi-hourglass-split' }}"></i>
                         </div>
                         <div>
-                            <div class="fw-semibold">{{ $isRejected ? 'Not approved' : 'Under review' }}</div>
+                            <div class="fw-semibold">
+                                @if($isOutOfService)
+                                    Out of service
+                                @else
+                                    {{ $isRejected ? 'Not approved' : 'Under review' }}
+                                @endif
+                            </div>
                             <div class="text-muted small">Application #{{ $provider->id }} · {{ $typeLabel }}</div>
                         </div>
                     </div>

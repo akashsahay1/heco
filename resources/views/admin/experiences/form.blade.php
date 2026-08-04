@@ -5,7 +5,12 @@
 @php
     $e = $experience ?? null;
     $regions = $regions ?? \App\Models\Region::where('is_active', 1)->orderBy('name')->get();
-    $providers = $providers ?? \App\Models\ServiceProvider::where('provider_type', 'hlh')->where('status', 'approved')->orderBy('name')->get();
+    // The controller sends this as $hlhs; reading $providers meant its list was
+    // ignored and the weaker fallback below rendered instead — which asked
+    // provider_type = 'hlh' and so missed every host that also supplies
+    // services. Active hosts only: an experience cannot be given to anyone else.
+    $providers = $hlhs
+        ?? \App\Models\ServiceProvider::ofType('hlh')->where('status', 'approved')->orderBy('name')->get();
     $regenerativeProjects = $regenerativeProjects ?? \App\Models\RegenerativeProject::where('is_active', 1)->orderBy('name')->get();
 
     $months = ['January','February','March','April','May','June','July','August','September','October','November','December'];

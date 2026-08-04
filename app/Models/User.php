@@ -5,13 +5,30 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Unique;
 use App\Mail\PasswordResetEmail;
 
 class User extends Authenticatable
 {
     use HasFactory, Notifiable;
+
+    /**
+     * Roles grouped by the door they come in through.
+     *
+     * An email is unique per role, not outright (users_email_role_unique) —
+     * the same person can hold a traveller account and an HCT login on one
+     * address. That makes "find the user with this email" ambiguous on its
+     * own, so every credential lookup narrows to the roles its entry point
+     * actually serves and lets the password settle any remainder. See
+     * findByCredentials().
+     */
+    public const HCT_ROLES = ['hct_admin', 'hct_collaborator'];
+    public const PROVIDER_ROLES = ['hrp', 'hlh', 'osp'];
+    public const PORTAL_ROLES = ['traveller', 'hrp', 'hlh', 'osp'];
 
     protected $fillable = [
         'full_name', 'email', 'password', 'auth_type', 'user_role',
@@ -81,6 +98,63 @@ class User extends Authenticatable
         return in_array($this->user_role, ['hrp', 'hlh', 'osp']);
     }
 
+    /**
+     * The account behind an email and password, for one entry point.
+     *
+     * Auth::attempt() is not usable where an email may repeat: its provider
+     * takes the first row matching the email and checks the password against
+     * that row alone, so the second account would be permanently unreachable —
+     * silently, and looking exactly like a wrong password. This narrows by
+     * role first and then lets the password settle whatever is left, so two
+     * accounts on one address both work as long as their passwords differ.
+     *
+     * @param array<int,string> $roles
+     */
+    public static function findByCredentials(string $email, string $password, array $roles): ?self
+    {
+        $candidates = static::where('email', $email)
+            ->whereIn('user_role', $roles)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($candidates as $candidate) {
+            if ($candidate->password && Hash::check($password, $candidate->password)) {
+                return $candidate;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Validation rule for "this address is free" — within one set of roles,
+     * which is as far as uniqueness now goes. Pass the id of the row being
+     * edited so an update does not collide with itself.
+     *
+     * @param array<int,string> $roles
+     */
+    public static function uniqueEmailRule(array $roles, ?int $ignoreId = null): Unique
+    {
+        $rule = Rule::unique('users', 'email')
+            ->where(fn ($query) => $query->whereIn('user_role', $roles));
+
+        return $ignoreId ? $rule->ignore($ignoreId) : $rule;
+    }
+
+    /**
+     * The account an email-only flow (password reset, social sign-in) belongs
+     * to, for one entry point. There is no password here to tell two apart, so
+     * the oldest match wins — the account the address was first used for.
+     *
+     * @param array<int,string> $roles
+     */
+    public static function findByEmailForRoles(string $email, array $roles): ?self
+    {
+        return static::where('email', $email)
+            ->whereIn('user_role', $roles)
+            ->orderBy('id')
+            ->first();
+    }
+
     public function trips()
     {
         return $this->hasMany(Trip::class);
@@ -115,6 +189,9 @@ class User extends Authenticatable
         $resetUrl = route('password.reset', [
             'token' => $token,
             'email' => $this->email,
+            // Which of the accounts on this address the link is for — see the
+            // role constants above.
+            'role' => $this->user_role,
         ]);
 
         try {

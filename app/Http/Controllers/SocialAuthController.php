@@ -46,7 +46,9 @@ class SocialAuthController extends Controller
         $user = User::where($idField, $socialUser->getId())->first();
 
         if (!$user) {
-            $user = User::where("email", $socialUser->getEmail())->first();
+            // Portal-side roles only: Google handing back an address that also
+            // belongs to an HCT login must not sign the visitor in as staff.
+            $user = User::findByEmailForRoles($socialUser->getEmail(), User::PORTAL_ROLES);
             if ($user) {
                 $user->update([$idField => $socialUser->getId()]);
             } else {

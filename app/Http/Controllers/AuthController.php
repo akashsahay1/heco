@@ -64,7 +64,10 @@ class AuthController extends Controller
         }
 
         $email = $request->input("email");
-        $user = User::where("email", $email)->first();
+        // Portal-side roles only. An address shared with an HCT login must not
+        // let a reset started on the public site change the admin's password —
+        // that reset lives on the admin domain.
+        $user = User::findByEmailForRoles($email, User::PORTAL_ROLES);
         if ($user) {
             app(PasswordResetOtpService::class)->sendCode($user);
             session(["pwreset_uid" => $user->id]);
@@ -144,15 +147,31 @@ class AuthController extends Controller
 
     public function show_reset_password(string $token)
     {
-        return view("portal.auth.reset-password", ["token" => $token]);
+        return view("portal.auth.reset-password", [
+            "token" => $token,
+            // Carried through from the emailed link so the POST knows which of
+            // the accounts on this address the link belongs to.
+            "role" => request("role", ""),
+        ]);
     }
 
+    /**
+     * Finish a token-link reset.
+     *
+     * This page serves both domains — HCT staff are sent here by the admin's
+     * "reset password" action, and providers by the approval email — so the
+     * roles it may touch cannot be inferred from the host. The link carries the
+     * role instead, and it narrows the lookup to the one account the token was
+     * minted for. A link issued before this existed carries no role and falls
+     * back to the old behaviour rather than refusing to work.
+     */
     public function reset_password(Request $request)
     {
         $validator = Validator::make($request->all(), [
             "token" => "required",
             "email" => "required|email",
             "password" => "required|min:8|confirmed",
+            "role" => "nullable|string|in:traveller,hrp,hlh,osp,hct_admin,hct_collaborator",
         ]);
 
         if ($request->expectsJson()) {
@@ -160,7 +179,7 @@ class AuthController extends Controller
                 return response()->json(["success" => false, "error" => $validator->errors()->first()], 422);
             }
             $status = Password::reset(
-                $request->only("email", "password", "password_confirmation", "token"),
+                $this->reset_credentials($request),
                 function (User $user, string $password) {
                     $user->forceFill(["password" => $password])->setRememberToken(Str::random(60));
                     $user->save();
@@ -176,7 +195,7 @@ class AuthController extends Controller
 
         $validator->validate();
         $status = Password::reset(
-            $request->only("email", "password", "password_confirmation", "token"),
+            $this->reset_credentials($request),
             function (User $user, string $password) {
                 $user->forceFill(["password" => $password])->setRememberToken(Str::random(60));
                 $user->save();
@@ -186,6 +205,23 @@ class AuthController extends Controller
         return $status === Password::PASSWORD_RESET
             ? redirect("/login")->with("status", __($status))
             : back()->withErrors(["email" => [__($status)]]);
+    }
+
+    /**
+     * Credentials for the password broker, narrowed to the link's own role.
+     *
+     * The broker's user provider turns every non-password key into a where
+     * clause and then takes the first row, so on a shared address the email
+     * alone would resolve to whichever account is oldest — and reset that one's
+     * password instead. `user_role` pins it to the account the link was for.
+     */
+    protected function reset_credentials(Request $request): array
+    {
+        $credentials = $request->only("email", "password", "password_confirmation", "token");
+        if ($request->filled("role")) {
+            $credentials["user_role"] = $request->input("role");
+        }
+        return $credentials;
     }
 
     protected function redirect_by_role(User $user)

@@ -32,19 +32,14 @@
         <div class="heco-filter-sm">
             <select class="form-select form-select-sm custom-select" id="statusFilter">
                 <option value="" selected>All Statuses</option>
-                <option value="approved">Approved</option>
-                <option value="pending">Pending</option>
-                <option value="rejected">Rejected</option>
-                <option value="removed">Removed</option>
-                <option value="all">All (incl. removed)</option>
+                @foreach(\App\Models\ServiceProvider::STATUS_LABELS as $value => $label)
+                    <option value="{{ $value }}">{{ $label }}</option>
+                @endforeach
             </select>
         </div>
         <input type="text" class="form-control form-control-sm heco-filter-lg" id="providerSearch">
         <button type="button" class="btn btn-sm btn-danger d-none" id="providersBulkRemove">
-            <i class="bi bi-trash me-1"></i> Remove <span id="providersBulkCount">0</span>
-        </button>
-        <button type="button" class="btn btn-sm btn-danger d-none" id="providersBulkPermDelete">
-            <i class="bi bi-trash3 me-1"></i> Permanently delete <span id="providersBulkPermCount">0</span>
+            <i class="bi bi-trash me-1"></i> Delete <span id="providersBulkCount">0</span>
         </button>
     </div>
 </div>
@@ -166,6 +161,14 @@
 
 @section('js')
 <script>
+// Provider names carry apostrophes ("Dorje's Homestay") and land in both cell
+// text and data-attributes, where a raw quote would end the attribute early.
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+
 function formatLastUpdated(p) {
     var role = p.last_updated_by_role;
     if (role === 'admin') return '<span class="badge bg-secondary">Admin</span>';
@@ -220,22 +223,21 @@ function loadProviders(page) {
         items.forEach(function(p) {
             var typeBadge = renderTypes(p);
 
+            // Admin sees the real status — banned and hidden are only masked
+            // on the member-facing side.
             var statusBadge = '';
             if (p.status === 'approved') statusBadge = '<span class="badge bg-success">Approved</span>';
             else if (p.status === 'pending') statusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
             else if (p.status === 'rejected') statusBadge = '<span class="badge bg-danger">Rejected</span>';
-            else if (p.status === 'removed') statusBadge = '<span class="badge bg-dark">Removed</span>';
-            else statusBadge = '<span class="badge bg-secondary">' + (p.status || '-') + '</span>';
+            else if (p.status === 'banned') statusBadge = '<span class="badge bg-dark">Banned</span>';
+            else if (p.status === 'hidden') statusBadge = '<span class="badge bg-secondary">Hidden</span>';
+            else statusBadge = '<span class="badge bg-secondary">' + escapeHtml(p.status || '-') + '</span>';
 
-            html += '<tr data-id="' + p.id + '" data-status="' + (p.status || '') + '" class="' + (p.status === 'removed' ? 'text-muted' : '') + '">';
-            // Checkbox cell — always rendered. The bulk action button is
-            // mode-aware: non-removed selected → 'Remove'; removed selected
-            // → 'Permanently delete'. Mixed selections show both buttons,
-            // each operating only on the matching subset.
+            html += '<tr data-id="' + p.id + '">';
             html += '<td>';
-            html += '<i class="bi bi-square provider-check" role="button" data-id="' + p.id + '" data-status="' + (p.status || '') + '"></i>';
+            html += '<i class="bi bi-square provider-check" role="button" data-id="' + p.id + '"></i>';
             html += '</td>';
-            html += '<td>' + (p.name || '-') + '</td>';
+            html += '<td>' + escapeHtml(p.name || '-') + '</td>';
             html += '<td>' + typeBadge + '</td>';
             html += '<td>' + (p.region ? p.region.name : '-') + '</td>';
             html += '<td>';
@@ -244,9 +246,10 @@ function loadProviders(page) {
             html += '</td>';
             html += '<td>' + statusBadge + '</td>';
             html += '<td>' + formatLastUpdated(p) + '</td>';
-            html += '<td>';
+            html += '<td class="text-nowrap">';
             html += '<a class="btn btn-sm btn-outline-primary me-1" href="/providers/' + p.id + '"><i class="bi bi-eye"></i> View</a>';
-            html += '<a class="btn btn-sm btn-outline-success" href="/providers/' + p.id + '/edit"><i class="bi bi-pencil"></i> Edit</a>';
+            html += '<a class="btn btn-sm btn-outline-success me-1" href="/providers/' + p.id + '/edit"><i class="bi bi-pencil"></i> Edit</a>';
+            html += '<button type="button" class="btn btn-sm btn-outline-danger provider-remove" data-id="' + p.id + '" data-name="' + escapeHtml(p.name) + '" title="Delete provider"><i class="bi bi-trash"></i></button>';
             html += '</td>';
             html += '</tr>';
         });
@@ -257,13 +260,9 @@ function loadProviders(page) {
 }
 
 function refreshBulkBtn() {
-    var $checked = $('.provider-check.provider-checked');
-    var removedSelected = $checked.filter('[data-status="removed"]').length;
-    var nonRemovedSelected = $checked.length - removedSelected;
-    $('#providersBulkCount').text(nonRemovedSelected);
-    $('#providersBulkPermCount').text(removedSelected);
-    $('#providersBulkRemove').toggleClass('d-none', nonRemovedSelected === 0);
-    $('#providersBulkPermDelete').toggleClass('d-none', removedSelected === 0);
+    var selected = $('.provider-check.provider-checked').length;
+    $('#providersBulkCount').text(selected);
+    $('#providersBulkRemove').toggleClass('d-none', selected === 0);
 }
 
 $(function() {
@@ -291,7 +290,7 @@ $(document).on('click', '.provider-check', function() {
     refreshBulkBtn();
 });
 
-// Header "select all on this page" — toggles every non-removed row
+// Header "select all on this page"
 $(document).on('click', '.providers-selall', function() {
     var anyUnchecked = $('.provider-check:not(.provider-checked)').length > 0;
     $('.provider-check').each(function() {
@@ -302,87 +301,77 @@ $(document).on('click', '.providers-selall', function() {
     refreshBulkBtn();
 });
 
-// Bulk remove — only acts on currently-non-removed selected rows.
-$('#providersBulkRemove').on('click', function() {
-    var ids = $('.provider-check.provider-checked').filter(function() {
-        return $(this).data('status') !== 'removed';
-    }).map(function() { return $(this).data('id'); }).get();
-    if (!ids.length) return;
+// ── Danger actions ───────────────────────────────────────────────────────
+// The single-row and bulk deletes are the same shape — confirm, one request,
+// report what came back — so they share a runner. The server's message is
+// shown verbatim because it is the only side that knows whether a login
+// survived the delete for being a traveller's too.
+function providerAction(opts) {
     Swal.fire({
-        title: 'Remove ' + ids.length + ' provider(s)?',
-        text: 'Each provider will be archived (status: removed). User accounts deactivated, pricing inactivated, active bookings released. Reversible.',
-        icon: 'warning',
+        title: opts.title,
+        html: opts.html,
+        icon: opts.icon || 'warning',
         showCancelButton: true,
-        confirmButtonText: 'Yes, remove ' + ids.length,
-        confirmButtonColor: '#b54a4a'
+        confirmButtonText: opts.confirmText,
+        confirmButtonColor: opts.confirmColor || '#b54a4a',
+        focusCancel: !!opts.focusCancel
     }).then(function(res) {
         if (!res.isConfirmed) return;
-        var $btn = $('#providersBulkRemove').prop('disabled', true).html('<i class="bi bi-hourglass-split me-1"></i> Removing...');
-        var done = 0, failed = 0;
-        function next(i) {
-            if (i >= ids.length) {
-                $btn.prop('disabled', false).html('<i class="bi bi-trash me-1"></i> Remove <span id="providersBulkCount">0</span>');
-                showAlert(done + ' removed' + (failed ? ', ' + failed + ' failed' : '.'), failed ? 'warning' : 'success');
-                loadProviders();
-                return;
-            }
-            ajaxPost({ remove_provider: 1, provider_id: ids[i] },
-                function() { done++; next(i + 1); },
-                function() { failed++; next(i + 1); }
-            );
-        }
-        next(0);
+        var $btn = opts.$btn;
+        var idle = $btn.html();
+        $btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i>');
+        ajaxPost(opts.data, function(resp) {
+            // The row is about to be re-rendered, but the bulk buttons in the
+            // header are not — both get their label back either way.
+            $btn.prop('disabled', false).html(idle);
+            showAlert(resp.message || 'Done.', (resp.blocked || resp.skipped) ? 'warning' : 'success');
+            loadProviders();
+        }, function(xhr) {
+            $btn.prop('disabled', false).html(idle);
+            var r = xhr.responseJSON || {};
+            showAlert(r.error || 'Action failed.', 'danger');
+        });
+    });
+}
+
+// Selected ids on this page.
+function selectedProviderIds() {
+    return $('.provider-check.provider-checked')
+        .map(function() { return $(this).data('id'); }).get();
+}
+
+var DELETE_WARNING = '<strong>This cannot be undone.</strong><br>'
+    + 'The provider record is deleted outright, so its email is free to apply again. '
+    + 'All pricing, availability blocks, and room bookings go with it, and hosted experiences are detached. '
+    + 'Providers holding payment records are skipped. The login is deleted only if it belongs to this provider '
+    + 'and nothing else — a traveller\'s account is kept, minus its provider role.';
+
+// Per-row delete.
+$(document).on('click', '.provider-remove', function() {
+    var $btn = $(this);
+    providerAction({
+        $btn: $btn,
+        title: 'Delete ' + escapeHtml($btn.data('name')) + '?',
+        html: DELETE_WARNING,
+        confirmText: 'Yes, delete',
+        focusCancel: true,
+        data: { remove_provider: 1, provider_id: $btn.data('id') }
     });
 });
 
-// Bulk permanent delete — only acts on currently-removed selected rows.
-// Each call goes through the per-provider blocker check (sp_payments,
-// hosted experiences); per-row failures are reported in the final toast.
-$('#providersBulkPermDelete').on('click', function() {
-    var ids = $('.provider-check.provider-checked').filter(function() {
-        return $(this).data('status') === 'removed';
-    }).map(function() { return $(this).data('id'); }).get();
+// Bulk delete — the whole selection goes in one request; the server applies
+// the same blocker and account checks per provider and names the ones it
+// skipped.
+$('#providersBulkRemove').on('click', function() {
+    var ids = selectedProviderIds();
     if (!ids.length) return;
-    Swal.fire({
-        title: 'Permanently delete ' + ids.length + ' provider(s)?',
-        html: '<strong>This cannot be undone.</strong><br>'
-            + 'All pricing, availability blocks, and active bookings will be wiped from the database. '
-            + 'Providers with payment records or hosted experiences will be skipped automatically.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, permanently delete',
-        confirmButtonColor: '#b54a4a',
+    providerAction({
+        $btn: $(this),
+        title: 'Delete ' + ids.length + ' provider(s)?',
+        html: DELETE_WARNING,
+        confirmText: 'Yes, delete ' + ids.length,
         focusCancel: true,
-    }).then(function(res) {
-        if (!res.isConfirmed) return;
-        var $btn = $('#providersBulkPermDelete').prop('disabled', true).html('<i class="bi bi-hourglass-split me-1"></i> Deleting...');
-        var done = 0, blocked = 0, failed = 0;
-        var blockedMsgs = [];
-        function next(i) {
-            if (i >= ids.length) {
-                $btn.prop('disabled', false).html('<i class="bi bi-trash3 me-1"></i> Permanently delete <span id="providersBulkPermCount">0</span>');
-                var summary = done + ' deleted';
-                if (blocked) summary += ', ' + blocked + ' blocked: ' + blockedMsgs.join('; ');
-                if (failed) summary += ', ' + failed + ' failed';
-                showAlert(summary, (blocked || failed) ? 'warning' : 'success');
-                loadProviders();
-                return;
-            }
-            ajaxPost({ permanently_delete_provider: 1, provider_id: ids[i] },
-                function() { done++; next(i + 1); },
-                function(xhr) {
-                    var resp = xhr.responseJSON || {};
-                    if (xhr.status === 422 && resp.blockers) {
-                        blocked++;
-                        blockedMsgs.push('#' + ids[i] + ': ' + (resp.error || 'blocked'));
-                    } else {
-                        failed++;
-                    }
-                    next(i + 1);
-                }
-            );
-        }
-        next(0);
+        data: { bulk_remove_providers: 1, ids: ids }
     });
 });
 

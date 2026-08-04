@@ -61,6 +61,51 @@ class ServiceProvider extends Model
     ];
 
     /**
+     * What an admin may set the status to, and what each one reads as.
+     *
+     * 'removed' is deliberately absent: removing a provider deletes the row, so
+     * the state no longer exists to be chosen. Rows written by the old
+     * soft-delete still carry it and are shown as-is.
+     */
+    public const STATUS_LABELS = [
+        'approved' => 'Approved',
+        'pending'  => 'Pending',
+        'rejected' => 'Rejected',
+        'banned'   => 'Banned',
+        'hidden'   => 'Hidden',
+    ];
+
+    /**
+     * Blocked by HCT. The linked login is deactivated with the status, so this
+     * shuts the app and the portal at once — unlike 'hidden', which is only a
+     * pause.
+     */
+    public function isBanned(): bool
+    {
+        return $this->status === 'banned';
+    }
+
+    /**
+     * Temporarily out of service. They keep their login and can still manage
+     * rates and availability; they are simply not offered to travellers,
+     * matching, or Trip Manager while it lasts.
+     */
+    public function isHidden(): bool
+    {
+        return $this->status === 'hidden';
+    }
+
+    /**
+     * May reach the provider dashboard / app. Everything traveller-facing
+     * checks for 'approved' instead — a hidden provider signs in but is not
+     * sold.
+     */
+    public function canSignIn(): bool
+    {
+        return in_array($this->status, ['approved', 'hidden'], true);
+    }
+
+    /**
      * Labels for every role this provider holds, in a fixed order so a provider
      * who is both always reads the same way round.
      */

@@ -18,14 +18,21 @@ class SpMiddleware
             return redirect('/login')->with('error', 'Access denied.');
         }
 
-        // Only approved service providers get the working dashboard. A pending or
-        // rejected applicant is sent to the "application under review" page; one
-        // with no application on file is sent to the form to start one.
+        // A pending or rejected applicant is sent to the "application under
+        // review" page; one with no application on file is sent to the form to
+        // start one. A hidden provider keeps the working dashboard — being
+        // hidden only takes them out of what travellers are shown, so they can
+        // still keep their rates and availability current.
         $provider = ServiceProvider::where('user_id', auth()->id())->first();
-        if (!$provider || $provider->status !== 'approved') {
-            $message = $provider && $provider->status === 'rejected'
-                ? 'Your service provider application was not approved. Please contact HCT for details.'
-                : 'Your service provider application is under review. You will get an email once it is approved.';
+        if (!$provider || !$provider->canSignIn()) {
+            // A banned provider is told the same thing a hidden one would be.
+            // Which of the two it is, and why, is HCT's business — the wording
+            // here must not let them work it out.
+            $message = match (true) {
+                $provider && $provider->isBanned() => 'This account is currently out of service. Please contact HCT.',
+                $provider && $provider->status === 'rejected' => 'Your service provider application was not approved. Please contact HCT for details.',
+                default => 'Your service provider application is under review. You will get an email once it is approved.',
+            };
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['error' => $message], 403);
             }

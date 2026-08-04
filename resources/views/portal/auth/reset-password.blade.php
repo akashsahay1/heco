@@ -14,6 +14,11 @@
 
             <form id="resetForm" class="resetwrap-form" autocomplete="off">
                 <input type="hidden" name="token" value="{{ $token }}">
+                {{-- Which account the link was issued for. An address can belong
+                     to more than one — a traveller and an HCT login on the same
+                     email — so without this the reset would land on whichever
+                     row happens to be oldest. --}}
+                <input type="hidden" name="role" value="{{ $role }}">
 
                 <div class="mb-4">
                     <label class="resetwrap-label" for="resetEmail">Email Address</label>

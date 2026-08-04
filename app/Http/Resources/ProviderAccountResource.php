@@ -28,7 +28,18 @@ class ProviderAccountResource
             // needs the whole set or it hides half of what they signed up for.
             'provider_type' => $provider->provider_type,
             'provider_types' => $provider->types(),
-            'status' => $provider->status,
+            // Banned and hidden both leave here as 'out_of_service'. Which of
+            // the two it is, and why, is HCT's business — the app must not be
+            // able to tell a member they were banned, or that they were merely
+            // paused, and a wire value it never receives cannot leak either.
+            'status' => in_array($provider->status, ['banned', 'hidden'], true)
+                ? 'out_of_service'
+                : $provider->status,
+            // Whether this account still gets the working app. It is a separate
+            // question from the status now: a hidden provider signs in and
+            // manages their rates as usual, they are just not offered to
+            // travellers, so the app cannot read it off the status alone.
+            'can_sign_in' => $provider->canSignIn(),
             'name' => $provider->name,
             'contact_person' => $provider->contact_person,
             'email' => $provider->email,
