@@ -42,7 +42,10 @@
 </p>
 
 <p style="margin:24px 0; text-align:center;">
-    <a href="{{ url('/sp/dashboard') }}" style="display:inline-block; background:#79a09f; color:#ffffff; padding:12px 28px; border-radius:6px; text-decoration:none; font-weight:600;">
+    {{-- route(), not url(): this mail is sent while HCT is adding the service
+         in Trip Manager, so url() built the link against the admin host — and
+         /sp/dashboard only exists on the portal, giving the provider a 404. --}}
+    <a href="{{ route('sp.dashboard') }}" style="display:inline-block; background:#79a09f; color:#ffffff; padding:12px 28px; border-radius:6px; text-decoration:none; font-weight:600;">
         Open Dashboard
     </a>
 </p>

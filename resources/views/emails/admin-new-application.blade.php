@@ -29,7 +29,12 @@
 </table>
 
 <p style="margin:24px 0; text-align:center;">
-    <a href="{{ 'https://' . config('app.admin_domain') . '/provider-applications' }}"
+    {{-- Straight to the application that arrived, not the queue it sits in.
+         The scheme comes from app.url rather than being written in: the mail
+         is often sent while handling a request on the portal, so taking the
+         scheme from the request would hardcode whatever that happened to be.
+         The path comes from the route, so the id cannot drift. --}}
+    <a href="{{ (str_starts_with(config('app.url'), 'https') ? 'https' : 'http') . '://' . config('app.admin_domain') . route('hct.providers.show', $provider->id, false) }}"
        style="display:inline-block; background:#79a09f; color:#ffffff; padding:12px 28px; border-radius:6px; text-decoration:none; font-weight:600;">
         Review application
     </a>
