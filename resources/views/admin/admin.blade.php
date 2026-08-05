@@ -107,6 +107,16 @@
                     <div class="mb-3"><label class="form-label">Role</label>
                         <select class="form-select custom-select" name="user_role"><option value="hct_collaborator">HCT Collaborator</option><option value="hct_admin">HCT Admin</option></select>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="editUserPassword">Password</label>
+                        <div class="admin-password-field">
+                            <input type="password" class="form-control" id="editUserPassword" name="password" minlength="8" autocomplete="new-password">
+                            <div class="password_toggle" data-target="#editUserPassword" role="button" tabindex="0" aria-label="Show password">
+                                <i class="bi bi-eye"></i>
+                            </div>
+                        </div>
+                        <small class="text-muted">Leave blank to keep the current password. Minimum 8 characters.</small>
+                    </div>
                     <button type="submit" class="btn btn-success w-100">Save Changes</button>
                 </form>
             </div>
@@ -164,6 +174,10 @@ jQuery(document).on('click', '.edit-user', function() {
     $f.find('[name=full_name]').val($tr.data('full-name'));
     $f.find('[name=email]').val($tr.data('email'));
     $f.find('[name=user_role]').val($tr.data('role'));
+    // Blank on every open — a password left in the box from editing someone
+    // else would otherwise be set on this account.
+    $f.find('[name=password]').val('').attr('type', 'password');
+    $f.find('.password_toggle i').removeClass('bi-eye-slash').addClass('bi-eye');
     jQuery('#edituser-alert').empty();
     new bootstrap.Modal('#editUserModal').show();
 });

@@ -202,6 +202,19 @@
         window.showError = function (message) { showAlert(message, 'danger'); };
         window.showAlert = showAlert;
 
+        // Show/hide a password. Delegated from the document so it also works on
+        // fields that live inside a modal, which is not in the DOM at load.
+        // Keyboard-reachable too, since the control is a div rather than a button.
+        jQuery(document).on('click keydown', '.password_toggle', function(e) {
+            if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            var field = jQuery(jQuery(this).data('target'));
+            var shown = field.attr('type') === 'text';
+            field.attr('type', shown ? 'password' : 'text');
+            jQuery(this).attr('aria-label', shown ? 'Show password' : 'Hide password')
+                .find('i').toggleClass('bi-eye', shown).toggleClass('bi-eye-slash', !shown);
+        });
+
         function confirmAction(message, callback) {
             Swal.fire({
                 text: message,

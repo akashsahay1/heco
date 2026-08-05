@@ -1493,3 +1493,28 @@ body.admin-login-page {
 /* Experience per-person price slabs (req 3.2) — narrow, tidy pricing table. */
 .exp-slab-table { max-width: 520px; }
 .exp-slab-table .exp-slab-col { width: 140px; }
+
+/* Password fields with a show/hide eye — admin login and the Edit HCT User
+   modal. Mirrors the portal's .password_toggle so both sides behave alike. */
+.admin-password-field { position: relative; }
+.admin-password-field .form-control { padding-right: 38px; }
+.admin-password-field .password_toggle {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    color: #6b7280;
+    cursor: pointer;
+    background: transparent;
+}
+.admin-password-field .password_toggle:hover,
+.admin-password-field .password_toggle:focus-visible {
+    color: #79a09f;
+    outline: none;
+}
+.admin-password-field .password_toggle i { font-size: 1rem; line-height: 1; }

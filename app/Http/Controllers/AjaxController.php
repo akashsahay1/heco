@@ -4225,9 +4225,14 @@ class AjaxController extends Controller
             "full_name" => "sometimes|required|string|max:255",
             "email" => ["sometimes", "required", "email", User::uniqueEmailRule([$targetRole], $user->id)],
             "user_role" => "sometimes|required|in:hct_admin,hct_collaborator",
-            "password" => "sometimes|min:8",
+            // nullable, because the form posts the password box on every save
+            // and leaving it empty means "keep the current one" — without this
+            // an ordinary name or email change fails the length rule on a blank
+            // field. The save below only writes it when it is filled.
+            "password" => "sometimes|nullable|min:8",
         ], [
             "email.unique" => "Another {$targetRole} account already uses this email.",
+            "password.min" => "Password must be at least 8 characters.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);

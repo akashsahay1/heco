@@ -27,8 +27,13 @@
                 <input type="email" class="form-control" id="loginEmail" required autofocus>
             </div>
             <div class="mb-4">
-                <label class="form-label">Password</label>
-                <input type="password" class="form-control" id="loginPassword" required>
+                <label class="form-label" for="loginPassword">Password</label>
+                <div class="admin-password-field">
+                    <input type="password" class="form-control" id="loginPassword" required>
+                    <div class="password_toggle" data-target="#loginPassword" role="button" tabindex="0" aria-label="Show password">
+                        <i class="bi bi-eye"></i>
+                    </div>
+                </div>
             </div>
             <button type="submit" class="btn btn-success w-100" id="btnLogin">
                 <i class="bi bi-box-arrow-in-right me-1"></i> Sign In
@@ -41,6 +46,18 @@
     <script>
         jQuery.ajaxSetup({
             headers: { 'X-CSRF-TOKEN': jQuery('meta[name="csrf-token"]').attr('content') }
+        });
+
+        // Show/hide the password. Keyboard-reachable too, since the control is
+        // a div rather than a button.
+        jQuery(document).on('click keydown', '.password_toggle', function(e) {
+            if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            var field = jQuery(jQuery(this).data('target'));
+            var shown = field.attr('type') === 'text';
+            field.attr('type', shown ? 'password' : 'text');
+            jQuery(this).attr('aria-label', shown ? 'Show password' : 'Hide password')
+                .find('i').toggleClass('bi-eye', shown).toggleClass('bi-eye-slash', !shown);
         });
 
         jQuery('#adminLoginForm').on('submit', function(e) {
