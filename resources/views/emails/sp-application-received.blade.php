@@ -36,7 +36,9 @@
 </ol>
 
 <p style="margin:0 0 14px; line-height:1.6;">
-    In the meantime, feel free to explore our <a href="https://hecoportal.test/guidelines" style="color:#79a09f; text-decoration:underline;">Partner Guidelines</a> to understand how we work together to deliver regenerative travel experiences.
+    {{-- Built from the route, not written out: the address was hardcoded to a
+         local .test hostname, so this link reached nobody. --}}
+    In the meantime, feel free to explore our <a href="{{ route('partner-guidelines') }}" style="color:#79a09f; text-decoration:underline;">Partner Guidelines</a> to understand how we work together to deliver regenerative travel experiences.
 </p>
 
 <p style="margin:24px 0 0; line-height:1.6;">

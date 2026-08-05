@@ -189,6 +189,10 @@
                         <ul class="footer-nav">
                             <li><a href="/about">About Us</a></li>
                             <li><a href="/join">Partner With Us</a></li>
+                            {{-- Next to "Partner With Us", not under Support:
+                                 this one is for the collective, while the
+                                 Travel Guidelines there are for travellers. --}}
+                            <li><a href="/partner-guidelines">Partner Guidelines</a></li>
                             <li><a href="/about#team">Our Team</a></li>
                             <li><a href="/careers">Careers</a></li>
                         </ul>

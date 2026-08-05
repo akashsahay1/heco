@@ -91,7 +91,10 @@ class ReferenceController extends Controller
             'privacy' => $portal('privacy'),
             'help' => $portal('help'),
             'contact' => $portal('contact'),
-            'guidelines' => $portal('guidelines'),
+            // The partner-facing ones. This app is only ever used by members of
+            // the collective, and /guidelines is packing and safety advice
+            // written for travellers — not what a provider is asking to read.
+            'guidelines' => $portal('partner-guidelines'),
             'data_deletion' => $portal('data-deletion'),
         ];
     }

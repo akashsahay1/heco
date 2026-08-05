@@ -103,6 +103,9 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::get('/help', fn() => view('portal.pages.help'))->name('help');
     Route::get('/careers', fn() => view('portal.pages.careers'))->name('careers');
     Route::get('/guidelines', fn() => view('portal.pages.guidelines'))->name('guidelines');
+    // For the collective, not for travellers — /guidelines is packing and
+    // safety advice, which is not what a new partner is sent to read.
+    Route::get('/partner-guidelines', fn() => view('portal.pages.partner-guidelines'))->name('partner-guidelines');
 
     // Auth (dedicated pages — modal removed)
     Route::get('/login', [AuthController::class, 'show_login'])->name('login');
