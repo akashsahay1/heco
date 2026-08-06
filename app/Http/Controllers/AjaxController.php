@@ -630,6 +630,7 @@ class AjaxController extends Controller
         'sp_sync_ical_now' => 'sp',
         'update_sp_profile' => 'sp',
         'update_sp_photo' => 'sp',
+        'add_sp_document' => 'sp',
         'get_sp_assigned_trips' => 'sp',
         // A regional partner overseeing the providers in their region.
         'get_hrp_region_providers' => 'sp',
@@ -1384,6 +1385,9 @@ class AjaxController extends Controller
             }
             if ($request->has('update_sp_profile')) {
                 return $this->updateSpProfile($request);
+            }
+            if ($request->has('add_sp_document')) {
+                return $this->addSpDocument($request);
             }
             if ($request->has('get_hrp_region_providers')) {
                 return $this->getHrpRegionProviders($request);
@@ -5924,6 +5928,49 @@ class AjaxController extends Controller
         ]);
     }
 
+    /**
+     * File one more verification document after the application went in.
+     *
+     * A member who was asked for a permit, or who only had their ID to hand at
+     * signup, had no way to send it — the app's Documents screen could add a
+     * row to itself and nothing else.
+     *
+     * Arrives as `documents[]` with `document_labels[]`, exactly as on the
+     * application form, so the same helper stores it in the same place under
+     * the same rules. A document is a document whenever it turns up.
+     */
+    protected function addSpDocument(Request $request): JsonResponse
+    {
+        [$provider, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
+
+        $validator = Validator::make($request->all(), [
+            "documents" => "required|array|max:8",
+            "documents.*" => "file|mimes:jpg,jpeg,png,pdf|max:2048",
+            "document_labels" => "required|array|max:8",
+            "document_labels.*" => "string|max:100",
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $stored = $this->storeApplicationDocuments($request);
+        if (!$stored) {
+            return response()->json(["error" => "The document could not be saved."], 422);
+        }
+
+        $provider->update([
+            'documents' => array_merge((array) $provider->documents, $stored),
+            'last_updated_by' => Auth::id(),
+            'last_updated_by_role' => 'provider',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'provider' => \App\Http\Resources\ProviderAccountResource::make($provider->fresh()),
+        ]);
+    }
+
     protected function updateSpProfile(Request $request): JsonResponse
     {
         [$provider, $err] = $this->resolveApprovedSp();
@@ -8612,17 +8659,40 @@ class AjaxController extends Controller
     /**
      * Store uploaded verification documents (optional) and return their
      * metadata. Files arrive as `documents[]` with parallel `document_labels[]`.
+     *
+     * Written next to the applicant's photo under public/uploads/providers,
+     * so one provider's files are in one place and the URL says nothing about
+     * how the framework happens to store them.
+     *
+     * Copied rather than moved: `applicationAvatar()` reads the same uploads
+     * again to pick out the profile photo, and a moved temp file is gone by
+     * then. PHP clears the temp copy when the request ends either way.
      */
     protected function storeApplicationDocuments(Request $request): array
     {
         $documents = [];
         $labels = (array) $request->input('document_labels', []);
+        [$dir, $relativeDir] = \App\Services\ImageUploadService::ensureDir('providers');
+
         foreach ((array) $request->file('documents', []) as $i => $file) {
             if (!$file || !$file->isValid()) continue;
-            $path = $file->store('sp-documents', 'public');
+
+            // Guessed from the bytes, not from the name the phone sent — and
+            // already narrowed to jpg/jpeg/png/pdf by the validator above.
+            $ext = strtolower($file->guessExtension() ?: $file->getClientOriginalExtension());
+            $filename = (string) Str::uuid() . '.' . $ext;
+
+            if (!@copy($file->getRealPath(), $dir . DIRECTORY_SEPARATOR . $filename)) {
+                Log::error('Failed to store application document', [
+                    'label' => $labels[$i] ?? null,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+                continue;
+            }
+
             $documents[] = [
                 'label' => $labels[$i] ?? 'Document',
-                'path' => $path,
+                'path' => '/' . $relativeDir . '/' . $filename,
                 'original_name' => $file->getClientOriginalName(),
             ];
         }

@@ -51,6 +51,17 @@ class ProviderController extends Controller
     }
 
     /**
+     * `add_sp_document` — file a verification document after signup.
+     *
+     * The files themselves ride in the file bag as `documents[]`; only the
+     * labels that pair with them are fields.
+     */
+    public function addDocument(Request $request): JsonResponse
+    {
+        return $this->ajax('add_sp_document', $this->only($request, ['document_labels']), $request);
+    }
+
+    /**
      * `update_sp_profile` — identity, contact, bank and the capability sets.
      *
      * Returns the saved record rather than a bare `{success:true}` so the app

@@ -61,6 +61,10 @@ class ProviderAccountResource
             // The app has always been able to render this — it just never had
             // one to render, so every member saw their initials.
             'avatar_url' => $provider->photo ?: null,
+            // What they filed to be verified. Sent so a member can see their
+            // own paperwork; whether HCT has accepted it is not here, because
+            // nothing records that — the application's status is the answer.
+            'documents' => self::documents($provider->documents),
             'services_offered' => self::list($provider->services_offered),
             'accommodation_categories' => self::list($provider->accommodation_categories),
             'vehicle_types' => self::list($provider->vehicle_types),
@@ -90,6 +94,25 @@ class ProviderAccountResource
         $value = Setting::getValue($key, 10);
 
         return is_numeric($value) ? (int) $value : 10;
+    }
+
+    /**
+     * The stored documents as the app reads them: the label it was filed
+     * under, something openable, and the name of the file the member chose.
+     *
+     * `path` becomes `url` because that is what it is to the app — the same
+     * site-relative form as avatar_url, which the app resolves against
+     * whichever origin it connected to.
+     */
+    private static function documents(mixed $value): array
+    {
+        $documents = is_array($value) ? $value : [];
+
+        return array_values(array_map(fn (array $document): array => [
+            'label' => $document['label'] ?? 'Document',
+            'url' => $document['path'] ?? null,
+            'original_name' => $document['original_name'] ?? null,
+        ], $documents));
     }
 
     private static function list(mixed $value): array

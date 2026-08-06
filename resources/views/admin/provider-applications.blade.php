@@ -256,7 +256,7 @@ $(document).on('click', '.view-app', function() {
     var docs = asList(app.documents), docHtml;
     if (docs.length) {
         docHtml = docs.map(function(doc) {
-            var url = '/storage/' + doc.path;
+            var url = doc.path;
             return '<div style="margin-bottom:5px;"><i class="bi bi-paperclip" style="color:#9a9a95;"></i> '
                  + '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="color:' + ACCENT + ';">' + esc(doc.label || 'Document') + '</a> '
                  + '<span style="color:#9a9a95;font-size:12px;">' + esc(doc.original_name || '') + '</span></div>';

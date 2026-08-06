@@ -124,8 +124,17 @@ class ImageUploadService
         }
     }
 
-    /** @return array{0:string,1:string} [absolute dir, public-relative dir] */
-    private static function ensureDir(string $type): array
+    /**
+     * The uploads layout, in one place: public/uploads/<type>/YYYY/MM.
+     *
+     * Public because it is the convention and not this class's private
+     * business — a provider's verification documents sit in the same folder as
+     * their photo, but are stored verbatim rather than resized, so they are
+     * written by their own caller.
+     *
+     * @return array{0:string,1:string} [absolute dir, public-relative dir]
+     */
+    public static function ensureDir(string $type): array
     {
         $relativeDir = 'uploads/' . trim($type, '/') . '/' . date('Y') . '/' . date('m');
         $dir = public_path($relativeDir);

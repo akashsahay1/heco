@@ -44,6 +44,9 @@ Route::prefix('v1')->group(function () {
             Route::put('profile', [ProviderController::class, 'updateProfile']);
             // POST, not PUT: PHP does not parse a multipart body on PUT.
             Route::post('profile/photo', [ProviderController::class, 'updatePhoto']);
+            // Reading them needs no route of its own — they come back on the
+            // provider record, like the photo does.
+            Route::post('profile/documents', [ProviderController::class, 'addDocument']);
 
             Route::get('bookings', [ProviderController::class, 'bookings']);
 
