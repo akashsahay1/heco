@@ -11,6 +11,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use function Illuminate\Support\defer;
 use App\Models\User;
 use App\Models\Region;
 use App\Models\ServiceProvider;
@@ -8702,14 +8703,29 @@ class AjaxController extends Controller
      */
     protected function sendMail(string $to, $mailable, string $tag = ''): void
     {
-        try {
-            Mail::to($to)->send($mailable);
-        } catch (\Throwable $e) {
-            Log::error('Mail send failed [' . $tag . ']: ' . $e->getMessage(), [
-                'to' => $to,
-                'mailable' => get_class($mailable),
-            ]);
-        }
+        // Sent after the response, not before it.
+        //
+        // An SMTP round trip is seconds of wall clock, and on Windows PHP
+        // charges that to max_execution_time. A signup that also had documents
+        // to receive, store and resize was spending its whole 30s budget and
+        // dying mid-request — leaving the uploaded files on disk with no
+        // application to belong to.
+        //
+        // defer() and not queue(): the mail still goes out from this same
+        // process, so nothing depends on a worker being up, but the caller has
+        // already had its answer by the time we start talking to the mail
+        // server. Laravel skips deferred work when the response failed, which
+        // is what we want — no "application received" for one that wasn't.
+        defer(function () use ($to, $mailable, $tag) {
+            try {
+                Mail::to($to)->send($mailable);
+            } catch (\Throwable $e) {
+                Log::error('Mail send failed [' . $tag . ']: ' . $e->getMessage(), [
+                    'to' => $to,
+                    'mailable' => get_class($mailable),
+                ]);
+            }
+        });
     }
 
     // ===========================
