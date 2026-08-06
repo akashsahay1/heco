@@ -14,6 +14,10 @@ return new class extends Migration {
             $table->date('date')->nullable();
             $table->string('title')->nullable();
             $table->text('description')->nullable();
+            $table->string('day_type', 20)->default('activity');
+            // Whether the itinerary put this day here or a person did — an
+            // AI-built day and one HCT inserted are edited differently.
+            $table->string('added_by', 20)->default('system');
             $table->boolean('is_experience_day')->default(false);
             $table->unsignedBigInteger('experience_group_id')->nullable();
             $table->boolean('is_locked')->default(false);

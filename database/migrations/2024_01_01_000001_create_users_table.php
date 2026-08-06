@@ -10,9 +10,12 @@ return new class extends Migration {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('full_name')->nullable();
-            $table->string('email')->unique();
+            $table->string('email');
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password')->nullable();
+            // Null means the account was created for them and they have not
+            // chosen a password yet — approval mails those people a link.
+            $table->timestamp('password_set_at')->nullable();
             $table->enum('auth_type', ['email', 'google', 'facebook'])->default('email');
             $table->enum('user_role', ['hct_admin', 'hct_collaborator', 'traveller', 'hrp', 'hlh', 'osp'])->default('traveller');
             $table->string('mobile', 20)->nullable();
@@ -21,6 +24,10 @@ return new class extends Migration {
             $table->string('city', 100)->nullable();
             $table->string('state', 100)->nullable();
             $table->string('country', 100)->nullable();
+            // Citizenship, stored verbatim from config/countries.php. Distinct
+            // from `country`, which is where they live: this one decides the
+            // trip's traveller_origin pricing bucket, Indian vs foreigner.
+            $table->string('nationality', 100)->nullable();
             $table->string('postal_code', 20)->nullable();
             $table->string('gender', 30)->nullable();
             $table->date('date_of_birth')->nullable();
@@ -33,6 +40,11 @@ return new class extends Migration {
             $table->enum('status', ['active', 'inactive'])->default('active');
             $table->rememberToken();
             $table->timestamps();
+
+            // Unique per role, not per address. One person is often both a
+            // traveller and a provider, and both accounts are real — what must
+            // not happen is two of the same kind on one address.
+            $table->unique(['email', 'user_role'], 'users_email_role_unique');
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {

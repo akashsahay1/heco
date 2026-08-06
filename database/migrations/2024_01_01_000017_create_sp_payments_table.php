@@ -9,8 +9,10 @@ return new class extends Migration {
     {
         Schema::create('sp_payments', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('trip_id')->constrained('trips');
-            $table->foreignId('service_provider_id')->constrained('service_providers');
+            // Nullable with nullOnDelete: what HCT owes a provider outlives the
+            // trip it came from and the provider record itself.
+            $table->foreignId('trip_id')->nullable()->constrained('trips')->nullOnDelete();
+            $table->foreignId('service_provider_id')->nullable()->constrained('service_providers')->nullOnDelete();
             $table->string('service_type', 100);
             $table->decimal('amount_due', 12, 2);
             $table->decimal('amount_paid', 12, 2)->default(0);

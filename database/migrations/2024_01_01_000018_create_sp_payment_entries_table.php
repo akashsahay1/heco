@@ -14,7 +14,7 @@ return new class extends Migration {
             $table->date('payment_date');
             $table->string('mode', 50);
             $table->text('notes')->nullable();
-            $table->foreignId('recorded_by')->constrained('users');
+            $table->foreignId('recorded_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
         });
     }

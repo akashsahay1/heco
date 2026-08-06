@@ -9,8 +9,10 @@ return new class extends Migration {
     {
         Schema::create('leads', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users');
-            $table->foreignId('trip_id')->constrained('trips');
+            // Nullable with nullOnDelete: a lead is the record of an enquiry,
+            // and it stays readable after the trip or account behind it is gone.
+            $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('trip_id')->nullable()->constrained('trips')->nullOnDelete();
             $table->foreignId('assigned_hct_id')->nullable()->constrained('users')->nullOnDelete();
             $table->enum('stage', ['follow_up', 'won', 'lost'])->default('follow_up');
             $table->timestamp('enquiry_date')->useCurrent();

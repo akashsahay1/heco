@@ -14,6 +14,7 @@ return new class extends Migration
             $table->string('name', 100);
             $table->string('symbol', 10);
             $table->string('locale', 10)->default('en-US');
+            $table->string('flag', 5)->nullable();
             $table->decimal('rate_to_usd', 12, 6)->default(1.0);
             $table->boolean('is_active')->default(true);
             $table->integer('sort_order')->default(0);

@@ -12,6 +12,7 @@ return new class extends Migration {
             $table->foreignId('trip_id')->constrained('trips')->cascadeOnDelete();
             $table->foreignId('experience_id')->constrained('experiences');
             $table->boolean('is_preferred')->default(false);
+            $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
         });
     }

@@ -11,6 +11,7 @@ return new class extends Migration {
             $table->id();
             $table->string('list_type', 50);
             $table->string('name');
+            $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
             $table->integer('sort_order')->default(0);
             $table->timestamps();

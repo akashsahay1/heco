@@ -11,6 +11,10 @@ return new class extends Migration {
             $table->id();
             $table->foreignId('trip_day_id')->constrained('trip_days')->cascadeOnDelete();
             $table->foreignId('service_provider_id')->nullable()->constrained('service_providers')->nullOnDelete();
+            // Which line of the provider's rate card this booking came off, and
+            // how many rooms of it — a stay is priced per room, not per night.
+            $table->foreignId('sp_pricing_id')->nullable()->constrained('sp_pricing')->nullOnDelete();
+            $table->unsignedSmallInteger('room_quantity')->nullable();
             $table->enum('service_type', ['accommodation', 'transport', 'guide', 'activity', 'meal', 'other']);
             $table->string('description')->nullable();
             $table->string('from_location')->nullable();
