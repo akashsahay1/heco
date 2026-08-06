@@ -136,6 +136,57 @@ class ImageUploadService
     }
 
     /**
+     * Turn a photo the right way up before it is resized.
+     *
+     * A phone camera writes the image the way the sensor read it and records
+     * how to turn it in an EXIF tag; the browser applies that tag, which is
+     * why the original looks fine. GD neither reads the tag nor writes one,
+     * so the resized copy came out lying on its side. Rotating here bakes the
+     * correction into the pixels, where nothing can lose it again.
+     *
+     * Only JPEG carries the tag, and only the JPEGs a camera produced carry a
+     * useful one — everything else is returned untouched.
+     *
+     * @param  \GdImage  $image
+     * @return \GdImage
+     */
+    private static function applyExifOrientation($image, string $srcPath, int $type)
+    {
+        if ($type !== IMAGETYPE_JPEG || !function_exists('exif_read_data') || !function_exists('imagerotate')) {
+            return $image;
+        }
+
+        $exif = @exif_read_data($srcPath);
+        $orientation = (int) ($exif['Orientation'] ?? 1);
+
+        // 2, 4, 5 and 7 are mirrored as well as turned — a front-camera shot
+        // can be. The mirror goes first, then the rotation, which is the order
+        // the tag's values are defined in.
+        if (in_array($orientation, [2, 4, 5, 7], true) && function_exists('imageflip')) {
+            imageflip($image, IMG_FLIP_HORIZONTAL);
+        }
+
+        // imagerotate turns counter-clockwise, so a clockwise value is negative.
+        $angle = match ($orientation) {
+            3, 4 => 180,
+            6, 7 => -90,
+            5, 8 => 90,
+            default => 0,
+        };
+        if ($angle === 0) {
+            return $image;
+        }
+
+        $rotated = imagerotate($image, $angle, 0);
+        if (!$rotated) {
+            return $image;
+        }
+        imagedestroy($image);
+
+        return $rotated;
+    }
+
+    /**
      * Resize $srcPath into $destPath (square-bounded by $maxDimension, aspect
      * preserved). Returns false if GD is unavailable or the source is unreadable.
      */
@@ -160,6 +211,9 @@ class ImageUploadService
         if (!$src) {
             return false;
         }
+
+        // Before the dimensions are read: turning a photo upright swaps them.
+        $src = self::applyExifOrientation($src, $srcPath, $info[2]);
 
         $w = imagesx($src);
         $h = imagesy($src);
