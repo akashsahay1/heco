@@ -8446,6 +8446,22 @@ class AjaxController extends Controller
 
     protected function submitSpApplication(Request $request): JsonResponse
     {
+        // Signup is the one flow we cannot watch: it happens on a member's own
+        // phone, once, and a failure leaves them with a spinner and us with
+        // nothing. These lines say which step it reached, so "it didn't work"
+        // can be answered without asking them to do it again.
+        //
+        // Never the payload itself — it carries the password they just chose.
+        $trace = fn (string $step, array $context = []) => Log::info(
+            '[signup] ' . $step,
+            $context + ['email' => $request->input('email')],
+        );
+
+        $trace('received', [
+            'documents' => count((array) $request->file('documents', [])),
+            'types' => $request->input('provider_types') ?: $request->input('provider_type'),
+        ]);
+
         // A trading name is only asked for when there is a business, and the
         // client's brief is explicit that most members will not have one:
         // "You don't need to own a business." For them their own name is the
@@ -8508,12 +8524,19 @@ class AjaxController extends Controller
             "password.confirmed" => "The passwords do not match.",
         ]);
         if ($validator->fails()) {
+            // Which field, not just that something was wrong — the app shows
+            // the applicant one message and we get the rest.
+            $trace('rejected', ['errors' => $validator->errors()->toArray()]);
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
         // Persist any uploaded verification documents first, so the row can carry
         // their stored paths.
         $documents = $this->storeApplicationDocuments($request);
+        $trace('documents stored', [
+            'sent' => count((array) $request->file('documents', [])),
+            'stored' => count($documents),
+        ]);
 
         // The set always contains the primary type, so a caller that sends only
         // the enum still ends up with a usable provider_types list.
@@ -8590,9 +8613,12 @@ class AjaxController extends Controller
             "status" => "pending",
         ]);
 
+        $trace('provider created', ['provider' => $provider->id, 'photo' => (bool) $provider->photo]);
+
         // Create the applicant's login. An email that already has an account is
         // linked instead, and that person signs in with their existing password.
         [$newUser, $redirect] = $this->provisionApplicantAccount($provider);
+        $trace('account provisioned', ['user' => $newUser?->id, 'existing' => $newUser === null]);
 
         // They chose their password on the form, so there is nothing left to
         // verify — sign them straight in and land them on their status page.
@@ -8621,6 +8647,11 @@ class AjaxController extends Controller
             new AdminNewApplicationEmail($provider->fresh(['region']), $providerLabel),
             'admin_new_application:' . $provider->id
         );
+
+        // Last line of the trace: reaching this means the application is filed
+        // and answered. Anything missing after this is the mail, which is
+        // deferred and logs its own failure.
+        $trace('complete', ['provider' => $provider->id]);
 
         return response()->json([
             "success" => true,
@@ -8728,7 +8759,18 @@ class AjaxController extends Controller
             // A PDF is a valid document but not a usable avatar; the service
             // returns null for anything it cannot render, and the document
             // itself is still stored either way.
-            return \App\Services\ImageUploadService::storeUploadedImage($file, 'providers', 600) ?: null;
+            $stored = \App\Services\ImageUploadService::storeUploadedImage($file, 'providers', 600) ?: null;
+            if (!$stored) {
+                // The member picked something for this slot and got initials
+                // anyway. Worth knowing which file did that — a PDF explains
+                // itself, a JPG means GD refused it.
+                Log::info('[signup] avatar not produced', [
+                    'original_name' => $file->getClientOriginalName(),
+                    'extension' => $file->guessExtension(),
+                ]);
+            }
+
+            return $stored;
         }
 
         return null;
