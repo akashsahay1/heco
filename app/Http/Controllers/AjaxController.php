@@ -39,6 +39,7 @@ use App\Models\NewsletterSubscriber;
 use App\Models\PdfTemplate;
 use App\Models\Review;
 use App\Models\SpAvailability;
+use App\Services\AuthService;
 use App\Services\OllamaService;
 use App\Services\GeminiService;
 use App\Services\GroqService;
@@ -5954,7 +5955,12 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
-        $stored = $this->storeApplicationDocuments($request);
+        // Same storage as a document filed at signup — same folder, same
+        // naming, same rules. A document is a document whenever it turns up.
+        $stored = app(AuthService::class)->storeDocuments(
+            array_values((array) $request->file('documents', [])),
+            (array) $request->input('document_labels', []),
+        );
         if (!$stored) {
             return response()->json(["error" => "The document could not be saved."], 422);
         }
@@ -8416,264 +8422,28 @@ class AjaxController extends Controller
     // SP APPLICATION
     // ===========================
 
-    /**
-     * The work-experience rows an HRP listed, with the blank ones dropped —
-     * a repeater always leaves an empty row behind, and an entry with no role
-     * and no organisation says nothing.
-     */
-    protected function applicationWorkExperience(Request $request): ?array
-    {
-        $rows = [];
-        foreach ((array) $request->input('work_experience', []) as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $role = trim((string) ($row['role'] ?? ''));
-            $organisation = trim((string) ($row['organisation'] ?? ''));
-            if ($role === '' && $organisation === '') {
-                continue;
-            }
-            $rows[] = [
-                'role' => $role,
-                'organisation' => $organisation,
-                'years' => trim((string) ($row['years'] ?? '')),
-                'description' => trim((string) ($row['description'] ?? '')),
-            ];
-        }
-
-        return $rows ?: null;
-    }
 
     protected function submitSpApplication(Request $request): JsonResponse
     {
-        // Signup is the one flow we cannot watch: it happens on a member's own
-        // phone, once, and a failure leaves them with a spinner and us with
-        // nothing. These lines say which step it reached, so "it didn't work"
-        // can be answered without asking them to do it again.
-        //
-        // Never the payload itself — it carries the password they just chose.
-        $trace = fn (string $step, array $context = []) => Log::info(
-            '[signup] ' . $step,
-            $context + ['email' => $request->input('email')],
+        // The portal's /join wizard and the provider app both file the same
+        // application, so both go through AuthService. Nothing here is
+        // portal-specific except the session login below.
+        $result = app(AuthService::class)->submitProviderApplication(
+            $request->all(),
+            array_values((array) $request->file('documents', [])),
         );
 
-        $trace('received', [
-            'documents' => count((array) $request->file('documents', [])),
-            'types' => $request->input('provider_types') ?: $request->input('provider_type'),
-        ]);
-
-        // A trading name is only asked for when there is a business, and the
-        // client's brief is explicit that most members will not have one:
-        // "You don't need to own a business." For them their own name is the
-        // name we know them by, so it stands in rather than the application
-        // being refused for a field they were never shown.
-        if (!$request->filled('name') && $request->filled('contact_person')) {
-            $request->merge(['name' => $request->input('contact_person')]);
+        // Only the web has a session — the mobile API is stateless and signs
+        // in afterwards with the password the applicant just chose.
+        if ($result['user'] && $request->hasSession()) {
+            Auth::login($result['user']);
+            $request->session()->regenerate();
         }
 
-        $validator = Validator::make($request->all(), [
-            "provider_type" => "required|in:hrp,hlh,osp",
-            "name" => "required|string|max:255",
-            "email" => "required|email|unique:service_providers,email",
-            "phone_1" => "required|string|max:20",
-            "region_id" => "required|exists:regions,id",
-            // An applicant may be more than one thing at once — a host that also
-            // runs a taxi ticks HLH and OSP. Optional, so the older single-type
-            // web form keeps working unchanged.
-            "provider_types" => "nullable|array|min:1",
-            "provider_types.*" => "in:hrp,hlh,osp",
-            // Spoken languages (screen 6) and the business gate (screen 7).
-            "speaks_english" => "nullable|boolean",
-            "speaks_hindi" => "nullable|boolean",
-            "other_languages" => "nullable|string|max:255",
-            "has_business" => "nullable|boolean",
-            // What they offer (screen 8), one list per role they picked.
-            "experience_categories" => "nullable|array",
-            "experience_categories.*" => "string|max:120",
-            "service_categories" => "nullable|array",
-            "service_categories.*" => "string|max:120",
-            "other_services" => "nullable|string|max:255",
-            // A regional partner sells nothing, so their background is the
-            // application: "For HRPs, we'd rather collect information about
-            // their background and skills."
-            "education_level" => "nullable|string|max:100",
-            "education_notes" => "nullable|string|max:1000",
-            "english_level" => "nullable|string|max:100",
-            "computer_skill_level" => "nullable|string|max:100",
-            "work_experience" => "nullable|array|max:10",
-            "work_experience.*.role" => "nullable|string|max:255",
-            "work_experience.*.organisation" => "nullable|string|max:255",
-            "work_experience.*.years" => "nullable|string|max:100",
-            "work_experience.*.description" => "nullable|string|max:1000",
-            "causes_note" => "nullable|string|max:2000",
-            "community_note" => "nullable|string|max:2000",
-            // Verification documents. The client caps these at 2 MB; the type
-            // list keeps an applicant from posting something that is not a
-            // document at all. Enforced here as well as in the app, because the
-            // app is not the only thing that can reach this endpoint.
-            "documents" => "nullable|array|max:8",
-            "documents.*" => "file|mimes:jpg,jpeg,png,pdf|max:2048",
-            "contact_by_email" => "nullable|boolean",
-            "contact_by_whatsapp" => "nullable|boolean",
-            // The applicant chooses their password on the signup form itself.
-            "password" => ["required", "string", "min:8", "regex:/[0-9]/", "regex:/[^A-Za-z0-9]/", "confirmed"],
-        ], [
-            "email.unique" => "An application with this email already exists. Please log in to track it, or contact us to update it.",
-            "password.min" => "Password must be at least 8 characters.",
-            "password.regex" => "Password must include a number and a symbol.",
-            "password.confirmed" => "The passwords do not match.",
-        ]);
-        if ($validator->fails()) {
-            // Which field, not just that something was wrong — the app shows
-            // the applicant one message and we get the rest.
-            $trace('rejected', ['errors' => $validator->errors()->toArray()]);
-            return response()->json(["error" => $validator->errors()->first()], 422);
-        }
-
-        // Persist any uploaded verification documents first, so the row can carry
-        // their stored paths.
-        $documents = $this->storeApplicationDocuments($request);
-        $trace('documents stored', [
-            'sent' => count((array) $request->file('documents', [])),
-            'stored' => count($documents),
-        ]);
-
-        // The set always contains the primary type, so a caller that sends only
-        // the enum still ends up with a usable provider_types list.
-        $types = array_values(array_unique(array_merge(
-            [$request->provider_type],
-            $this->applicationArray($request, 'provider_types') ?: [],
-        )));
-
-        // "No" on screen 7 skips the business screen entirely, so its fields are
-        // dropped rather than stored half-filled from an earlier pass.
-        $hasBusiness = $request->has('has_business')
-            ? $request->boolean('has_business')
-            : null;
-
-        $isRegionalPartner = in_array('hrp', $types, true);
-
-        $provider = ServiceProvider::create([
-            "provider_type" => $request->provider_type,
-            "provider_types" => $types,
-            "has_business" => $hasBusiness,
-            "business_type" => $hasBusiness === false ? null : $request->business_type,
-            "registration_number" => $hasBusiness === false ? null : $request->registration_number,
-            "year_established" => $hasBusiness === false ? null : ($request->year_established ?: null),
-            "name" => $request->name,
-            "contact_person" => $request->contact_person,
-            "email" => $request->email,
-            "phone_1" => $request->phone_1,
-            "phone_2" => $request->phone_2,
-            "speaks_english" => $request->boolean('speaks_english'),
-            "speaks_hindi" => $request->boolean('speaks_hindi'),
-            "other_languages" => $request->other_languages,
-            // Categories only belong to a role they actually picked, so a
-            // host's experience picks are dropped if they never ticked HLH.
-            "experience_categories" => in_array('hlh', $types, true)
-                ? $this->applicationArray($request, 'experience_categories')
-                : null,
-            "service_categories" => in_array('osp', $types, true)
-                ? $this->applicationArray($request, 'service_categories')
-                : null,
-            "other_services" => in_array('osp', $types, true) ? $request->other_services : null,
-            // Default to reachable — a missing key means an older client that
-            // never asked, not a member who declined.
-            "contact_by_email" => $request->has('contact_by_email')
-                ? $request->boolean('contact_by_email')
-                : true,
-            "contact_by_whatsapp" => $request->has('contact_by_whatsapp')
-                ? $request->boolean('contact_by_whatsapp')
-                : true,
-            "region_id" => $request->region_id,
-            "address" => $request->address,
-            "city" => $request->city,
-            "postal_code" => $request->postal_code,
-            "country" => $request->country,
-            "services_offered" => $this->applicationArray($request, 'services_offered'),
-            "accommodation_categories" => $this->applicationArray($request, 'accommodation_categories'),
-            "vehicle_types" => $this->applicationArray($request, 'vehicle_types'),
-            "guide_types" => $this->applicationArray($request, 'guide_types'),
-            "activity_types" => $this->applicationArray($request, 'activity_types'),
-            // Competences belong to a regional partner. Someone who never
-            // ticked HRP has none, and storing them would put answers on a
-            // record nobody will ever read them from.
-            ...($isRegionalPartner ? [
-                "education_level" => $request->education_level,
-                "education_notes" => $request->education_notes,
-                "english_level" => $request->english_level,
-                "computer_skill_level" => $request->computer_skill_level,
-                "work_experience" => $this->applicationWorkExperience($request),
-                "causes_note" => $request->causes_note,
-                "community_note" => $request->community_note,
-            ] : []),
-            "documents" => $documents ?: null,
-            "photo" => $this->applicationAvatar($request),
-            "notes" => $request->input('description', $request->input('notes')),
-            "status" => "pending",
-        ]);
-
-        $trace('provider created', ['provider' => $provider->id, 'photo' => (bool) $provider->photo]);
-
-        // Create the applicant's login. An email that already has an account is
-        // linked instead, and that person signs in with their existing password.
-        [$newUser, $redirect] = $this->provisionApplicantAccount($provider);
-        $trace('account provisioned', ['user' => $newUser?->id, 'existing' => $newUser === null]);
-
-        // They chose their password on the form, so there is nothing left to
-        // verify — sign them straight in and land them on their status page.
-        if ($newUser) {
-            $newUser->forceFill(['password_set_at' => now()])->save();
-            // Only the web has a session — the mobile API is stateless and signs
-            // in afterwards with the password the applicant just chose.
-            if (request()->hasSession()) {
-                Auth::login($newUser);
-                request()->session()->regenerate();
-            }
-        }
-
-        $providerLabel = $this->providerTypeLabel($provider->provider_type);
-
-        // 1. Confirmation to the applicant.
-        $this->sendMail(
-            $provider->email,
-            new SpApplicationReceivedEmail($provider->contact_person ?: $provider->name, $providerLabel),
-            'sp_application:' . $provider->id
-        );
-
-        // 2. Heads-up to HCT so a new application isn't missed in the queue.
-        $this->sendMail(
-            Setting::getValue('site_email') ?: 'info@heco.eco',
-            new AdminNewApplicationEmail($provider->fresh(['region']), $providerLabel),
-            'admin_new_application:' . $provider->id
-        );
-
-        // Last line of the trace: reaching this means the application is filed
-        // and answered. Anything missing after this is the mail, which is
-        // deferred and logs its own failure.
-        $trace('complete', ['provider' => $provider->id]);
-
-        return response()->json([
-            "success" => true,
-            "redirect" => $redirect,
-            "existing_account" => $newUser === null,
-            "message" => $newUser === null
-                ? "You already have a HECO account. Please log in to track your application."
-                : "Application submitted successfully",
-        ]);
+        return response()->json($result['body'], $result['status']);
     }
 
 
-    /** Human label for a provider_type code. */
-    protected function providerTypeLabel(string $type): string
-    {
-        return match ($type) {
-            'hrp' => ServiceProvider::TYPE_LABELS['hrp'],
-            'hlh' => ServiceProvider::TYPE_LABELS['hlh'],
-            'osp' => ServiceProvider::TYPE_LABELS['osp'],
-            default => 'Partner',
-        };
-    }
 
     /**
      * Normalise a multi-select application field to a clean list (or null).
@@ -8687,127 +8457,8 @@ class AjaxController extends Controller
         return $val ?: null;
     }
 
-    /**
-     * Store uploaded verification documents (optional) and return their
-     * metadata. Files arrive as `documents[]` with parallel `document_labels[]`.
-     *
-     * Written next to the applicant's photo under public/uploads/providers,
-     * so one provider's files are in one place and the URL says nothing about
-     * how the framework happens to store them.
-     *
-     * Copied rather than moved: `applicationAvatar()` reads the same uploads
-     * again to pick out the profile photo, and a moved temp file is gone by
-     * then. PHP clears the temp copy when the request ends either way.
-     */
-    protected function storeApplicationDocuments(Request $request): array
-    {
-        $documents = [];
-        $labels = (array) $request->input('document_labels', []);
-        [$dir, $relativeDir] = \App\Services\ImageUploadService::ensureDir('providers');
 
-        foreach ((array) $request->file('documents', []) as $i => $file) {
-            if (!$file || !$file->isValid()) continue;
 
-            // Guessed from the bytes, not from the name the phone sent — and
-            // already narrowed to jpg/jpeg/png/pdf by the validator above.
-            $ext = strtolower($file->guessExtension() ?: $file->getClientOriginalExtension());
-            $filename = (string) Str::uuid() . '.' . $ext;
-
-            if (!@copy($file->getRealPath(), $dir . DIRECTORY_SEPARATOR . $filename)) {
-                Log::error('Failed to store application document', [
-                    'label' => $labels[$i] ?? null,
-                    'original_name' => $file->getClientOriginalName(),
-                ]);
-                continue;
-            }
-
-            $documents[] = [
-                'label' => $labels[$i] ?? 'Document',
-                'path' => '/' . $relativeDir . '/' . $filename,
-                'original_name' => $file->getClientOriginalName(),
-            ];
-        }
-        return $documents;
-    }
-
-    /**
-     * The picture an applicant attached to the "Profile photo" slot is also
-     * their avatar.
-     *
-     * Screen 10 asks for it among the verification documents, so it arrives as
-     * one of `documents[]` — but a member who has just uploaded their own face
-     * expects to see it on their profile, not their initials. Stored through
-     * the same service the profile screen uses, so it is resized and served
-     * identically however it was supplied.
-     *
-     * Which slot is the avatar is data, not code: the labels come from the
-     * `document_type` list, which HCT can rename, so the pairing lives in a
-     * setting rather than in this method.
-     */
-    protected function applicationAvatar(Request $request): ?string
-    {
-        $wanted = (string) Setting::getValue('signup_avatar_document', 'Profile photo');
-        if ($wanted === '') {
-            return null;
-        }
-
-        $labels = (array) $request->input('document_labels', []);
-        foreach ((array) $request->file('documents', []) as $i => $file) {
-            if (!$file || !$file->isValid() || ($labels[$i] ?? null) !== $wanted) {
-                continue;
-            }
-            // A PDF is a valid document but not a usable avatar; the service
-            // returns null for anything it cannot render, and the document
-            // itself is still stored either way.
-            $stored = \App\Services\ImageUploadService::storeUploadedImage($file, 'providers', 600) ?: null;
-            if (!$stored) {
-                // The member picked something for this slot and got initials
-                // anyway. Worth knowing which file did that — a PDF explains
-                // itself, a JPG means GD refused it.
-                Log::info('[signup] avatar not produced', [
-                    'original_name' => $file->getClientOriginalName(),
-                    'extension' => $file->guessExtension(),
-                ]);
-            }
-
-            return $stored;
-        }
-
-        return null;
-    }
-
-    /**
-     * Ensure the applicant has a login WITHOUT signing them in, returning
-     * [newUser|null, redirectUrl]. A brand-new email gets a fresh account (with
-     * the password chosen on the signup form) and is sent to the "application
-     * submitted" page; an email that already belongs to a user is linked to the
-     * application (role updated) and sent to log in with its existing password.
-     */
-    protected function provisionApplicantAccount(ServiceProvider $provider): array
-    {
-        // submitSpApplication refuses an email that already has a provider
-        // account, so this only ever creates. The guard stays for safety:
-        // reusing an existing account here would silently change what it can
-        // already do. Scoped to provider roles — the applicant's traveller
-        // account is a different account that happens to share the address.
-        $existing = User::findByEmailForRoles($provider->email, User::PROVIDER_ROLES);
-        if ($existing) {
-            $provider->forceFill(['user_id' => $existing->id])->save();
-            return [null, '/login'];
-        }
-
-        $user = User::create([
-            'full_name' => $provider->contact_person ?: $provider->name,
-            'email'     => $provider->email,
-            // Chosen during signup; falls back to an unusable random secret so a
-            // caller that skips it (admin-created providers) can't be logged into.
-            'password'  => request()->input('password') ?: Str::random(40),
-            'auth_type' => 'email',
-            'user_role' => $provider->provider_type,
-        ]);
-        $provider->forceFill(['user_id' => $user->id])->save();
-        return [$user, '/application-status'];
-    }
 
     /**
      * Send a mail without letting failures break the calling action.

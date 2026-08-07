@@ -7,6 +7,7 @@ use App\Http\Resources\ProviderAccountResource;
 use App\Models\ApiToken;
 use App\Models\ServiceProvider;
 use App\Models\User;
+use App\Services\AuthService;
 use App\Services\PasswordResetOtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +25,30 @@ use Illuminate\Validation\ValidationException;
  */
 class AuthController extends Controller
 {
+    /**
+     * Signup — the public "become a partner" application.
+     *
+     * It lived on ReferenceController, which serves dropdown options, for one
+     * reason: it was the other endpoint that needed no token. Creating an
+     * account belongs beside signing in to one.
+     *
+     * Straight into AuthService, with no allow-list in between. The list used
+     * to exist because the request was forwarded into a dispatcher that picked
+     * its action by scanning for a known key, so raw client input could have
+     * selected a different one. The route decides now, so a field the app adds
+     * arrives on its own instead of vanishing until someone remembers to name
+     * it here.
+     */
+    public function register(Request $request): JsonResponse
+    {
+        $result = app(AuthService::class)->submitProviderApplication(
+            $request->all(),
+            array_values((array) $request->file('documents', [])),
+        );
+
+        return response()->json($result['body'], $result['status']);
+    }
+
     public function login(Request $request): JsonResponse
     {
         $request->validate([

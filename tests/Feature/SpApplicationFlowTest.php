@@ -338,7 +338,11 @@ class SpApplicationFlowTest extends TestCase
 
         $this->assertCount(1, $provider->documents);
         $this->assertSame('ID Proof', $provider->documents[0]['label']);
-        Storage::disk('public')->assertExists($provider->documents[0]['path']);
+        // Under public/uploads, not the storage disk: a document sits beside
+        // the applicant's photo, and the path it is stored as is the URL it is
+        // served from — no symlink in between, because the shared hosting this
+        // deploys to cannot make one.
+        $this->assertFileExists(public_path(ltrim($provider->documents[0]['path'], '/')));
     }
 
     /** The business-identity + postal-address fields the design's steps 3 & 5 ask for. */

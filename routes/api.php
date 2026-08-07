@@ -30,7 +30,9 @@ Route::prefix('v1')->group(function () {
     // Finishes the reset with the emailed code — no web link involved.
     Route::post('auth/reset-password', [AuthController::class, 'resetPassword']);
     Route::get('reference', [ReferenceController::class, 'index']);
-    Route::post('providers/applications', [ReferenceController::class, 'submitApplication']);
+    // Signup. The path stays what it has always been so builds already on
+    // people's phones keep working; only what handles it moved.
+    Route::post('providers/applications', [AuthController::class, 'register']);
 
     // ── Authenticated ────────────────────────────────────────────────────
     Route::middleware('api.token')->group(function () {
