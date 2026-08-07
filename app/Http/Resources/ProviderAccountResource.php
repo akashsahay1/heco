@@ -22,10 +22,14 @@ class ProviderAccountResource
 
         return [
             'id' => $provider->id,
-            // provider_type names only the primary role. A provider can hold
-            // several at once — an HLH that also runs a taxi is an HLH and an
-            // OSP — and the app decides which tabs to show from this, so it
-            // needs the whole set or it hides half of what they signed up for.
+            // provider_types is the answer; a provider can hold several at once
+            // — an HLH that also runs a taxi is an HLH and an OSP — and the app
+            // decides which tabs to show from it, so sending one would hide
+            // half of what they signed up for.
+            //
+            // provider_type is the first of that set, derived rather than
+            // stored since the column was dropped. It is still sent because
+            // builds already on members' phones read it.
             'provider_type' => $provider->provider_type,
             'provider_types' => $provider->types(),
             // Banned and hidden both leave here as 'out_of_service'. Which of

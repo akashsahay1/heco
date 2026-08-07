@@ -41,7 +41,6 @@ class RateCardIsForSuppliersTest extends TestCase
 
         return ServiceProvider::create([
             'user_id' => $user->id,
-            'provider_type' => $types[0],
             'provider_types' => $types,
             'name' => 'Member ' . $email,
             'email' => $email,
@@ -114,7 +113,8 @@ class RateCardIsForSuppliersTest extends TestCase
     public function test_the_primary_type_does_not_decide_it(): void
     {
         $sp = $this->provider('primary@example.test', ['hlh', 'osp']);
-        $sp->update(['provider_type' => 'hlh']);
+        // The primary is simply the first of the set — put the host role there.
+        $sp->update(['provider_types' => ['hlh', 'osp']]);
 
         $this->readRates($sp->fresh())->assertOk();
     }

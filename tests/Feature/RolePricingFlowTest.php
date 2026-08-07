@@ -60,7 +60,7 @@ class RolePricingFlowTest extends TestCase
     private function provider(string $type, string $email, float $markup = 0): ServiceProvider
     {
         return ServiceProvider::create([
-            'provider_type' => $type, 'name' => strtoupper($type) . ' Co', 'email' => $email,
+            'provider_types' => [$type], 'name' => strtoupper($type) . ' Co', 'email' => $email,
             'phone_1' => '9990000000', 'region_id' => $this->region->id,
             'status' => 'approved', 'markup_percent' => $markup,
         ]);

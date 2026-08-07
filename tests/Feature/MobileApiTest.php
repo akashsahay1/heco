@@ -54,7 +54,7 @@ class MobileApiTest extends TestCase
 
         $this->osp = ServiceProvider::create([
             'user_id' => $this->ospUser->id,
-            'provider_type' => 'osp',
+            'provider_types' => ['osp'],
             'name' => 'Mountain View Hotel',
             'email' => 'osp@example.test',
             'phone_1' => '9000000000',
@@ -74,7 +74,7 @@ class MobileApiTest extends TestCase
 
         $this->hlh = ServiceProvider::create([
             'user_id' => $this->hlhUser->id,
-            'provider_type' => 'hlh',
+            'provider_types' => ['hlh'],
             'name' => 'Tirthan Eco Retreat',
             'email' => 'host@example.test',
             'phone_1' => '9000000002',
@@ -459,7 +459,6 @@ class MobileApiTest extends TestCase
         ]);
         ServiceProvider::create([
             'user_id' => $hrpUser->id,
-            'provider_type' => 'hrp',
             'provider_types' => ['hrp'],
             'name' => 'Tirthan Regional Partner',
             'email' => 'partner@example.test',
@@ -494,7 +493,7 @@ class MobileApiTest extends TestCase
         ]);
         ServiceProvider::create([
             'user_id' => $hrpUser->id,
-            'provider_type' => 'hrp',
+            'provider_types' => ['hrp'],
             'name' => 'HRP Partner',
             'email' => 'hrp@example.test',
             'phone_1' => '9000000001',
@@ -648,7 +647,7 @@ class MobileApiTest extends TestCase
         ]);
         $other = ServiceProvider::create([
             'user_id' => $otherUser->id,
-            'provider_type' => 'osp',
+            'provider_types' => ['osp'],
             'name' => 'Other Provider',
             'email' => 'other@example.test',
             'phone_1' => '9000000002',

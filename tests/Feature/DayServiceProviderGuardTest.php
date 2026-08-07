@@ -45,11 +45,11 @@ class DayServiceProviderGuardTest extends TestCase
             'description' => 'Transfer', 'cost' => 0, 'is_included' => true,
         ]);
         $this->approved = ServiceProvider::create([
-            'provider_type' => 'osp', 'name' => 'Cabs', 'email' => 'c@dsp.test',
+            'provider_types' => ['osp'], 'name' => 'Cabs', 'email' => 'c@dsp.test',
             'phone_1' => '9990001111', 'region_id' => $region->id, 'status' => 'approved',
         ]);
         $this->pending = ServiceProvider::create([
-            'provider_type' => 'osp', 'name' => 'Pending Cabs', 'email' => 'p@dsp.test',
+            'provider_types' => ['osp'], 'name' => 'Pending Cabs', 'email' => 'p@dsp.test',
             'phone_1' => '9990002222', 'region_id' => $region->id, 'status' => 'pending',
         ]);
     }

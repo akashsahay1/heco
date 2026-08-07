@@ -54,12 +54,12 @@ class PricingPinValidationTest extends TestCase
         TripDayExperience::create(['trip_day_id' => $day->id, 'experience_id' => $exp->id, 'cost_per_person' => 1000, 'sort_order' => 0]);
 
         $this->provider = ServiceProvider::create([
-            'provider_type' => 'hlh', 'name' => 'Stay Co', 'email' => 's@pin.test',
+            'provider_types' => ['hlh'], 'name' => 'Stay Co', 'email' => 's@pin.test',
             'phone_1' => '9990001111', 'region_id' => $region->id, 'status' => 'approved',
             'accommodation_categories' => ['Cat C - Standard'],
         ]);
         $this->otherProvider = ServiceProvider::create([
-            'provider_type' => 'hlh', 'name' => 'Other Co', 'email' => 'o@pin.test',
+            'provider_types' => ['hlh'], 'name' => 'Other Co', 'email' => 'o@pin.test',
             'phone_1' => '9990002222', 'region_id' => $region->id, 'status' => 'approved',
         ]);
 

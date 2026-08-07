@@ -36,7 +36,7 @@ class GuideExclusiveTest extends TestCase
         ]);
         $region = Region::create(['name' => 'Valley', 'slug' => 'valley', 'is_active' => true]);
         $this->provider = ServiceProvider::create([
-            'provider_type' => 'osp', 'name' => 'Guides Co', 'email' => 'g@guide.test',
+            'provider_types' => ['osp'], 'name' => 'Guides Co', 'email' => 'g@guide.test',
             'phone_1' => '9990001111', 'region_id' => $region->id, 'status' => 'approved',
         ]);
         $this->guidePricing = SpPricing::create([

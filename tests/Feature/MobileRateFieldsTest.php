@@ -42,7 +42,7 @@ class MobileRateFieldsTest extends TestCase
             'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
         $this->osp = ServiceProvider::create([
-            'user_id' => $user->id, 'provider_type' => 'osp', 'provider_types' => ['osp'],
+            'user_id' => $user->id, 'provider_types' => ['osp'],
             'name' => 'Nanda Devi Taxi Service', 'email' => 'osp@example.test',
             'phone_1' => '9000000000', 'region_id' => $region->id, 'status' => 'approved',
         ]);

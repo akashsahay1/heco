@@ -77,7 +77,15 @@ Guest users get full functionality via Laravel session (`session('guest_trip')`)
 
 ### User Roles
 
-`user_role` enum on User model: `hct_admin`, `hct_collaborator`, `traveller`, `hrp`, `hlh`, `osp`. Helper methods: `isHctAdmin()`, `isHct()`, `isTraveller()`, `isServiceProvider()`.
+`user_role` enum on User model: `administrator`, `collaborator`, `traveller`, `provider`. Helper methods: `isHctAdmin()`, `isHct()`, `isTraveller()`, `isServiceProvider()`.
+
+A role says what an account may do, not what kind of partner it is. Which kinds — HLH, OSP, HRP — live in `service_providers.provider_types`, which holds the set; a member can be several at once. `ServiceProvider::provider_type` still reads as the first of that set, but it is derived, not stored.
+
+Email is unique per role (`users_email_role_unique`), so one address can hold both a traveller account and a provider account. `Auth::attempt()` is therefore unusable — use `User::findByCredentials($email, $password, $roles)`.
+
+### Signup
+
+Both surfaces file the same application through `App\Services\AuthService`: the portal's `/join` wizard via `AjaxController::submitSpApplication()`, and the provider app via `Api\V1\AuthController::register()`. Business logic shared by both channels belongs in a service, not in `AjaxController`.
 
 ### Database Enums
 

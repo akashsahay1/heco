@@ -31,7 +31,7 @@ class HrpRegionTripsTest extends TestCase
             'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
         ServiceProvider::create([
-            'provider_type' => 'hrp', 'name' => 'Tirthan Partner', 'email' => 'hrp@r.test',
+            'provider_types' => ['hrp'], 'name' => 'Tirthan Partner', 'email' => 'hrp@r.test',
             'phone_1' => '9990001111', 'region_id' => $region->id, 'status' => 'approved',
             'user_id' => $hrpUser->id,
         ]);

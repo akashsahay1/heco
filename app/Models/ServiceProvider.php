@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class ServiceProvider extends Model
 {
     protected $fillable = [
-        'user_id', 'provider_type', 'provider_types', 'has_business',
+        'user_id', 'provider_types', 'has_business',
         'experience_categories', 'service_categories', 'other_services',
         'business_type', 'registration_number',
         'year_established', 'name', 'contact_person', 'email',
@@ -24,6 +24,14 @@ class ServiceProvider extends Model
         'status', 'markup_percent', 'approved_at', 'approved_by',
         'last_updated_by', 'last_updated_by_role',
     ];
+
+    /**
+     * provider_type was a column until it became derived, and plenty of JS
+     * reads it off a serialised provider. An accessor is invisible to toJson()
+     * unless it is appended, so without this every one of those reads quietly
+     * becomes undefined — no error, just an empty badge.
+     */
+    protected $appends = ['provider_type'];
 
     protected function casts(): array
     {
@@ -123,17 +131,26 @@ class ServiceProvider extends Model
     /**
      * Every type this provider signed up as.
      *
-     * A provider can be several things at once (an HLH that also runs a taxi is
-     * an HLH and an OSP), so capability questions go through here rather than
-     * through provider_type, which only names the primary one. Rows created
-     * before provider_types existed fall back to that primary type.
+     * A provider can be several things at once — an HLH that also runs a taxi
+     * is an HLH and an OSP — so capability questions go through here.
      */
     public function types(): array
     {
         $types = $this->provider_types;
-        return is_array($types) && $types !== []
-            ? $types
-            : array_filter([$this->provider_type]);
+
+        return is_array($types) ? array_values($types) : [];
+    }
+
+    /**
+     * The type a provider is listed under when only one can be shown.
+     *
+     * This used to be a column of its own, written beside the set and able to
+     * disagree with it. It is the first of the set now: the order the member
+     * picked their roles in is the order they think of themselves in.
+     */
+    public function getProviderTypeAttribute(): ?string
+    {
+        return $this->types()[0] ?? null;
     }
 
     /** Does this provider act as the given type at all? */
@@ -146,21 +163,11 @@ class ServiceProvider extends Model
      * Providers holding a given role, primary or not — the query-side twin of
      * hasType(). An HLH that also runs a taxi must appear under OSP as well,
      * and must not vanish from the host list just because OSP happens to be
-     * its primary type. Rows saved before provider_types existed fall back to
-     * provider_type, exactly as types() does.
+     * listed first.
      */
     public function scopeOfType($query, string $type)
     {
-        return $query->where(function ($q) use ($type) {
-            $q->whereJsonContains('provider_types', $type)
-                ->orWhere(function ($legacy) use ($type) {
-                    $legacy->where('provider_type', $type)
-                        ->where(function ($empty) {
-                            $empty->whereNull('provider_types')
-                                ->orWhereJsonLength('provider_types', 0);
-                        });
-                });
-        });
+        return $query->whereJsonContains('provider_types', $type);
     }
 
     /** Hosts author experiences; HCT reviews them. */

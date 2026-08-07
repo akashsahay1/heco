@@ -11,11 +11,10 @@ return new class extends Migration {
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
 
-            // provider_type names the primary role; provider_types holds the
-            // whole set. A member can be more than one thing at once — a host
-            // that also runs a taxi is an HLH and an OSP — and deciding from
-            // the primary alone hides half of what they signed up for.
-            $table->enum('provider_type', ['hrp', 'hlh', 'osp']);
+            // Every role this member holds. A host that also runs a taxi is an
+            // HLH and an OSP, and asking for one of them hides half of what
+            // they signed up for. Where a single type has to be shown, the
+            // first of the set is it — see getProviderTypeAttribute().
             $table->json('provider_types')->nullable();
             // Nullable on purpose: null means "never asked", which is a
             // different answer from a member who said No.

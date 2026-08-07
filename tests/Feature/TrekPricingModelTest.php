@@ -45,7 +45,7 @@ class TrekPricingModelTest extends TestCase
     {
         $region = Region::firstOrCreate(['slug' => 'valley'], ['name' => 'Valley', 'is_active' => true]);
         return ServiceProvider::create([
-            'provider_type' => $type, 'name' => ucfirst($type) . ' Co', 'email' => $email,
+            'provider_types' => [$type], 'name' => ucfirst($type) . ' Co', 'email' => $email,
             'phone_1' => '9990001111', 'region_id' => $region->id,
             'status' => 'approved', 'markup_percent' => $markup,
         ]);

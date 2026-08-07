@@ -85,7 +85,7 @@ class AccommodationBookingFlowTest extends TestCase
         // Approved provider offering accommodation in Cat A-D (mirrors the
         // "Mountain View" seed row: ₹6501 / ₹4200 / ₹2500 / ₹1500).
         $this->provider = ServiceProvider::create([
-            'provider_type' => 'hlh',
+            'provider_types' => ['hlh'],
             'name'          => 'Mountain View',
             'email'         => 'mv@example.test',
             'phone_1'       => '9990001111',

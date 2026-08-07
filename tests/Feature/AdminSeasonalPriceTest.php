@@ -38,7 +38,7 @@ class AdminSeasonalPriceTest extends TestCase
             'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
         $provider = ServiceProvider::create([
-            'user_id' => $host->id, 'provider_type' => 'hlh', 'name' => 'Valley Host',
+            'user_id' => $host->id, 'provider_types' => ['hlh'], 'name' => 'Valley Host',
             'email' => 'host@example.test', 'phone_1' => '9000000000',
             'region_id' => $region->id, 'status' => 'approved',
         ]);

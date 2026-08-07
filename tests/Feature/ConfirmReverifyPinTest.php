@@ -42,7 +42,7 @@ class ConfirmReverifyPinTest extends TestCase
             'base_cost_per_person' => 5000, 'cost_accommodation' => 1000, 'cost_activities' => 1000,
         ]);
         $provider = ServiceProvider::create([
-            'provider_type' => 'hlh', 'name' => 'Stay', 'email' => 's@cf.test',
+            'provider_types' => ['hlh'], 'name' => 'Stay', 'email' => 's@cf.test',
             'phone_1' => '9990001111', 'region_id' => $region->id, 'status' => 'approved',
         ]);
         $this->pricing = SpPricing::create([

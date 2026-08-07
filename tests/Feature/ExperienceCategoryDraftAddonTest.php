@@ -41,7 +41,7 @@ class ExperienceCategoryDraftAddonTest extends TestCase
             'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
         $this->hlh = ServiceProvider::create([
-            'user_id' => $user->id, 'provider_type' => 'hlh', 'provider_types' => ['hlh'],
+            'user_id' => $user->id, 'provider_types' => ['hlh'],
             'name' => 'Tirthan Eco Retreat', 'email' => 'host@example.test',
             'phone_1' => '9000000000', 'region_id' => $this->region->id, 'status' => 'approved',
         ]);

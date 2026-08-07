@@ -32,9 +32,9 @@ class HomepageController extends Controller
         // Real headline counts for the landing-page stats (no more hard-coded "20+").
         $experienceCount = Experience::where("is_active", true)->count();
         $regionCount = $regions->count();
-        $communityCount = ServiceProvider::where("status", "approved")
-            ->whereIn("provider_type", ["hlh", "hrp", "osp"])
-            ->count();
+        // Every row here is a provider, so there is nothing to narrow by —
+        // this used to filter on provider_type purely to exclude nothing.
+        $communityCount = ServiceProvider::where("status", "approved")->count();
         return view("portal.landing", compact(
             "regions", "experienceTypes", "experienceCount", "regionCount", "communityCount"
         ));

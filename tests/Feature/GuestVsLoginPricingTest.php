@@ -93,7 +93,7 @@ class GuestVsLoginPricingTest extends TestCase
     public function test_guest_provider_accommodation_stacks_on_bundle(): void
     {
         $provider = ServiceProvider::create([
-            'provider_type' => 'hlh', 'name' => 'Stay', 'email' => 's@gp.test',
+            'provider_types' => ['hlh'], 'name' => 'Stay', 'email' => 's@gp.test',
             'phone_1' => '9990001111', 'region_id' => $this->exp->region_id, 'status' => 'approved',
             'markup_percent' => 0,
         ]);

@@ -4930,7 +4930,7 @@ class AjaxController extends Controller
             return response()->json(['error' => 'Unauthorized'], 403);
         }
         $rows = SpPricing::pending()
-            ->with(['serviceProvider:id,name,provider_type', 'pendingFor', 'submitter:id,full_name,email'])
+            ->with(['serviceProvider:id,name,provider_types', 'pendingFor', 'submitter:id,full_name,email'])
             ->orderBy('submitted_at', 'desc')
             ->paginate(config('pagination.admin_per_page', 20));
         return response()->json([
@@ -5630,7 +5630,9 @@ class AjaxController extends Controller
         $status = $request->input('status', 'approved');
 
         $provider = ServiceProvider::create([
-            "provider_type" => $request->provider_type,
+            // The form asks for one type; the set is where it lives, and a
+            // provider added by hand can be given more later.
+            "provider_types" => [$request->provider_type],
             "business_type" => $request->business_type,
             "registration_number" => $request->registration_number,
             "year_established" => $request->year_established ?: null,
@@ -5698,7 +5700,7 @@ class AjaxController extends Controller
             "name", "contact_person", "email", "phone_1", "phone_2",
             "address", "city", "postal_code", "country",
             "business_type", "registration_number", "year_established",
-            "region_id", "provider_type",
+            "region_id",
             "bank_name", "bank_ifsc", "bank_account_name",
             "bank_account_number", "upi", "services_offered",
             "accommodation_categories", "vehicle_types", "guide_types", "activity_types",
@@ -5715,6 +5717,21 @@ class AjaxController extends Controller
             $data['approved_at'] = now();
             $data['approved_by'] = Auth::id();
         }
+        // The roles this member holds. Validated rather than trusted: these
+        // decide what the app lets them do, so an unknown value must not reach
+        // the column. Absent means the form did not ask, not "none".
+        if ($request->has('provider_types')) {
+            $validator = Validator::make($request->all(), [
+                'provider_types' => 'required|array|min:1',
+                'provider_types.*' => ['required', Rule::in(array_keys(ServiceProvider::TYPE_LABELS))],
+            ], ['provider_types.required' => 'A provider has to be at least one type.']);
+            if ($validator->fails()) {
+                return response()->json(['error' => $validator->errors()->first()], 422);
+            }
+
+            $data['provider_types'] = array_values(array_unique($request->input('provider_types')));
+        }
+
         $data['last_updated_by'] = Auth::id();
         $data['last_updated_by_role'] = 'admin';
         $provider->update($data);
@@ -7452,7 +7469,7 @@ class AjaxController extends Controller
     {
         $rows = Experience::pending()
             ->with([
-                'ownerProvider:id,name,provider_type',
+                'ownerProvider:id,name,provider_types',
                 'region:id,name',
                 'submitter:id,full_name,email',
             ])

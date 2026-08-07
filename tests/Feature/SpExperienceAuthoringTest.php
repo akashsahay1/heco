@@ -69,7 +69,6 @@ class SpExperienceAuthoringTest extends TestCase
 
         return ServiceProvider::create([
             'user_id' => $user->id,
-            'provider_type' => $primary,
             'provider_types' => $types,
             'name' => strtoupper($primary) . ' Provider',
             'email' => $email,
@@ -661,15 +660,6 @@ class SpExperienceAuthoringTest extends TestCase
 
         $experience = Experience::firstWhere('name', 'Taxi Owner Homestay Walk');
         $this->assertSame($ospThenHost->id, (int) $experience->owner_provider_id);
-    }
-
-    /** An old row predating provider_types still resolves from its enum. */
-    public function test_a_provider_with_no_type_set_falls_back_to_its_primary_type(): void
-    {
-        $this->hlh->forceFill(['provider_types' => null])->save();
-
-        $this->actingAs($this->hlh->user);
-        $this->ajax($this->validPayload())->assertOk();
     }
 
     /**

@@ -42,7 +42,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+91-9419812345',
             ],
             providerAttrs: [
-                'provider_type' => 'hrp',
+                'provider_types' => ['hrp'],
                 'name' => 'Sonam Wangchuk',
                 'contact_person' => 'Sonam Wangchuk',
                 'email' => 'sonam.wangchuk@hecoapp.com',
@@ -68,7 +68,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+91-9418234567',
             ],
             providerAttrs: [
-                'provider_type' => 'hrp',
+                'provider_types' => ['hrp'],
                 'name' => 'Tenzin Norbu',
                 'contact_person' => 'Tenzin Norbu',
                 'email' => 'tenzin.norbu@hecoapp.com',
@@ -94,7 +94,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+977-9841123456',
             ],
             providerAttrs: [
-                'provider_type' => 'hrp',
+                'provider_types' => ['hrp'],
                 'name' => 'Pemba Sherpa',
                 'contact_person' => 'Pemba Sherpa',
                 'email' => 'pemba.sherpa@hecoapp.com',
@@ -120,7 +120,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+51-984567890',
             ],
             providerAttrs: [
-                'provider_type' => 'hrp',
+                'provider_types' => ['hrp'],
                 'name' => 'Carlos Gutierrez',
                 'contact_person' => 'Carlos Gutierrez',
                 'email' => 'carlos.gutierrez@hecoapp.com',
@@ -148,7 +148,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+91-9419876543',
             ],
             providerAttrs: [
-                'provider_type' => 'hlh',
+                'provider_types' => ['hlh'],
                 'name' => 'Tsering Angmo',
                 'contact_person' => 'Tsering Angmo',
                 'email' => 'tsering.angmo@hecoapp.com',
@@ -175,7 +175,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+91-9418765432',
             ],
             providerAttrs: [
-                'provider_type' => 'hlh',
+                'provider_types' => ['hlh'],
                 'name' => 'Dawa Dolma',
                 'contact_person' => 'Dawa Dolma',
                 'email' => 'dawa.dolma@hecoapp.com',
@@ -202,7 +202,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+977-9812345678',
             ],
             providerAttrs: [
-                'provider_type' => 'hlh',
+                'provider_types' => ['hlh'],
                 'name' => 'Maya Tamang',
                 'contact_person' => 'Maya Tamang',
                 'email' => 'maya.tamang@hecoapp.com',
@@ -229,7 +229,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+975-17234567',
             ],
             providerAttrs: [
-                'provider_type' => 'hlh',
+                'provider_types' => ['hlh'],
                 'name' => 'Karma Lhamo',
                 'contact_person' => 'Karma Lhamo',
                 'email' => 'karma.lhamo@hecoapp.com',
@@ -258,7 +258,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+91-9418111222',
             ],
             providerAttrs: [
-                'provider_type' => 'osp',
+                'provider_types' => ['osp'],
                 'name' => 'Himalayan Adventures Pvt Ltd',
                 'contact_person' => 'Rajesh Thakur',
                 'email' => 'himalayan.adventures@hecoapp.com',
@@ -287,7 +287,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+91-9419333444',
             ],
             providerAttrs: [
-                'provider_type' => 'osp',
+                'provider_types' => ['osp'],
                 'name' => 'Peak Trekking Co.',
                 'contact_person' => 'Dorje Namgyal',
                 'email' => 'peak.trekking@hecoapp.com',
@@ -314,7 +314,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+977-9851234567',
             ],
             providerAttrs: [
-                'provider_type' => 'osp',
+                'provider_types' => ['osp'],
                 'name' => 'Nepal Journeys',
                 'contact_person' => 'Binod Rai',
                 'email' => 'nepal.journeys@hecoapp.com',
@@ -343,7 +343,7 @@ class TestDataSeeder extends Seeder
                 'mobile' => '+51-984111222',
             ],
             providerAttrs: [
-                'provider_type' => 'osp',
+                'provider_types' => ['osp'],
                 'name' => 'Andean Trails',
                 'contact_person' => 'Maria Quispe',
                 'email' => 'andean.trails@hecoapp.com',

@@ -34,11 +34,15 @@
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
-                            <label class="form-label small text-muted">Type</label>
-                            <select name="provider_type" class="form-select form-select-sm custom-select">
-                                <option value="hrp" @selected($provider->provider_type === 'hrp')>HRP</option>
-                                <option value="hlh" @selected($provider->provider_type === 'hlh')>HLH</option>
-                                <option value="osp" @selected($provider->provider_type === 'osp')>OSP</option>
+                            {{-- More than one: a host that also runs a taxi is
+                                 an HLH and an OSP, and signup has always let
+                                 them say so. This is the only screen that can
+                                 correct it afterwards. --}}
+                            <label class="form-label small text-muted">Types</label>
+                            <select name="provider_types[]" multiple size="3" class="form-select form-select-sm">
+                                @foreach(\App\Models\ServiceProvider::TYPE_LABELS as $value => $label)
+                                    <option value="{{ $value }}" @selected(in_array($value, $provider->types(), true))>{{ strtoupper($value) }} — {{ $label }}</option>
+                                @endforeach
                             </select>
                         </div>
                         <div class="col-md-6">

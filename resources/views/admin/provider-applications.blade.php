@@ -47,11 +47,15 @@ function loadApplications(page) {
         }
         items.forEach(function(app) {
             appsById[app.id] = app;
-            var typeBadge = '';
-            if (app.provider_type === 'hrp') typeBadge = '<span class="badge bg-info">HRP</span>';
-            else if (app.provider_type === 'hlh') typeBadge = '<span class="badge bg-success">HLH</span>';
-            else if (app.provider_type === 'osp') typeBadge = '<span class="badge bg-warning text-dark">OSP</span>';
-            else typeBadge = '<span class="badge bg-secondary">' + (app.provider_type || '-') + '</span>';
+            // One badge per role held — an applicant who hosts and drives is
+            // both, and showing only the first hid half the application.
+            var badgeClass = { hrp: 'bg-info', hlh: 'bg-success', osp: 'bg-warning text-dark' };
+            var heldTypes = asList(app.provider_types);
+            var typeBadge = heldTypes.length
+                ? heldTypes.map(function(t) {
+                    return '<span class="badge ' + (badgeClass[t] || 'bg-secondary') + ' me-1">' + esc(t.toUpperCase()) + '</span>';
+                  }).join('')
+                : '<span class="badge bg-secondary">-</span>';
 
             var services = [];
             try { services = typeof app.services_offered === 'string' ? JSON.parse(app.services_offered) : (app.services_offered || []); } catch(e) {}
@@ -221,7 +225,6 @@ $(document).on('click', '.view-app', function() {
     // An applicant can hold more than one role — "an HLH can also select OSP".
     // Showing only the first would hide half of what they applied to do.
     var heldTypes = asList(app.provider_types);
-    if (!heldTypes.length && app.provider_type) heldTypes = [app.provider_type];
     var typePills = heldTypes.map(function(t) {
         return '<span style="background:#eef4f3;color:#4b6b6a;border-radius:20px;padding:2px 10px;'
              + 'font-size:12px;font-weight:600;">' + esc(typeLabels[t] || String(t).toUpperCase()) + '</span>';

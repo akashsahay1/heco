@@ -58,7 +58,6 @@ class AdminApplicationDetailTest extends TestCase
 
         return ServiceProvider::create([
             'user_id' => $user->id,
-            'provider_type' => 'hlh',
             'provider_types' => ['hlh', 'osp'],
             'name' => 'Aarav Mehta',
             'contact_person' => 'Aarav Mehta',

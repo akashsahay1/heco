@@ -262,7 +262,6 @@ class AuthService
         $isRegionalPartner = in_array('hrp', $types, true);
 
         return ServiceProvider::create([
-            'provider_type' => $data['provider_type'],
             'provider_types' => $types,
             'has_business' => $hasBusiness,
             'business_type' => $hasBusiness === false ? null : ($data['business_type'] ?? null),

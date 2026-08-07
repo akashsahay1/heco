@@ -112,7 +112,7 @@ class AdminAddProviderTest extends TestCase
             ->assertDontSee('awaiting approval');
 
         ServiceProvider::create([
-            'provider_type' => 'osp',
+            'provider_types' => ['osp'],
             'name' => 'Waiting Co',
             'email' => 'waiting@example.test',
             'phone_1' => '9800000000',

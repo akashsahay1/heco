@@ -30,7 +30,7 @@ class MealPricingTest extends TestCase
         // meals sold by the plate are a service, not the all-in experience an
         // HLH publishes.
         $provider = ServiceProvider::create([
-            'provider_type' => 'hlh', 'provider_types' => ['hlh', 'osp'],
+            'provider_types' => ['hlh', 'osp'],
             'name' => 'Homestay', 'email' => 'host@meal.test',
             'phone_1' => '9990001111', 'region_id' => $region->id, 'status' => 'approved',
             'user_id' => $spUser->id,

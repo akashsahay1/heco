@@ -50,7 +50,6 @@ class OspServiceFieldsTest extends TestCase
 
         $this->provider = ServiceProvider::create([
             'user_id' => $this->user->id,
-            'provider_type' => 'osp',
             'provider_types' => ['osp'],
             'name' => 'Valley Services',
             'email' => 'osp@example.test',

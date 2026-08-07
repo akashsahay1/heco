@@ -58,7 +58,6 @@ class HrpRegionOverviewTest extends TestCase
 
         return ServiceProvider::create([
             'user_id' => $user->id,
-            'provider_type' => $types[0],
             'provider_types' => $types,
             'name' => ucfirst(explode('@', $email)[0]),
             'email' => $email,

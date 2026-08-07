@@ -54,7 +54,6 @@ class ProviderListingCapTest extends TestCase
 
         return ServiceProvider::create([
             'user_id' => $user->id,
-            'provider_type' => $types[0],
             'provider_types' => $types,
             'name' => 'Test Provider',
             'email' => $email,

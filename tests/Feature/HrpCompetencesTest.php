@@ -51,7 +51,6 @@ class HrpCompetencesTest extends TestCase
 
         return ServiceProvider::create([
             'user_id' => $user->id,
-            'provider_type' => $types[0],
             'provider_types' => $types,
             'name' => strtoupper($types[0]) . ' Provider',
             'email' => $email,

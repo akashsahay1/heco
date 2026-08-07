@@ -51,7 +51,7 @@ class ProviderInvoiceTest extends TestCase
             'base_cost_per_person' => 5000, 'cost_accommodation' => 1000, 'cost_activities' => 1000,
         ]);
         $this->provider = ServiceProvider::create([
-            'provider_type' => 'hlh', 'name' => 'Stay', 'email' => 's@inv.test',
+            'provider_types' => ['hlh'], 'name' => 'Stay', 'email' => 's@inv.test',
             'phone_1' => '9990001111', 'region_id' => $region->id, 'status' => 'approved',
         ]);
         $pricing = SpPricing::create([
@@ -93,7 +93,7 @@ class ProviderInvoiceTest extends TestCase
     public function test_confirm_invoices_day_level_assigned_provider(): void
     {
         $transport = ServiceProvider::create([
-            'provider_type' => 'osp', 'name' => 'Cabs', 'email' => 'cab@inv.test',
+            'provider_types' => ['osp'], 'name' => 'Cabs', 'email' => 'cab@inv.test',
             'phone_1' => '9990003333', 'region_id' => $this->region->id, 'status' => 'approved',
         ]);
         $day = $this->trip->tripDays()->first();
