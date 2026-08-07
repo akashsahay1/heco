@@ -26,9 +26,18 @@ class User extends Authenticatable
      * actually serves and lets the password settle any remainder. See
      * findByCredentials().
      */
-    public const HCT_ROLES = ['hct_admin', 'hct_collaborator'];
-    public const PROVIDER_ROLES = ['hrp', 'hlh', 'osp'];
-    public const PORTAL_ROLES = ['traveller', 'hrp', 'hlh', 'osp'];
+    public const HCT_ROLES = ['administrator', 'collaborator'];
+    /**
+     * One role, not three.
+     *
+     * A role says what an account may do; it used to say which kind of partner
+     * someone was as well, copied from service_providers.provider_type. That
+     * could never be right — a member can host and run a taxi at once, and a
+     * single value has to pick one. Which kinds they are lives in
+     * service_providers.provider_types, where it can hold the whole set.
+     */
+    public const PROVIDER_ROLES = ['provider'];
+    public const PORTAL_ROLES = ['traveller', 'provider'];
 
     protected $fillable = [
         'full_name', 'email', 'password', 'auth_type', 'user_role',
@@ -75,17 +84,17 @@ class User extends Authenticatable
 
     public function isHctAdmin(): bool
     {
-        return $this->user_role === 'hct_admin';
+        return $this->user_role === 'administrator';
     }
 
     public function isHctCollaborator(): bool
     {
-        return $this->user_role === 'hct_collaborator';
+        return $this->user_role === 'collaborator';
     }
 
     public function isHct(): bool
     {
-        return in_array($this->user_role, ['hct_admin', 'hct_collaborator']);
+        return in_array($this->user_role, ['administrator', 'collaborator']);
     }
 
     public function isTraveller(): bool
@@ -95,7 +104,7 @@ class User extends Authenticatable
 
     public function isServiceProvider(): bool
     {
-        return in_array($this->user_role, ['hrp', 'hlh', 'osp']);
+        return $this->user_role === 'provider';
     }
 
     /**

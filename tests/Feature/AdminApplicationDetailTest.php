@@ -34,7 +34,7 @@ class AdminApplicationDetailTest extends TestCase
             'full_name' => 'HCT Admin',
             'email' => 'hct@example.test',
             'password' => 'password',
-            'user_role' => 'hct_admin',
+            'user_role' => 'administrator',
             'status' => 'active',
         ]);
     }
@@ -52,7 +52,7 @@ class AdminApplicationDetailTest extends TestCase
             'full_name' => 'Aarav Mehta',
             'email' => 'aarav@example.test',
             'password' => 'password',
-            'user_role' => 'osp',
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
 

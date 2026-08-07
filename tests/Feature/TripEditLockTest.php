@@ -25,7 +25,7 @@ class TripEditLockTest extends TestCase
         $this->portal = config('app.portal_domain');
         $this->admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@lock.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
     }
 

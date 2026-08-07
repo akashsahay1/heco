@@ -28,7 +28,7 @@ class HrpRegionTripsTest extends TestCase
 
         $hrpUser = User::create([
             'full_name' => 'HRP', 'email' => 'hrp@r.test',
-            'password' => 'password', 'user_role' => 'hrp', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
         ServiceProvider::create([
             'provider_type' => 'hrp', 'name' => 'Tirthan Partner', 'email' => 'hrp@r.test',

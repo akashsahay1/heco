@@ -38,7 +38,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Sonam Wangchuk',
                 'email' => 'sonam.wangchuk@hecoapp.com',
-                'user_role' => 'hrp',
+                'user_role' => 'provider',
                 'mobile' => '+91-9419812345',
             ],
             providerAttrs: [
@@ -64,7 +64,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Tenzin Norbu',
                 'email' => 'tenzin.norbu@hecoapp.com',
-                'user_role' => 'hrp',
+                'user_role' => 'provider',
                 'mobile' => '+91-9418234567',
             ],
             providerAttrs: [
@@ -90,7 +90,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Pemba Sherpa',
                 'email' => 'pemba.sherpa@hecoapp.com',
-                'user_role' => 'hrp',
+                'user_role' => 'provider',
                 'mobile' => '+977-9841123456',
             ],
             providerAttrs: [
@@ -116,7 +116,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Carlos Gutierrez',
                 'email' => 'carlos.gutierrez@hecoapp.com',
-                'user_role' => 'hrp',
+                'user_role' => 'provider',
                 'mobile' => '+51-984567890',
             ],
             providerAttrs: [
@@ -144,7 +144,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Tsering Angmo',
                 'email' => 'tsering.angmo@hecoapp.com',
-                'user_role' => 'hlh',
+                'user_role' => 'provider',
                 'mobile' => '+91-9419876543',
             ],
             providerAttrs: [
@@ -171,7 +171,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Dawa Dolma',
                 'email' => 'dawa.dolma@hecoapp.com',
-                'user_role' => 'hlh',
+                'user_role' => 'provider',
                 'mobile' => '+91-9418765432',
             ],
             providerAttrs: [
@@ -198,7 +198,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Maya Tamang',
                 'email' => 'maya.tamang@hecoapp.com',
-                'user_role' => 'hlh',
+                'user_role' => 'provider',
                 'mobile' => '+977-9812345678',
             ],
             providerAttrs: [
@@ -225,7 +225,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Karma Lhamo',
                 'email' => 'karma.lhamo@hecoapp.com',
-                'user_role' => 'hlh',
+                'user_role' => 'provider',
                 'mobile' => '+975-17234567',
             ],
             providerAttrs: [
@@ -254,7 +254,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Rajesh Thakur',
                 'email' => 'himalayan.adventures@hecoapp.com',
-                'user_role' => 'osp',
+                'user_role' => 'provider',
                 'mobile' => '+91-9418111222',
             ],
             providerAttrs: [
@@ -283,7 +283,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Dorje Namgyal',
                 'email' => 'peak.trekking@hecoapp.com',
-                'user_role' => 'osp',
+                'user_role' => 'provider',
                 'mobile' => '+91-9419333444',
             ],
             providerAttrs: [
@@ -310,7 +310,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Binod Rai',
                 'email' => 'nepal.journeys@hecoapp.com',
-                'user_role' => 'osp',
+                'user_role' => 'provider',
                 'mobile' => '+977-9851234567',
             ],
             providerAttrs: [
@@ -339,7 +339,7 @@ class TestDataSeeder extends Seeder
             userAttrs: [
                 'full_name' => 'Maria Quispe',
                 'email' => 'andean.trails@hecoapp.com',
-                'user_role' => 'osp',
+                'user_role' => 'provider',
                 'mobile' => '+51-984111222',
             ],
             providerAttrs: [

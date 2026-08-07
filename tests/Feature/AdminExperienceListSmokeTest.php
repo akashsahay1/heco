@@ -22,7 +22,7 @@ class AdminExperienceListSmokeTest extends TestCase
     {
         $admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@example.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
         $region = Region::create([
             'name' => 'Kumaon', 'slug' => 'kumaon', 'country' => 'India', 'is_active' => true,

@@ -35,7 +35,7 @@ class AdminAddProviderTest extends TestCase
         ]);
         $this->admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@example.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
         $this->traveller = User::create([
             'full_name' => 'Trav', 'email' => 'trav@example.test',
@@ -64,7 +64,7 @@ class AdminAddProviderTest extends TestCase
         ], $overrides);
     }
 
-    public function test_hct_admin_can_add_an_approved_provider_with_login(): void
+    public function test_administrator_can_add_an_approved_provider_with_login(): void
     {
         $res = $this->actingAs($this->admin)->ajax($this->payload());
         $res->assertOk()->assertJson(['success' => true]);
@@ -76,7 +76,7 @@ class AdminAddProviderTest extends TestCase
         $this->assertEqualsCanonicalizing(['Accommodation', 'Transport'], $provider->services_offered);
 
         $user = User::find($provider->user_id);
-        $this->assertSame('osp', $user->user_role);
+        $this->assertSame('provider', $user->user_role);
 
         // Manually-added provider never set a password → the approval email
         // MUST carry a set-password link so they can get in.

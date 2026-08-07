@@ -39,11 +39,11 @@ class AjaxAuthorizationGateTest extends TestCase
         ]);
         $this->collaborator = User::create([
             'full_name' => 'Collab', 'email' => 'collab@example.test',
-            'password' => 'password', 'user_role' => 'hct_collaborator', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'collaborator', 'status' => 'active',
         ]);
         $this->admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@example.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
     }
 
@@ -62,7 +62,7 @@ class AjaxAuthorizationGateTest extends TestCase
     /** Unauthenticated privilege-escalation vector must be blocked. */
     public function test_unauthenticated_create_hct_user_is_blocked(): void
     {
-        $this->ajax(['create_hct_user' => 1, 'user_role' => 'hct_admin', 'email' => 'x@x.test'])
+        $this->ajax(['create_hct_user' => 1, 'user_role' => 'administrator', 'email' => 'x@x.test'])
             ->assertStatus(401);
     }
 
@@ -74,15 +74,15 @@ class AjaxAuthorizationGateTest extends TestCase
             ->assertStatus(403);
     }
 
-    /** hct_admin-only actions reject an hct_collaborator. */
-    public function test_collaborator_cannot_hit_hct_admin_action(): void
+    /** administrator-only actions reject an collaborator. */
+    public function test_collaborator_cannot_hit_administrator_action(): void
     {
         $this->actingAs($this->collaborator)
             ->ajax(['save_settings' => 1, 'settings' => ['gst_percent' => 0]])
             ->assertStatus(403);
     }
 
-    /** hct_collaborator may perform plain hct actions. */
+    /** collaborator may perform plain hct actions. */
     public function test_collaborator_can_hit_hct_action(): void
     {
         $this->actingAs($this->collaborator)
@@ -90,7 +90,7 @@ class AjaxAuthorizationGateTest extends TestCase
             ->assertStatus(200);
     }
 
-    /** hct_admin passes the gate and the whitelist accepts a known key. */
+    /** administrator passes the gate and the whitelist accepts a known key. */
     public function test_admin_can_save_whitelisted_setting(): void
     {
         $this->actingAs($this->admin)

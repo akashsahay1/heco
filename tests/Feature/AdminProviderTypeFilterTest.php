@@ -35,7 +35,7 @@ class AdminProviderTypeFilterTest extends TestCase
         ]);
         $this->admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@example.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
     }
 

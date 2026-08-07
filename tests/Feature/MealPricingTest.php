@@ -23,7 +23,7 @@ class MealPricingTest extends TestCase
 
         $spUser = User::create([
             'full_name' => 'Host', 'email' => 'host@meal.test',
-            'password' => 'password', 'user_role' => 'hlh', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
         $region = Region::create(['name' => 'Valley', 'slug' => 'valley', 'is_active' => true]);
         // A rate card belongs to a supplier, so this homestay supplies too —

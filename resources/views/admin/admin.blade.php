@@ -21,7 +21,7 @@
                             data-role="{{ $u->user_role }}">
                             <td>{{ $u->full_name }}</td>
                             <td>{{ $u->email }}</td>
-                            <td><span class="badge bg-{{ $u->user_role === 'hct_admin' ? 'danger' : 'primary' }}">{{ $u->user_role }}</span></td>
+                            <td><span class="badge bg-{{ $u->user_role === 'administrator' ? 'danger' : 'primary' }}">{{ $u->user_role }}</span></td>
                             <td><span class="badge bg-{{ $u->status === 'active' ? 'success' : 'secondary' }}">{{ $u->status }}</span></td>
                             <td>
                                 <button class="btn btn-sm btn-outline-primary edit-user" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -84,7 +84,7 @@
                     <div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" name="email" required></div>
                     <div class="mb-3"><label class="form-label">Password</label><input type="password" class="form-control" name="password" required minlength="8"></div>
                     <div class="mb-3"><label class="form-label">Role</label>
-                        <select class="form-select custom-select" name="user_role"><option value="hct_collaborator">HCT Collaborator</option><option value="hct_admin">HCT Admin</option></select>
+                        <select class="form-select custom-select" name="user_role"><option value="collaborator">HCT Collaborator</option><option value="administrator">HCT Admin</option></select>
                     </div>
                     <button type="submit" class="btn btn-success w-100">Create User</button>
                 </form>
@@ -105,7 +105,7 @@
                     <div class="mb-3"><label class="form-label">Full Name</label><input type="text" class="form-control" name="full_name" required></div>
                     <div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" name="email" required></div>
                     <div class="mb-3"><label class="form-label">Role</label>
-                        <select class="form-select custom-select" name="user_role"><option value="hct_collaborator">HCT Collaborator</option><option value="hct_admin">HCT Admin</option></select>
+                        <select class="form-select custom-select" name="user_role"><option value="collaborator">HCT Collaborator</option><option value="administrator">HCT Admin</option></select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label" for="editUserPassword">Password</label>

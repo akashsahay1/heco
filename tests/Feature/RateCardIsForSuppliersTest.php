@@ -36,7 +36,7 @@ class RateCardIsForSuppliersTest extends TestCase
     {
         $user = User::create([
             'full_name' => 'Member', 'email' => $email,
-            'password' => 'password', 'user_role' => $types[0], 'status' => 'active',
+            'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
 
         return ServiceProvider::create([

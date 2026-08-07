@@ -63,7 +63,7 @@ class SpExperienceAuthoringTest extends TestCase
             'full_name' => strtoupper($primary) . ' User',
             'email' => $email,
             'password' => 'password',
-            'user_role' => $primary,
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
 
@@ -273,7 +273,7 @@ class SpExperienceAuthoringTest extends TestCase
             [
                 'full_name' => 'HCT Admin',
                 'password' => 'password',
-                'user_role' => 'hct_admin',
+                'user_role' => 'administrator',
                 'status' => 'active',
             ],
         );

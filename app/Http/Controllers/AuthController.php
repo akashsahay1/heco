@@ -171,7 +171,7 @@ class AuthController extends Controller
             "token" => "required",
             "email" => "required|email",
             "password" => "required|min:8|confirmed",
-            "role" => "nullable|string|in:traveller,hrp,hlh,osp,hct_admin,hct_collaborator",
+            "role" => "nullable|string|in:traveller,hrp,hlh,osp,administrator,collaborator",
         ]);
 
         if ($request->expectsJson()) {

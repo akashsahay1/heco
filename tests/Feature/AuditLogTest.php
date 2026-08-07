@@ -22,7 +22,7 @@ class AuditLogTest extends TestCase
 
         $admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@audit.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
 
         $this->actingAs($admin)

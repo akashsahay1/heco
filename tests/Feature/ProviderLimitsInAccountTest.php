@@ -27,7 +27,7 @@ class ProviderLimitsInAccountTest extends TestCase
         ]);
         $user = User::create([
             'full_name' => 'Host', 'email' => 'host@example.test',
-            'password' => 'password', 'user_role' => 'hlh', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
 
         return ServiceProvider::create([

@@ -48,7 +48,7 @@ class MobileApiTest extends TestCase
             'full_name' => 'Mountain View',
             'email' => 'osp@example.test',
             'password' => Hash::make('secret123'),
-            'user_role' => 'osp',
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
 
@@ -68,7 +68,7 @@ class MobileApiTest extends TestCase
             'full_name' => 'Tirthan Host',
             'email' => 'host@example.test',
             'password' => Hash::make('secret123'),
-            'user_role' => 'hlh',
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
 
@@ -164,7 +164,7 @@ class MobileApiTest extends TestCase
         $provider = ServiceProvider::where('email', 'neha@example.test')->firstOrFail();
         $this->assertCount(1, $provider->documents);
         $this->assertSame('Government ID', $provider->documents[0]['label']);
-        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($provider->documents[0]['path']);
+        $this->assertFileExists(public_path(ltrim($provider->documents[0]['path'], '/')));
     }
 
     // ── In-app password reset (code, not a web link) ─────────────────────
@@ -454,7 +454,7 @@ class MobileApiTest extends TestCase
             'full_name' => 'Regional Partner',
             'email' => 'partner@example.test',
             'password' => Hash::make('secret123'),
-            'user_role' => 'hrp',
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
         ServiceProvider::create([
@@ -489,7 +489,7 @@ class MobileApiTest extends TestCase
             'full_name' => 'HRP',
             'email' => 'hrp@example.test',
             'password' => Hash::make('secret123'),
-            'user_role' => 'hrp',
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
         ServiceProvider::create([
@@ -547,7 +547,7 @@ class MobileApiTest extends TestCase
             'adults' => 2,
             'children' => 1,
             'infants' => 0,
-            'traveller_origin' => 'Delhi',
+            'traveller_origin' => 'indian',
             'pickup_location' => 'Aut Tunnel',
             'drop_location' => 'Bhuntar Airport',
             'start_date' => '2026-09-01',
@@ -577,7 +577,7 @@ class MobileApiTest extends TestCase
         $this->assertSame('Tirthan Valley', $row['region']);
         $this->assertSame(2, $row['adults']);
         $this->assertSame(1, $row['children']);
-        $this->assertSame('Delhi', $row['traveller_origin']);
+        $this->assertSame('indian', $row['traveller_origin']);
         $this->assertSame('Aut Tunnel', $row['pickup_location']);
         $this->assertSame('Riverside Cottage', $row['services']);
         $this->assertSame('1', $row['days']);
@@ -643,7 +643,7 @@ class MobileApiTest extends TestCase
             'full_name' => 'Other',
             'email' => 'other@example.test',
             'password' => Hash::make('secret123'),
-            'user_role' => 'osp',
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
         $other = ServiceProvider::create([

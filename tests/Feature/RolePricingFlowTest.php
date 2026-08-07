@@ -44,7 +44,7 @@ class RolePricingFlowTest extends TestCase
         $this->region = Region::create(['name' => 'Valley', 'slug' => 'valley', 'is_active' => true]);
         $this->admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@rp.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
         $this->traveller = User::create([
             'full_name' => 'Trav', 'email' => 'trav@rp.test',
@@ -82,7 +82,7 @@ class RolePricingFlowTest extends TestCase
     }
 
     // ── HCT admin: experiences with slabs ───────────────────────────────────
-    public function test_hct_admin_creates_experience_with_slabs(): void
+    public function test_administrator_creates_experience_with_slabs(): void
     {
         $hlh = $this->provider('hlh', 'hlh-slab@rp.test');
         $resp = $this->actingAs($this->admin)->ajax([
@@ -106,7 +106,7 @@ class RolePricingFlowTest extends TestCase
     }
 
     // ── HCT admin: per-provider markup + per-km transport ───────────────────
-    public function test_hct_admin_sets_markup_and_per_km_pricing(): void
+    public function test_administrator_sets_markup_and_per_km_pricing(): void
     {
         $hotel = $this->provider('hrp', 'hotel-mk@rp.test');
         $this->actingAs($this->admin)->ajax([
@@ -147,7 +147,7 @@ class RolePricingFlowTest extends TestCase
         $osp = $this->provider('osp', 'osp-self@rp.test', 0);
         $user = User::create([
             'full_name' => 'OSP', 'email' => 'ospuser@rp.test', 'password' => 'password',
-            'user_role' => 'osp', 'status' => 'active',
+            'user_role' => 'provider', 'status' => 'active',
         ]);
         $osp->update(['user_id' => $user->id]);
 

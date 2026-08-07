@@ -48,7 +48,7 @@ class ProviderListingCapTest extends TestCase
             'full_name' => 'Provider',
             'email' => $email,
             'password' => 'password',
-            'user_role' => $types[0],
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
 
@@ -224,7 +224,7 @@ class ProviderListingCapTest extends TestCase
             'full_name' => 'HCT Admin',
             'email' => 'hct@example.test',
             'password' => 'password',
-            'user_role' => 'hct_admin',
+            'user_role' => 'administrator',
             'status' => 'active',
         ]);
 

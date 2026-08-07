@@ -35,7 +35,7 @@ class ExperienceDraftIsPartialTest extends TestCase
         ]);
         $user = User::create([
             'full_name' => 'Host', 'email' => 'host@example.test',
-            'password' => 'password', 'user_role' => 'hlh', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
         $this->hlh = ServiceProvider::create([
             'user_id' => $user->id, 'provider_type' => 'hlh', 'provider_types' => ['hlh'],

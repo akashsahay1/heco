@@ -44,7 +44,7 @@ class OspServiceFieldsTest extends TestCase
             'full_name' => 'Osp Provider',
             'email' => 'osp@example.test',
             'password' => 'password',
-            'user_role' => 'osp',
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
 

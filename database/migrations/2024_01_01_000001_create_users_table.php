@@ -17,7 +17,10 @@ return new class extends Migration {
             // chosen a password yet — approval mails those people a link.
             $table->timestamp('password_set_at')->nullable();
             $table->enum('auth_type', ['email', 'google', 'facebook'])->default('email');
-            $table->enum('user_role', ['hct_admin', 'hct_collaborator', 'traveller', 'hrp', 'hlh', 'osp'])->default('traveller');
+            // One role for every partner. Which kinds of partner they are —
+            // host, supplier, regional — lives in
+            // service_providers.provider_types, which can hold more than one.
+            $table->enum('user_role', ['administrator', 'collaborator', 'traveller', 'provider'])->default('traveller');
             $table->string('mobile', 20)->nullable();
             $table->string('address1', 500)->nullable();
             $table->string('address2', 500)->nullable();

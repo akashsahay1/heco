@@ -16,7 +16,7 @@ class AdminUserSeeder extends Seeder
                 'full_name' => 'HCT Admin',
                 'password' => Hash::make('password'),
                 'auth_type' => 'email',
-                'user_role' => 'hct_admin',
+                'user_role' => 'administrator',
                 'status' => 'active',
             ]
         );
@@ -27,7 +27,7 @@ class AdminUserSeeder extends Seeder
                 'full_name' => 'HCT Collaborator',
                 'password' => Hash::make('password'),
                 'auth_type' => 'email',
-                'user_role' => 'hct_collaborator',
+                'user_role' => 'collaborator',
                 'status' => 'active',
             ]
         );

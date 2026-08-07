@@ -41,7 +41,7 @@ class ProviderInvoiceTest extends TestCase
         ]);
         $this->admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@inv.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
         $this->region = Region::create(['name' => 'Valley', 'slug' => 'valley', 'is_active' => true]);
         $region = $this->region;

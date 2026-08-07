@@ -39,7 +39,7 @@ class MobileRateFieldsTest extends TestCase
         ]);
         $user = User::create([
             'full_name' => 'Supplier', 'email' => 'osp@example.test',
-            'password' => 'password', 'user_role' => 'osp', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
         $this->osp = ServiceProvider::create([
             'user_id' => $user->id, 'provider_type' => 'osp', 'provider_types' => ['osp'],

@@ -275,7 +275,11 @@ class SpApplicationFlowTest extends TestCase
         $this->assertNotNull($provider->user_id);
 
         $user = User::find($provider->user_id);
-        $this->assertSame('hlh', $user->user_role);
+        // 'provider', not 'hlh': the account says it is a partner, and which
+        // kinds of partner lives on the provider record, which can hold more
+        // than one.
+        $this->assertSame('provider', $user->user_role);
+        $this->assertSame(['hlh'], $provider->provider_types);
         // The password came from the form, so they are signed in immediately.
         $this->assertTrue(Hash::check('Passw0rd!', $user->password));
         $this->assertNotNull($user->password_set_at);
@@ -297,7 +301,7 @@ class SpApplicationFlowTest extends TestCase
         $provider = ServiceProvider::where('email', 'aarav.mehta@example.test')->firstOrFail();
         $admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@example.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
 
         $this->actingAs($admin)
@@ -374,7 +378,15 @@ class SpApplicationFlowTest extends TestCase
         $this->ajax($this->validPayload(['name' => 'Second Try']))->assertStatus(422);
     }
 
-    public function test_existing_user_email_links_but_is_not_auto_logged_in(): void
+    /**
+     * Someone who already travels with HECO and then applies to host gets a
+     * second account on the same address, not a rewritten first one.
+     *
+     * The application used to be linked to whatever account held that email,
+     * which meant a traveller lost their identity to gain a provider one. Both
+     * accounts are real now — that is what users_email_role_unique allows.
+     */
+    public function test_a_traveller_who_applies_gets_a_separate_provider_account(): void
     {
         $traveller = User::create([
             'full_name' => 'Existing Traveller',
@@ -385,18 +397,27 @@ class SpApplicationFlowTest extends TestCase
 
         $this->ajax($this->validPayload(['email' => 'existing@example.test']))
             ->assertOk()
-            ->assertJson(['redirect' => '/login', 'existing_account' => true]);
+            ->assertJson(['redirect' => '/application-status', 'existing_account' => false]);
 
         $provider = ServiceProvider::where('email', 'existing@example.test')->firstOrFail();
-        $this->assertSame($traveller->id, $provider->user_id);
-        $this->assertGuest();
+        $providerUser = User::find($provider->user_id);
 
-        // An unreviewed application must NOT change what the account can already
-        // do — this used to silently demote the traveller to a provider.
+        $this->assertNotSame($traveller->id, $providerUser->id);
+        $this->assertSame('provider', $providerUser->user_role);
+
+        // The traveller account is untouched — same role, and it is not the one
+        // now signed in.
         $this->assertSame('traveller', $traveller->fresh()->user_role);
+        $this->assertAuthenticatedAs($providerUser);
     }
 
-    public function test_approval_promotes_the_linked_account_to_the_provider_role(): void
+    /**
+     * Approval must not reach into the traveller account that happens to share
+     * the address. It used to: the role was overwritten, and the person lost
+     * their traveller identity to gain a provider one. They are two accounts
+     * now, which is what the email+role index exists to allow.
+     */
+    public function test_approval_leaves_the_traveller_account_alone(): void
     {
         $traveller = User::create([
             'full_name' => 'Existing Traveller',
@@ -409,14 +430,20 @@ class SpApplicationFlowTest extends TestCase
         $provider = ServiceProvider::where('email', 'existing@example.test')->firstOrFail();
         $admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@example.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
 
         $this->actingAs($admin)
             ->ajax(['approve_provider' => 1, 'provider_id' => $provider->id])
             ->assertOk();
 
-        $this->assertSame('hlh', $traveller->fresh()->user_role);
+        $this->assertSame('traveller', $traveller->fresh()->user_role);
+
+        // The application got an account of its own, on the same address.
+        $providerUser = User::find($provider->fresh()->user_id);
+        $this->assertNotNull($providerUser);
+        $this->assertNotSame($traveller->id, $providerUser->id);
+        $this->assertSame('provider', $providerUser->user_role);
     }
 
     public function test_pending_applicant_is_bounced_from_dashboard_to_status(): void

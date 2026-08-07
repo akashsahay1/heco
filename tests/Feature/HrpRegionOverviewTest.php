@@ -52,7 +52,7 @@ class HrpRegionOverviewTest extends TestCase
             'full_name' => strtoupper($types[0]) . ' User',
             'email' => $email,
             'password' => 'password',
-            'user_role' => $types[0],
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
 

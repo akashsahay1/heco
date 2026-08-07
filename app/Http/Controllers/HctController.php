@@ -19,7 +19,7 @@ class HctController extends Controller
 
     public function admin()
     {
-        $hctUsers = User::whereIn("user_role", ["hct_admin", "hct_collaborator"])
+        $hctUsers = User::whereIn("user_role", ["administrator", "collaborator"])
             ->orderBy("full_name")
             ->paginate(config('pagination.admin_per_page', 20));
         return view("admin.admin", compact("hctUsers"));
@@ -80,7 +80,7 @@ class HctController extends Controller
 
     public function leads(\Illuminate\Http\Request $request)
     {
-        $hctUsers = User::whereIn("user_role", ["hct_admin", "hct_collaborator"])
+        $hctUsers = User::whereIn("user_role", ["administrator", "collaborator"])
             ->where("status", "active")
             ->orderBy("full_name")
             ->get(["id", "full_name", "email"]);

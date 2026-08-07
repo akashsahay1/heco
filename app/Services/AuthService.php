@@ -349,7 +349,9 @@ class AuthService
             // (an admin creating a provider by hand) cannot be logged into.
             'password' => $password ?: Str::random(40),
             'auth_type' => 'email',
-            'user_role' => $provider->provider_type,
+            // Which kinds of partner they are lives on the provider record; the
+            // account only needs to know it is one.
+            'user_role' => 'provider',
         ]);
 
         // forceFill because password_set_at is deliberately not fillable — it

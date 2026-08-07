@@ -472,7 +472,7 @@ class AjaxController extends Controller
      * every key is otherwise reachable unauthenticated from the public portal.
      * This map gates each dispatched key by the minimum trust level required.
      *
-     * Levels: public | auth | sp | sp_or_hct | hct | hct_admin
+     * Levels: public | auth | sp | sp_or_hct | hct | administrator
      * Keep entries in the SAME ORDER as the index() dispatch chain below
      * (the first key present on the request is the one that will be dispatched).
      */
@@ -525,20 +525,20 @@ class AjaxController extends Controller
         'erase_trip' => 'auth',
         // HCT DASHBOARD
         'get_dashboard_stats' => 'hct',
-        'create_hct_user' => 'hct_admin',
-        'update_hct_user' => 'hct_admin',
-        'deactivate_hct_user' => 'hct_admin',
+        'create_hct_user' => 'administrator',
+        'update_hct_user' => 'administrator',
+        'deactivate_hct_user' => 'administrator',
         'get_system_lists' => 'hct',
-        'save_system_list_item' => 'hct_admin',
-        'deactivate_system_list_item' => 'hct_admin',
-        'delete_system_list_item' => 'hct_admin',
-        'reset_hct_user_password' => 'hct_admin',
+        'save_system_list_item' => 'administrator',
+        'deactivate_system_list_item' => 'administrator',
+        'delete_system_list_item' => 'administrator',
+        'reset_hct_user_password' => 'administrator',
         'get_ai_prompts' => 'hct',
-        'save_ai_prompt' => 'hct_admin',
-        'delete_ai_prompt' => 'hct_admin',
+        'save_ai_prompt' => 'administrator',
+        'delete_ai_prompt' => 'administrator',
         'get_activity_logs' => 'hct',
         'get_newsletter_send_count' => 'hct',
-        'send_newsletter_campaign' => 'hct_admin',
+        'send_newsletter_campaign' => 'administrator',
         'set_subscriber_status' => 'hct',
         'get_sp_pricing' => 'sp_or_hct',
         'save_sp_pricing' => 'sp_or_hct',
@@ -579,8 +579,8 @@ class AjaxController extends Controller
         'get_provider_applications' => 'hct',
         'approve_provider' => 'hct',
         'reject_provider' => 'hct',
-        'remove_provider' => 'hct_admin',
-        'bulk_remove_providers' => 'hct_admin',
+        'remove_provider' => 'administrator',
+        'bulk_remove_providers' => 'administrator',
         // REGION
         'get_regions_list' => 'hct',
         'save_region' => 'hct',
@@ -589,10 +589,10 @@ class AjaxController extends Controller
         'bulk_delete_regions' => 'hct',
         // CURRENCY (pricing-sensitive -> admin for writes)
         'get_currencies_list' => 'hct',
-        'save_currency' => 'hct_admin',
-        'toggle_currency' => 'hct_admin',
-        'delete_currency' => 'hct_admin',
-        'bulk_delete_currencies' => 'hct_admin',
+        'save_currency' => 'administrator',
+        'toggle_currency' => 'administrator',
+        'delete_currency' => 'administrator',
+        'bulk_delete_currencies' => 'administrator',
         // EXPERIENCE & RP
         'get_experiences_list' => 'hct',
         'save_experience' => 'hct',
@@ -646,9 +646,9 @@ class AjaxController extends Controller
         'admin_sp_unblock_dates' => 'hct',
         // SETTINGS & PDF
         'get_settings' => 'hct',
-        'save_settings' => 'hct_admin',
+        'save_settings' => 'administrator',
         'get_pdf_templates' => 'hct',
-        'save_pdf_template' => 'hct_admin',
+        'save_pdf_template' => 'administrator',
     ];
 
     /**
@@ -675,7 +675,7 @@ class AjaxController extends Controller
             'sp'        => $user && $user->isServiceProvider(),
             'sp_or_hct' => $user && ($user->isServiceProvider() || $user->isHct()),
             'hct'       => $user && $user->isHct(),
-            'hct_admin' => $user && $user->isHctAdmin(),
+            'administrator' => $user && $user->isHctAdmin(),
             default     => false,
         };
         if ($ok) {
@@ -4199,7 +4199,7 @@ class AjaxController extends Controller
             // a traveller or a provider on this address.
             "email" => ["required", "email", User::uniqueEmailRule(User::HCT_ROLES)],
             "password" => "required|min:8",
-            "user_role" => "required|in:hct_admin,hct_collaborator",
+            "user_role" => "required|in:administrator,collaborator",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -4230,7 +4230,7 @@ class AjaxController extends Controller
         $validator = Validator::make($request->all(), [
             "full_name" => "sometimes|required|string|max:255",
             "email" => ["sometimes", "required", "email", User::uniqueEmailRule([$targetRole], $user->id)],
-            "user_role" => "sometimes|required|in:hct_admin,hct_collaborator",
+            "user_role" => "sometimes|required|in:administrator,collaborator",
             // nullable, because the form posts the password box on every save
             // and leaving it empty means "keep the current one" — without this
             // an ordinary name or email change fails the length rule on a blank
@@ -4309,7 +4309,7 @@ class AjaxController extends Controller
 
     protected function resetHctUserPassword(Request $request): JsonResponse
     {
-        $user = User::whereIn("user_role", ["hct_admin", "hct_collaborator"])->findOrFail($request->user_id);
+        $user = User::whereIn("user_role", ["administrator", "collaborator"])->findOrFail($request->user_id);
         $user->update(["password" => Str::random(40)]);
 
         try {
@@ -5816,7 +5816,7 @@ class AjaxController extends Controller
                     'email'     => $provider->email,
                     'password'  => Str::random(40),
                     'auth_type' => 'email',
-                    'user_role' => $provider->provider_type,
+                    'user_role' => 'provider',
                 ]);
             $provider->forceFill(['user_id' => $user->id])->save();
         }
@@ -5827,13 +5827,10 @@ class AjaxController extends Controller
             return;
         }
 
-        // Their primary type can change between applying and being reviewed, so
-        // approval is where the account's role is brought back in line with it.
-        // Only ever a provider account: a staff login that also hosts keeps the
-        // role it signs in to the admin with.
-        if ($user->isServiceProvider() && $user->user_role !== $provider->provider_type) {
-            $user->update(['user_role' => $provider->provider_type]);
-        }
+        // Nothing to bring back in line: the account's role is 'provider' and
+        // stays that way however their types change. This used to copy
+        // provider_type onto the user and repair the two when they drifted,
+        // which was the cost of storing one fact in two tables.
 
         $providerLabel = match ($provider->provider_type) {
             'hrp' => ServiceProvider::TYPE_LABELS['hrp'],
@@ -6280,11 +6277,10 @@ class AjaxController extends Controller
      * provider is removed or deleted.
      *
      * A provider is not always only a provider. Someone can travel with HECO
-     * first and sign up to host later — and approveProvider() overwrites
-     * users.user_role with the provider type when they do, so the row stops
-     * saying 'traveller' while their trips stay behind. Reading the role alone
-     * therefore misses exactly the case this guards against, and the traveller
-     * footprint has to be counted as well.
+     * first and sign up to host later, and the account they sign up with reads
+     * 'provider' from then on while their trips stay behind it. Reading the
+     * role alone therefore misses exactly the case this guards against, and the
+     * traveller footprint has to be counted as well.
      *
      * Returns:
      *   keep_login — the account outlives this provider (traveller history or
@@ -6365,12 +6361,12 @@ class AjaxController extends Controller
     /**
      * Strip the provider role off an account that is being kept, so the portal
      * stops offering provider screens while the traveller side keeps working.
-     * Scoped to the three provider roles — an HCT login is never rewritten.
+     * Scoped to the provider role — an HCT login is never rewritten.
      */
     protected function demoteProviderUserToTraveller(int $userId): void
     {
         \App\Models\User::where('id', $userId)
-            ->whereIn('user_role', ['hrp', 'hlh', 'osp'])
+            ->where('user_role', 'provider')
             ->update(['user_role' => 'traveller']);
     }
 

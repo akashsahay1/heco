@@ -45,7 +45,7 @@ class HrpCompetencesTest extends TestCase
             'full_name' => strtoupper($types[0]) . ' User',
             'email' => $email,
             'password' => 'password',
-            'user_role' => $types[0],
+            'user_role' => 'provider',
             'status' => 'active',
         ]);
 
@@ -167,7 +167,7 @@ class HrpCompetencesTest extends TestCase
             [
                 'full_name' => 'HCT Admin',
                 'password' => 'password',
-                'user_role' => 'hct_admin',
+                'user_role' => 'administrator',
                 'status' => 'active',
             ],
         );

@@ -22,7 +22,7 @@ class RegionImageSaveTest extends TestCase
         $portal = config('app.portal_domain');
         $admin = User::create([
             'full_name' => 'Admin', 'email' => 'admin@region.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
 
         $img = UploadedFile::fake()->image('region.jpg', 300, 200);

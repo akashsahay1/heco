@@ -23,7 +23,7 @@ class AdminSeasonalPriceTest extends TestCase
     {
         return User::create([
             'full_name' => 'HCT Admin', 'email' => 'admin@example.test',
-            'password' => 'password', 'user_role' => 'hct_admin', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'administrator', 'status' => 'active',
         ]);
     }
 
@@ -35,7 +35,7 @@ class AdminSeasonalPriceTest extends TestCase
         ]);
         $host = User::create([
             'full_name' => 'Host', 'email' => 'host@example.test',
-            'password' => 'password', 'user_role' => 'hlh', 'status' => 'active',
+            'password' => 'password', 'user_role' => 'provider', 'status' => 'active',
         ]);
         $provider = ServiceProvider::create([
             'user_id' => $host->id, 'provider_type' => 'hlh', 'name' => 'Valley Host',

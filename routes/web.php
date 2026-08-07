@@ -59,8 +59,8 @@ Route::domain(config('app.admin_domain'))->group(function () {
         Route::get('/regenerative-projects/create', [HctController::class, 'createRegenerativeProject'])->name('hct.rp.create');
         Route::get('/regenerative-projects/{id}/edit', [HctController::class, 'editRegenerativeProject'])->name('hct.rp.edit');
 
-        // Admin tab (hct_admin only)
-        Route::middleware('hct_admin')->group(function () {
+        // Admin tab (administrator only)
+        Route::middleware('administrator')->group(function () {
             Route::get('/admin', [HctController::class, 'admin'])->name('hct.admin');
             Route::get('/travel-preferences', [HctController::class, 'travelPreferences'])->name('hct.travel-preferences');
             Route::get('/travel-preferences/{id}/edit', [HctController::class, 'editTravelPreference'])->name('hct.travel-preferences.edit');
