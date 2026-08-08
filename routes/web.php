@@ -12,7 +12,6 @@ use App\Http\Controllers\SpController;
 use App\Http\Controllers\PdfController;
 use App\Http\Controllers\AjaxController;
 use App\Http\Controllers\EmailTestController;
-use App\Http\Controllers\UploadTestController;
 
 // ============================================
 // ADMIN DOMAIN (hecoadmin.test)
@@ -92,12 +91,6 @@ Route::domain(config('app.portal_domain'))->group(function () {
     Route::get('/home', [HomepageController::class, 'home'])->name('home');
     Route::get('/experience/{slug}', [HomepageController::class, 'experienceDetail'])->name('experience.detail');
     Route::get('/join', [SpController::class, 'application'])->name('sp.application');
-    // Whether a file upload reaches PHP on this server at all. The page lives
-    // here, on the same host the Become a Partner form is served from; its
-    // form posts by AJAX to POST /api/upload-test, so the upload itself takes
-    // the same shape the real one takes. Temporary — delete once answered.
-    Route::get('/upload-test', [UploadTestController::class, 'show']);
-
     Route::get('/csrf-token', fn() => response()->json(['token' => csrf_token()]));
     Route::get('/opcache-reset', fn() => (function_exists('opcache_reset') && opcache_reset()) ? 'cleared' : 'no opcache');
 

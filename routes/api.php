@@ -3,7 +3,6 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ProviderController;
 use App\Http\Controllers\Api\V1\ReferenceController;
-use App\Http\Controllers\UploadTestController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -20,11 +19,6 @@ use Illuminate\Support\Facades\Route;
 | No session, no CSRF — these routes are not in the web middleware group.
 |
 */
-
-// Where /upload-test sends its file. Here rather than in web.php because
-// these routes carry no CSRF, so curl can ask the same question the page does.
-// Temporary: delete with the page once the answer is in hand.
-Route::post('upload-test', [UploadTestController::class, 'store']);
 
 Route::prefix('v1')->group(function () {
 
