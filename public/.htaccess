@@ -1,22 +1,3 @@
-# The host's ModSecurity rejects any POST carrying a file with a 403, before
-# the request reaches PHP — proven on /ajax and on three separate API routes,
-# with a 1 KB file blocked exactly like a 2 MB one. Signup cannot take a
-# verification document until this is off.
-#
-# Site-wide rather than per-rule because the rule ID is in an audit log we have
-# no way to read: there is no SSH on this hosting, and the panel offers no way
-# to see which rule fired. Ask the host for the ID and this becomes a single
-# SecRuleRemoveById instead.
-#
-# If the host does not permit these directives in .htaccess, Apache answers 500
-# for the whole site — remove these lines and it returns immediately.
-<IfModule mod_security2.c>
-    SecRuleEngine Off
-</IfModule>
-<IfModule mod_security.c>
-    SecFilterEngine Off
-</IfModule>
-
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
