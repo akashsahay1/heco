@@ -39,11 +39,12 @@
                                  them say so. This is the only screen that can
                                  correct it afterwards. --}}
                             <label class="form-label small text-muted">Types</label>
-                            <select name="provider_types[]" multiple size="3" class="form-select form-select-sm">
-                                @foreach(\App\Models\ServiceProvider::TYPE_LABELS as $value => $label)
-                                    <option value="{{ $value }}" @selected(in_array($value, $provider->types(), true))>{{ strtoupper($value) }} — {{ $label }}</option>
-                                @endforeach
-                            </select>
+                            @foreach(\App\Models\ServiceProvider::TYPE_LABELS as $value => $label)
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="provider_types[]" value="{{ $value }}" id="providerType{{ $value }}" @checked(in_array($value, $provider->types(), true))>
+                                    <label class="form-check-label small" for="providerType{{ $value }}">{{ $label }}</label>
+                                </div>
+                            @endforeach
                         </div>
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Region</label>
@@ -83,9 +84,89 @@
                         <label class="form-label small text-muted">Phone 2</label>
                         <input type="text" name="phone_2" class="form-control form-control-sm" value="{{ $provider->phone_2 }}">
                     </div>
-                    <div class="mb-0">
+                    <div class="mb-2">
                         <label class="form-label small text-muted">Address</label>
                         <textarea name="address" class="form-control form-control-sm" rows="2">{{ $provider->address }}</textarea>
+                    </div>
+                    <div class="row g-2 mb-0">
+                        <div class="col-md-5">
+                            <label class="form-label small text-muted">City</label>
+                            <input type="text" name="city" class="form-control form-control-sm" value="{{ $provider->city }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted">Postal Code</label>
+                            <input type="text" name="postal_code" class="form-control form-control-sm" value="{{ $provider->postal_code }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Country</label>
+                            <input type="text" name="country" class="form-control form-control-sm" value="{{ $provider->country }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="border-bottom pb-2"><i class="bi bi-translate"></i> Languages & Contact</h6>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Speaks</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="speaks_english" value="1" id="speaksEnglish" @checked($provider->speaks_english)>
+                                <label class="form-check-label small" for="speaksEnglish">English</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="speaks_hindi" value="1" id="speaksHindi" @checked($provider->speaks_hindi)>
+                                <label class="form-check-label small" for="speaksHindi">Hindi</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Contact them by</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="contact_by_email" value="1" id="contactByEmail" @checked($provider->contact_by_email)>
+                                <label class="form-check-label small" for="contactByEmail">Email</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="contact_by_whatsapp" value="1" id="contactByWhatsapp" @checked($provider->contact_by_whatsapp)>
+                                <label class="form-check-label small" for="contactByWhatsapp">WhatsApp</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label small text-muted">Other Languages</label>
+                        <input type="text" name="other_languages" class="form-control form-control-sm" value="{{ $provider->other_languages }}" placeholder="e.g. Garhwali, Nepali">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="border-bottom pb-2"><i class="bi bi-mortarboard"></i> Regional Partner Background</h6>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Education Level</label>
+                            <input type="text" name="education_level" class="form-control form-control-sm" value="{{ $provider->education_level }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">English Level</label>
+                            <input type="text" name="english_level" class="form-control form-control-sm" value="{{ $provider->english_level }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Computer Skill Level</label>
+                            <input type="text" name="computer_skill_level" class="form-control form-control-sm" value="{{ $provider->computer_skill_level }}">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Education Notes</label>
+                        <textarea name="education_notes" class="form-control form-control-sm" rows="2">{{ $provider->education_notes }}</textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small text-muted">Causes They Care About</label>
+                        <textarea name="causes_note" class="form-control form-control-sm" rows="2">{{ $provider->causes_note }}</textarea>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label small text-muted">Community Involvement</label>
+                        <textarea name="community_note" class="form-control form-control-sm" rows="2">{{ $provider->community_note }}</textarea>
                     </div>
                 </div>
             </div>
@@ -143,6 +224,111 @@
                         <label class="form-label small text-muted">UPI ID</label>
                         <input type="text" name="upi" class="form-control form-control-sm" value="{{ $provider->upi }}">
                     </div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="border-bottom pb-2"><i class="bi bi-briefcase"></i> Business</h6>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            {{-- Blank is not "No": it means the application never asked. --}}
+                            <label class="form-label small text-muted">Registered Business?</label>
+                            <select name="has_business" class="form-select form-select-sm custom-select">
+                                <option value="" @selected($provider->has_business === null)>-- Not asked --</option>
+                                <option value="1" @selected($provider->has_business === true)>Yes</option>
+                                <option value="0" @selected($provider->has_business === false)>No</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted">Business Type</label>
+                            <input type="text" name="business_type" class="form-control form-control-sm" value="{{ $provider->business_type }}">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-0">
+                        <div class="col-md-7">
+                            <label class="form-label small text-muted">Registration Number</label>
+                            <input type="text" name="registration_number" class="form-control form-control-sm" value="{{ $provider->registration_number }}">
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small text-muted">Year Established</label>
+                            <input type="number" min="1800" max="{{ date('Y') }}" name="year_established" class="form-control form-control-sm" value="{{ $provider->year_established }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="border-bottom pb-2"><i class="bi bi-box-seam"></i> What They Offer</h6>
+
+                    @php
+                        $offers = [
+                            ['name' => 'experience_categories', 'label' => 'Experience Categories', 'options' => $experienceCategories, 'current' => $provider->experience_categories ?? []],
+                            ['name' => 'service_categories',    'label' => 'Service Categories',    'options' => $serviceCategories,    'current' => $provider->service_categories ?? []],
+                        ];
+                    @endphp
+
+                    @foreach($offers as $offer)
+                        <div class="mb-2">
+                            <label class="form-label small text-muted">{{ $offer['label'] }}</label>
+                            <div class="ms-dropdown" data-name="{{ $offer['name'] }}">
+                                <button type="button" class="form-select form-select-sm text-start ms-trigger">
+                                    <span class="ms-label text-muted">Select options...</span>
+                                </button>
+                                <div class="ms-panel d-none">
+                                    @forelse($offer['options'] as $opt)
+                                        <label class="ms-option">
+                                            <input type="checkbox" value="{{ $opt->name }}"
+                                                   {{ in_array($opt->name, $offer['current'] ?: [], true) ? 'checked' : '' }}>
+                                            <span>{{ $opt->name }}</span>
+                                        </label>
+                                    @empty
+                                        <div class="ms-empty">No options available. Add them under the matching system list.</div>
+                                    @endforelse
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+
+                    <div class="mb-0">
+                        <label class="form-label small text-muted">Other Services</label>
+                        <textarea name="other_services" class="form-control form-control-sm" rows="2">{{ $provider->other_services }}</textarea>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Read-only: the application collected these as repeaters and uploads,
+                 which this form has no way to edit. --}}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="border-bottom pb-2"><i class="bi bi-file-earmark-text"></i> From Their Application <span class="badge bg-secondary ms-1">Read only</span></h6>
+
+                    <label class="form-label small text-muted">Work Experience</label>
+                    @forelse($provider->work_experience ?? [] as $job)
+                        <div class="border-bottom pb-2 mb-2">
+                            <div class="small fw-semibold">{{ $job['role'] ?? '-' }}@if(!empty($job['organisation'])) — {{ $job['organisation'] }}@endif</div>
+                            @if(!empty($job['years']))
+                                <div class="small text-muted">{{ $job['years'] }}</div>
+                            @endif
+                            @if(!empty($job['description']))
+                                <div class="small">{{ $job['description'] }}</div>
+                            @endif
+                        </div>
+                    @empty
+                        <p class="small text-muted">None recorded.</p>
+                    @endforelse
+
+                    <label class="form-label small text-muted">Documents</label>
+                    @forelse($provider->documents ?? [] as $doc)
+                        <div class="small mb-1">
+                            <i class="bi bi-paperclip me-1"></i>
+                            <a href="{{ $doc['path'] }}" target="_blank" rel="noopener">{{ $doc['label'] ?? 'Document' }}</a>
+                            <span class="text-muted">{{ $doc['original_name'] ?? '' }}</span>
+                        </div>
+                    @empty
+                        <p class="small text-muted mb-0">None uploaded.</p>
+                    @endforelse
                 </div>
             </div>
 
@@ -984,13 +1170,28 @@ jQuery('#providerEditForm').on('submit', function(e) {
         services_offered:         getDdValues('services_offered'),
         vehicle_types:            getDdValues('vehicle_types'),
         guide_types:              getDdValues('guide_types'),
-        activity_types:           getDdValues('activity_types')
+        activity_types:           getDdValues('activity_types'),
+        experience_categories:    getDdValues('experience_categories'),
+        service_categories:       getDdValues('service_categories')
         // accommodation_categories: now per-row on sp_pricing.comfort_tier;
         // do NOT send so the AjaxController preserves whatever legacy value
         // is already on the provider row.
     };
-    jQuery(this).find('input, textarea, select').each(function() {
+    var $form = jQuery(this);
+
+    // .val() on a checkbox returns its value whether or not it is ticked,
+    // so checkboxes are collected separately below.
+    $form.find('input, textarea, select').each(function() {
+        if (this.type === 'checkbox') return;
         if (this.name) data[this.name] = jQuery(this).val();
+    });
+
+    data.provider_types = $form.find('input[name="provider_types[]"]:checked')
+        .map(function() { return jQuery(this).val(); }).get();
+
+    // Sent every save so an unticked box reads as No, not as "not mentioned".
+    ['speaks_english', 'speaks_hindi', 'contact_by_email', 'contact_by_whatsapp'].forEach(function(flag) {
+        data[flag] = $form.find('input[name="' + flag + '"]').is(':checked') ? 1 : 0;
     });
 
     ajaxPost(data, function() {

@@ -87,6 +87,14 @@ class ProviderController extends Controller
         return $this->profile();
     }
 
+    // ── Dashboard ────────────────────────────────────────────────────────
+
+    /** `get_sp_dashboard` — earnings, bookings, payout and rating at a glance. */
+    public function dashboard(): JsonResponse
+    {
+        return $this->ajax('get_sp_dashboard');
+    }
+
     // ── Bookings ─────────────────────────────────────────────────────────
 
     /** `get_sp_assigned_trips` — the trips this provider is attached to. */
@@ -201,6 +209,9 @@ class ProviderController extends Controller
             'clothing_recommendations', 'health_notes', 'connectivity_notes', 'cultural_etiquette',
             'operational_risks', 'past_issues', 'backup_options', 'emergency_notes',
             'is_active',
+            // The photos to keep, and taking the card photo down. New photos
+            // arrive as uploaded files and travel outside this whitelist.
+            'gallery', 'remove_card_image',
         ]), $request);
     }
 

@@ -195,7 +195,24 @@ class AuthController extends Controller
     /** Revoke just this device's token. */
     public function logout(Request $request): JsonResponse
     {
-        $request->attributes->get('api_token')?->delete();
+        $token = $request->attributes->get('api_token');
+        if (! $token) {
+            return response()->json(['success' => true]);
+        }
+
+        // The refresh token goes with it. Deleting only the access token left
+        // its twin alive for ninety days, able to mint a fresh working pair —
+        // so signing out on a phone you had lost signed you out of nothing.
+        // issuePair() stamps both with the same device, and the table exists so
+        // devices can be revoked independently, so the device is what goes.
+        ApiToken::where('user_id', $token->user_id)
+            ->when(
+                $token->device === null,
+                fn ($query) => $query->whereNull('device'),
+                fn ($query) => $query->where('device', $token->device),
+            )
+            ->delete();
+
         return response()->json(['success' => true]);
     }
 

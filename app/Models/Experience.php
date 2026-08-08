@@ -63,6 +63,21 @@ class Experience extends Model
             'gallery' => 'array',
             'base_cost_per_person' => 'decimal:2',
             'duration_hours' => 'decimal:2',
+            // Integers, so the API answers with the same type whichever way the
+            // row was filed. A JSON save returned 3 and a multipart save (what
+            // the app sends the moment a photo is attached) returned "3", and
+            // the app parsed one shape only.
+            'region_id' => 'integer',
+            'duration_days' => 'integer',
+            'duration_nights' => 'integer',
+            'altitude_min' => 'integer',
+            'altitude_max' => 'integer',
+            'age_min' => 'integer',
+            'age_max' => 'integer',
+            'group_size_min' => 'integer',
+            'group_size_max' => 'integer',
+            'total_rooms' => 'integer',
+            'total_guests' => 'integer',
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',
             'pending_changes' => 'array',

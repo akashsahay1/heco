@@ -24,6 +24,10 @@ class SettingSeeder extends Seeder
             // Per-provider markup (req 3.3): global fallback when a provider has no
             // markup_percent set. 0 = no markup until an admin sets one.
             ['key' => 'default_provider_markup_percent', 'value' => '0', 'group' => 'financial'],
+            // Day of the month HCT disburses what it owes providers. The payout
+            // schedule is a policy, not something recorded per provider, so the
+            // provider dashboard dates its next payout from here.
+            ['key' => 'provider_payout_day', 'value' => '7', 'group' => 'financial'],
             ['key' => 'site_name', 'value' => 'HECO Portal', 'group' => 'general'],
             ['key' => 'site_email', 'value' => 'info@heco.eco', 'group' => 'general'],
             ['key' => 'ollama_enabled', 'value' => '1', 'group' => 'ai'],

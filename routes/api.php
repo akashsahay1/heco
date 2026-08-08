@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ProviderController;
+use App\Http\Controllers\Api\V1\LegalController;
 use App\Http\Controllers\Api\V1\ReferenceController;
 use Illuminate\Support\Facades\Route;
 
@@ -30,6 +31,10 @@ Route::prefix('v1')->group(function () {
     // Finishes the reset with the emailed code — no web link involved.
     Route::post('auth/reset-password', [AuthController::class, 'resetPassword']);
     Route::get('reference', [ReferenceController::class, 'index']);
+
+    // Read before signing in, and shown inside the app rather than in a browser.
+    Route::get('legal/{document}', [LegalController::class, 'show'])
+        ->whereIn('document', ['terms', 'privacy']);
     // Signup. The path stays what it has always been so builds already on
     // people's phones keep working; only what handles it moved.
     Route::post('providers/applications', [AuthController::class, 'register']);
@@ -49,6 +54,8 @@ Route::prefix('v1')->group(function () {
             // Reading them needs no route of its own — they come back on the
             // provider record, like the photo does.
             Route::post('profile/documents', [ProviderController::class, 'addDocument']);
+
+            Route::get('dashboard', [ProviderController::class, 'dashboard']);
 
             Route::get('bookings', [ProviderController::class, 'bookings']);
 

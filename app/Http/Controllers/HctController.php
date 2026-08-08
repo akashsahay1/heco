@@ -185,12 +185,17 @@ class HctController extends Controller
         $vehicleTypes            = SystemList::ofType("vehicle_type")->get();
         $guideTypes              = SystemList::ofType("guide_preference")->get();
         $activityTypes           = SystemList::ofType("activity_type")->get();
+        // What the signup form offers per role — an HLH picks from the first,
+        // an OSP from the second.
+        $experienceCategories    = SystemList::ofType("experience_category")->get();
+        $serviceCategories       = SystemList::ofType("service_category")->get();
         $occupancyUnits          = SystemList::ofType("occupancy_unit")->get();
         $mealPlans               = SystemList::ofType("meal_plan")->get();
         $roomCategories          = SystemList::ofType("room_category")->get();
         return view("admin.providers.edit", compact(
             "provider", "regions",
             "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes",
+            "experienceCategories", "serviceCategories",
             "occupancyUnits", "mealPlans", "roomCategories"
         ));
     }

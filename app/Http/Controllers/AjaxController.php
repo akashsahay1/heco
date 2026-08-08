@@ -49,6 +49,7 @@ use App\Services\CostCalculatorService;
 use App\Services\LeadService;
 use App\Services\ImpactCalculatorService;
 use App\Services\SpAvailabilityService;
+use App\Services\ProviderDashboardService;
 use App\Services\RazorpayService;
 use App\Mail\WelcomeEmail;
 use App\Mail\NewsletterWelcomeEmail;
@@ -633,6 +634,7 @@ class AjaxController extends Controller
         'update_sp_photo' => 'sp',
         'add_sp_document' => 'sp',
         'get_sp_assigned_trips' => 'sp',
+        'get_sp_dashboard' => 'sp',
         // A regional partner overseeing the providers in their region.
         'get_hrp_region_providers' => 'sp',
         // SP EXPERIENCES (HLH hosts author their own — see saveSpExperience)
@@ -1398,6 +1400,10 @@ class AjaxController extends Controller
                 return $this->getSpAssignedTrips($request);
             }
 
+            if ($request->has('get_sp_dashboard')) {
+                return $this->getSpDashboard($request);
+            }
+
             // ===== SP EXPERIENCES (HLH hosts author their own) =====
             if ($request->has('get_sp_experiences')) {
                 return $this->getSpExperiences($request);
@@ -1445,7 +1451,16 @@ class AjaxController extends Controller
             return response()->json(['error' => 'Not found'], 404);
         } catch (\Exception $e) {
             \Log::error('AjaxController error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Server error', 'message' => $e->getMessage()], 500);
+
+            // The message only travels when debugging. A driver exception
+            // carries the whole failing statement — table, columns, values,
+            // and the host, port and database name — and this handed it to
+            // whoever made the request, on the live site as much as here.
+            // Anything a member is meant to act on is a 422 raised above.
+            return response()->json(array_filter([
+                'error' => 'Something went wrong. Please try again, or contact HECO if it keeps happening.',
+                'message' => config('app.debug') ? $e->getMessage() : null,
+            ]), 500);
         }
     }
 
@@ -4523,8 +4538,18 @@ class AjaxController extends Controller
             return $requested ?: 0;
         }
         if ($user && $user->isServiceProvider()) {
-            $sp = ServiceProvider::where('user_id', $user->id)->where('status', 'approved')->first();
-            if (!$sp) return response()->json(['error' => 'Unauthorized'], 403);
+            $sp = ServiceProvider::where('user_id', $user->id)->first();
+            if (!$sp) {
+                return response()->json(['error' => 'No provider found'], 404);
+            }
+
+            // Same rule as everywhere else — a hidden member still keeps their
+            // rate card. And a reason, not a bare "Unauthorized": a pending
+            // applicant tapping Rates was told nothing, while every other tab
+            // explained itself.
+            if (!$sp->canSignIn()) {
+                return response()->json(['error' => $this->spStatusMessage($sp)], 403);
+            }
 
             // A rate card is a supplier's. SpController already turns a host or
             // a regional partner away from the page, but the app talks to this
@@ -4550,6 +4575,24 @@ class AjaxController extends Controller
         $rows = SpPricing::where("service_provider_id", $providerId)
             ->orderBy("service_type")
             ->get();
+
+        // One row per rate. A change awaiting review is a state of the rate it
+        // would replace, not a second rate — returned flat, a provider who had
+        // edited one price saw it listed three times, at three prices, with no
+        // way to tell which one travellers were being sold.
+        $revisions = $rows->filter(fn ($row) => $row->pending_for_id !== null)->keyBy('pending_for_id');
+
+        $rows = $rows
+            ->reject(fn ($row) => $row->pending_for_id !== null && $rows->contains('id', $row->pending_for_id))
+            ->map(function ($row) use ($revisions) {
+                // Attached, not merged: the rate still reads as what is being
+                // sold today, and the app can say a change is with HECO.
+                $row->setAttribute('pending_change', $revisions->get($row->id));
+
+                return $row;
+            })
+            ->values();
+
         return response()->json(["rows" => $rows]);
     }
 
@@ -4578,10 +4621,39 @@ class AjaxController extends Controller
         // the relevant fields for each service_type, but server-side we still
         // enforce the right combination.
         $serviceType = $request->input('service_type');
+        // Bounded to what the columns actually hold. Without these a long
+        // description or an enormous price reached the driver, and the provider
+        // was shown the failing INSERT instead of being told the field is too
+        // long. `category` and `description` are written for every service
+        // type, so they belong here rather than in one type's list.
         $baseRules = [
             "provider_id"  => "required|exists:service_providers,id",
             "service_type" => "required|in:accommodation,transport,guide,activity,meal,rental,other",
-            "price"        => "required|numeric|min:0",
+            // decimal(10,2) — eight digits before the point.
+            "price"        => "required|numeric|min:0|max:99999999.99",
+            "category"     => "nullable|string|max:100",
+            "description"  => "nullable|string|max:255",
+            "notes"        => "nullable|string|max:5000",
+            // These are written for every service type, whatever the form
+            // showed, so a bound declared only under `transport` was no bound
+            // at all — the same field on a guide row went straight to the
+            // driver. A type that cares states its own stricter rule below and
+            // that one wins; this is only the floor.
+            "unit"              => "nullable|string|max:50",
+            "room_category"     => "nullable|string|max:255",
+            "comfort_tier"      => "nullable|string|max:80",
+            "default_occupancy" => "nullable|string|max:50",
+            "meal_plan"         => "nullable|string|max:100",
+            "vehicle_type"      => "nullable|string|max:100",
+            "specialties"       => "nullable|string|max:2000",
+            "total_rooms"       => "nullable|integer|min:1|max:500",
+            "vehicle_capacity"  => "nullable|integer|min:1|max:80",
+            "driver_allowance"  => "nullable|numeric|min:0|max:99999999.99",
+            "distance_km"       => "nullable|numeric|min:0|max:999999.99",
+            "min_group"         => "nullable|integer|min:1|max:2000",
+            // A range nobody can book. There was no cross-field rule, so a
+            // minimum of 50 with a maximum of 5 went live.
+            "max_group"         => "nullable|integer|min:1|max:2000|gte:min_group",
         ];
 
         $rulesByType = [
@@ -4657,7 +4729,7 @@ class AjaxController extends Controller
             'activity' => [
                 "category"          => "nullable|string|max:100",
                 "min_group"         => "nullable|integer|min:1|max:500",
-                "max_group"         => "nullable|integer|min:1|max:500",
+                "max_group"         => "nullable|integer|min:1|max:500|gte:min_group",
                 "unit"              => "required|string|max:50",
             ],
             'meal' => [
@@ -4735,9 +4807,20 @@ class AjaxController extends Controller
 
         if ($request->filled("id")) {
             $existing = SpPricing::findOrFail($request->id);
-            if ($isAdmin) {
+            if ($isAdmin || $existing->approval_status !== 'approved') {
+                // Only a LIVE rate needs protecting from an edit. A row that is
+                // still pending, or was rejected, is edited where it stands —
+                // forking it made a second queue entry for one rate at two
+                // prices, and left the original stranded. A rejected row goes
+                // back into the queue, which is what fixing a rejection means.
                 $row = $existing;
-                $row->update($data);
+                $row->update($isAdmin ? $data : array_merge($data, [
+                    'is_active'       => false,
+                    'approval_status' => 'pending',
+                    'submitted_at'    => now(),
+                    'submitted_by'    => $user->id,
+                    'rejection_reason' => null,
+                ]));
             } else {
                 // Drop any prior pending edit for this row so the SP doesn't
                 // stack multiple pending changes on the same live row.
@@ -4962,28 +5045,19 @@ class AjaxController extends Controller
             $target = SpPricing::find($pending->pending_for_id);
             $oldPrice = $target?->price;
             if ($target) {
-                // Copy the substantive fields the SP wanted to change.
-                $target->update([
-                    'service_type'      => $pending->service_type,
-                    'category'          => $pending->category,
-                    'description'       => $pending->description,
-                    'unit'              => $pending->unit,
-                    'price'             => $pending->price,
-                    'meal_plan'         => $pending->meal_plan,
-                    'vehicle_type'      => $pending->vehicle_type,
-                    'room_category'     => $pending->room_category,
-                    'comfort_tier'      => $pending->comfort_tier,
-                    'total_rooms'       => $pending->total_rooms,
-                    'default_occupancy' => $pending->default_occupancy,
-                    'vehicle_capacity'  => $pending->vehicle_capacity,
-                    'driver_allowance'  => $pending->driver_allowance,
-                    'distance_km'       => $pending->distance_km,
-                    'min_group'         => $pending->min_group,
-                    'max_group'         => $pending->max_group,
-                    'specialties'       => $pending->specialties,
-                    'notes'             => $pending->notes,
-                    'approved_at'       => now(),
-                    'approved_by'       => Auth::id(),
+                // The whole offer, not a list of eighteen columns.
+                //
+                // The pending row is already a complete copy of the live one
+                // with the member's changes on top (see copyableAttributes in
+                // saveSpPricing), so everything on it is meant to land. Naming
+                // the columns by hand dropped twenty-four of them — the per-km
+                // rates, the vehicle, the languages, the deposit, the photos —
+                // and then deleted the pending row, so a rate the provider had
+                // been told was approved silently kept its old numbers with no
+                // copy of what they actually submitted.
+                $target->update($this->copyableAttributes($pending) + [
+                    'approved_at' => now(),
+                    'approved_by' => Auth::id(),
                 ]);
             }
             // Notify the provider their price change is approved (old → new).
@@ -5613,8 +5687,17 @@ class AjaxController extends Controller
             return response()->json(["error" => "Unauthorized"], 403);
         }
 
+        // A member may hold any of the three roles, or several — an HLH who also
+        // runs a taxi, a regional partner who hosts. `provider_type` is still
+        // accepted so an older caller keeps working, but it is one value where
+        // the answer is a set.
+        if (! $request->has('provider_types') && $request->filled('provider_type')) {
+            $request->merge(['provider_types' => [$request->input('provider_type')]]);
+        }
+
         $validator = Validator::make($request->all(), [
-            "provider_type" => "required|in:hrp,hlh,osp",
+            "provider_types" => "required|array|min:1",
+            "provider_types.*" => ["required", Rule::in(array_keys(ServiceProvider::TYPE_LABELS))],
             "name" => "required|string|max:255",
             "email" => "required|email|unique:service_providers,email",
             "phone_1" => "required|string|max:20",
@@ -5622,6 +5705,8 @@ class AjaxController extends Controller
             "status" => "nullable|in:pending,approved,rejected",
         ], [
             "email.unique" => "A provider with this email already exists.",
+            "provider_types.required" => "Please choose at least one provider type.",
+            "provider_types.*.in" => "That is not a provider type.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -5630,9 +5715,7 @@ class AjaxController extends Controller
         $status = $request->input('status', 'approved');
 
         $provider = ServiceProvider::create([
-            // The form asks for one type; the set is where it lives, and a
-            // provider added by hand can be given more later.
-            "provider_types" => [$request->provider_type],
+            "provider_types" => array_values(array_unique($request->input('provider_types'))),
             "business_type" => $request->business_type,
             "registration_number" => $request->registration_number,
             "year_established" => $request->year_established ?: null,
@@ -5701,11 +5784,37 @@ class AjaxController extends Controller
             "address", "city", "postal_code", "country",
             "business_type", "registration_number", "year_established",
             "region_id",
+            "other_languages",
+            // What they offer, per role held — the answers screen 8 of the
+            // application asks for. HCT could read these on the application
+            // and then never see them again once it was approved.
+            "experience_categories", "service_categories", "other_services",
+            // A regional partner's background, which is what their application
+            // is judged on and the only thing they have to show.
+            "education_level", "education_notes", "english_level",
+            "computer_skill_level", "causes_note", "community_note",
             "bank_name", "bank_ifsc", "bank_account_name",
             "bank_account_number", "upi", "services_offered",
             "accommodation_categories", "vehicle_types", "guide_types", "activity_types",
             "notes", "status",
         ]);
+
+        // Sent as 1/0 by the form on every save, so a cleared box is a real No
+        // rather than a field the form forgot to mention.
+        foreach (['speaks_english', 'speaks_hindi', 'contact_by_email', 'contact_by_whatsapp'] as $flag) {
+            if ($request->has($flag)) {
+                $data[$flag] = $request->boolean($flag);
+            }
+        }
+
+        // Three-state: null means the question was never put to them, which is
+        // a different answer from No, so the form can send it back unchanged.
+        if ($request->has('has_business')) {
+            $answer = $request->input('has_business');
+            $data['has_business'] = ($answer === '' || $answer === null)
+                ? null
+                : filter_var($answer, FILTER_VALIDATE_BOOLEAN);
+        }
         // Per-provider admin markup (req 3.3) — HCT-only (this whole method is gated).
         // Clamp to 0–100%. Blank means "no markup" (0).
         if ($request->has('markup_percent')) {
@@ -5849,12 +5958,13 @@ class AjaxController extends Controller
         // provider_type onto the user and repair the two when they drifted,
         // which was the cost of storing one fact in two tables.
 
-        $providerLabel = match ($provider->provider_type) {
-            'hrp' => ServiceProvider::TYPE_LABELS['hrp'],
-            'hlh' => ServiceProvider::TYPE_LABELS['hlh'],
-            'osp' => ServiceProvider::TYPE_LABELS['osp'],
-            default => 'Partner',
-        };
+        // Every type they signed up as, not just the first — a member who joined
+        // as both should not be welcomed as only one of them.
+        $labels = array_filter(array_map(
+            fn (string $type) => ServiceProvider::TYPE_LABELS[$type] ?? null,
+            $provider->types(),
+        ));
+        $providerLabel = $labels ? implode(' & ', $labels) : 'Partner';
         $contactName = $provider->contact_person ?: $provider->name;
         try {
             if ($user->password_set_at) {
@@ -6097,6 +6207,14 @@ class AjaxController extends Controller
         ];
     }
 
+    protected function getSpDashboard(Request $request): JsonResponse
+    {
+        [$provider, $err] = $this->resolveApprovedSp();
+        if ($err) return $err;
+
+        return response()->json(app(ProviderDashboardService::class)->forProvider($provider));
+    }
+
     protected function getSpAssignedTrips(Request $request): JsonResponse
     {
         [$provider, $err] = $this->resolveApprovedSp();
@@ -6137,7 +6255,9 @@ class AjaxController extends Controller
         // 2) HRP-managed regions (if this provider is an HRP). Match on region_id —
         // the provider's region_id is populated at application, whereas hrp_id was
         // never written anywhere, so the old hrp_id match was always empty (#37).
-        if (strtolower((string) $provider->provider_type) === 'hrp' && $provider->region_id) {
+        // hasType, not provider_type: the latter is only the first of the set, so
+        // an HLH who is also an HRP would lose every region trip.
+        if ($provider->hasType('hrp') && $provider->region_id) {
             $tripRegions = TripRegion::where('region_id', $provider->region_id)
                 ->with('trip.tripRegions.region')
                 ->get();
@@ -6850,6 +6970,32 @@ class AjaxController extends Controller
         ]);
     }
 
+    /**
+     * A slug nobody else is using, built from the name.
+     *
+     * Two hosts may perfectly well both run a "Village Walk", and the slug is
+     * only a URL key — but the column is unique, so the second one to file it
+     * hit the constraint and the provider was shown a raw SQL error and told
+     * "Server error". The name stays exactly as they typed it; the key counts
+     * itself up.
+     */
+    protected function uniqueExperienceSlug(string $from, $ignoreId = null): string
+    {
+        $base = Str::slug($from) ?: 'experience';
+        $slug = $base;
+
+        for ($suffix = 2; ; $suffix++) {
+            $taken = Experience::where('slug', $slug)
+                ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+                ->exists();
+
+            if (! $taken) {
+                return $slug;
+            }
+            $slug = "{$base}-{$suffix}";
+        }
+    }
+
     protected function saveExperience(Request $request): JsonResponse
     {
         // A draft is a half-finished listing kept for later — the client's
@@ -6882,9 +7028,31 @@ class AjaxController extends Controller
             "total_rooms"       => "nullable|integer|min:1|max:500",
             "total_guests"      => "nullable|integer|min:1|max:2000",
             "room_rates"        => "nullable|array|max:40",
+            // The other three collections had no rule at all, so a string in
+            // place of a list read as "sent, and empty" and quietly deleted the
+            // itinerary or the price grid it was meant to replace.
+            "price_slabs"       => "nullable|array|max:20",
+            "experience_days"   => "nullable|array|max:60",
+            "experience_days.*.title" => "nullable|string|max:255",
+            "experience_days.*.short_description" => "nullable|string|max:2000",
+            "experience_days.*.day_number" => "nullable|integer|min:1|max:365",
+            "gallery"           => "nullable|array|max:30",
+            // Columns these overflowed straight into the driver.
+            "long_description"  => "nullable|string|max:65000",
+            "area"              => "nullable|string|max:255",
+            "duration_hours"    => "nullable|numeric|min:0|max:999.99",
+            "duration_days"     => "nullable|integer|min:0|max:365",
+            "duration_nights"   => "nullable|integer|min:0|max:365",
+            "group_size_min"    => "nullable|integer|min:0|max:2000",
+            "group_size_max"    => "nullable|integer|min:0|max:2000|gte:group_size_min",
+            "age_min"           => "nullable|integer|min:0|max:120",
+            "age_max"           => "nullable|integer|min:0|max:120|gte:age_min",
+            "altitude_min"      => "nullable|integer|min:-500|max:9000",
+            "altitude_max"      => "nullable|integer|min:-500|max:9000|gte:altitude_min",
+            "price_slabs.*.price_per_person" => "nullable|numeric|min:0|max:9999999.99",
+            "room_rates.*.price" => "nullable|numeric|min:0|max:9999999.99",
             "room_rates.*.occupancy" => "nullable|string|max:100",
             "room_rates.*.meal_plan" => "nullable|string|max:100",
-            "room_rates.*.price"     => "nullable|numeric|min:0",
             "addons"            => "nullable|array|max:20",
             "addons.*.name"     => "nullable|string|max:150",
             "addons.*.description" => "nullable|string|max:1000",
@@ -6920,6 +7088,11 @@ class AjaxController extends Controller
             } else {
                 return response()->json(["error" => "Failed to upload card image. Use JPG, PNG, or WebP."], 422);
             }
+        } elseif ($request->boolean("remove_card_image")) {
+            // Taking the photo down is its own instruction. A blank card_image
+            // cannot say it: the field is absent on every partial save too, and
+            // reading that as "clear it" would wipe the photo on any edit.
+            $data["card_image"] = null;
         } else {
             unset($data["card_image"]);
         }
@@ -6948,33 +7121,66 @@ class AjaxController extends Controller
         }
 
         if (!empty($data["slug"])) {
-            $data["slug"] = Str::slug($data["slug"]);
+            $data["slug"] = $this->uniqueExperienceSlug($data["slug"], $request->input('id'));
         } elseif (!empty($data["name"])) {
-            $data["slug"] = Str::slug($data["name"]);
+            $data["slug"] = $this->uniqueExperienceSlug($data["name"], $request->input('id'));
         }
 
         // Per-person price slabs by group size (req 3.2). Normalize the posted rows to
         // a {min_persons => price_per_person} map (deduped, sorted, only valid rows).
         $slabs = [];
         foreach ((array) $request->input('price_slabs', []) as $row) {
+            // A blank entry is how a form says "this list is empty" — it has no
+            // fields to read, and reaching into it as an array was a 500.
+            if (! is_array($row)) continue;
             $mp = (int) ($row['min_persons'] ?? 0);
             $pp = (float) ($row['price_per_person'] ?? 0);
             if ($mp >= 1 && $pp > 0) $slabs[$mp] = $pp;
         }
         ksort($slabs);
 
-        // Headline base_cost_per_person: when slabs are set, use the cheapest per-person
-        // (the "from" price shown on cards) and as the calculator's fallback; otherwise
-        // keep it in lockstep with the component breakdown for legacy experiences.
+        // Headline base_cost_per_person: when slabs are set, the cheapest
+        // per-person (the "from" price on cards) and the calculator's fallback;
+        // otherwise the component breakdown, for listings priced that way.
+        //
+        // Only recomputed when this save actually carries pricing. A save that
+        // says nothing about it — the app's, when the provider only fixed a
+        // typo, or a category whose form has no costing section — used to fall
+        // to the sum of five absent components and write 0, so a live listing
+        // lost its "from" price to a wording change.
+        $existingSlabs = $request->filled('id')
+            ? Experience::find($request->input('id'))?->priceSlabs()->pluck('price_per_person')->all() ?? []
+            : [];
+        $sendsCosts = (bool) array_filter([
+            $data['cost_accommodation'] ?? null, $data['cost_logistics'] ?? null,
+            $data['cost_guide'] ?? null, $data['cost_activities'] ?? null,
+            $data['cost_other'] ?? null,
+        ]);
+
         if (!empty($slabs)) {
             $data["base_cost_per_person"] = min($slabs);
-        } else {
+        } elseif ($request->has('price_slabs') && $existingSlabs) {
+            // The slabs were sent and cleared out — the price goes with them.
+            $data["base_cost_per_person"] = 0;
+        } elseif ($existingSlabs) {
+            $data["base_cost_per_person"] = min(array_map('floatval', $existingSlabs));
+        } elseif ($sendsCosts || !$request->filled('id')) {
             $data["base_cost_per_person"] = (float) ($data["cost_accommodation"] ?? 0)
                 + (float) ($data["cost_logistics"] ?? 0)
                 + (float) ($data["cost_guide"] ?? 0)
                 + (float) ($data["cost_activities"] ?? 0)
                 + (float) ($data["cost_other"] ?? 0);
         }
+
+        // One save, all of it or none of it.
+        //
+        // The day cards, slabs, rooms and add-ons are replaced by deleting the
+        // lot and writing them back one row at a time. Without a transaction a
+        // failure part-way — one over-long title is enough — left the itinerary
+        // half-deleted while the provider was told the save had failed, and on
+        // a create it left a stranded listing counting against their allowance.
+        DB::beginTransaction();
+        try {
 
         if ($request->filled("id")) {
             $experience = Experience::findOrFail($request->id);
@@ -6983,14 +7189,18 @@ class AjaxController extends Controller
             $experience = Experience::create($data);
         }
 
-        // Append any newly uploaded gallery images. The form's hidden gallery
-        // field (JSON string of existing paths to keep) was previously the only
-        // path that touched this column; new multipart uploads were silently
-        // dropped.
-        $existingGallery = $experience->gallery ?? [];
-        if (is_string($existingGallery)) {
-            $existingGallery = json_decode($existingGallery, true) ?: [];
+        // The gallery is the photos to keep plus any newly uploaded ones.
+        //
+        // Which photos to keep comes from the caller when they say so, and that
+        // is the only way to remove one — this read the stored column instead,
+        // so a gallery could only ever grow. Sending nothing still leaves the
+        // stored set alone, since most saves do not touch photos at all.
+        $storedGallery = $experience->gallery ?? [];
+        if (is_string($storedGallery)) {
+            $storedGallery = json_decode($storedGallery, true) ?: [];
         }
+        $keptGallery = $this->galleryToKeep($request) ?? $storedGallery;
+
         $newPaths = [];
         foreach ((array) $request->file("gallery", []) as $galleryFile) {
             if ($galleryFile) {
@@ -6998,8 +7208,8 @@ class AjaxController extends Controller
                 if ($stored) $newPaths[] = $stored;
             }
         }
-        if (!empty($newPaths)) {
-            $experience->update(["gallery" => array_values(array_merge($existingGallery, $newPaths))]);
+        if ($newPaths || $keptGallery !== $storedGallery) {
+            $experience->update(["gallery" => array_values(array_merge($keptGallery, $newPaths))]);
         }
 
         // Day-wise itinerary. Replaced ONLY when the caller sent it — these used
@@ -7010,6 +7220,7 @@ class AjaxController extends Controller
         if ($request->has('experience_days')) {
             $experience->days()->delete();
             foreach ((array) $request->input('experience_days', []) as $idx => $dayData) {
+                if (! is_array($dayData)) continue;
                 $experience->days()->create([
                     'day_number' => $dayData['day_number'] ?? ($idx + 1),
                     'title' => $dayData['title'] ?? null,
@@ -7040,6 +7251,7 @@ class AjaxController extends Controller
             $experience->roomRates()->delete();
             $seen = [];
             foreach ((array) $request->input('room_rates', []) as $idx => $rate) {
+                if (! is_array($rate)) continue;
                 $occupancy = trim((string) ($rate['occupancy'] ?? ''));
                 $mealPlan = trim((string) ($rate['meal_plan'] ?? ''));
                 $price = $rate['price'] ?? '';
@@ -7064,6 +7276,7 @@ class AjaxController extends Controller
         if ($request->has('addons')) {
             $experience->addons()->delete();
             foreach ((array) $request->input('addons', []) as $idx => $addon) {
+                if (! is_array($addon)) continue;
                 $name = trim((string) ($addon['name'] ?? ''));
                 if ($name === '') continue; // blank repeater rows are not add-ons
                 $experience->addons()->create([
@@ -7077,9 +7290,16 @@ class AjaxController extends Controller
             }
         }
 
+        DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+
         return response()->json([
             "success" => true,
-            "experience" => $experience->load(['priceSlabs', 'addons', 'roomRates']),
+            // days too: the reply claimed an empty itinerary on every save.
+            "experience" => $experience->load(['days', 'priceSlabs', 'addons', 'roomRates']),
         ]);
     }
 
@@ -7306,7 +7526,7 @@ class AjaxController extends Controller
         // Ownership is never taken from the client. `hlh_id` stays a valid FK:
         // an HLH hosts its own experience, an OSP may name the host it runs at
         // and otherwise points the column at itself.
-        $hlhId = $sp->provider_type === 'hlh'
+        $hlhId = $sp->hasType('hlh')
             ? $sp->id
             : ($request->input('hlh_id') ?: ($existing->hlh_id ?? $sp->id));
 
@@ -7382,6 +7602,28 @@ class AjaxController extends Controller
      * with their stored paths, so a parked revision carries paths rather than
      * files. Returns an error response if an upload was rejected.
      */
+    /**
+     * The stored photos a save says to keep, or null when it says nothing.
+     *
+     * Only an array counts. `$request->has('gallery')` will not do: has() looks
+     * at the file bag too, and a browser posts an empty `gallery[]` file part
+     * whenever the form has a file input and nothing was chosen — so every
+     * ordinary save looked like "keep none of them" and emptied the column.
+     * Files are how photos are ADDED; this list is only about what stays.
+     */
+    protected function galleryToKeep(Request $request): ?array
+    {
+        $gallery = $request->input('gallery');
+        if (! is_array($gallery)) {
+            return null;
+        }
+
+        return array_values(array_filter(
+            $gallery,
+            fn ($path) => is_string($path) && $path !== '',
+        ));
+    }
+
     protected function stashExperienceUploads(Request $request, Experience $existing): ?JsonResponse
     {
         if ($request->hasFile('card_image')) {
@@ -7396,10 +7638,16 @@ class AjaxController extends Controller
             // the input bag, so leaving it here would put an UploadedFile —
             // not the path — into the JSON payload.
             $request->files->remove('card_image');
+        } elseif ($request->boolean('remove_card_image')) {
+            // Parked like any other change — the live listing keeps its photo
+            // until HCT accepts the revision.
+            $request->request->set('card_image', null);
         }
 
-        // New gallery photos are added to whatever the live row already has.
-        $gallery = $existing->gallery ?? [];
+        // The photos to keep, as the caller listed them, plus any new uploads.
+        // Falling back to the live row means a save that says nothing about
+        // photos leaves them alone.
+        $gallery = $this->galleryToKeep($request) ?? ($existing->gallery ?? []);
         if (is_string($gallery)) {
             $gallery = json_decode($gallery, true) ?: [];
         }
@@ -7409,9 +7657,7 @@ class AjaxController extends Controller
             if ($stored) $gallery[] = $stored;
         }
         $request->files->remove('gallery');
-        if (!empty($gallery)) {
-            $request->request->set('gallery', array_values($gallery));
-        }
+        $request->request->set('gallery', array_values($gallery));
 
         return null;
     }
@@ -8601,13 +8847,32 @@ class AjaxController extends Controller
         if (!$sp) {
             return [null, response()->json(['error' => 'No provider found'], 404)];
         }
-        if ($sp->status !== 'approved') {
-            $message = $sp->status === 'rejected'
-                ? 'Your service provider application was not approved. Please contact HCT for details.'
-                : 'Your service provider application is under review. You will get an email once it is approved.';
-            return [null, response()->json(['error' => $message], 403)];
+
+        // canSignIn(), not status === 'approved'. Being hidden takes a member
+        // out of what travellers are shown; it does not stop them keeping their
+        // own rates and availability current, and SpMiddleware has always let
+        // them through. Testing the literal here locked a hidden provider out
+        // of every endpoint while the app was still told can_sign_in: true, so
+        // they got a dashboard where nothing worked.
+        if (!$sp->canSignIn()) {
+            return [null, response()->json(['error' => $this->spStatusMessage($sp)], 403)];
         }
         return [$sp, null];
+    }
+
+    /**
+     * Why a provider cannot work, in words they can act on.
+     *
+     * Banned and hidden read the same on purpose: which of the two it is, and
+     * why, is HCT's business and the wording must not let them work it out.
+     */
+    protected function spStatusMessage(ServiceProvider $sp): string
+    {
+        return match (true) {
+            $sp->isBanned() => 'This account is currently out of service. Please contact HCT.',
+            $sp->status === 'rejected' => 'Your service provider application was not approved. Please contact HCT for details.',
+            default => 'Your service provider application is under review. You will get an email once it is approved.',
+        };
     }
 
     protected function getSpCalendar(Request $request): JsonResponse

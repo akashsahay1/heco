@@ -75,6 +75,9 @@
                     <tr><td class="text-muted">Phone 1</td><td>{{ $provider->phone_1 ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Phone 2</td><td>{{ $provider->phone_2 ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Address</td><td>{{ $provider->address ?: '-' }}</td></tr>
+                    <tr><td class="text-muted">City</td><td>{{ $provider->city ?: '-' }}</td></tr>
+                    <tr><td class="text-muted">Postal Code</td><td>{{ $provider->postal_code ?: '-' }}</td></tr>
+                    <tr><td class="text-muted">Country</td><td>{{ $provider->country ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Region</td><td>{{ optional($provider->region)->name ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Linked User</td><td>{{ optional($provider->user)->email ?: '-' }}</td></tr>
                 </table>
@@ -94,8 +97,29 @@
                     <tr><td class="text-muted">UPI</td><td>{{ $provider->upi ?: '-' }}</td></tr>
                 </table>
 
-                <h6 class="border-bottom pb-2"><i class="bi bi-gear"></i> Capabilities</h6>
+                <h6 class="border-bottom pb-2"><i class="bi bi-gear"></i> What they offer</h6>
+                <div class="mb-2"><strong class="small">Experiences:</strong>
+                    @forelse(($provider->experience_categories ?: []) as $e)
+                        <span class="badge bg-light text-dark border me-1">{{ $e }}</span>
+                    @empty
+                        <span class="text-muted small">None listed</span>
+                    @endforelse
+                </div>
                 <div class="mb-2"><strong class="small">Services:</strong>
+                    @forelse(($provider->service_categories ?: []) as $c)
+                        <span class="badge bg-light text-dark border me-1">{{ $c }}</span>
+                    @empty
+                        <span class="text-muted small">None listed</span>
+                    @endforelse
+                </div>
+                <div class="mb-2"><strong class="small">Also offers:</strong>
+                    @if($provider->other_services)
+                        <span class="small">{{ $provider->other_services }}</span>
+                    @else
+                        <span class="text-muted small">None listed</span>
+                    @endif
+                </div>
+                <div class="mb-2"><strong class="small">Listed:</strong>
                     @forelse(($provider->services_offered ?: []) as $s)
                         <span class="badge bg-light text-dark border me-1">{{ $s }}</span>
                     @empty
@@ -116,13 +140,84 @@
                         <span class="text-muted small">None listed</span>
                     @endforelse
                 </div>
-                <div><strong class="small">Guide Types:</strong>
+                <div class="mb-2"><strong class="small">Guide Types:</strong>
                     @forelse(($provider->guide_types ?: []) as $g)
                         <span class="badge bg-light text-dark border me-1">{{ $g }}</span>
                     @empty
                         <span class="text-muted small">None listed</span>
                     @endforelse
                 </div>
+                <div><strong class="small">Activity Types:</strong>
+                    @forelse(($provider->activity_types ?: []) as $a)
+                        <span class="badge bg-light text-dark border me-1">{{ $a }}</span>
+                    @empty
+                        <span class="text-muted small">None listed</span>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                @php
+                    // null means the applicant was never asked — not the same as "No".
+                    $hasBusiness = $provider->has_business === null
+                        ? null
+                        : ($provider->has_business ? 'Yes' : 'No, not yet');
+                    $languages = array_filter([
+                        $provider->speaks_english ? 'English' : null,
+                        $provider->speaks_hindi ? 'Hindi' : null,
+                    ]);
+                @endphp
+
+                @if($hasBusiness || $provider->business_type || $provider->registration_number || $provider->year_established)
+                    <h6 class="border-bottom pb-2"><i class="bi bi-briefcase"></i> Business</h6>
+                    <table class="table table-sm table-borderless mb-3">
+                        @if($hasBusiness)
+                            <tr><td class="text-muted w-cell-label-md">Has a business</td><td>{{ $hasBusiness }}</td></tr>
+                        @endif
+                        @if($provider->business_type)
+                            <tr><td class="text-muted w-cell-label-md">Business type</td><td>{{ $provider->business_type }}</td></tr>
+                        @endif
+                        @if($provider->registration_number)
+                            <tr><td class="text-muted w-cell-label-md">Reg. number</td><td>{{ $provider->registration_number }}</td></tr>
+                        @endif
+                        @if($provider->year_established)
+                            <tr><td class="text-muted w-cell-label-md">Year est.</td><td>{{ $provider->year_established }}</td></tr>
+                        @endif
+                    </table>
+                @endif
+
+                <h6 class="border-bottom pb-2"><i class="bi bi-translate"></i> Languages</h6>
+                <table class="table table-sm table-borderless mb-3">
+                    <tr><td class="text-muted w-cell-label-md">Speaks</td><td>{{ $languages ? implode(' · ', $languages) : '-' }}</td></tr>
+                    <tr><td class="text-muted">Other</td><td>{{ $provider->other_languages ?: '-' }}</td></tr>
+                </table>
+
+                <h6 class="border-bottom pb-2"><i class="bi bi-chat-dots"></i> How we may contact them</h6>
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><td class="text-muted w-cell-label-md">Email</td><td>{{ $provider->contact_by_email ? 'Yes' : 'No — do not email' }}</td></tr>
+                    <tr><td class="text-muted">WhatsApp / SMS</td><td>{{ $provider->contact_by_whatsapp ? 'Yes' : 'No — do not message' }}</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="border-bottom pb-2"><i class="bi bi-paperclip"></i> Documents</h6>
+                @forelse(($provider->documents ?: []) as $doc)
+                    <div class="mb-1 small">
+                        <i class="bi bi-paperclip text-muted"></i>
+                        <a href="{{ $doc['path'] ?? '' }}" target="_blank" rel="noopener">{{ $doc['label'] ?? 'Document' }}</a>
+                        <span class="text-muted">{{ $doc['original_name'] ?? '' }}</span>
+                    </div>
+                @empty
+                    <p class="text-muted small mb-0">None uploaded</p>
+                @endforelse
             </div>
         </div>
     </div>

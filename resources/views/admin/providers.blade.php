@@ -81,15 +81,26 @@
             <div class="modal-body">
                 <div id="addProviderAlert"></div>
                 <form id="addProviderForm" class="row g-3">
-                    <div class="col-md-4">
+                    <div class="col-12">
+                        {{-- A member can hold any of the three, or several: an HLH who
+                             also runs a taxi is both, and each role decides what they
+                             may then file — a host lists experiences, a supplier keeps
+                             a rate card. One dropdown could only ever say one of them. --}}
                         <label class="form-label">Provider type *</label>
-                        <select class="form-select custom-select" id="ap_type">
-                            <option value="hrp">HRP — Heco Regional Partner</option>
-                            <option value="hlh">HLH — HECO Local Host</option>
-                            <option value="osp" selected>OSP — Other Service Provider</option>
-                        </select>
+                        <div class="d-flex flex-wrap gap-3">
+                            @foreach(\App\Models\ServiceProvider::TYPE_LABELS as $value => $label)
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="ap_types"
+                                           value="{{ $value }}" id="ap_type_{{ $value }}"
+                                           @checked($value === 'osp')>
+                                    <label class="form-check-label" for="ap_type_{{ $value }}">
+                                        {{ strtoupper($value) }} — {{ $label }}
+                                    </label>
+                                </div>
+                            @endforeach
+                        </div>
                     </div>
-                    <div class="col-md-8">
+                    <div class="col-12">
                         <label class="form-label">Name / Organization *</label>
                         <input type="text" class="form-control" id="ap_name">
                     </div>
@@ -396,9 +407,13 @@ $('#addProviderSave').on('click', function() {
     if (!$('#ap_phone1').val().trim()) return apWarn('Please enter a primary phone number.');
     if (!$('#ap_region').val()) return apWarn('Please choose a region.');
 
+    var types = $('#addProviderForm input[name="ap_types"]:checked')
+        .map(function() { return this.value; }).get();
+    if (!types.length) return apWarn('Please choose at least one provider type.');
+
     var data = {
         add_provider: 1,
-        provider_type: $('#ap_type').val(),
+        provider_types: types,
         name: $('#ap_name').val().trim(),
         contact_person: $('#ap_contact').val().trim(),
         email: email,

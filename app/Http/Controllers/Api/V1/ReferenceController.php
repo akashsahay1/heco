@@ -33,6 +33,10 @@ class ReferenceController extends Controller
         'room_category',
         'business_type',
         'document_type',
+        // The languages a guide can be asked for. The app read this from a
+        // bundled copy while the endpoint never sent it, so the two lists were
+        // free to disagree — and once the bundle went, the dropdown was empty.
+        'language',
         // Experience authoring (HLH).
         'experience_type',
         'day_inclusion',
@@ -95,6 +99,10 @@ class ReferenceController extends Controller
             // the collective, and /guidelines is packing and safety advice
             // written for travellers — not what a provider is asking to read.
             'guidelines' => $portal('partner-guidelines'),
+            // What a host, a supplier and a regional partner each do. The app
+            // pointed at a heco.travel address that was never built, so the
+            // link went nowhere; this is the page that answers the question.
+            'roles' => $portal('partner-guidelines'),
             'data_deletion' => $portal('data-deletion'),
         ];
     }
