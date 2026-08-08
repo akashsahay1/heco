@@ -21,11 +21,9 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// Whether a file upload reaches PHP on this server at all — asked on its own,
-// away from signup's twenty fields. Lives here rather than in web.php because
-// these routes carry no CSRF, so curl and a browser can both try it.
-// Temporary: delete once the answer is in hand.
-Route::get('upload-test', [UploadTestController::class, 'show']);
+// Where /upload-test sends its file. Here rather than in web.php because
+// these routes carry no CSRF, so curl can ask the same question the page does.
+// Temporary: delete with the page once the answer is in hand.
 Route::post('upload-test', [UploadTestController::class, 'store']);
 
 Route::prefix('v1')->group(function () {

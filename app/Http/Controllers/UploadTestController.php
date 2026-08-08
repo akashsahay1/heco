@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
+use Illuminate\View\View;
 
 /**
  * Does a file upload reach PHP on this server at all?
@@ -23,22 +23,14 @@ use Illuminate\Http\Response;
  */
 class UploadTestController extends Controller
 {
-    /** A form, so the same thing can be tried from a browser and from curl. */
-    public function show(): Response
+    /**
+     * The page, on the portal. Its form posts by AJAX to the API route below,
+     * so the request takes the same shape the Become a Partner form's upload
+     * takes — same host, same door, one file and nothing else.
+     */
+    public function show(): View
     {
-        return response(<<<'HTML'
-            <!doctype html>
-            <meta name="viewport" content="width=device-width,initial-scale=1">
-            <title>Upload test</title>
-            <body style="font-family:system-ui;max-width:34rem;margin:3rem auto;padding:0 1rem">
-                <h1 style="font-size:1.25rem">Upload test</h1>
-                <p>Pick any file and submit. The reply says what reached PHP.</p>
-                <form method="post" enctype="multipart/form-data">
-                    <input type="file" name="document" required>
-                    <button type="submit">Send</button>
-                </form>
-            </body>
-            HTML)->header('Content-Type', 'text/html');
+        return view('upload-test');
     }
 
     public function store(Request $request): JsonResponse
