@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ProviderController;
 use App\Http\Controllers\Api\V1\ReferenceController;
+use App\Http\Controllers\UploadTestController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -19,6 +20,13 @@ use Illuminate\Support\Facades\Route;
 | No session, no CSRF — these routes are not in the web middleware group.
 |
 */
+
+// Whether a file upload reaches PHP on this server at all — asked on its own,
+// away from signup's twenty fields. Lives here rather than in web.php because
+// these routes carry no CSRF, so curl and a browser can both try it.
+// Temporary: delete once the answer is in hand.
+Route::get('upload-test', [UploadTestController::class, 'show']);
+Route::post('upload-test', [UploadTestController::class, 'store']);
 
 Route::prefix('v1')->group(function () {
 
