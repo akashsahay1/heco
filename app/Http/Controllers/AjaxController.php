@@ -598,6 +598,7 @@ class AjaxController extends Controller
         'get_experiences_list' => 'hct',
         'save_experience' => 'hct',
         'disable_experience' => 'hct',
+        'delete_experience' => 'hct',
         'bulk_delete_experiences' => 'hct',
         'get_regenerative_projects' => 'hct',
         'save_regenerative_project' => 'hct',
@@ -1286,6 +1287,9 @@ class AjaxController extends Controller
             }
             if ($request->has('disable_experience')) {
                 return $this->disableExperience($request);
+            }
+            if ($request->has('delete_experience')) {
+                return $this->deleteExperience($request);
             }
             if ($request->has('bulk_delete_experiences')) {
                 return $this->bulkDeleteExperiences($request);
@@ -7660,6 +7664,43 @@ class AjaxController extends Controller
         $experience = Experience::findOrFail($request->id);
         $experience->update(["is_active" => !$experience->is_active]);
         return response()->json(["success" => true, "is_active" => $experience->is_active]);
+    }
+
+    /**
+     * Remove a listing outright.
+     *
+     * Deactivating was the only thing HCT could do, which is right for a
+     * listing travellers have booked and wrong for one filed by mistake: a
+     * duplicate or a test row stayed on the list forever, only greyed out.
+     *
+     * A listing any trip has picked up is refused rather than deleted. Those
+     * two tables carry no cascade — pulling the row out from under them would
+     * either fail at the driver or leave a trip pointing at nothing, and the
+     * itinerary is somebody's holiday. Everything else about a listing (its
+     * days, price slabs, room rates, add-ons and reviews) cascades away with
+     * it, as those tables declare.
+     *
+     * Photos on disk are left alone. Deleting a file cannot be undone, and one
+     * shared with another row would take that row's picture with it.
+     */
+    protected function deleteExperience(Request $request): JsonResponse
+    {
+        $experience = Experience::findOrFail($request->id);
+
+        $onTrips = DB::table('trip_day_experiences')->where('experience_id', $experience->id)->count()
+            + DB::table('trip_selected_experiences')->where('experience_id', $experience->id)->count();
+
+        if ($onTrips > 0) {
+            return response()->json([
+                "error" => "This experience is on {$onTrips} " . ($onTrips === 1 ? 'itinerary' : 'itineraries')
+                    . ". Deactivate it instead so those trips keep their record.",
+            ], 422);
+        }
+
+        $name = $experience->name;
+        $experience->delete();
+
+        return response()->json(["success" => true, "deleted" => true, "name" => $name]);
     }
 
     // ===================================================================

@@ -223,8 +223,14 @@ function loadExperiences(page) {
             html += '</td>';
             html += '<td>';
             html += '<a href="' + editExpUrl.replace('__ID__', e.id) + '" class="btn btn-sm btn-outline-primary me-1" title="Edit"><i class="bi bi-pencil"></i></a>';
-            html += '<button class="btn btn-sm btn-outline-danger btn-disable" data-id="' + e.id + '" data-active="' + (e.is_active ? '1' : '0') + '" title="' + (e.is_active ? 'Disable' : 'Enable') + '">';
+            html += '<button class="btn btn-sm btn-outline-danger btn-disable me-1" data-id="' + e.id + '" data-active="' + (e.is_active ? '1' : '0') + '" title="' + (e.is_active ? 'Disable' : 'Enable') + '">';
             html += '<i class="bi bi-' + (e.is_active ? 'eye-slash' : 'eye') + '"></i>';
+            html += '</button>';
+            // Deactivating was the only thing on offer, which leaves a listing
+            // filed by mistake on the list forever. One a trip has picked up is
+            // refused server-side and the reason is shown.
+            html += '<button class="btn btn-sm btn-danger btn-delete" data-id="' + e.id + '" title="Delete permanently">';
+            html += '<i class="bi bi-trash"></i>';
             html += '</button>';
             html += '</td>';
             html += '</tr>';
@@ -325,6 +331,28 @@ $(document).on('click', '.btn-disable', function() {
     confirmAction('Are you sure you want to ' + action + ' this experience?', function() {
         ajaxPost({ disable_experience: 1, id: id }, function(resp) {
             loadExperiences(currentPage);
+        });
+    });
+});
+
+$(document).on('click', '.btn-delete', function() {
+    var id = $(this).data('id');
+    // Read the name off the row rather than carrying it in an attribute: a
+    // listing called 5" of snow would otherwise break the markup.
+    var name = $(this).closest('tr').find('strong').first().text() || 'this experience';
+    confirmAction('Delete "' + name + '" permanently? This cannot be undone.', function() {
+        jQuery.ajax({
+            url: '/ajax', type: 'POST', dataType: 'json', skipGlobalError: true,
+            data: { delete_experience: 1, id: id },
+            success: function(resp) {
+                showAlert('Deleted "' + (resp.name || name) + '".', 'success');
+                loadExperiences(currentPage);
+            },
+            // A listing a trip has picked up is refused, and the reason says
+            // what to do instead — worth reading, so it is not swallowed.
+            error: function(xhr) {
+                showAlert((xhr.responseJSON && xhr.responseJSON.error) || 'Could not delete this experience.', 'danger');
+            }
         });
     });
 });
