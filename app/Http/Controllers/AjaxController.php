@@ -7369,12 +7369,16 @@ class AjaxController extends Controller
             // rather than how long each one is.
             "best_seasons"        => "nullable|array|max:12",
             "best_seasons.*"      => "string|max:30",
+            // Months are month numbers, not names: the admin form's checkboxes
+            // post 1–12 as form strings and the app sends them as integers, so
+            // the rule has to accept both — `integer` reads a numeric string
+            // the same way it reads a number.
             "available_months"    => "nullable|array|max:12",
-            "available_months.*"  => "string|max:30",
+            "available_months.*"  => "integer|between:1,12",
             "restricted_months"   => "nullable|array|max:12",
-            "restricted_months.*" => "string|max:30",
+            "restricted_months.*" => "integer|between:1,12",
             "unavailable_months"  => "nullable|array|max:12",
-            "unavailable_months.*" => "string|max:30",
+            "unavailable_months.*" => "integer|between:1,12",
             "seasonality_notes" => "nullable|string|max:1000",
             // Where it starts and where it ends.
             "start_latitude"    => "nullable|numeric|between:-90,90",
