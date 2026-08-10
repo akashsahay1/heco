@@ -1461,6 +1461,9 @@ body.admin-login-page {
 }
 .heco-admin .diff-label {
     flex: 0 0 140px;
+    /* Stated, like .diff-value below it. Alignment inherits, and a centred
+       ancestor turned this column into centred text with a ragged left edge. */
+    text-align: left;
     color: var(--color-text-muted, #6c757d);
     font-size: 0.8rem;
     text-transform: uppercase;
@@ -1468,6 +1471,68 @@ body.admin-login-page {
     font-weight: 600;
 }
 .heco-admin .diff-value { flex: 1; text-align: left; }
+
+/* One folded row per rate in the approvals queue. A transport rate carries
+   fourteen fields, so a member who filed four left the reviewer scrolling a
+   page of detail to reach the next one. The head stays readable closed. */
+.heco-admin .pending-rate-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+    user-select: none;
+}
+.heco-admin .pending-rate-head:hover { background: var(--heco-primary-50, #f4f8f8); }
+.heco-admin .pending-rate-head[aria-expanded="true"] {
+    background: var(--heco-primary-50, #f4f8f8);
+    border-bottom: 1px solid var(--heco-primary-100, #e8f0ef);
+}
+.heco-admin .pending-chevron { transition: transform 0.15s ease; font-size: 0.75rem; }
+.heco-admin .pending-rate-head[aria-expanded="true"] .pending-chevron { transform: rotate(90deg); }
+/* The identity can be long — let it shorten rather than push the price off. */
+.heco-admin .pending-rate-identity {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.heco-admin .pending-rate-body { padding: 12px 16px 16px; }
+
+/* A rate's add-ons and photos on the approvals card. Neither is a column, so
+   the field diff above them cannot show either — they get their own block. */
+.heco-admin .rate-extras { margin-bottom: 12px; }
+.heco-admin .rate-extras-title {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.03em;
+    font-weight: 600;
+    color: var(--color-text-muted, #6c757d);
+    margin-bottom: 4px;
+}
+.heco-admin .addon-row {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 0.875rem;
+}
+.heco-admin .addon-name  { font-weight: 600; }
+.heco-admin .addon-price { color: var(--color-text-muted, #6c757d); }
+.heco-admin .addon-desc  {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted, #6c757d);
+    padding-left: 2px;
+    margin-bottom: 2px;
+}
+.heco-admin .addon-removed .addon-name { text-decoration: line-through; }
+.heco-admin .addon-removed { opacity: 0.7; }
+
+.heco-admin .rate-photo-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.heco-admin .rate-photo { display: inline-block; line-height: 0; }
+.heco-admin .rate-photo-added img   { border-color: #198754 !important; border-width: 2px !important; }
+.heco-admin .rate-photo-removed img { opacity: 0.4; filter: grayscale(1); border-color: #dc3545 !important; }
 
 /* Room Types checklist — tier-first accommodation form. */
 .heco-admin .room-type-checklist { display: flex; flex-wrap: wrap; gap: 4px 8px; }

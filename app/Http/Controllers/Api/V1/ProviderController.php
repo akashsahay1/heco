@@ -138,6 +138,9 @@ class ProviderController extends Controller
             'rental_item', 'security_deposit',
             'latitude', 'longitude', 'guest_capacity', 'seasonality_notes',
             'photos_keep',
+            // Optional extras alongside the rate — an extra bed, an airport
+            // pickup. Uploaded files travel outside this list.
+            'addons',
         ]), $request); // forward uploaded `vehicle_photos[]` files
     }
 

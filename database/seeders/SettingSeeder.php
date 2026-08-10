@@ -30,6 +30,13 @@ class SettingSeeder extends Seeder
             ['key' => 'provider_payout_day', 'value' => '7', 'group' => 'financial'],
             ['key' => 'site_name', 'value' => 'HECO Portal', 'group' => 'general'],
             ['key' => 'site_email', 'value' => 'info@heco.eco', 'group' => 'general'],
+            // Where a member reaches HECO from the app's Help screen. The app
+            // carried its own copy, including a made-up phone number that rang
+            // nobody. Left blank on purpose: the Call card only appears once
+            // HCT has put a real number here.
+            ['key' => 'support_email', 'value' => '', 'group' => 'general'],
+            ['key' => 'support_phone', 'value' => '', 'group' => 'general'],
+            ['key' => 'support_hours', 'value' => '', 'group' => 'general'],
             ['key' => 'ollama_enabled', 'value' => '1', 'group' => 'ai'],
             ['key' => 'default_ai_model', 'value' => 'mistral', 'group' => 'ai'],
         ];

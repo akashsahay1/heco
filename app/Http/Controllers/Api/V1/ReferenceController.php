@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Api\Concerns\BridgesAjax;
 use App\Http\Controllers\Controller;
 use App\Models\Region;
+use App\Models\Setting;
 use App\Models\SystemList;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -74,7 +75,32 @@ class ReferenceController extends Controller
                 ->values(),
             'system_lists' => $lists,
             'links' => self::links(),
+            'support' => self::support(),
         ]);
+    }
+
+    /**
+     * How a member reaches HECO from the Help screen.
+     *
+     * The app shipped its own address and a placeholder phone number that rang
+     * nobody, so the one thing a stuck member would try did nothing. These are
+     * settings HCT edits in the control panel; anything left blank comes back
+     * null and the app simply does not offer that way of getting in touch.
+     */
+    public static function support(): array
+    {
+        $value = function (string $key) {
+            $set = trim((string) Setting::getValue($key, ''));
+            return $set === '' ? null : $set;
+        };
+
+        return [
+            // A member always has somewhere to write: the address the rest of
+            // the site already answers on, until HCT names a partner-facing one.
+            'email' => $value('support_email') ?? $value('site_email'),
+            'phone' => $value('support_phone'),
+            'hours' => $value('support_hours'),
+        ];
     }
 
     /**

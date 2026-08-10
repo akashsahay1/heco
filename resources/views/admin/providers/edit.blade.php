@@ -1275,6 +1275,10 @@ jQuery(function() {
                 var details = '';
                 if (r.service_type === 'accommodation') {
                     var parts = [];
+                    // What the provider called this rate. Only the guide /
+                    // activity branches below read `category`, so a named room
+                    // or vehicle rate showed as its tier alone.
+                    if (r.category)       parts.push('<strong>' + spEscape(r.category) + '</strong>');
                     // Comfort tier is now the primary label
                     if (r.comfort_tier)   parts.push('<strong>' + spEscape(r.comfort_tier) + '</strong>');
                     if (isDupTier)        parts.push('<span class="badge bg-warning text-dark" title="This tier + room combination appears on more than one row. Keep one row per (tier, room) pair."><i class="bi bi-exclamation-triangle me-1"></i>duplicate</span>');
@@ -1285,6 +1289,7 @@ jQuery(function() {
                     details = parts.join(' · ');
                 } else if (r.service_type === 'transport') {
                     var parts = [];
+                    if (r.category)        parts.push('<strong>' + spEscape(r.category) + '</strong>');
                     if (r.vehicle_type)    parts.push('<strong>' + spEscape(r.vehicle_type) + '</strong>');
                     if (r.vehicle_capacity) parts.push('<small class="text-muted">' + r.vehicle_capacity + ' seats</small>');
                     if (r.distance_km && String(r.unit || '').toLowerCase().indexOf('km') !== -1) parts.push('<small class="text-muted">× ' + Number(r.distance_km).toLocaleString('en-IN') + ' km</small>');
@@ -1308,6 +1313,25 @@ jQuery(function() {
                     details = '<strong>' + spEscape(r.category || '—') + '</strong>';
                 }
                 if (r.description) details += '<div class="small text-muted">' + spEscape(r.description) + '</div>';
+
+                // Extras and pictures are child rows / a JSON column, so they
+                // never appeared here at all — an admin could not tell a room
+                // with an airport pickup and four photos from a bare one.
+                var extras = [];
+                var addons = r.addons || [];
+                if (addons.length) {
+                    var names = addons.map(function(a) { return a.name; }).join(', ');
+                    extras.push('<span class="badge bg-light text-dark border" title="' + spEscape(names) + '"><i class="bi bi-plus-circle me-1"></i>'
+                              + addons.length + (addons.length === 1 ? ' add-on' : ' add-ons') + '</span>');
+                }
+                var shots = (r.photos || []).concat(r.vehicle_photos || []);
+                if (shots.length) {
+                    extras.push('<span class="badge bg-light text-dark border"><i class="bi bi-images me-1"></i>' + shots.length + '</span>');
+                }
+                if (r.pending_change) {
+                    extras.push('<span class="badge bg-warning text-dark" title="A change to this rate is awaiting HCT review"><i class="bi bi-hourglass-split me-1"></i>edit pending</span>');
+                }
+                if (extras.length) details += '<div class="mt-1">' + extras.join(' ') + '</div>';
 
                 // Inventory cell — only meaningful for accommodation
                 var inventory = '—';

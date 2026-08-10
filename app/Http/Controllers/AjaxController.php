@@ -4572,7 +4572,13 @@ class AjaxController extends Controller
         $providerId = $this->resolveSpPricingProviderId($request);
         if ($providerId instanceof JsonResponse) return $providerId;
 
+        // Add-ons come along: they are the rate's own extras, and without them
+        // the app could show a rate but never re-edit what hung off it — the
+        // editor reopened with an empty extras section and the next save wiped
+        // them. The pending copy below is drawn from this same collection, so
+        // it arrives loaded too.
         $rows = SpPricing::where("service_provider_id", $providerId)
+            ->with("addons")
             ->orderBy("service_type")
             ->get();
 
@@ -4580,14 +4586,28 @@ class AjaxController extends Controller
         // would replace, not a second rate — returned flat, a provider who had
         // edited one price saw it listed three times, at three prices, with no
         // way to tell which one travellers were being sold.
-        $revisions = $rows->filter(fn ($row) => $row->pending_for_id !== null)->keyBy('pending_for_id');
+        // Only a change still under review is one. A rejected staged row was
+        // being attached here too, so the app told the provider their change
+        // was "with HECO for review" when HCT had already refused it — and the
+        // reason, which lives on the staged row, was nowhere they could read.
+        $revisions = $rows
+            ->filter(fn ($row) => $row->pending_for_id !== null && $row->approval_status === 'pending')
+            ->keyBy('pending_for_id');
+        $refusals = $rows
+            ->filter(fn ($row) => $row->pending_for_id !== null && $row->approval_status === 'rejected')
+            ->sortByDesc('id')
+            ->keyBy('pending_for_id');
 
         $rows = $rows
             ->reject(fn ($row) => $row->pending_for_id !== null && $rows->contains('id', $row->pending_for_id))
-            ->map(function ($row) use ($revisions) {
+            ->map(function ($row) use ($revisions, $refusals) {
                 // Attached, not merged: the rate still reads as what is being
                 // sold today, and the app can say a change is with HECO.
                 $row->setAttribute('pending_change', $revisions->get($row->id));
+                // And when it was refused, the provider is told so, with why.
+                $refused = $refusals->get($row->id);
+                $row->setAttribute('rejected_change', $refused);
+                $row->setAttribute('rejected_change_reason', $refused?->rejection_reason);
 
                 return $row;
             })
@@ -4654,6 +4674,20 @@ class AjaxController extends Controller
             // A range nobody can book. There was no cross-field rule, so a
             // minimum of 50 with a maximum of 5 went live.
             "max_group"         => "nullable|integer|min:1|max:2000|gte:min_group",
+            // Optional extras hung off the rate — same shape as an
+            // experience's add-ons (see saveExperience). Stated here rather
+            // than under one service type because applyRateAddons runs for
+            // every type. `addons.*` is declared so a list of bare strings is
+            // refused outright: without it, anything that is not an array was
+            // skipped one entry at a time, and a caller who sent the wrong
+            // shape had their extras quietly deleted and was told it worked.
+            "addons"               => "nullable|array|max:20",
+            "addons.*"             => "array",
+            "addons.*.name"        => "nullable|string|max:150",
+            "addons.*.description" => "nullable|string|max:1000",
+            "addons.*.price"       => "nullable|numeric|min:0|max:99999999.99",
+            "addons.*.price_unit"  => "nullable|string|max:50",
+            "addons.*.is_active"   => "nullable|boolean",
         ];
 
         $rulesByType = [
@@ -4683,18 +4717,24 @@ class AjaxController extends Controller
                 // A per-km taxi states the plains rate instead of a flat price,
                 // and that rate becomes the row's price below — so the trip
                 // cost calculation keeps working off a single field.
-                "price"             => "required_without:price_per_km_plains|nullable|numeric|min:0",
+                // Every one of these is a decimal(10,2). Stating a type without
+                // a ceiling was no bound at all: a figure too big for the
+                // column went to the driver and came back as a 500, so the
+                // member saw a crash instead of being told the number is out
+                // of range. A per-type list replaces the floor set in
+                // $baseRules outright, so each rule here has to carry its own.
+                "price"             => "required_without:price_per_km_plains|nullable|numeric|min:0|max:99999999.99",
                 // A taxi priced per kilometre needs no unit picker — the rate
                 // itself says what the unit is.
                 "unit"              => "required_without:price_per_km_plains|nullable|string|max:50",
                 "vehicle_type"      => "required|string|max:100",
                 "ac_available"      => "nullable|boolean",
                 "vehicle_count"     => "nullable|integer|min:1|max:500",
-                "price_per_km_plains" => "nullable|numeric|min:0",
-                "price_per_km_hills"  => "nullable|numeric|min:0",
-                "ac_extra_cost"       => "nullable|numeric|min:0",
+                "price_per_km_plains" => "nullable|numeric|min:0|max:99999999.99",
+                "price_per_km_hills"  => "nullable|numeric|min:0|max:99999999.99",
+                "ac_extra_cost"       => "nullable|numeric|min:0|max:99999999.99",
                 "vehicle_capacity"  => "nullable|integer|min:1|max:80",
-                "driver_allowance"  => "nullable|numeric|min:0",
+                "driver_allowance"  => "nullable|numeric|min:0|max:99999999.99",
                 // Route distance (km) for per-km pricing (req 3.1): cost = price × distance.
                 "distance_km"       => "nullable|numeric|min:0|max:100000",
                 // Which vehicle this rate is for, and what it covers.
@@ -4749,28 +4789,46 @@ class AjaxController extends Controller
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
+        // Only what the save actually carries.
+        //
+        // These were written unconditionally while the per-type fields below go
+        // through has() — one save, two contracts, and the older half lost data.
+        // A form that shows a subset of the fields (the portal's bulk tier
+        // editor does exactly that) blanked the description, the notes, the
+        // vehicle's make and year; approving the edit then wrote those blanks
+        // onto the live rate for good.
         $data = [
             "service_provider_id" => $request->provider_id,
             "service_type"        => $serviceType,
-            "category"            => $request->input("category") ?: null,
-            "description"         => $request->input("description") ?: null,
-            "unit"                => $request->input("unit") ?: null,
             "price"               => $request->price,
-            "meal_plan"           => $request->input("meal_plan") ?: null,
-            "vehicle_type"        => $request->input("vehicle_type") ?: null,
-            "notes"               => $request->input("notes") ?: null,
-            // new fields
-            "room_category"       => $request->input("room_category") ?: null,
-            "comfort_tier"        => $request->input("comfort_tier") ?: null,
-            "total_rooms"         => $request->filled("total_rooms") ? (int) $request->total_rooms : null,
-            "default_occupancy"   => $request->input("default_occupancy") ?: null,
-            "vehicle_capacity"    => $request->filled("vehicle_capacity") ? (int) $request->vehicle_capacity : null,
-            "driver_allowance"    => $request->filled("driver_allowance") ? (float) $request->driver_allowance : null,
-            "distance_km"         => $request->filled("distance_km") ? (float) $request->distance_km : null,
-            "min_group"           => $request->filled("min_group") ? (int) $request->min_group : null,
-            "max_group"           => $request->filled("max_group") ? (int) $request->max_group : null,
-            "specialties"         => $request->input("specialties") ?: null,
         ];
+
+        $text = function (string $key) use ($request, &$data) {
+            if ($request->has($key)) {
+                $data[$key] = $request->input($key) ?: null;
+            }
+        };
+        $whole = function (string $key) use ($request, &$data) {
+            if ($request->has($key)) {
+                $data[$key] = $request->filled($key) ? (int) $request->input($key) : null;
+            }
+        };
+        $decimal = function (string $key) use ($request, &$data) {
+            if ($request->has($key)) {
+                $data[$key] = $request->filled($key) ? (float) $request->input($key) : null;
+            }
+        };
+
+        foreach (['category', 'description', 'unit', 'meal_plan', 'vehicle_type', 'notes',
+                  'room_category', 'comfort_tier', 'default_occupancy', 'specialties'] as $key) {
+            $text($key);
+        }
+        foreach (['total_rooms', 'vehicle_capacity', 'min_group', 'max_group'] as $key) {
+            $whole($key);
+        }
+        foreach (['driver_allowance', 'distance_km'] as $key) {
+            $decimal($key);
+        }
         if ($request->has("is_active")) {
             $data["is_active"] = $request->boolean("is_active");
         }
@@ -4795,6 +4853,10 @@ class AjaxController extends Controller
             if ($photos !== null) {
                 $data["vehicle_photos"] = $photos;
             }
+        }
+
+        if ($clash = $this->duplicateRate($request, $providerId, $data)) {
+            return $clash;
         }
 
         // Approval workflow:
@@ -4822,23 +4884,41 @@ class AjaxController extends Controller
                     'rejection_reason' => null,
                 ]));
             } else {
-                // Drop any prior pending edit for this row so the SP doesn't
-                // stack multiple pending changes on the same live row.
-                SpPricing::where('pending_for_id', $existing->id)
-                    ->where('approval_status', 'pending')
-                    ->delete();
-                // The pending row replaces the live one wholesale once
-                // approved, so it starts as a copy of it. Without this, any
-                // field the submitting form did not show — the hill rate, the
-                // vehicle photos — would be silently dropped on approval.
-                $data = array_merge($this->copyableAttributes($existing), $data);
-                $row = SpPricing::create(array_merge($data, [
-                    'is_active'        => false,
-                    'approval_status'  => 'pending',
-                    'pending_for_id'   => $existing->id,
-                    'submitted_at'     => now(),
-                    'submitted_by'     => $user->id,
-                ]));
+                // Replacing the staged edit is one act: the old one only goes
+                // when the new one is safely written. Deleted first and created
+                // second, a save that then failed left the provider with
+                // neither — their staged change gone and a bare 500 to show
+                // for it.
+                $row = DB::transaction(function () use ($request, $existing, $data, $user) {
+                    // Drop any prior pending edit for this row so the SP doesn't
+                    // stack multiple pending changes on the same live row.
+                    SpPricing::where('pending_for_id', $existing->id)
+                        ->where('approval_status', 'pending')
+                        ->delete();
+                    // The pending row replaces the live one wholesale once
+                    // approved, so it starts as a copy of it. Without this, any
+                    // field the submitting form did not show — the hill rate, the
+                    // vehicle photos — would be silently dropped on approval.
+                    $row = SpPricing::create(array_merge(
+                        $this->copyableAttributes($existing),
+                        $data,
+                        [
+                            'is_active'        => false,
+                            'approval_status'  => 'pending',
+                            'pending_for_id'   => $existing->id,
+                            'submitted_at'     => now(),
+                            'submitted_by'     => $user->id,
+                        ],
+                    ));
+                    // The pending row is a whole copy of the live one, extras
+                    // included — otherwise approving an edit that never mentioned
+                    // add-ons would wipe them off the live rate.
+                    if (! $request->has('addons')) {
+                        $this->replaceRateAddons($row, $existing);
+                    }
+
+                    return $row;
+                });
             }
         } else {
             if ($isAdmin) {
@@ -4852,7 +4932,147 @@ class AjaxController extends Controller
                 ]));
             }
         }
-        return response()->json(["success" => true, "row" => $row, "pending" => $row->approval_status === 'pending']);
+        $this->applyRateAddons($request, $row);
+
+        return response()->json([
+            "success" => true,
+            "row" => $row->load('addons'),
+            "pending" => $row->approval_status === 'pending',
+        ]);
+    }
+
+    /**
+     * The extras that sit alongside a rate, replaced only when the caller
+     * sends them.
+     *
+     * Same rule as an experience's add-ons: a form that never showed the
+     * section leaves what is stored alone rather than blanking it.
+     */
+    /**
+     * Refuse a rate the provider already has, and say which one.
+     *
+     * Nothing stopped the same offer being filed twice, and a rate card is read
+     * as an inventory: two identical rows mean HCT approves the same thing
+     * twice and the trip manager is offered one room as though it were two.
+     *
+     * What counts as "the same" is per service type. A hotel may have any
+     * number of accommodation rows — that is the point of the grid — as long as
+     * each is a different tier / room / occupancy / board. Two taxis are two
+     * taxis when their registrations differ.
+     */
+    protected function duplicateRate(Request $request, int $providerId, array $data): ?JsonResponse
+    {
+        $identity = match ($data['service_type'] ?? null) {
+            'accommodation' => ['comfort_tier', 'room_category', 'default_occupancy', 'meal_plan'],
+            'transport' => filled($data['vehicle_registration_no'] ?? null)
+                ? ['vehicle_registration_no']
+                : ['vehicle_type', 'category'],
+            'rental' => ['rental_item'],
+            default => ['category', 'unit'],
+        };
+
+        // Nothing to compare on — a row with no identifying values yet cannot
+        // be called a repeat of anything.
+        if (! array_filter(array_map(fn ($f) => $data[$f] ?? null, $identity), 'filled')) {
+            return null;
+        }
+
+        $query = SpPricing::where('service_provider_id', $providerId)
+            ->where('service_type', $data['service_type'])
+            // A rejected row is not on offer, so it cannot be duplicated.
+            ->where('approval_status', '!=', 'rejected');
+
+        foreach ($identity as $field) {
+            $value = $data[$field] ?? null;
+            $value === null ? $query->whereNull($field) : $query->where($field, $value);
+        }
+
+        // Editing a rate is not duplicating it. Nor is the pending copy this
+        // save is about to replace, nor — when the row being saved is itself a
+        // staged edit — the live rate it stands for. A provider fixing a
+        // rejected edit was being told to go and edit the very thing they had
+        // open.
+        if ($request->filled('id')) {
+            $saving = SpPricing::find($request->id);
+            $exclude = array_filter([(int) $request->id, $saving?->pending_for_id]);
+
+            $query->whereNotIn('id', $exclude)
+                ->where(fn ($q) => $q->whereNull('pending_for_id')
+                    ->orWhereNotIn('pending_for_id', $exclude));
+        }
+
+        $clash = $query->first();
+        if (! $clash) {
+            return null;
+        }
+
+        $described = collect($identity)
+            ->map(fn ($f) => $data[$f] ?? null)
+            ->filter()
+            ->implode(' · ');
+
+        // "this <type> rate" rather than "a <type> rate": the type is the raw
+        // enum, and half of them would take "an".
+        return response()->json([
+            'error' => "You already have this {$data['service_type']} rate"
+                . ($described ? " — {$described}" : '')
+                . '. Edit that one instead of adding it again.',
+        ], 422);
+    }
+
+    protected function applyRateAddons(Request $request, SpPricing $row): void
+    {
+        if (! $request->has('addons')) {
+            return;
+        }
+
+        $row->addons()->delete();
+        $seen = [];
+        foreach ((array) $request->input('addons', []) as $idx => $addon) {
+            // A blank entry is how a form spells an empty list.
+            if (! is_array($addon)) {
+                continue;
+            }
+            $name = trim((string) ($addon['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            // One name, one extra. Two "Extra bed" rows are indistinguishable to
+            // anyone reading them, and the approval screen matches an edit's
+            // add-ons against the live ones BY NAME — so a repeat made the
+            // added/changed/removed marks meaningless. The first wins, as a
+            // repeated price slab already does.
+            $key = mb_strtolower($name);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            $row->addons()->create([
+                'name' => $name,
+                'description' => $addon['description'] ?? null,
+                'price' => ($addon['price'] ?? '') === '' ? null : $addon['price'],
+                'price_unit' => $addon['price_unit'] ?? null,
+                'is_active' => filter_var($addon['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                'sort_order' => $idx,
+            ]);
+        }
+    }
+
+    /**
+     * Make one rate's add-ons read exactly like another's.
+     *
+     * The extras are child rows, so neither `update()` nor copyableAttributes
+     * can carry them — they have to be re-created on the far side.
+     */
+    protected function replaceRateAddons(SpPricing $target, SpPricing $source): void
+    {
+        $target->addons()->delete();
+        foreach ($source->addons()->get() as $addon) {
+            $target->addons()->create(
+                $addon->only(['name', 'description', 'price', 'price_unit', 'is_active', 'sort_order'])
+            );
+        }
     }
 
     /**
@@ -4871,6 +5091,15 @@ class AjaxController extends Controller
                 'approved_at', 'approved_by', 'rejection_reason',
                 'is_active',
             ])
+            // getAttributes() hands back what is stored, so a JSON column
+            // arrives as its encoded text — and writing that text back through
+            // a column the model casts to `array` encoded it a second time.
+            // The photos, the vehicle photos and a guide's languages came out
+            // of an approval as a string containing a quoted list, so the app
+            // and the admin queue had nothing to iterate over.
+            ->map(fn ($value, $key) => $row->hasCast($key, ['array', 'json', 'collection', 'object'])
+                ? $row->getAttribute($key)
+                : $value)
             ->all();
     }
 
@@ -5012,8 +5241,11 @@ class AjaxController extends Controller
         if (!Auth::user() || !Auth::user()->isHct()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
+        // Both sides carry their extras: the queue shows an add-on that was
+        // added, changed or dropped, and it can only do that if it holds the
+        // submitted list and the live one it would replace.
         $rows = SpPricing::pending()
-            ->with(['serviceProvider:id,name,provider_types', 'pendingFor', 'submitter:id,full_name,email'])
+            ->with(['serviceProvider:id,name,provider_types', 'pendingFor', 'pendingFor.addons', 'addons', 'submitter:id,full_name,email'])
             ->orderBy('submitted_at', 'desc')
             ->paginate(config('pagination.admin_per_page', 20));
         return response()->json([
@@ -5059,6 +5291,15 @@ class AjaxController extends Controller
                     'approved_at' => now(),
                     'approved_by' => Auth::id(),
                 ]);
+                // The extras land too. They are child rows, so the column copy
+                // above cannot carry them — approving an edit left the live
+                // rate holding its old add-ons and then deleted the submitted
+                // ones along with the pending row, which is the same silent
+                // loss the column list used to cause. The pending row always
+                // holds the complete intended list (saveSpPricing copies the
+                // live extras onto it when the form never mentioned them), so
+                // replacing wholesale is what "approve this" means.
+                $this->replaceRateAddons($target, $pending);
             }
             // Notify the provider their price change is approved (old → new).
             $this->notifyPricingApproved($pending, $oldPrice);
@@ -5113,7 +5354,13 @@ class AjaxController extends Controller
         );
     }
 
-    /** HCT admin: reject a pending pricing row with a reason. */
+    /**
+     * HCT admin: reject a pending pricing row with a reason.
+     *
+     * Only the pending row is touched. The live rate it was staged against —
+     * its columns and its add-ons alike — is left exactly as travellers are
+     * being sold it, which is the whole point of staging the edit separately.
+     */
     protected function rejectPricing(Request $request): JsonResponse
     {
         if (!Auth::user() || !Auth::user()->isHct()) {
@@ -5139,17 +5386,40 @@ class AjaxController extends Controller
 
         $ids = $request->input("ids");
         if (is_array($ids) && count($ids)) {
-            SpPricing::whereIn("id", $ids)
-                ->where("service_provider_id", $providerId)
-                ->delete();
+            $ids = array_values($ids);
         } elseif ($request->filled("id")) {
-            SpPricing::where("id", $request->id)
-                ->where("service_provider_id", $providerId)
-                ->delete();
+            $ids = [$request->id];
         } else {
             return response()->json(["error" => "Nothing to delete"], 422);
         }
-        return response()->json(["success" => true]);
+
+        // Say what actually happened. The scope kept another provider's rows
+        // safe, but nothing checked whether anything was hit, so deleting a
+        // stranger's rate — or an id that never existed — answered "success"
+        // and the app struck the row off its list for a delete that did not
+        // occur. Saving against a row you do not own already answers 403.
+        $rows = SpPricing::whereIn("id", $ids)
+            ->where("service_provider_id", $providerId)
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return response()->json([
+                'error' => count($ids) === 1
+                    ? 'That rate is not on your rate card.'
+                    : 'None of those rates are on your rate card.',
+            ], 404);
+        }
+
+        // A staged edit of a rate goes with it. nullOnDelete would otherwise
+        // leave it behind as a parentless row the provider cannot see but
+        // which still blocks re-creating the rate.
+        DB::transaction(function () use ($rows) {
+            $ids = $rows->pluck('id');
+            SpPricing::whereIn('pending_for_id', $ids)->delete();
+            SpPricing::whereIn('id', $ids)->delete();
+        });
+
+        return response()->json(["success" => true, "deleted" => $rows->count()]);
     }
 
     protected function getSupportRequests(Request $request): JsonResponse
@@ -6009,6 +6279,24 @@ class AjaxController extends Controller
     protected function applyProviderPhoto(Request $request, array &$data): ?JsonResponse
     {
         if ($request->hasFile('photo')) {
+            // Bounded the way the traveller's picture already is. Without this
+            // there was nothing between the file bag and the disk: anything at
+            // all, at any size, was stored under whatever name it arrived with.
+            $validator = Validator::make(['photo' => $request->file('photo')], [
+                // 10 MB, as everywhere else a provider sends a photo. Bounding
+                // it more tightly than that would start refusing pictures that
+                // used to upload — the point here is to keep out what is not an
+                // image, not to make members shrink the ones that are.
+                'photo' => 'image|mimes:jpg,jpeg,png,webp|max:10240',
+            ], [
+                'photo.image' => 'Please choose a JPG, PNG or WebP image.',
+                'photo.mimes' => 'Please choose a JPG, PNG or WebP image.',
+                'photo.max'   => 'The picture must be 10 MB or smaller.',
+            ]);
+            if ($validator->fails()) {
+                return response()->json(['error' => $validator->errors()->first()], 422);
+            }
+
             $stored = \App\Services\ImageUploadService::storeUploadedImage(
                 $request->file('photo'), 'providers', 600
             );
@@ -6161,12 +6449,17 @@ class AjaxController extends Controller
                 "education_level", "education_notes", "english_level",
                 "computer_skill_level", "causes_note", "community_note",
             ]);
-            // Blank rows the repeater leaves behind should not be stored.
-            $roles = array_values(array_filter(
-                $request->input('work_experience', []) ?: [],
-                fn ($row) => is_array($row) && trim(implode('', array_map('strval', $row))) !== '',
-            ));
-            $data['work_experience'] = $roles;
+            // Only when the save carries it. Written unconditionally, a save
+            // that never mentioned work experience emptied it — and the app
+            // cannot send the field at all, so a regional partner changing
+            // their phone number erased the history HCT approved them on.
+            if ($request->has('work_experience')) {
+                // Blank rows the repeater leaves behind should not be stored.
+                $data['work_experience'] = array_values(array_filter(
+                    (array) ($request->input('work_experience') ?: []),
+                    fn ($row) => is_array($row) && trim(implode('', array_map('strval', $row))) !== '',
+                ));
+            }
         }
         if ($err = $this->applyProviderPhoto($request, $data)) {
             return $err;
@@ -6998,6 +7291,10 @@ class AjaxController extends Controller
 
     protected function saveExperience(Request $request): JsonResponse
     {
+        if ($err = $this->validateExperiencePhotos($request)) {
+            return $err;
+        }
+
         // A draft is a half-finished listing kept for later — the client's
         // reason being that "many users won't have all the information or
         // photos ready in one session". Demanding a full field set in order to
@@ -7058,6 +7355,51 @@ class AjaxController extends Controller
             "addons.*.description" => "nullable|string|max:1000",
             "addons.*.price"    => "nullable|numeric|min:0",
             "addons.*.price_unit"  => "nullable|string|max:50",
+
+            // The rest of what a listing carries. Every one of these is written
+            // straight to its column, and a column with no rule over it is a
+            // 500 waiting to happen: a time that is not a time, a cost too big
+            // for decimal(10,2), or a season list longer than the varchar(255)
+            // it is encoded into, all reached the driver and came back as a
+            // crash the member could make no sense of.
+            "start_time"        => "nullable|date_format:H:i,H:i:s",
+            "end_time"          => "nullable|date_format:H:i,H:i:s",
+            "accommodation_category" => "nullable|string|max:50",
+            // Stored JSON-encoded in a varchar(255), so the cap is on how many
+            // rather than how long each one is.
+            "best_seasons"        => "nullable|array|max:12",
+            "best_seasons.*"      => "string|max:30",
+            "available_months"    => "nullable|array|max:12",
+            "available_months.*"  => "string|max:30",
+            "restricted_months"   => "nullable|array|max:12",
+            "restricted_months.*" => "string|max:30",
+            "unavailable_months"  => "nullable|array|max:12",
+            "unavailable_months.*" => "string|max:30",
+            "seasonality_notes" => "nullable|string|max:1000",
+            // Where it starts and where it ends.
+            "start_latitude"    => "nullable|numeric|between:-90,90",
+            "start_longitude"   => "nullable|numeric|between:-180,180",
+            "end_latitude"      => "nullable|numeric|between:-90,90",
+            "end_longitude"     => "nullable|numeric|between:-180,180",
+            // decimal(10,2), every one.
+            "base_cost_per_person" => "nullable|numeric|min:0|max:99999999.99",
+            "cost_accommodation"   => "nullable|numeric|min:0|max:99999999.99",
+            "cost_logistics"       => "nullable|numeric|min:0|max:99999999.99",
+            "cost_guide"           => "nullable|numeric|min:0|max:99999999.99",
+            "cost_activities"      => "nullable|numeric|min:0|max:99999999.99",
+            "cost_other"           => "nullable|numeric|min:0|max:99999999.99",
+            "single_supplement"    => "nullable|numeric|min:0|max:99999999.99",
+            "price_currency"       => "nullable|string|size:3",
+            // What the price covers, and what the ground is like.
+            "includes_accommodation"   => "nullable|boolean",
+            "includes_meals_breakfast" => "nullable|boolean",
+            "includes_meals_lunch"     => "nullable|boolean",
+            "includes_meals_dinner"    => "nullable|boolean",
+            "includes_guide"           => "nullable|boolean",
+            "includes_transport"       => "nullable|boolean",
+            "trekking_required"        => "nullable|boolean",
+            "road_seasonal_closure"    => "nullable|boolean",
+            "osps_involved"            => "nullable|boolean",
         ], [
             "name.required"              => "Please enter an experience name.",
             "region_id.required"         => "Please choose a region.",
@@ -7275,10 +7617,16 @@ class AjaxController extends Controller
         // Optional extras hung off this experience.
         if ($request->has('addons')) {
             $experience->addons()->delete();
+            $seenAddons = [];
             foreach ((array) $request->input('addons', []) as $idx => $addon) {
                 if (! is_array($addon)) continue;
                 $name = trim((string) ($addon['name'] ?? ''));
                 if ($name === '') continue; // blank repeater rows are not add-ons
+                // One name, one extra — the same rule the rate card keeps.
+                $key = mb_strtolower($name);
+                if (isset($seenAddons[$key])) continue;
+                $seenAddons[$key] = true;
+
                 $experience->addons()->create([
                     'name' => $name,
                     'description' => $addon['description'] ?? null,
@@ -7555,8 +7903,23 @@ class AjaxController extends Controller
                 return $err;
             }
 
+            // Complete the revision from the listing it revises, then park it.
+            //
+            // A save that mentions only what changed used to be parked as-is,
+            // and the payload was not validated until HCT pressed Approve —
+            // which then failed, forever. The provider had been told their
+            // change was queued, HCT could only reject it, and the listing sat
+            // in the queue with no way out. Filling the gaps from the live row
+            // makes a partial revision both complete and answerable.
+            $revision = $this->experiencePayload($request);
+            foreach ($this->copyableExperienceAttributes($existing) as $field => $value) {
+                if (! array_key_exists($field, $revision)) {
+                    $revision[$field] = $value;
+                }
+            }
+
             $existing->update([
-                'pending_changes'      => $this->experiencePayload($request),
+                'pending_changes'      => $revision,
                 'pending_submitted_at' => now(),
                 'pending_submitted_by' => Auth::id(),
             ]);
@@ -7618,14 +7981,60 @@ class AjaxController extends Controller
             return null;
         }
 
+        // Only paths this site actually stores, and only under /uploads. The
+        // keep-list is whatever the caller sends back, so an absolute URL was
+        // written into the column verbatim — binding a listing's photos to one
+        // build's host, and letting any address at all be presented as the
+        // member's own photo.
         return array_values(array_filter(
             $gallery,
-            fn ($path) => is_string($path) && $path !== '',
+            fn ($path) => is_string($path)
+                && str_starts_with($path, '/uploads/')
+                && ! str_contains($path, '..'),
         ));
+    }
+
+    /**
+     * Check the photos before anything is written.
+     *
+     * Only the file bag is handed to the validator. `gallery` names both the
+     * paths a save keeps and the files it adds, and Request::all() merges the
+     * two — so a rule on `gallery.*` would judge a kept path as though it were
+     * an upload. Feeding it the files alone keeps the two apart.
+     *
+     * Until this ran, a photo that was not an image was dropped without a word:
+     * the member was told the save worked and the picture simply never showed.
+     */
+    protected function validateExperiencePhotos(Request $request): ?JsonResponse
+    {
+        $validator = Validator::make([
+            'card_image' => $request->file('card_image'),
+            'gallery'    => $request->file('gallery'),
+        ], [
+            'card_image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:10240',
+            'gallery'    => 'nullable|array|max:30',
+            'gallery.*'  => 'image|mimes:jpg,jpeg,png,webp|max:10240',
+        ], [
+            'card_image.image' => 'The card photo must be a JPG, PNG or WebP image.',
+            'card_image.mimes' => 'The card photo must be a JPG, PNG or WebP image.',
+            'card_image.max'   => 'The card photo must be 10 MB or smaller.',
+            'gallery.max'      => 'An experience can carry up to 30 photos.',
+            'gallery.*.image'  => 'Every gallery photo must be a JPG, PNG or WebP image.',
+            'gallery.*.mimes'  => 'Every gallery photo must be a JPG, PNG or WebP image.',
+            'gallery.*.max'    => 'Each gallery photo must be 10 MB or smaller.',
+        ]);
+
+        return $validator->fails()
+            ? response()->json(['error' => $validator->errors()->first()], 422)
+            : null;
     }
 
     protected function stashExperienceUploads(Request $request, Experience $existing): ?JsonResponse
     {
+        if ($err = $this->validateExperiencePhotos($request)) {
+            return $err;
+        }
+
         if ($request->hasFile('card_image')) {
             $stored = \App\Services\ImageUploadService::storeUploadedImage(
                 $request->file('card_image'), 'experiences', 1200
@@ -7668,6 +8077,31 @@ class AjaxController extends Controller
      * columns are excluded — those are decided at replay time, not by whatever
      * was posted.
      */
+    /**
+     * What a revision inherits from the listing it revises.
+     *
+     * Identity, ownership, the review trail and the parked payload itself
+     * belong to the row that holds them; everything else is the listing, and a
+     * revision that did not mention a field means to keep it.
+     */
+    protected function copyableExperienceAttributes(Experience $experience): array
+    {
+        return collect($experience->getAttributes())
+            ->except([
+                'id', 'slug', 'created_at', 'updated_at',
+                'owner_provider_id', 'owner_type', 'hlh_id',
+                'approval_status', 'is_active', 'sort_order',
+                'submitted_at', 'submitted_by',
+                'approved_at', 'approved_by', 'rejection_reason',
+                'pending_changes', 'pending_submitted_at', 'pending_submitted_by',
+                // Photos are parked by stashExperienceUploads, which has
+                // already decided what the revision carries.
+                'card_image', 'gallery',
+            ])
+            ->map(fn ($value, $key) => $experience->getAttribute($key))
+            ->all();
+    }
+
     protected function experiencePayload(Request $request): array
     {
         // Read the POST bag directly rather than $request->except(): all()
@@ -7829,10 +8263,23 @@ class AjaxController extends Controller
         [$experience, $ownErr] = $this->resolveOwnExperience((int) $request->id, $sp);
         if ($ownErr) return $ownErr;
 
-        // Soft-remove: an experience may already sit inside booked itineraries,
-        // so it is deactivated rather than deleted out from under a trip.
-        $experience->update(['is_active' => false]);
-        return response()->json(['success' => true]);
+        // A listing that has been live may already sit inside booked
+        // itineraries, so it is deactivated rather than pulled out from under a
+        // trip. One that never was — a draft, or a listing still waiting on
+        // review — is in nobody's itinerary and is removed outright.
+        //
+        // Deactivating was the only path before, and an unapproved listing is
+        // already inactive: the host pressed Delete, was told it worked, and
+        // watched it stay on the list.
+        if ($experience->approval_status === 'approved') {
+            $experience->update(['is_active' => false]);
+
+            return response()->json(['success' => true, 'hidden' => true]);
+        }
+
+        $experience->delete();
+
+        return response()->json(['success' => true, 'deleted' => true]);
     }
 
     protected function getRegenerativeProjects(Request $request): JsonResponse
@@ -7873,6 +8320,20 @@ class AjaxController extends Controller
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        // Photos, judged on the file bag alone — see validateExperiencePhotos
+        // for why `gallery` cannot be validated off Request::all().
+        $photos = Validator::make([
+            "main_image" => $request->file("main_image"),
+            "gallery"    => $request->file("gallery"),
+        ], [
+            "main_image" => "nullable|image|mimes:jpg,jpeg,png,webp|max:10240",
+            "gallery"    => "nullable|array|max:30",
+            "gallery.*"  => "image|mimes:jpg,jpeg,png,webp|max:10240",
+        ]);
+        if ($photos->fails()) {
+            return response()->json(["error" => $photos->errors()->first()], 422);
         }
 
         $data = $request->except(["_token", "save_regenerative_project", "id", "project_id", "gallery"]);
@@ -8875,10 +9336,53 @@ class AjaxController extends Controller
         };
     }
 
+    /**
+     * The month a calendar request asks for.
+     *
+     * A cast alone let anything through: `year=abc` became 0 and `month=99` was
+     * carried into the following year, so the calendar answered for a month
+     * nobody asked about instead of saying the request was wrong.
+     */
+    protected function validateCalendarMonth(Request $request): ?JsonResponse
+    {
+        $validator = Validator::make($request->only(['year', 'month']), [
+            'year'  => 'nullable|integer|min:2000|max:2100',
+            'month' => 'nullable|integer|min:1|max:12',
+        ]);
+
+        return $validator->fails()
+            ? response()->json(['error' => $validator->errors()->first()], 422)
+            : null;
+    }
+
+    /**
+     * The days a block/unblock request names.
+     *
+     * Each one is parsed downstream, so anything that is not a date reached
+     * Carbon and came back as a 500 with no explanation.
+     */
+    protected function validateCalendarDates(Request $request): ?JsonResponse
+    {
+        $validator = Validator::make($request->only(['dates', 'notes']), [
+            'dates'   => 'required|array|min:1|max:400',
+            'dates.*' => 'required|date_format:Y-m-d',
+            'notes'   => 'nullable|string|max:1000',
+        ], [
+            'dates.required'   => 'No dates provided',
+            'dates.*.required' => 'Every date must be a day, written as YYYY-MM-DD.',
+            'dates.*.date_format' => 'Every date must be a day, written as YYYY-MM-DD.',
+        ]);
+
+        return $validator->fails()
+            ? response()->json(['error' => $validator->errors()->first()], 422)
+            : null;
+    }
+
     protected function getSpCalendar(Request $request): JsonResponse
     {
         [$sp, $err] = $this->resolveApprovedSp();
         if ($err) return $err;
+        if ($err = $this->validateCalendarMonth($request)) return $err;
 
         $year = (int) ($request->year ?: now()->year);
         $month = (int) ($request->month ?: now()->month);
@@ -9050,8 +9554,8 @@ class AjaxController extends Controller
         [$sp, $err] = $this->resolveApprovedSp();
         if ($err) return $err;
 
+        if ($err = $this->validateCalendarDates($request)) return $err;
         $dates = $request->input('dates', []);
-        if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
 
         $service = new SpAvailabilityService();
         $result = $service->blockDates($sp->id, $dates, $request->notes);
@@ -9067,9 +9571,9 @@ class AjaxController extends Controller
     {
         [$sp, $err] = $this->resolveApprovedSp();
         if ($err) return $err;
+        if ($err = $this->validateCalendarDates($request)) return $err;
 
         $dates = $request->input('dates', []);
-        if (empty($dates)) return response()->json(['error' => 'No dates provided'], 422);
 
         $service = new SpAvailabilityService();
         $count = $service->unblockDates($sp->id, $dates);
@@ -9112,6 +9616,8 @@ class AjaxController extends Controller
         if (!$user || !$user->isHct()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
+
+        if ($err = $this->validateCalendarMonth($request)) return $err;
 
         $sp = ServiceProvider::findOrFail($request->service_provider_id);
         $year = (int) ($request->year ?: now()->year);

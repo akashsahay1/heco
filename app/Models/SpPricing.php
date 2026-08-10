@@ -92,6 +92,12 @@ class SpPricing extends Model
         return $this->belongsTo(ServiceProvider::class);
     }
 
+    /** Optional extras that sit alongside this rate. */
+    public function addons()
+    {
+        return $this->hasMany(SpPricingAddon::class)->orderBy('sort_order');
+    }
+
     // Named "submitter" / "approver" (not submittedBy / approvedBy) to avoid
     // the relation's snake_case JSON key colliding with the FK column.
     public function submitter()

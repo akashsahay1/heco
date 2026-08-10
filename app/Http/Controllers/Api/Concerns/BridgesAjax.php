@@ -29,10 +29,14 @@ trait BridgesAjax
      */
     protected function ajax(string $key, array $params = [], ?Request $uploadsFrom = null): JsonResponse
     {
-        $payload = array_merge(
-            array_filter($params, static fn($v) => $v !== null),
-            [$key => 1],
-        );
+        // Nulls travel. They used to be filtered out here, which meant no text
+        // field could ever be cleared from the app: an emptied box arrives as
+        // "" , the framework's ConvertEmptyStringsToNull turns it into null,
+        // and dropping it left the handler seeing nothing at all — so the old
+        // value stayed and the member was told the profile had been updated.
+        // A browser form posts an emptied field exactly this way, and only()
+        // already omits keys the caller never sent.
+        $payload = array_merge($params, [$key => 1]);
 
         $sub = Request::create(
             '/ajax',

@@ -17,8 +17,10 @@ use Illuminate\Support\Facades\Log;
  */
 class ImageUploadService
 {
-    /** Allowed extensions (lower-case). */
-    public const ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'webp'];
+    /**
+     * What may be stored: JPEG, PNG and WebP. Decided from the bytes of each
+     * file, never from the name it arrived under.
+     */
 
     /**
      * Store an uploaded image. Returns the public-relative path
@@ -26,8 +28,19 @@ class ImageUploadService
      */
     public static function storeUploadedImage(UploadedFile $file, string $type, int $maxDimension = 512): ?string
     {
-        $ext = strtolower($file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'jpg');
-        if (!in_array($ext, self::ALLOWED_EXT, true)) {
+        // The name a browser sends is a claim, not a fact. Trusting it meant a
+        // file called photo.jpg was stored under public/ whatever was actually
+        // inside it — GD would decline to resize it and the original bytes were
+        // moved across verbatim. Read the type out of the bytes instead, the
+        // same way storeRemoteImage already does.
+        $info = @getimagesize($file->getRealPath());
+        $ext = $info === false ? null : match ($info[2]) {
+            IMAGETYPE_JPEG => 'jpg',
+            IMAGETYPE_PNG  => 'png',
+            IMAGETYPE_WEBP => 'webp',
+            default        => null,
+        };
+        if ($ext === null) {
             return null;
         }
 
