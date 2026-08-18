@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ProviderController;
+use App\Http\Controllers\Api\V1\VoiceController;
 use App\Http\Controllers\Api\V1\LegalController;
 use App\Http\Controllers\Api\V1\ReferenceController;
 use Illuminate\Support\Facades\Route;
@@ -76,6 +77,12 @@ Route::prefix('v1')->group(function () {
             Route::post('experiences', [ProviderController::class, 'saveExperience']);
             Route::post('experiences/{id}/toggle', [ProviderController::class, 'toggleExperience'])->whereNumber('id');
             Route::delete('experiences/{id}', [ProviderController::class, 'deleteExperience'])->whereNumber('id');
+
+            // The voice assistant that fills those two forms. One turn per
+            // call: a recording goes up, fields and the next question come
+            // back. See Api\V1\VoiceController.
+            Route::post('voice/start', [VoiceController::class, 'start']);
+            Route::post('voice/turn', [VoiceController::class, 'turn']);
         });
 
         Route::post('support', [ProviderController::class, 'requestSupport']);

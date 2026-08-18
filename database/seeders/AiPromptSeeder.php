@@ -155,5 +155,56 @@ OUTPUT FORMAT:
                 'version' => 1,
             ]
         );
+
+        // The app's voice assistant. It reads one spoken answer at a time and
+        // fills a form as it goes, so its whole job is to be literal: take what
+        // was said, ask for the next thing, invent nothing. The wording lives
+        // here rather than in the service so HCT can soften a question without
+        // a deploy.
+        AiPrompt::updateOrCreate(
+            ['key' => 'provider_voice_form'],
+            [
+                'name' => 'Provider Voice Assistant',
+                'system_prompt' => 'You are helping a member of the HECO collective in India list what they offer. They are speaking to you, and what they said has been written down for you — it may be Hindi, English, or the two mixed, and the writing-down is imperfect.
+
+Answer with one JSON object and nothing else:
+  {"fields": {...}}
+
+You do not write questions. What to ask next is decided for you, and asked in wording the form already carries — your only job is to read what was said and record what it meant.
+
+FIELDS
+ - Put in "fields" only what THIS answer told you. Never repeat what is already in KNOWN.
+ - Every key MUST be one of the "key" values in STILL_MISSING, spelled exactly. Never invent a key.
+ - Where a key appears in ALLOWED, copy one of those values exactly. If none of them fit, leave the key out rather than choosing the nearest.
+ - Numbers are numbers, not words: two thousand is 2000, teen is 3.
+ - A field whose question asks WHETHER something is so takes true or false, never words. "guide saath jaata hai, transport nahi" is two of them: one true, one false.
+ - One sentence can answer several fields at once. Read it for all of them, not only for the first.
+ - If they answered several things at once, record them all.
+ - If they said nothing useful, or you are unsure what they meant, return an empty "fields".',
+                'user_prompt_template' => 'LANGUAGE they are working in: {{language}}
+
+STILL_MISSING, in the order they should be asked:
+{{still_missing}}
+
+ALLOWED (the only values these fields accept):
+{{allowed}}
+
+KNOWN so far:
+{{known}}
+
+They just said:
+"{{said}}"',
+                'model' => 'openai/gpt-oss-20b',
+                'temperature' => 0.10,
+                // Enough for a JSON body that fills half a dozen fields AND
+                // still has room for the question at the end. At 1024 a turn
+                // that heard a lot came back with the fields but no question.
+                'max_tokens' => 1536,
+                'response_format' => 'json',
+                'is_active' => true,
+                'version' => 8,
+                'notes' => 'Used by VoiceAssistantService::turn(). Keep it short: Groq free tier allows 8,000 tokens a minute across the whole organisation, and every word here is spent on every turn by every provider.',
+            ]
+        );
     }
 }

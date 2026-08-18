@@ -37,6 +37,13 @@ class SettingSeeder extends Seeder
             ['key' => 'support_email', 'value' => '', 'group' => 'general'],
             ['key' => 'support_phone', 'value' => '', 'group' => 'general'],
             ['key' => 'support_hours', 'value' => '', 'group' => 'general'],
+            // How the voice assistant opens, and the one thing it asks before
+            // it starts on the form. Kept here rather than in the app so HCT
+            // can change how the collective greets a new member without
+            // shipping a build. English, because it is said before anyone has
+            // chosen a language — the very next thing asked is which one.
+            ['key' => 'voice_greeting', 'value' => 'Hello from HECO. I can fill this form in for you — just talk to me.', 'group' => 'general'],
+            ['key' => 'voice_language_question', 'value' => 'Which language would you like to speak in — Hindi or English?', 'group' => 'general'],
             ['key' => 'ollama_enabled', 'value' => '1', 'group' => 'ai'],
             ['key' => 'default_ai_model', 'value' => 'mistral', 'group' => 'ai'],
         ];
