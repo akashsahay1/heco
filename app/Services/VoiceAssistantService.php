@@ -26,6 +26,13 @@ use Illuminate\Support\Facades\Log;
 class VoiceAssistantService
 {
     /**
+     * The experience category that is a place to stay rather than something
+     * that happens at a time. Spelled as HCT keeps it in the system list, and
+     * as the app's own form spells it.
+     */
+    private const STAY = 'Experiential accommodation';
+
+    /**
      * How many unanswered fields to carry option lists for.
      *
      * The lists are what cost: sending every one of them on every turn spent
@@ -72,7 +79,8 @@ class VoiceAssistantService
                     'en' => 'What are you offering — a place to stay, a vehicle, a guide, an activity, or something you rent out?',
                 ],
                 'type' => 'string',
-                'only' => ['accommodation', 'transport', 'guide', 'activity', 'rental'],
+                'only' => ['accommodation', 'transport', 'guide', 'activity', 'rental', 'other'],
+                'skippable' => false,
             ],
         ];
 
@@ -80,18 +88,17 @@ class VoiceAssistantService
         // next: every field below belongs to one kind of service.
         return $common + match ($known['service_type'] ?? null) {
             'accommodation' => [
-                'category' => ['label' => 'Property name', 'ask' => 'what their place is called', 'q' => ['hi' => 'आपकी जगह का नाम क्या है?', 'en' => 'What is your place called?'], 'type' => 'string'],
-                'comfort_tier' => ['label' => 'Comfort tier', 'ask' => 'what sort of place it is', 'q' => ['hi' => 'यह किस तरह की जगह है?', 'en' => 'What sort of place is it?'], 'type' => 'string', 'list' => 'accommodation_category'],
-                'room_category' => ['label' => 'Room category', 'ask' => 'what kind of room they are pricing', 'q' => ['hi' => 'आप किस तरह के कमरे का दाम बता रहे हैं?', 'en' => 'Which kind of room are you pricing?'], 'type' => 'string', 'list' => 'room_category'],
-                'total_rooms' => ['label' => 'Total rooms', 'ask' => 'how many rooms of that kind they have', 'q' => ['hi' => 'ऐसे कितने कमरे हैं आपके पास?', 'en' => 'How many such rooms do you have?'], 'type' => 'int'],
-                'default_occupancy' => ['label' => 'Default occupancy', 'ask' => 'how many people sleep in one such room', 'q' => ['hi' => 'एक कमरे में कितने लोग रह सकते हैं?', 'en' => 'How many people stay in one such room?'], 'type' => 'string', 'list' => 'occupancy_unit'],
-                'price' => ['label' => 'Rate per night (Rs)', 'ask' => 'what one room costs', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
-                'unit' => ['label' => 'Unit', 'ask' => 'whether that price is per night or per person', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
-                'meal_plan' => ['label' => 'Meal plan', 'ask' => 'which meals are included in that price', 'q' => ['hi' => 'इस दाम में कौन सा खाना शामिल है?', 'en' => 'Which meals are included in that price?'], 'type' => 'string', 'list' => 'meal_plan'],
-                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
+            'category' => ['label' => 'Property name', 'ask' => 'what their place is called', 'q' => ['hi' => 'आपकी जगह का नाम क्या है?', 'en' => 'What is your place called?'], 'type' => 'string'],
+            'comfort_tier' => ['label' => 'Comfort tier', 'ask' => 'what sort of place it is', 'q' => ['hi' => 'यह किस तरह की जगह है?', 'en' => 'What sort of place is it?'], 'type' => 'string', 'list' => 'accommodation_category'],
+            'room_category' => ['label' => 'Room category', 'ask' => 'what kind of room they are pricing', 'q' => ['hi' => 'आप किस तरह के कमरे का दाम बता रहे हैं?', 'en' => 'Which kind of room are you pricing?'], 'type' => 'string', 'list' => 'room_category'],
+            'total_rooms' => ['label' => 'Total rooms', 'ask' => 'how many rooms of that kind they have', 'q' => ['hi' => 'ऐसे कितने कमरे हैं आपके पास?', 'en' => 'How many such rooms do you have?'], 'type' => 'int'],
+            'price' => ['label' => 'Rate per night (Rs)', 'ask' => 'what one room costs', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
+                        'meal_plan' => ['label' => 'Meal plan', 'ask' => 'which meals are included in that price', 'q' => ['hi' => 'इस दाम में कौन सा खाना शामिल है?', 'en' => 'Which meals are included in that price?'], 'type' => 'string', 'list' => 'meal_plan'],
+            'default_occupancy' => ['label' => 'Default occupancy', 'ask' => 'whether the room is normally sold as a single, a double, and so on', 'q' => ['hi' => 'यह कमरा आम तौर पर किस हिसाब से दिया जाता है — सिंगल, डबल या कोई और?', 'en' => 'How is this room normally sold — as a single, a double, or something else?'], 'type' => 'string', 'list' => 'occupancy_unit'],
+            'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'transport' => [
-                'category' => ['label' => 'Service name', 'ask' => 'what to call this vehicle on their rate card', 'q' => ['hi' => 'आपकी जगह का नाम क्या है?', 'en' => 'What is your place called?'], 'type' => 'string'],
+                'category' => ['label' => 'Service name', 'ask' => 'what to call this vehicle on their rate card', 'q' => ['hi' => 'इस गाड़ी को रेट कार्ड पर क्या नाम दें?', 'en' => 'What should this vehicle be called on your rate card?'], 'type' => 'string'],
                 'vehicle_type' => ['label' => 'Vehicle type', 'ask' => 'what kind of vehicle it is', 'q' => ['hi' => 'गाड़ी कौन सी है?', 'en' => 'What kind of vehicle is it?'], 'type' => 'string', 'list' => 'vehicle_type'],
                 'vehicle_capacity' => ['label' => 'Seating capacity', 'ask' => 'how many passengers it seats', 'q' => ['hi' => 'इसमें कितने लोग बैठ सकते हैं?', 'en' => 'How many passengers does it seat?'], 'type' => 'int'],
                 'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
@@ -100,14 +107,18 @@ class VoiceAssistantService
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'guide' => [
-                'category' => ['label' => 'Service name', 'ask' => 'what to call this guiding service', 'q' => ['hi' => 'आपकी जगह का नाम क्या है?', 'en' => 'What is your place called?'], 'type' => 'string'],
+                // The form's own control here is a picker over HCT's guide
+                // types, not a free-text box. Treated as free text, whatever
+                // the member said was stored and then shown as an empty
+                // "Select" — a value they could neither see nor correct.
+                'category' => ['label' => 'Guide type / language', 'ask' => 'what kind of guiding they do', 'q' => ['hi' => 'आप किस तरह की गाइडिंग करते हैं?', 'en' => 'What kind of guiding do you do?'], 'type' => 'string', 'list' => 'guide_preference'],
                 'specialties' => ['label' => 'Specialties', 'ask' => 'what they guide — birds, forest, culture, and so on', 'q' => ['hi' => 'आप किस चीज़ के बारे में बताते हैं?', 'en' => 'What is it that you show people?'], 'type' => 'string'],
                 'price' => ['label' => 'Rate per day (Rs)', 'ask' => 'what they charge for a day', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
-                'unit' => ['label' => 'Unit', 'ask' => 'whether that is per day or per person', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
-                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
+                                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'activity' => [
-                'category' => ['label' => 'Service name', 'ask' => 'what the activity is called', 'q' => ['hi' => 'आपकी जगह का नाम क्या है?', 'en' => 'What is your place called?'], 'type' => 'string'],
+                // Also a picker in the form, over HCT's activity types.
+                'category' => ['label' => 'Activity type', 'ask' => 'what kind of activity it is', 'q' => ['hi' => 'यह किस तरह की गतिविधि है?', 'en' => 'What kind of activity is it?'], 'type' => 'string', 'list' => 'activity_type'],
                 'specialties' => ['label' => 'Specialties', 'ask' => 'what the activity involves', 'q' => ['hi' => 'आप किस चीज़ के बारे में बताते हैं?', 'en' => 'What is it that you show people?'], 'type' => 'string'],
                 'price' => ['label' => 'Rate (Rs)', 'ask' => 'what it costs', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
                 'unit' => ['label' => 'Unit', 'ask' => 'whether that price is per person or per group', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
@@ -115,11 +126,20 @@ class VoiceAssistantService
                 'max_group' => ['label' => 'Max group size', 'ask' => 'the largest group they will take', 'q' => ['hi' => 'ज़्यादा से ज़्यादा कितने लोगों का समूह ले सकते हैं?', 'en' => 'What is the largest group you will take?'], 'type' => 'int'],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
+            // The form offers this too, and without an arm of its own the
+            // schema held nothing but service_type — which `known` already
+            // answered — so the assistant said "that is everything I can ask
+            // about" over a completely empty form.
+            'other' => [
+                'category' => ['label' => 'Service name', 'ask' => 'what to call this service', 'q' => ['hi' => 'इस सेवा को क्या नाम दें?', 'en' => 'What should this service be called?'], 'type' => 'string'],
+                'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
+                'unit' => ['label' => 'Unit', 'ask' => 'what that price is for', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
+                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
+            ],
             'rental' => [
                 'rental_item' => ['label' => 'Item on rent', 'ask' => 'what they rent out', 'q' => ['hi' => 'आप किराये पर क्या देते हैं?', 'en' => 'What do you rent out?'], 'type' => 'string'],
                 'price' => ['label' => 'Rate (Rs)', 'ask' => 'what it costs to rent', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
-                'unit' => ['label' => 'Unit', 'ask' => 'whether that is per day or per person', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
-                'security_deposit' => ['label' => 'Security deposit (Rs)', 'ask' => 'what deposit they hold, if any', 'q' => ['hi' => 'कितनी रकम जमानत के तौर पर रखते हैं?', 'en' => 'What deposit do you hold?'], 'type' => 'number'],
+                                'security_deposit' => ['label' => 'Security deposit (Rs)', 'ask' => 'what deposit they hold, if any', 'q' => ['hi' => 'कितनी रकम जमानत के तौर पर रखते हैं?', 'en' => 'What deposit do you hold?'], 'type' => 'number'],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             default => [],
@@ -134,11 +154,24 @@ class VoiceAssistantService
      */
     private function experienceSchema(array $known): array
     {
-        $opening = [
+        // The order the app's own form lays these out in, section by section:
+        // Basic information, then Duration & schedule, Inclusions, Location,
+        // Requirements, Costing, and Practical information last. A member
+        // answering aloud is working down the same page they would otherwise
+        // be tapping through, so the two must not drift apart.
+        $basic = [
+            'category' => ['label' => 'What kind of experience is this?', 'ask' => 'which category it belongs to', 'q' => ['hi' => 'यह किस श्रेणी का अनुभव है?', 'en' => 'Which category does this experience belong to?'], 'type' => 'string', 'list' => 'experience_category'],
             'name' => ['label' => 'Name', 'ask' => 'what the experience is called', 'q' => ['hi' => 'इस अनुभव का नाम क्या है?', 'en' => 'What is this experience called?'], 'type' => 'string'],
             'type' => ['label' => 'Type', 'ask' => 'what sort of experience it is', 'q' => ['hi' => 'यह किस तरह का अनुभव है?', 'en' => 'What sort of experience is it?'], 'type' => 'string', 'list' => 'experience_type'],
-            'category' => ['label' => 'What kind of experience is this?', 'ask' => 'which category it belongs to', 'q' => ['hi' => 'आपकी जगह का नाम क्या है?', 'en' => 'What is your place called?'], 'type' => 'string', 'list' => 'experience_category'],
             'short_description' => ['label' => 'Short description', 'ask' => 'a sentence or two describing it to a traveller', 'q' => ['hi' => 'एक-दो लाइन में बताइए, यात्री को इसमें क्या मिलेगा?', 'en' => 'In a line or two, what does a traveller get from it?'], 'type' => 'string'],
+            'long_description' => ['label' => 'Long description', 'ask' => 'the fuller story of the experience', 'q' => ['hi' => 'इस अनुभव की पूरी बात बताइए।', 'en' => 'Tell me the fuller story of this experience.'], 'type' => 'string'],
+            'unique_description' => ['label' => 'What makes it unique', 'ask' => 'what makes this one different from anyone else offering something similar', 'q' => ['hi' => 'इसमें ऐसा क्या है जो और कहीं नहीं मिलेगा?', 'en' => 'What is there in this that a traveller would not find elsewhere?'], 'type' => 'string'],
+            'cultural_context' => ['label' => 'Cultural context', 'ask' => 'anything about the place or its people a visitor ought to understand', 'q' => ['hi' => 'यहाँ के लोगों या रीति-रिवाज़ के बारे में यात्री को क्या समझना चाहिए?', 'en' => 'What should a visitor understand about this place and its people?'], 'type' => 'string'],
+        ];
+
+        // Duration & schedule. What the duration means in numbers depends on
+        // which duration it is, so the follow-up appears only once they say.
+        $duration = [
             'duration_type' => [
                 'label' => 'Duration type',
                 'ask' => 'whether it takes a few hours, a whole day, or several days',
@@ -149,12 +182,10 @@ class VoiceAssistantService
                 'type' => 'string',
                 'only' => ['less_than_day', 'single_day', 'multi_day'],
             ],
-        ];
-
-        // What the duration means in numbers depends on which duration it is,
-        // so the follow-up appears only once they have said which.
-        $duration = match ($known['duration_type'] ?? null) {
-            'less_than_day' => ['duration_hours' => ['label' => 'Duration (hours)', 'ask' => 'how many hours it takes', 'q' => ['hi' => 'कितने घंटे लगते हैं?', 'en' => 'How many hours does it take?'], 'type' => 'number']],
+        ] + match ($known['duration_type'] ?? null) {
+            'less_than_day' => [
+                'duration_hours' => ['label' => 'Duration (hours)', 'ask' => 'how many hours it takes', 'q' => ['hi' => 'कितने घंटे लगते हैं?', 'en' => 'How many hours does it take?'], 'type' => 'number'],
+            ],
             'multi_day' => [
                 'duration_days' => ['label' => 'Days', 'ask' => 'how many days it runs', 'q' => ['hi' => 'कितने दिन चलता है?', 'en' => 'How many days does it run?'], 'type' => 'int'],
                 'duration_nights' => ['label' => 'Nights', 'ask' => 'how many nights that includes', 'q' => ['hi' => 'इसमें कितनी रातें आती हैं?', 'en' => 'How many nights does that include?'], 'type' => 'int'],
@@ -162,13 +193,34 @@ class VoiceAssistantService
             default => [],
         };
 
-        return $opening + $duration + [
-            'group_size_min' => ['label' => 'Min group size', 'ask' => 'the smallest group they will take', 'q' => ['hi' => 'कम से कम कितने लोग होने चाहिए?', 'en' => 'What is the smallest group you will take?'], 'type' => 'int'],
-            'group_size_max' => ['label' => 'Max group size', 'ask' => 'the largest group they will take', 'q' => ['hi' => 'ज़्यादा से ज़्यादा कितने लोग आ सकते हैं?', 'en' => 'What is the largest group you will take?'], 'type' => 'int'],
-            'base_cost_per_person' => ['label' => 'Price pp (Rs)', 'ask' => 'what one person pays', 'q' => ['hi' => 'एक व्यक्ति का कितना लगता है?', 'en' => 'What does one person pay?'], 'type' => 'number'],
+        // A stay is not a scheduled thing. The app's own form drops Duration,
+        // Requirements and Costing the moment the category is a stay, and puts
+        // rooms and beds in their place — so asking a homestay owner how hard
+        // their experience is, and never asking how many rooms they have, both
+        // stop here rather than being tidied up afterwards.
+        if (($known['category'] ?? null) === self::STAY) {
+            return $basic + [
+                // The Inclusions section is not hidden for a stay, so a member
+                // correcting "no, the stay itself is not part of it" must have
+                // somewhere for that to land.
+                'includes_accommodation' => ['label' => 'Accommodation', 'ask' => 'whether a place to stay is included', 'q' => ['hi' => 'रहने का इंतज़ाम इसमें शामिल है?', 'en' => 'Is a place to stay included?'], 'type' => 'bool'],
+                'includes_guide' => ['label' => 'Guide', 'ask' => 'whether a guide comes with it', 'q' => ['hi' => 'इसके साथ गाइड जाता है क्या?', 'en' => 'Does a guide go along with it?'], 'type' => 'bool'],
+                'includes_transport' => ['label' => 'Transport', 'ask' => 'whether transport is included', 'q' => ['hi' => 'आने-जाने का इंतज़ाम इसमें शामिल है?', 'en' => 'Is transport included?'], 'type' => 'bool'],
+                'area' => ['label' => 'Area', 'ask' => 'the valley or area it happens in', 'q' => ['hi' => 'यह किस इलाके में होता है?', 'en' => 'Which area does it take place in?'], 'type' => 'string'],
+                'total_rooms' => ['label' => 'Rooms', 'ask' => 'how many rooms the place has', 'q' => ['hi' => 'इस जगह में कितने कमरे हैं?', 'en' => 'How many rooms does the place have?'], 'type' => 'int'],
+                'total_guests' => ['label' => 'Guests it sleeps', 'ask' => 'how many guests it sleeps in all', 'q' => ['hi' => 'कुल कितने मेहमान रुक सकते हैं?', 'en' => 'How many guests can stay in all?'], 'type' => 'int'],
+                'traveller_bring_list' => ['label' => 'What travellers should bring', 'ask' => 'what a traveller should bring', 'q' => ['hi' => 'यात्री को अपने साथ क्या लाना चाहिए?', 'en' => 'What should a traveller bring with them?'], 'type' => 'string'],
+            ];
+        }
+
+        return $basic + $duration + [
+            // Inclusions
+            'includes_accommodation' => ['label' => 'Accommodation', 'ask' => 'whether a place to stay is included', 'q' => ['hi' => 'रहने का इंतज़ाम इसमें शामिल है?', 'en' => 'Is a place to stay included?'], 'type' => 'bool'],
             'includes_guide' => ['label' => 'Guide', 'ask' => 'whether a guide comes with it', 'q' => ['hi' => 'इसके साथ गाइड जाता है क्या?', 'en' => 'Does a guide go along with it?'], 'type' => 'bool'],
             'includes_transport' => ['label' => 'Transport', 'ask' => 'whether transport is included', 'q' => ['hi' => 'आने-जाने का इंतज़ाम इसमें शामिल है?', 'en' => 'Is transport included?'], 'type' => 'bool'],
-            'includes_accommodation' => ['label' => 'Accommodation', 'ask' => 'whether a place to stay is included', 'q' => ['hi' => 'रहने का इंतज़ाम इसमें शामिल है?', 'en' => 'Is a place to stay included?'], 'type' => 'bool'],
+            // Location
+            'area' => ['label' => 'Area', 'ask' => 'the valley or area it happens in', 'q' => ['hi' => 'यह किस इलाके में होता है?', 'en' => 'Which area does it take place in?'], 'type' => 'string'],
+            // Requirements
             'difficulty_level' => [
                 'label' => 'Difficulty level',
                 'ask' => 'how hard it is physically',
@@ -177,10 +229,14 @@ class VoiceAssistantService
                     'en' => 'How hard is it physically?',
                 ],
                 'type' => 'string',
-                'only' => ['easy', 'moderate', 'challenging'],
+                'only' => ['easy', 'moderate', 'challenging', 'extreme'],
             ],
+            'group_size_min' => ['label' => 'Min group size', 'ask' => 'the smallest group they will take', 'q' => ['hi' => 'कम से कम कितने लोग होने चाहिए?', 'en' => 'What is the smallest group you will take?'], 'type' => 'int'],
+            'group_size_max' => ['label' => 'Max group size', 'ask' => 'the largest group they will take', 'q' => ['hi' => 'ज़्यादा से ज़्यादा कितने लोग आ सकते हैं?', 'en' => 'What is the largest group you will take?'], 'type' => 'int'],
+            // Costing
+            'base_cost_per_person' => ['label' => 'Price pp (Rs)', 'ask' => 'what one person pays', 'q' => ['hi' => 'एक व्यक्ति का कितना लगता है?', 'en' => 'What does one person pay?'], 'type' => 'number'],
+            // Practical information
             'traveller_bring_list' => ['label' => 'What travellers should bring', 'ask' => 'what a traveller should bring', 'q' => ['hi' => 'यात्री को अपने साथ क्या लाना चाहिए?', 'en' => 'What should a traveller bring with them?'], 'type' => 'string'],
-            'long_description' => ['label' => 'Long description', 'ask' => 'the fuller story of the experience', 'q' => ['hi' => 'इस अनुभव की पूरी बात बताइए।', 'en' => 'Tell me the fuller story of this experience.'], 'type' => 'string'],
         ];
     }
 
@@ -202,10 +258,11 @@ class VoiceAssistantService
         array $known,
         string $said,
         string $language = 'hi',
+        array $skipped = [],
         bool $reread = true,
     ): array
     {
-        $asked = $this->nextField($form, $known);
+        $asked = $this->nextField($form, $known, $skipped);
 
         // Nothing said means nothing to read: hand back the question for
         // wherever the form has got to, without troubling the model at all.
@@ -263,6 +320,15 @@ class VoiceAssistantService
                 )),
                 JSON_UNESCAPED_UNICODE,
             ),
+            // Which question they are answering. Without it the model read the
+            // sentence for whatever struck it as most interesting — "three days
+            // in the hills, with a guide", said in answer to "describe it in a
+            // line", came back as a statement about duration and nothing else.
+            'asked' => sprintf(
+                'about the field "%s" — %s.',
+                $asked,
+                $schema[$asked]['ask'] ?? '',
+            ),
             'allowed' => $allowed ? json_encode($allowed, JSON_UNESCAPED_UNICODE) : '(none — these are free text)',
             'known' => $known ? json_encode($known, JSON_UNESCAPED_UNICODE) : '(nothing yet)',
             'language' => $language === 'en' ? 'English' : 'Hindi',
@@ -314,8 +380,20 @@ class VoiceAssistantService
                     'done' => false, 'rejected' => [], 'unavailable' => false];
         }
 
-        $checked = $this->keepValid($form, $known, (array) ($data['fields'] ?? []));
-        $filled = $known + $checked['fields'];
+        // On a re-read the member is still answering the question that was put
+        // to them before the form grew — the fields that just appeared have not
+        // been asked about at all. Treating the newly opened one as "asked"
+        // let exactly the guesses ASK_ONLY exists to stop back in.
+        $checked = $this->keepValid(
+            $form,
+            $known,
+            (array) ($data['fields'] ?? []),
+            $reread ? $asked : null,
+        );
+        // This turn's answers win. Written the other way round, a member who
+        // said "no, the name is Pradeep Homestay, not just Homestay" had their
+        // correction quietly dropped in favour of the guess it was correcting.
+        $filled = $checked['fields'] + $known;
 
         // Some answers change the shape of the form. Until a member says they
         // are offering a place to stay, a rate card has no room count to fill,
@@ -324,7 +402,7 @@ class VoiceAssistantService
         // has just grown, read the same sentence once more against the fields
         // that now exist. Once only: the second pass cannot grow it again.
         if ($reread && count($this->schema($form, $filled)) > count($schema)) {
-            $again = $this->turn($form, $filled, $said, $language, false);
+            $again = $this->turn($form, $filled, $said, $language, $skipped, false);
 
             return [
                 'fields' => $checked['fields'] + $again['fields'],
@@ -341,15 +419,16 @@ class VoiceAssistantService
         // The next field is decided here, in the form's own order, and its own
         // question is read out. The model's part is done: it heard what was
         // said and said what it meant, and it is not asked what to ask next.
-        $next = $this->nextField($form, $filled);
+        $next = $this->nextField($form, $filled, $skipped);
 
         return [
             'fields' => $checked['fields'],
             'reply' => $next === null ? null : $this->questionFor($form, $next, $language, $filled),
             'asked' => $next,
             'label' => $next === null ? null : $this->labelFor($form, $next, $filled),
+            'rejected' => $checked['rejected'],
             'choices' => $next === null ? null : $this->choicesFor($form, $next, $filled),
-            'done' => $this->nextField($form, $filled) === null,
+            'done' => $this->nextField($form, $filled, $skipped) === null,
             'rejected' => $checked['rejected'],
             'unavailable' => false,
         ];
@@ -442,6 +521,29 @@ class VoiceAssistantService
         return $this->schema($form, $known)[$field]['label'] ?? null;
     }
 
+    /**
+     * Fields that may only be filled on the turn they are asked about.
+     *
+     * The model reads one sentence and offers values for anything it thinks it
+     * can deduce. Mostly that is a gift — "three rooms, two thousand a night"
+     * is two answers in one breath. For these it is not: each was seen being
+     * invented from context rather than heard, and a field once filled is
+     * never asked again, so the guess is unreachable.
+     *
+     *   service_type, duration_type   decide the shape of the rest of the form
+     *   comfort_tier, type            a classification, deduced from a word in
+     *                                 the name — "homestay" made it Cat D
+     *   rental_item                   came back as the placeholder "items"
+     *   duration_days, _nights        a count nobody stated
+     *
+     * Everything else stays open to being answered early, which is most of the
+     * value of talking rather than tapping.
+     */
+    private const ASK_ONLY = [
+        'service_type', 'duration_type', 'comfort_tier', 'type',
+        'rental_item', 'duration_days', 'duration_nights',
+    ];
+
     /** The values a field will accept, or null when it takes free text. */
     public function allowedFor(array $field): ?array
     {
@@ -458,14 +560,25 @@ class VoiceAssistantService
     /**
      * Which field to ask about next, or null when there is nothing left.
      *
+     * `$skipped` is what the member has passed over. Without it the assistant
+     * had no way to finish: a note nobody wants to leave, or an answer it
+     * cannot make sense of, meant the same question for ever with no way
+     * forward and no way to say so.
+     *
      * The code decides this, not the model. Letting a small model run the
      * conversation as well as read it meant it wandered — asking twice for the
      * same thing, or skipping ahead to a field that does not exist for the kind
      * of service it had just been told about.
      */
-    public function nextField(string $form, array $known): ?string
+    public function nextField(string $form, array $known, array $skipped = []): ?string
     {
         foreach ($this->schema($form, $known) as $key => $field) {
+            // A field that decides the shape of the rest cannot be passed over:
+            // skipping it left nothing to ask, and the sheet announced "that is
+            // everything I can ask about" over a completely empty form.
+            if (in_array($key, $skipped, true) && ($field['skippable'] ?? true)) {
+                continue;
+            }
             $value = $known[$key] ?? null;
             if ($value === null || $value === '' || $value === []) {
                 return $key;
@@ -484,9 +597,10 @@ class VoiceAssistantService
      *
      * @return array{fields:array<string,mixed>,rejected:array<int,string>}
      */
-    public function keepValid(string $form, array $known, array $offered): array
+    public function keepValid(string $form, array $known, array $offered, ?string $asked = null): array
     {
         $schema = $this->schema($form, $known);
+        $lengths = $this->lengths($form);
         $fields = [];
         $rejected = [];
 
@@ -494,6 +608,13 @@ class VoiceAssistantService
             $field = $schema[$key] ?? null;
             if (! $field || $value === null || $value === '') {
                 $rejected[] = (string) $key;
+                continue;
+            }
+
+            // Offered without being asked, and of a kind that gets guessed.
+            // Dropped quietly rather than reported: the member said nothing
+            // about it, so telling them it was refused would be a puzzle.
+            if ($key !== $asked && in_array($key, self::ASK_ONLY, true)) {
                 continue;
             }
 
@@ -521,10 +642,36 @@ class VoiceAssistantService
                 $rejected[] = (string) $key;
                 continue;
             }
+
+            // Speech runs on where a form field stops. A member asked for "a
+            // note for HECO" may talk for a paragraph, and the column holds
+            // 255 characters — without this the save fails at the very end
+            // with a message that says nothing about the assistant.
+            $limit = $lengths[$key] ?? null;
+            if ($limit !== null && is_string($cast) && mb_strlen($cast) > $limit) {
+                $cast = rtrim(mb_substr($cast, 0, $limit - 1)) . '…';
+            }
+
             $fields[$key] = $cast;
         }
 
         return ['fields' => $fields, 'rejected' => $rejected];
+    }
+
+    /**
+     * What the columns behind each form will actually hold.
+     *
+     * Taken from the same rules the save endpoints enforce, so a spoken answer
+     * is trimmed here rather than rejected there — where the member would see a
+     * 422 about a field they never typed in.
+     */
+    private function lengths(string $form): array
+    {
+        return $form === 'rate'
+            ? ['category' => 100, 'description' => 255, 'specialties' => 500,
+               'unit' => 50, 'rental_item' => 150]
+            : ['name' => 255, 'short_description' => 500, 'area' => 255,
+               'long_description' => 65000];
     }
 
     /** Null when the value is not the shape the column needs. */
@@ -532,7 +679,13 @@ class VoiceAssistantService
     {
         return match ($type) {
             'int' => is_numeric($value) ? (int) $value : null,
-            'number' => is_numeric($value) ? (float) $value : null,
+            // Whole where it is whole. A price handed back as 2000.0 was
+            // written into a digits-only box as "2000.0"; the moment the member
+            // typed one more digit the formatter swept the point away and two
+            // thousand became two hundred thousand.
+            'number' => is_numeric($value)
+                ? ((float) $value == (int) $value ? (int) $value : (float) $value)
+                : null,
             'bool' => is_bool($value)
                 ? $value
                 : (in_array(mb_strtolower(trim((string) $value)), ['1', 'true', 'yes', 'haan', 'ha'], true)
@@ -540,7 +693,33 @@ class VoiceAssistantService
                     : (in_array(mb_strtolower(trim((string) $value)), ['0', 'false', 'no', 'nahi', 'nahin'], true)
                         ? false
                         : null)),
-            default => is_scalar($value) ? trim((string) $value) : null,
+            // A person asked what to bring says "shoes, a warm jacket, a torch
+            // and water", and the model hands that back as a list. Refusing it
+            // for not being a string left the field empty and the same question
+            // asked over and over, with nothing on screen to say why.
+            default => is_array($value)
+                ? ($this->tidy(implode(', ', array_filter(array_map(
+                    fn ($item) => is_scalar($item) ? trim((string) $item) : '',
+                    $value,
+                )))) ?: null)
+                : (is_scalar($value) ? ($this->tidy((string) $value) ?: null) : null),
         };
+    }
+
+    /**
+     * Straighten out what the model wrote before it reaches a column.
+     *
+     * It favours typographic characters — a non-breaking hyphen in "3‑day", a
+     * curly apostrophe — which display perfectly well and then fail to match
+     * anything anyone types or searches for.
+     */
+    private function tidy(string $value): string
+    {
+        return trim(strtr($value, [
+            "\u{2011}" => '-',   // non-breaking hyphen
+            "\u{2013}" => '-',   // en dash
+            "\u{2019}" => "'",   // right single quote
+            "\u{00A0}" => ' ',   // non-breaking space
+        ]));
     }
 }

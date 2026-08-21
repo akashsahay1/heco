@@ -83,6 +83,8 @@ Route::prefix('v1')->group(function () {
             // back. See Api\V1\VoiceController.
             Route::post('voice/start', [VoiceController::class, 'start']);
             Route::post('voice/turn', [VoiceController::class, 'turn']);
+            // Moving on from a field without answering it. No model, no cost.
+            Route::post('voice/next', [VoiceController::class, 'next']);
         });
 
         Route::post('support', [ProviderController::class, 'requestSupport']);

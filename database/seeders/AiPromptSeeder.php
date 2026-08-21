@@ -173,15 +173,22 @@ Answer with one JSON object and nothing else:
 You do not write questions. What to ask next is decided for you, and asked in wording the form already carries — your only job is to read what was said and record what it meant.
 
 FIELDS
- - Put in "fields" only what THIS answer told you. Never repeat what is already in KNOWN.
- - Every key MUST be one of the "key" values in STILL_MISSING, spelled exactly. Never invent a key.
+ - The line above says which field they were just asked about. Whatever they said is, first and last, an answer to THAT field: fill it unless they plainly declined or spoke about something else entirely. "Three days walking in the hills, with a guide", said in answer to "describe it in a line or two", is the description — not a statement about how long it runs.
+ - Put in "fields" only what THIS answer told you. Do not repeat what is already in KNOWN unchanged.
+ - But DO record a correction. If they are putting right something already in KNOWN — "no, three thousand, not two", "the name is Pradeep Homestay, not just Homestay" — return that key with the new value. A person cannot see the form while they are talking, and correcting by voice is the only way they have.
+ - A long description, a note on what makes the place unusual, or a word about its people is EXPECTED to go over ground already covered in shorter form. That is not repetition — record it. Only a field whose value is unchanged should be left out.
+ - Do not invent a number they did not say. "Three days walking, nights in tents" says how many days and not how many nights; leave the nights out rather than assuming.
+ - Every key MUST be one of the "key" values in STILL_MISSING, or a key already in KNOWN that they are correcting. Spell it exactly. Never invent a key.
  - Where a key appears in ALLOWED, copy one of those values exactly. If none of them fit, leave the key out rather than choosing the nearest.
  - Numbers are numbers, not words: two thousand is 2000, teen is 3.
  - A field whose question asks WHETHER something is so takes true or false, never words. "guide saath jaata hai, transport nahi" is two of them: one true, one false.
  - One sentence can answer several fields at once. Read it for all of them, not only for the first.
  - If they answered several things at once, record them all.
- - If they said nothing useful, or you are unsure what they meant, return an empty "fields".',
-                'user_prompt_template' => 'LANGUAGE they are working in: {{language}}
+ - If they said nothing useful, or you are unsure what they meant, return an empty "fields".
+ - Write every value in English, whatever language they spoke in. A listing is read by travellers and by the HECO team, and it is kept in English: a homestay described in Hindi is still recorded as "Pradeep Homestay". Translate names and descriptions rather than transcribing them.',
+                'user_prompt_template' => 'They have just been asked {{asked}}
+
+LANGUAGE they are working in: {{language}}
 
 STILL_MISSING, in the order they should be asked:
 {{still_missing}}
@@ -202,7 +209,7 @@ They just said:
                 'max_tokens' => 1536,
                 'response_format' => 'json',
                 'is_active' => true,
-                'version' => 8,
+                'version' => 13,
                 'notes' => 'Used by VoiceAssistantService::turn(). Keep it short: Groq free tier allows 8,000 tokens a minute across the whole organisation, and every word here is spent on every turn by every provider.',
             ]
         );

@@ -71,6 +71,50 @@ class VoiceController extends Controller
     }
 
     /**
+     * The next question, without anyone having to say anything.
+     *
+     * Used when a member passes over a field. Questions are written down beside
+     * the fields rather than composed by a model, so this costs nothing and
+     * answers instantly — there is no reason to make someone speak in order to
+     * be told what comes next.
+     */
+    public function next(Request $request): JsonResponse
+    {
+        $provider = Auth::user()?->serviceProvider;
+        if (! $provider) {
+            return response()->json(['error' => 'This account has no provider profile.'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'form' => 'required|in:' . implode(',', $this->assistant->forms()),
+            'known' => 'nullable|array',
+            'skipped' => 'nullable|array',
+            'skipped.*' => 'string|max:60',
+            'language' => 'nullable|in:hi,en',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        $known = (array) $request->input('known', []);
+        $skipped = (array) $request->input('skipped', []);
+        $language = $request->input('language') === 'en' ? 'en' : 'hi';
+        $next = $this->assistant->nextField($request->input('form'), $known, $skipped);
+
+        return response()->json([
+            'success' => true,
+            'fields' => (object) [],
+            'reply' => $next === null ? null : $this->assistant->questionFor($request->input('form'), $next, $language, $known),
+            'asked' => $next,
+            'label' => $next === null ? null : $this->assistant->labelFor($request->input('form'), $next, $known),
+            'choices' => $next === null ? null : $this->assistant->choicesFor($request->input('form'), $next, $known),
+            'language' => $language,
+            'done' => $next === null,
+        ]);
+    }
+
+    /**
      * Turns a minute of talking into a filled-in form.
      *
      * The recording is read from the request and never written to disk. It is
@@ -105,6 +149,11 @@ class VoiceController extends Controller
             // the language the member asked for even when a reply of theirs is
             // short enough to be mistaken for the other one.
             'language' => 'nullable|in:hi,en',
+            // Fields the member has passed over. Sent every turn alongside
+            // `known`, for the same reason: nothing about this conversation
+            // lives on the server.
+            'skipped' => 'nullable|array',
+            'skipped.*' => 'string|max:60',
         ], [
             'audio.required' => 'Nothing was recorded.',
             'audio.mimetypes' => 'That is not a recording we can read.',
@@ -148,12 +197,16 @@ class VoiceController extends Controller
         $file = $request->file('audio');
 
         // On the first answer nothing is named: that answer IS the choice of
-        // language, and it could come in either. From then on the choice is
-        // told to the transcription, for two reasons. It is markedly more
-        // accurate when it is not also guessing the language — and it writes
-        // in the script of whatever it decided it was hearing, so a member who
-        // asked for English and said "Pradeep Homestay" was getting
-        // "प्रदीप हॉमस्टे" written into their property name.
+        // language, and it could come in either. From then on the recording is
+        // read as the language the member asked for — it is markedly more
+        // accurate for not having to guess, about four times faster, and it
+        // means what they see written back are their own words rather than a
+        // translation they never said.
+        //
+        // Turning that into English is a separate step, done where the fields
+        // are read out of it: a listing is kept in English wherever it came
+        // from, so a homestay described in Hindi is still recorded as
+        // "Pradeep Homestay".
         $chosen = $request->input('language');
         $heard = $this->groq->transcribe(
             (string) file_get_contents($file->getRealPath()),
@@ -186,6 +239,7 @@ class VoiceController extends Controller
             // the form — "Hindi" is not the name of their homestay.
             $settling ? '' : $heard['text'],
             $language,
+            (array) $request->input('skipped', []),
         );
 
         // The assistant heard them but could not be reached to make sense of it
@@ -217,6 +271,11 @@ class VoiceController extends Controller
             // own list values. Shown under the question so a member is not
             // guessing at wording the portal will only reject.
             'choices' => $result['choices'],
+            // What was heard but could not be used — a room type that is not on
+            // HCT's list, a number that was not a number. The member is told,
+            // rather than left looking at a box that stayed empty for reasons
+            // nobody explained.
+            'rejected' => $result['rejected'],
             'done' => $result['done'],
         ]);
     }
