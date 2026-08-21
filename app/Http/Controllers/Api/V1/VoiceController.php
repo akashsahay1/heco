@@ -211,7 +211,15 @@ class VoiceController extends Controller
         $heard = $this->groq->transcribe(
             (string) file_get_contents($file->getRealPath()),
             'turn.' . ($file->guessExtension() ?: 'm4a'),
-            $chosen ? ['language' => $chosen] : [],
+            $chosen
+                ? ['language' => $chosen]
+                // The first answer is one word, under a second of sound, with
+                // no language named and nothing around it to go on. Left to
+                // guess, Whisper heard a member say "हिंदी" and wrote it down
+                // as Korean. Naming the handful of answers that are expected
+                // gives it something to hold on to. It is a bias, not a
+                // constraint — anything else said still comes through.
+                : ['prompt' => 'Hindi. English. हिंदी. अंग्रेज़ी.'],
         );
 
         if (! $heard) {

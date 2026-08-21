@@ -33,16 +33,6 @@ class VoiceAssistantService
     private const STAY = 'Experiential accommodation';
 
     /**
-     * How many unanswered fields to carry option lists for.
-     *
-     * The lists are what cost: sending every one of them on every turn spent
-     * 4,700 tokens an exchange and emptied the minute's allowance in three.
-     * The names and hints alongside them are a few words each, so those are
-     * not rationed — see the note on the two windows in turn().
-     */
-    private const LISTS_AHEAD = 6;
-
-    /**
      * The forms this can fill, and what each field is.
      *
      * `list` names the SystemList the value must be copied from, `only` a fixed
@@ -88,14 +78,14 @@ class VoiceAssistantService
         // next: every field below belongs to one kind of service.
         return $common + match ($known['service_type'] ?? null) {
             'accommodation' => [
-            'category' => ['label' => 'Property name', 'ask' => 'what their place is called', 'q' => ['hi' => 'आपकी जगह का नाम क्या है?', 'en' => 'What is your place called?'], 'type' => 'string'],
-            'comfort_tier' => ['label' => 'Comfort tier', 'ask' => 'what sort of place it is', 'q' => ['hi' => 'यह किस तरह की जगह है?', 'en' => 'What sort of place is it?'], 'type' => 'string', 'list' => 'accommodation_category'],
-            'room_category' => ['label' => 'Room category', 'ask' => 'what kind of room they are pricing', 'q' => ['hi' => 'आप किस तरह के कमरे का दाम बता रहे हैं?', 'en' => 'Which kind of room are you pricing?'], 'type' => 'string', 'list' => 'room_category'],
-            'total_rooms' => ['label' => 'Total rooms', 'ask' => 'how many rooms of that kind they have', 'q' => ['hi' => 'ऐसे कितने कमरे हैं आपके पास?', 'en' => 'How many such rooms do you have?'], 'type' => 'int'],
-            'price' => ['label' => 'Rate per night (Rs)', 'ask' => 'what one room costs', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
-                        'meal_plan' => ['label' => 'Meal plan', 'ask' => 'which meals are included in that price', 'q' => ['hi' => 'इस दाम में कौन सा खाना शामिल है?', 'en' => 'Which meals are included in that price?'], 'type' => 'string', 'list' => 'meal_plan'],
-            'default_occupancy' => ['label' => 'Default occupancy', 'ask' => 'whether the room is normally sold as a single, a double, and so on', 'q' => ['hi' => 'यह कमरा आम तौर पर किस हिसाब से दिया जाता है — सिंगल, डबल या कोई और?', 'en' => 'How is this room normally sold — as a single, a double, or something else?'], 'type' => 'string', 'list' => 'occupancy_unit'],
-            'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
+                'category' => ['label' => 'Property name', 'ask' => 'what their place is called', 'q' => ['hi' => 'आपकी जगह का नाम क्या है?', 'en' => 'What is your place called?'], 'type' => 'string'],
+                'comfort_tier' => ['label' => 'Comfort tier', 'ask' => 'what sort of place it is', 'q' => ['hi' => 'यह किस तरह की जगह है?', 'en' => 'What sort of place is it?'], 'type' => 'string', 'list' => 'accommodation_category'],
+                'room_category' => ['label' => 'Room category', 'ask' => 'what kind of room they are pricing', 'q' => ['hi' => 'आप किस तरह के कमरे का दाम बता रहे हैं?', 'en' => 'Which kind of room are you pricing?'], 'type' => 'string', 'list' => 'room_category'],
+                'total_rooms' => ['label' => 'Total rooms', 'ask' => 'how many rooms of that kind they have', 'q' => ['hi' => 'ऐसे कितने कमरे हैं आपके पास?', 'en' => 'How many such rooms do you have?'], 'type' => 'int'],
+                'price' => ['label' => 'Rate per night (Rs)', 'ask' => 'what one room costs', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
+                'meal_plan' => ['label' => 'Meal plan', 'ask' => 'which meals are included in that price', 'q' => ['hi' => 'इस दाम में कौन सा खाना शामिल है?', 'en' => 'Which meals are included in that price?'], 'type' => 'string', 'list' => 'meal_plan'],
+                'default_occupancy' => ['label' => 'Default occupancy', 'ask' => 'whether the room is normally sold as a single, a double, and so on', 'q' => ['hi' => 'यह कमरा आम तौर पर किस हिसाब से दिया जाता है — सिंगल, डबल या कोई और?', 'en' => 'How is this room normally sold — as a single, a double, or something else?'], 'type' => 'string', 'list' => 'occupancy_unit'],
+                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'transport' => [
                 'category' => ['label' => 'Service name', 'ask' => 'what to call this vehicle on their rate card', 'q' => ['hi' => 'इस गाड़ी को रेट कार्ड पर क्या नाम दें?', 'en' => 'What should this vehicle be called on your rate card?'], 'type' => 'string'],
@@ -249,8 +239,6 @@ class VoiceAssistantService
      * @param  string  $language  Which tongue to open in. Once a member has
      *         said something the model follows them; this only decides the
      *         very first question, when there is nothing yet to follow.
-     * @param  bool  $reread  Internal. False on the second look at the same
-     *         sentence, so the re-read cannot itself trigger another.
      * @return array{fields:array<string,mixed>,reply:?string,asked:?string,label:?string,choices:?array,done:bool,rejected:array<int,string>,unavailable:bool}
      */
     public function turn(
@@ -259,7 +247,6 @@ class VoiceAssistantService
         string $said,
         string $language = 'hi',
         array $skipped = [],
-        bool $reread = true,
     ): array
     {
         $asked = $this->nextField($form, $known, $skipped);
@@ -288,51 +275,32 @@ class VoiceAssistantService
 
         $schema = $this->schema($form, $known);
 
-        // Two windows, not one.
-        //
-        // Every open field is named, because a key the model was not shown is a
-        // key it discards — a member who says "three rooms, two people each"
-        // has answered two things — and because a model shown only six fields,
-        // having filled all six, decides the form is finished and asks nothing
-        // more. That was the whole of the "no question came back" fault.
-        //
-        // Option lists are rationed to the first few, because those are what
-        // actually cost: carrying all of them spent 4,700 tokens a turn against
-        // an allowance of 8,000 a minute for the whole collective. A field
-        // whose list is out of view is still asked about; it simply gets its
-        // list once it comes near.
-        $open = $this->stillOpen($schema, $known);
-
-        $allowed = [];
-        foreach (array_slice($open, 0, self::LISTS_AHEAD, true) as $key => $field) {
-            $options = $this->allowedFor($field);
-            if ($options !== null) {
-                $allowed[$key] = $options;
-            }
-        }
+        // One field, and only its own option list. The model is asked to read
+        // one answer, not to mine a sentence for everything it might contain —
+        // so it needs nothing beyond the field in front of it. That also makes
+        // a turn small, which matters: the free tier allows 8,000 tokens a
+        // minute across the whole collective.
+        $options = $this->allowedFor($schema[$asked]);
 
         $prompt = app(PromptBuilderService::class)->build('provider_voice_form', [
-            'still_missing' => json_encode(
-                array_values(array_map(
-                    fn ($key, $field) => ['key' => $key, 'ask' => $field['ask']],
-                    array_keys($open),
-                    $open,
-                )),
-                JSON_UNESCAPED_UNICODE,
-            ),
-            // Which question they are answering. Without it the model read the
-            // sentence for whatever struck it as most interesting — "three days
-            // in the hills, with a guide", said in answer to "describe it in a
-            // line", came back as a statement about duration and nothing else.
+            // The shape matters as much as the meaning. Told only what the
+            // field is about, the model wrote "at least two people" into a box
+            // that holds a whole number, and the answer was thrown away.
             'asked' => sprintf(
-                'about the field "%s" — %s.',
+                '%s — %s. This field holds %s.',
                 $asked,
                 $schema[$asked]['ask'] ?? '',
+                match ($schema[$asked]['type'] ?? 'string') {
+                    'int' => 'a whole number, digits only',
+                    'number' => 'a number, digits only',
+                    'bool' => 'true or false',
+                    default => 'text',
+                },
             ),
-            'allowed' => $allowed ? json_encode($allowed, JSON_UNESCAPED_UNICODE) : '(none — these are free text)',
-            'known' => $known ? json_encode($known, JSON_UNESCAPED_UNICODE) : '(nothing yet)',
-            'language' => $language === 'en' ? 'English' : 'Hindi',
-            'said' => $said ?: '(they have not said anything yet)',
+            'allowed' => $options
+                ? json_encode($options, JSON_UNESCAPED_UNICODE)
+                : '(none — this field takes free text)',
+            'said' => $said,
         ]);
 
         if (! $prompt) {
@@ -380,45 +348,15 @@ class VoiceAssistantService
                     'done' => false, 'rejected' => [], 'unavailable' => false];
         }
 
-        // On a re-read the member is still answering the question that was put
-        // to them before the form grew — the fields that just appeared have not
-        // been asked about at all. Treating the newly opened one as "asked"
-        // let exactly the guesses ASK_ONLY exists to stop back in.
-        $checked = $this->keepValid(
-            $form,
-            $known,
-            (array) ($data['fields'] ?? []),
-            $reread ? $asked : null,
-        );
-        // This turn's answers win. Written the other way round, a member who
+        $checked = $this->keepValid($form, $known, (array) ($data['fields'] ?? []), $asked);
+
+        // This turn's answer wins. Written the other way round, a member who
         // said "no, the name is Pradeep Homestay, not just Homestay" had their
-        // correction quietly dropped in favour of the guess it was correcting.
+        // correction quietly dropped in favour of what it was correcting.
         $filled = $checked['fields'] + $known;
 
-        // Some answers change the shape of the form. Until a member says they
-        // are offering a place to stay, a rate card has no room count to fill,
-        // so a first breath of "three rooms, two thousand a night" was heard
-        // and then thrown away for want of anywhere to put it. When the form
-        // has just grown, read the same sentence once more against the fields
-        // that now exist. Once only: the second pass cannot grow it again.
-        if ($reread && count($this->schema($form, $filled)) > count($schema)) {
-            $again = $this->turn($form, $filled, $said, $language, $skipped, false);
-
-            return [
-                'fields' => $checked['fields'] + $again['fields'],
-                'reply' => $again['reply'],
-                'asked' => $again['asked'],
-                'label' => $again['label'],
-                'choices' => $again['choices'],
-                'done' => $again['done'],
-                'rejected' => array_values(array_unique(array_merge($checked['rejected'], $again['rejected']))),
-                'unavailable' => $again['unavailable'],
-            ];
-        }
-
-        // The next field is decided here, in the form's own order, and its own
-        // question is read out. The model's part is done: it heard what was
-        // said and said what it meant, and it is not asked what to ask next.
+        // Which field comes next, decided here in the form's own order — the
+        // model is not asked what to ask, only what was said.
         $next = $this->nextField($form, $filled, $skipped);
 
         return [
@@ -426,22 +364,11 @@ class VoiceAssistantService
             'reply' => $next === null ? null : $this->questionFor($form, $next, $language, $filled),
             'asked' => $next,
             'label' => $next === null ? null : $this->labelFor($form, $next, $filled),
-            'rejected' => $checked['rejected'],
             'choices' => $next === null ? null : $this->choicesFor($form, $next, $filled),
-            'done' => $this->nextField($form, $filled, $skipped) === null,
             'rejected' => $checked['rejected'],
+            'done' => $next === null,
             'unavailable' => false,
         ];
-    }
-
-    /** The fields still without an answer, so one reply can fill several. */
-    private function stillOpen(array $schema, array $known): array
-    {
-        return array_filter(
-            $schema,
-            fn ($key) => ($known[$key] ?? null) === null || ($known[$key] ?? null) === '',
-            ARRAY_FILTER_USE_KEY,
-        );
     }
 
     /**
@@ -521,29 +448,6 @@ class VoiceAssistantService
         return $this->schema($form, $known)[$field]['label'] ?? null;
     }
 
-    /**
-     * Fields that may only be filled on the turn they are asked about.
-     *
-     * The model reads one sentence and offers values for anything it thinks it
-     * can deduce. Mostly that is a gift — "three rooms, two thousand a night"
-     * is two answers in one breath. For these it is not: each was seen being
-     * invented from context rather than heard, and a field once filled is
-     * never asked again, so the guess is unreachable.
-     *
-     *   service_type, duration_type   decide the shape of the rest of the form
-     *   comfort_tier, type            a classification, deduced from a word in
-     *                                 the name — "homestay" made it Cat D
-     *   rental_item                   came back as the placeholder "items"
-     *   duration_days, _nights        a count nobody stated
-     *
-     * Everything else stays open to being answered early, which is most of the
-     * value of talking rather than tapping.
-     */
-    private const ASK_ONLY = [
-        'service_type', 'duration_type', 'comfort_tier', 'type',
-        'rental_item', 'duration_days', 'duration_nights',
-    ];
-
     /** The values a field will accept, or null when it takes free text. */
     public function allowedFor(array $field): ?array
     {
@@ -611,10 +515,16 @@ class VoiceAssistantService
                 continue;
             }
 
-            // Offered without being asked, and of a kind that gets guessed.
-            // Dropped quietly rather than reported: the member said nothing
-            // about it, so telling them it was refused would be a puzzle.
-            if ($key !== $asked && in_array($key, self::ASK_ONLY, true)) {
+            // Only the field that was asked about. A member answers the
+            // question in front of them; anything else the model reads into
+            // the sentence is a deduction, and deductions were where the wrong
+            // values came from — "homestay" in a name deciding the comfort
+            // tier, three days walking becoming one night. A field filled
+            // without being asked is never asked about again, so the guess
+            // could not be corrected either.
+            //
+            // Nothing is lost by waiting: every field gets its own question.
+            if ($asked !== null && $key !== $asked) {
                 continue;
             }
 
@@ -677,6 +587,16 @@ class VoiceAssistantService
     /** Null when the value is not the shape the column needs. */
     private function cast(string $type, mixed $value): mixed
     {
+        // A number spoken aloud arrives wearing its unit: "पाँच सौ रुपया रोज़"
+        // is written down faithfully as "500 rupees per day", and refusing it
+        // for not being bare digits threw away an answer the member had given
+        // perfectly well. The figure is taken and the words around it dropped.
+        if (in_array($type, ['int', 'number'], true) && is_string($value)) {
+            $value = preg_match('/-?\d+(?:[.,]\d+)?/', str_replace(',', '', $value), $m)
+                ? $m[0]
+                : $value;
+        }
+
         return match ($type) {
             'int' => is_numeric($value) ? (int) $value : null,
             // Whole where it is whole. A price handed back as 2000.0 was
