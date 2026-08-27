@@ -262,6 +262,7 @@ class VoiceAssistantService
                 'choices' => $this->choicesFor($form, $asked, $known),
                 'done' => false,
                 'rejected' => [],
+                'note' => null,
                 'unavailable' => false,
             ];
         }
@@ -270,7 +271,7 @@ class VoiceAssistantService
             // Everything this can ask for has an answer. What is left — photos,
             // the day-by-day plan — is not something anyone can say aloud.
             return ['fields' => [], 'reply' => null, 'asked' => null, 'label' => null, 'choices' => null, 'done' => true,
-                    'rejected' => [], 'unavailable' => false];
+                    'rejected' => [], 'note' => null, 'unavailable' => false];
         }
 
         $schema = $this->schema($form, $known);
@@ -283,6 +284,11 @@ class VoiceAssistantService
         $options = $this->allowedFor($schema[$asked]);
 
         $prompt = app(PromptBuilderService::class)->build('provider_voice_form', [
+            // The question in the member's own words. Without it the model was
+            // reading an answer against a field name and had no way to tell an
+            // answer to THIS question from a sentence about something else —
+            // so anything said became the value of whatever was open.
+            'question' => $this->questionFor($form, $asked, $language, $known) ?? '',
             // The shape matters as much as the meaning. Told only what the
             // field is about, the model wrote "at least two people" into a box
             // that holds a whole number, and the answer was thrown away.
@@ -310,7 +316,7 @@ class VoiceAssistantService
 
             return ['fields' => [], 'reply' => null, 'asked' => $asked, 'label' => $this->labelFor($form, $asked, $known),
                     'choices' => $this->choicesFor($form, $asked, $known),
-                    'done' => false, 'rejected' => [], 'unavailable' => true];
+                    'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => true];
         }
 
         $answer = app(GroqService::class)->chat([
@@ -334,7 +340,7 @@ class VoiceAssistantService
             // one is worth trying again in a moment, the other is not.
             return ['fields' => [], 'reply' => null, 'asked' => $asked, 'label' => $this->labelFor($form, $asked, $known),
                     'choices' => $this->choicesFor($form, $asked, $known),
-                    'done' => false, 'rejected' => [], 'unavailable' => true];
+                    'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => true];
         }
 
         $data = json_decode($answer['content'], true);
@@ -345,7 +351,7 @@ class VoiceAssistantService
 
             return ['fields' => [], 'reply' => null, 'asked' => $asked, 'label' => $this->labelFor($form, $asked, $known),
                     'choices' => $this->choicesFor($form, $asked, $known),
-                    'done' => false, 'rejected' => [], 'unavailable' => false];
+                    'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => false];
         }
 
         $checked = $this->keepValid($form, $known, (array) ($data['fields'] ?? []), $asked);
@@ -361,6 +367,13 @@ class VoiceAssistantService
 
         return [
             'fields' => $checked['fields'],
+            // Nothing was taken and nothing was turned away — the answer did
+            // not answer the question. Left unsaid, the same question simply
+            // comes round again and the member repeats themselves at a screen
+            // that looks deaf. It is the one thing they were never told.
+            'note' => $checked['fields'] === [] && $checked['rejected'] === []
+                ? $this->notHeard($form, $asked, $language, $known)
+                : null,
             'reply' => $next === null ? null : $this->questionFor($form, $next, $language, $filled),
             'asked' => $next,
             'label' => $next === null ? null : $this->labelFor($form, $next, $filled),
@@ -372,33 +385,60 @@ class VoiceAssistantService
     }
 
     /**
-     * Which language a member just asked to speak in.
+     * What is said when an answer did not answer the question.
      *
-     * They are asked in English, before anything else, and answer out loud —
-     * so the answer can be the word in either language, or simply spoken in
-     * the language they want. Both are read: what they said first, and failing
-     * that, what tongue they said it in.
+     * Named with the form's own heading — "Property name", "Total rooms" — so
+     * a member can see which box is still waiting rather than guessing at
+     * which of the last few questions went unheard.
+     */
+    private function notHeard(string $form, string $field, string $language, array $known): string
+    {
+        $label = $this->labelFor($form, $field, $known);
+
+        return $language === 'hi'
+            ? ($label ? "यह समझ नहीं आया — कृपया {$label} के बारे में बताइए।" : 'यह समझ नहीं आया।')
+            : ($label ? "That did not answer it — please tell me about {$label}." : 'I did not catch that.');
+    }
+
+    /**
+     * Which language a member just asked to speak in, or null if they did not.
+     *
+     * Two languages are on offer and no third is accepted. Reading the answer
+     * loosely would be the wrong kindness here: it is the first thing asked,
+     * and getting it wrong holds the whole conversation in a language the
+     * member did not choose. So the word itself has to be there.
+     *
+     * It is matched forgivingly, though, because the answer is one word of
+     * half a second and the transcription of it wobbles — a member saying
+     * हिंदी has come back as "इन्दी" and as "हिन्नी", and both plainly mean
+     * Hindi. What is not accepted is an answer with neither language in it:
+     * "In the.", which is what a mis-heard word looks like, once settled the
+     * conversation into English nobody asked for.
      *
      * @param  string  $said  The transcript of their answer.
-     * @param  ?string  $heardAs  The language the transcription reported.
      */
-    public function languageFrom(string $said, ?string $heardAs = null): string
+    public function languageFrom(string $said): ?string
     {
-        $text = mb_strtolower($said);
+        // Punctuation and spacing carry nothing here and vary with every
+        // transcription of the same word. Marks are kept along with letters:
+        // in Devanagari the vowel signs ARE the word, and stripping them
+        // leaves हिंदी as हद, which matches nothing.
+        $text = preg_replace('/[^\p{L}\p{M}]+/u', '', mb_strtolower($said)) ?? '';
 
-        foreach (['हिंदी', 'हिन्दी', 'hindi', 'hindī'] as $word) {
-            if (str_contains($text, $word)) {
+        foreach (['हिंद', 'हिन', 'इन्द', 'इंद', 'hind'] as $stem) {
+            if (mb_strpos($text, $stem) !== false) {
                 return 'hi';
             }
         }
-        foreach (['english', 'इंग्लिश', 'अंग्रेज', 'angrezi', 'angreji'] as $word) {
-            if (str_contains($text, $word)) {
+        foreach (['english', 'ingli', 'इंग्ल', 'इंगल', 'अंग्रे', 'angre', 'angrej'] as $stem) {
+            if (mb_strpos($text, $stem) !== false) {
                 return 'en';
             }
         }
 
-        // They named no language, so take the one they used to answer in.
-        return str_starts_with(mb_strtolower((string) $heardAs), 'en') ? 'en' : 'hi';
+        // Neither language was named. They are asked again rather than being
+        // given one of the two at a guess.
+        return null;
     }
 
     /**

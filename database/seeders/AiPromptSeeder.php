@@ -174,13 +174,17 @@ Reply with one JSON object and nothing else:
 
  - FIELD names the field they were asked about. That key is the only one you may return.
  - Say nothing about any other field, however much the sentence seems to tell you. Each of those has its own question coming.
- - Where ALLOWED lists values, copy one of them exactly. If none of them fits what they said, return an empty "fields" rather than choosing the nearest.
+ - QUESTION is what they were actually asked, in their own words. If what they said is not an answer to that question, return an empty "fields". A member asked what their place is called who talks about rooms has not named it, and a name pieced together out of that sentence is never asked about again, so nobody can correct it.
+ - Where ALLOWED lists values, return one of them copied exactly, character for character. Match on what they MEANT, not on how it came out in writing: what they said was spoken aloud and written down by a machine, so "tempo traveler" is Tempo Traveller and "a basic homestay" is Cat D - Basic/Homestay. Return an empty "fields" only when nothing on the list is what they meant — never pick the nearest for its own sake.
  - Where FIELD says the field holds a number, return only the digits — 2, not "two", and not "at least two people". "do hazaar" is 2000, "teen" is 3, "kam se kam do log" is 2.
  - A field whose question asks WHETHER something is so takes true or false.
  - Write the value in English whatever language they spoke. A listing is read by travellers and by the HECO team and is kept in English, so a homestay described in Hindi is still recorded as "Pradeep Homestay". Translate rather than transliterate.
  - A long description, or a note on what makes the place unusual, is expected to go over ground already covered in shorter form. That is not repetition — record it.
  - If they declined, said nothing useful, or you cannot tell what they meant, return an empty "fields". Never guess.',
-                'user_prompt_template' => 'FIELD they were asked about:
+                'user_prompt_template' => 'QUESTION they were asked:
+{{question}}
+
+FIELD that question is about:
 {{asked}}
 
 ALLOWED values for that field:
@@ -193,7 +197,7 @@ What they said:
                 'max_tokens' => 1024,
                 'response_format' => 'json',
                 'is_active' => true,
-                'version' => 15,
+                'version' => 17,
                 'notes' => 'Used by VoiceAssistantService::turn(). One field per turn: the member answers the question in front of them, and anything else the model reads into the sentence is a deduction it cannot be corrected on. Keep it short — the Groq free tier allows 8,000 tokens a minute across the whole collective.',
             ]
         );

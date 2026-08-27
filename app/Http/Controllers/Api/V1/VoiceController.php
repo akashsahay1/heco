@@ -208,19 +208,38 @@ class VoiceController extends Controller
         // from, so a homestay described in Hindi is still recorded as
         // "Pradeep Homestay".
         $chosen = $request->input('language');
-        $heard = $this->groq->transcribe(
-            (string) file_get_contents($file->getRealPath()),
-            'turn.' . ($file->guessExtension() ?: 'm4a'),
-            $chosen
-                ? ['language' => $chosen]
-                // The first answer is one word, under a second of sound, with
-                // no language named and nothing around it to go on. Left to
-                // guess, Whisper heard a member say "हिंदी" and wrote it down
-                // as Korean. Naming the handful of answers that are expected
-                // gives it something to hold on to. It is a bias, not a
-                // constraint — anything else said still comes through.
-                : ['prompt' => 'Hindi. English. हिंदी. अंग्रेज़ी.'],
-        );
+        $audio = (string) file_get_contents($file->getRealPath());
+        $name = 'turn.' . ($file->guessExtension() ?: 'm4a');
+
+        if ($chosen) {
+            $heard = $this->groq->transcribe($audio, $name, ['language' => $chosen]);
+            $language = $chosen;
+        } else {
+            // The language turn is listened to twice, and the order matters.
+            //
+            // Plainly first, with nothing suggested. Naming the expected
+            // answers makes Whisper far better at a single half-second word —
+            // without it a member saying "हिंदी" was written down as Korean —
+            // but a suggestion offered to silence comes straight back as the
+            // answer: thirty seconds of an empty room returned "English." and
+            // chose a language nobody had spoken. Unprompted, the same silence
+            // is reported as silence and thrown away where it should be.
+            $heard = $this->groq->transcribe($audio, $name);
+            $language = $heard ? $this->assistant->languageFrom($heard['text']) : null;
+
+            // They said something, and it named neither language. Now the hint
+            // is worth offering — the word was there and was misheard.
+            if ($heard && $language === null) {
+                $second = $this->groq->transcribe($audio, $name, [
+                    'prompt' => 'Hindi. English. हिंदी. अंग्रेज़ी.',
+                ]);
+                $again = $second ? $this->assistant->languageFrom($second['text']) : null;
+                if ($again !== null) {
+                    $heard = $second;
+                    $language = $again;
+                }
+            }
+        }
 
         if (! $heard) {
             // Silence, a room too loud to hear over, or the service being down.
@@ -236,9 +255,30 @@ class VoiceController extends Controller
         // to hold the conversation in. Only once that is settled does the
         // assistant start asking about rooms and prices.
         $settling = $chosen === null;
-        $language = $settling
-            ? $this->assistant->languageFrom($heard['text'], $heard['language'])
-            : $chosen;
+
+        // Hindi or English, and nothing else. If neither was named the answer
+        // is put back rather than guessed at: taking the language Whisper
+        // thought it heard is how a member who said "Hindi" — written down as
+        // "In the." — spent the rest of the form being asked in English.
+        //
+        // Nothing about the form is touched, no model is called, and the same
+        // question comes round with a word about why.
+        if ($settling && $language === null) {
+            return response()->json([
+                'success' => true,
+                'transcript' => $heard['text'],
+                'language' => null,
+                'fields' => (object) [],
+                'reply' => trim((string) Setting::getValue('voice_language_question', '')) ?: null,
+                'asked' => null,
+                'label' => null,
+                'choices' => null,
+                'rejected' => [],
+                'stage' => 'language',
+                'note' => 'I did not catch that. Please say Hindi, or English.',
+                'done' => false,
+            ]);
+        }
 
         $result = $this->assistant->turn(
             $request->input('form'),
@@ -284,6 +324,10 @@ class VoiceController extends Controller
             // rather than left looking at a box that stayed empty for reasons
             // nobody explained.
             'rejected' => $result['rejected'],
+            // Why nothing was filled in, when nothing was filled in and
+            // nothing was turned away either — the answer was about something
+            // else. Null on an ordinary turn.
+            'note' => $result['note'] ?? null,
             'done' => $result['done'],
         ]);
     }

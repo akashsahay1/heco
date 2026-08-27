@@ -74,7 +74,7 @@ class GroqService
                 return null;
             }
 
-            $text = trim((string) $response->json('text'));
+            $text = $this->spokenPartOf($response->json());
             if ($text === '') {
                 // Silence, or a room too loud to hear over. Not an error, but
                 // there is nothing to hand on either.
@@ -90,6 +90,54 @@ class GroqService
             Log::error('Groq transcription exception: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * The part of a transcript somebody actually said.
+     *
+     * Whisper does not return silence as silence. Given nothing to hear it
+     * invents fluent, plausible speech, and the longer the quiet the more of
+     * it there is — a member who tapped the microphone and was called away
+     * came back to a paragraph of Hindi they never spoke, offered to the form
+     * as their answer.
+     *
+     * It does, however, say so. Every segment carries how sure it is that
+     * nothing was spoken in it, so the invention is thrown away here rather
+     * than being guarded against by cutting the member off mid-sentence. They
+     * may hold the microphone as long as they like.
+     *
+     * A transcript with no segments at all is taken at its word: better a
+     * stray sentence than dropping a real answer over a missing field.
+     */
+    private function spokenPartOf(?array $body): string
+    {
+        $segments = $body['segments'] ?? null;
+        if (! is_array($segments) || $segments === []) {
+            return trim((string) ($body['text'] ?? ''));
+        }
+
+        $spoken = [];
+        $silent = 0;
+
+        foreach ($segments as $segment) {
+            // Whisper's own threshold for "there was no speech here". Real
+            // speech, even quiet or accented, sits far below it — a phone held
+            // at arm's length in a noisy yard still comes back under 0.2.
+            if ((float) ($segment['no_speech_prob'] ?? 0.0) > 0.6) {
+                $silent++;
+                continue;
+            }
+            $spoken[] = trim((string) ($segment['text'] ?? ''));
+        }
+
+        if ($silent > 0) {
+            Log::info('Groq transcription: silence discarded', [
+                'segments' => count($segments),
+                'silent' => $silent,
+            ]);
+        }
+
+        return trim(implode(' ', array_filter($spoken)));
     }
 
     /**
