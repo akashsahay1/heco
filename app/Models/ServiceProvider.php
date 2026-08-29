@@ -69,6 +69,21 @@ class ServiceProvider extends Model
     ];
 
     /**
+     * The same three without their initials.
+     *
+     * The labels above belong on a screen, where the code in brackets is how
+     * HCT reads a table at a glance. In a sentence written to the member it is
+     * clutter, and three of them strung together — "Heco Local Host (HLH) &
+     * Other Service Provider (OSP) & Heco Regional Partner (HRP)" — stops
+     * being a sentence at all.
+     */
+    public const TYPE_NAMES = [
+        'hlh' => 'Heco Local Host',
+        'osp' => 'Other Service Provider',
+        'hrp' => 'Heco Regional Partner',
+    ];
+
+    /**
      * What an admin may set the status to, and what each one reads as.
      *
      * 'removed' is deliberately absent: removing a provider deletes the row, so
@@ -126,6 +141,35 @@ class ServiceProvider extends Model
                 array_keys(self::TYPE_LABELS),
             ),
         ));
+    }
+
+    /**
+     * What this provider is, written to be read aloud.
+     *
+     * Somebody may hold one of the three, two, or all three, so this is a list
+     * joined the way a person would join it: "a and b", "a, b and c". Written
+     * for letters to the member, which used to name only the first type they
+     * happened to pick — a host who was also a supplier and a partner was
+     * welcomed as a host and nothing else.
+     */
+    public function typeSentence(string $fallback = 'Partner'): string
+    {
+        $held = $this->types();
+        $names = array_values(array_filter(array_map(
+            fn ($type) => in_array($type, $held, true) ? self::TYPE_NAMES[$type] : null,
+            array_keys(self::TYPE_NAMES),
+        )));
+
+        if (! $names) {
+            return $fallback;
+        }
+        if (count($names) === 1) {
+            return $names[0];
+        }
+
+        $last = array_pop($names);
+
+        return implode(', ', $names) . ' and ' . $last;
     }
 
     /**

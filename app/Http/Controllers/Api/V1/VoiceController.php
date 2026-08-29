@@ -109,6 +109,11 @@ class VoiceController extends Controller
             'asked' => $next,
             'label' => $next === null ? null : $this->assistant->labelFor($request->input('form'), $next, $known),
             'choices' => $next === null ? null : $this->assistant->choicesFor($request->input('form'), $next, $known),
+            // Whether the app should offer Skip at all. The field that decides
+            // the shape of the form cannot be passed over, and offering the
+            // button anyway meant pressing it brought the same question
+            // straight back with nothing said.
+            'skippable' => $next === null || $this->assistant->skippable($request->input('form'), $next, $known),
             'language' => $language,
             'done' => $next === null,
         ]);
@@ -215,30 +220,21 @@ class VoiceController extends Controller
             $heard = $this->groq->transcribe($audio, $name, ['language' => $chosen]);
             $language = $chosen;
         } else {
-            // The language turn is listened to twice, and the order matters.
-            //
-            // Plainly first, with nothing suggested. Naming the expected
-            // answers makes Whisper far better at a single half-second word —
-            // without it a member saying "हिंदी" was written down as Korean —
-            // but a suggestion offered to silence comes straight back as the
-            // answer: thirty seconds of an empty room returned "English." and
-            // chose a language nobody had spoken. Unprompted, the same silence
-            // is reported as silence and thrown away where it should be.
-            $heard = $this->groq->transcribe($audio, $name);
+            // Nothing is suggested to Whisper here, and that is deliberate.
+            // Naming the expected answers does make it better at a single
+            // half-second word, but a suggestion offered to silence comes
+            // straight back as the answer — thirty seconds of an empty room
+            // returned "English." and chose a language nobody had spoken, and
+            // so did a Hindi sentence that named no language at all.
+            // Written down in the Latin alphabet, because both answers are
+            // English words — "Hindi" and "English" — whichever language the
+            // member speaks. Left to choose a script for one half-second word
+            // with nothing around it, Whisper decided it was Korean and wrote
+            // 힌디, which is that word, correctly heard and unusable. It is the
+            // script that is being fixed here, not the language: a member
+            // saying हिंदी still comes back as "Hindi".
+            $heard = $this->groq->transcribe($audio, $name, ['language' => 'en']);
             $language = $heard ? $this->assistant->languageFrom($heard['text']) : null;
-
-            // They said something, and it named neither language. Now the hint
-            // is worth offering — the word was there and was misheard.
-            if ($heard && $language === null) {
-                $second = $this->groq->transcribe($audio, $name, [
-                    'prompt' => 'Hindi. English. हिंदी. अंग्रेज़ी.',
-                ]);
-                $again = $second ? $this->assistant->languageFrom($second['text']) : null;
-                if ($again !== null) {
-                    $heard = $second;
-                    $language = $again;
-                }
-            }
         }
 
         if (! $heard) {
@@ -273,6 +269,7 @@ class VoiceController extends Controller
                 'asked' => null,
                 'label' => null,
                 'choices' => null,
+                'skippable' => false,
                 'rejected' => [],
                 'stage' => 'language',
                 'note' => 'I did not catch that. Please say Hindi, or English.',
@@ -319,6 +316,8 @@ class VoiceController extends Controller
             // own list values. Shown under the question so a member is not
             // guessing at wording the portal will only reject.
             'choices' => $result['choices'],
+            'skippable' => $result['asked'] === null
+                || $this->assistant->skippable($request->input('form'), $result['asked'], (array) $request->input('known', [])),
             // What was heard but could not be used — a room type that is not on
             // HCT's list, a number that was not a number. The member is told,
             // rather than left looking at a box that stayed empty for reasons

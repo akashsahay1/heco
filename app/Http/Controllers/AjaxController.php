@@ -54,6 +54,9 @@ use App\Services\RazorpayService;
 use App\Mail\WelcomeEmail;
 use App\Mail\NewsletterWelcomeEmail;
 use App\Mail\AdminNewApplicationEmail;
+use App\Mail\AdminNewExperienceEmail;
+use App\Mail\AdminNewPricingEmail;
+use App\Mail\ExperienceApprovedEmail;
 use App\Mail\AdminNewSubscriberEmail;
 use App\Mail\NewsletterCampaignEmail;
 use App\Mail\BookingConfirmationEmail;
@@ -4938,11 +4941,42 @@ class AjaxController extends Controller
         }
         $this->applyRateAddons($request, $row);
 
+        // An admin's own row is live the moment it is written, so there is
+        // nothing to tell anyone. A member's is not: it waits on a review, and
+        // a rate that is not approved is a service that cannot be quoted.
+        if ($row->approval_status === 'pending') {
+            $this->announcePricing($row);
+        }
+
         return response()->json([
             "success" => true,
             "row" => $row->load('addons'),
             "pending" => $row->approval_status === 'pending',
         ]);
+    }
+
+    /** Tell HCT a rate is waiting on them. */
+    private function announcePricing(SpPricing $row): void
+    {
+        $provider = ServiceProvider::find($row->service_provider_id);
+        if (! $provider) {
+            return;
+        }
+
+        // The same label the approval mail uses, so a rate is called one thing
+        // on the way in and on the way out.
+        $itemLabel = $row->description
+            ?: ($row->category ?: ucfirst(str_replace('_', ' ', (string) $row->service_type)));
+
+        $this->sendMail(
+            Setting::getValue('site_email') ?: 'info@heco.eco',
+            new AdminNewPricingEmail(
+                $row,
+                $provider->contact_person ?: ($provider->name ?: 'Partner'),
+                $itemLabel,
+            ),
+            'admin_new_pricing:' . $row->id,
+        );
     }
 
     /**
@@ -6234,11 +6268,7 @@ class AjaxController extends Controller
 
         // Every type they signed up as, not just the first — a member who joined
         // as both should not be welcomed as only one of them.
-        $labels = array_filter(array_map(
-            fn (string $type) => ServiceProvider::TYPE_LABELS[$type] ?? null,
-            $provider->types(),
-        ));
-        $providerLabel = $labels ? implode(' & ', $labels) : 'Partner';
+        $providerLabel = $provider->typeSentence();
         $contactName = $provider->contact_person ?: $provider->name;
         try {
             if ($user->password_set_at) {
@@ -6246,7 +6276,7 @@ class AjaxController extends Controller
                 // during signup (OTP flow) — just tell them they're live.
                 $this->sendMail(
                     $user->email,
-                    new SpApplicationApprovedEmail($contactName, $providerLabel),
+                    new SpApplicationApprovedEmail($contactName, $providerLabel, null, $provider->types()),
                     'sp_approved:' . $provider->id
                 );
             } else {
@@ -6262,7 +6292,7 @@ class AjaxController extends Controller
                 ]);
                 $this->sendMail(
                     $user->email,
-                    new SpApplicationApprovedEmail($contactName, $providerLabel, $setPasswordUrl),
+                    new SpApplicationApprovedEmail($contactName, $providerLabel, $setPasswordUrl, $provider->types()),
                     'sp_approved:' . $provider->id
                 );
             }
@@ -7322,7 +7352,14 @@ class AjaxController extends Controller
             // categories existed can still be saved by HCT.
             "category"          => "nullable|string|max:120",
             "short_description" => $unlessDraft("required|string|max:500"),
-            "duration_type"     => $unlessDraft("required|in:less_than_day,single_day,multi_day"),
+            // A stay has no duration. It is sold by the night, and both forms
+            // that offer one — the app's and the portal's — leave the whole
+            // section out for this category. Demanding it here meant a stay
+            // could be filled in completely and still be refused for a field
+            // nobody was shown, which no member could act on.
+            "duration_type"     => $request->input('category') === Experience::CATEGORY_STAY
+                ? "nullable|in:less_than_day,single_day,multi_day"
+                : $unlessDraft("required|in:less_than_day,single_day,multi_day"),
             // Capacity of an experiential stay — the client's "no of rooms, no
             // guests". Distinct from group_size_max, which is the largest party
             // this experience will take rather than what the place sleeps.
@@ -7969,6 +8006,8 @@ class AjaxController extends Controller
                 'pending_submitted_by' => Auth::id(),
             ]);
 
+            $this->announceExperience($existing, $sp);
+
             return response()->json([
                 'success' => true,
                 'pending_changes' => true,
@@ -8002,7 +8041,37 @@ class AjaxController extends Controller
             ]);
         }
 
-        return $this->saveExperience($request);
+        $response = $this->saveExperience($request);
+
+        // A draft is nobody's work but the member's own, so it announces
+        // nothing. A submission is: until now it joined the queue in silence
+        // and was found only by someone opening that page on the off chance.
+        if (! $asDraft && $response->getStatusCode() === 200) {
+            $saved = json_decode($response->getContent(), true)['experience']['id'] ?? null;
+            if ($saved && $experience = Experience::find($saved)) {
+                $this->announceExperience($experience, $sp);
+            }
+        }
+
+        return $response;
+    }
+
+    /**
+     * Tell HCT a listing is waiting on them.
+     *
+     * Sent for a new submission and for a revision of a live one alike: both
+     * are a review somebody has to do, and neither said anything before.
+     */
+    private function announceExperience(Experience $experience, ServiceProvider $provider): void
+    {
+        $this->sendMail(
+            Setting::getValue('site_email') ?: 'info@heco.eco',
+            new AdminNewExperienceEmail(
+                $experience->fresh(['region']),
+                $provider->contact_person ?: ($provider->name ?: 'Partner'),
+            ),
+            'admin_new_experience:' . $experience->id,
+        );
     }
 
     /**
@@ -8254,6 +8323,8 @@ class AjaxController extends Controller
                 'pending_submitted_by' => null,
             ]);
 
+            $this->announceExperienceApproved($experience->fresh(['region']));
+
             return response()->json(['success' => true]);
         }
 
@@ -8265,7 +8336,38 @@ class AjaxController extends Controller
             'rejection_reason' => null,
         ]);
 
+        $this->announceExperienceApproved($experience->fresh(['region']));
+
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Tell the member their listing is live.
+     *
+     * A rate card has said this since it existed. An experience is the larger
+     * piece of work and said nothing: it simply began selling, and the only
+     * way to learn that was to open the app and look.
+     */
+    private function announceExperienceApproved(Experience $experience): void
+    {
+        $provider = $experience->owner_provider_id
+            ? ServiceProvider::find($experience->owner_provider_id)
+            : null;
+        if (! $provider || ! $provider->email) {
+            Log::warning('experience approved: no provider email to write to', [
+                'experience_id' => $experience->id,
+            ]);
+            return;
+        }
+
+        $this->sendMail(
+            $provider->email,
+            new ExperienceApprovedEmail(
+                $provider->contact_person ?: ($provider->name ?: 'Partner'),
+                $experience,
+            ),
+            'experience_approved:' . $experience->id,
+        );
     }
 
     protected function rejectExperience(Request $request): JsonResponse

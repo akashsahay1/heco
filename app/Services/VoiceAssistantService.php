@@ -150,7 +150,13 @@ class VoiceAssistantService
         // answering aloud is working down the same page they would otherwise
         // be tapping through, so the two must not drift apart.
         $basic = [
-            'category' => ['label' => 'What kind of experience is this?', 'ask' => 'which category it belongs to', 'q' => ['hi' => 'यह किस श्रेणी का अनुभव है?', 'en' => 'Which category does this experience belong to?'], 'type' => 'string', 'list' => 'experience_category'],
+            'category' => ['label' => 'What kind of experience is this?', 'ask' => 'which category it belongs to', 'q' => ['hi' => 'यह किस श्रेणी का अनुभव है?', 'en' => 'Which category does this experience belong to?'], 'type' => 'string', 'list' => 'experience_category',
+                // Decides the whole shape of the form below it, the way
+                // service_type does for a rate card: a stay is asked about
+                // rooms and beds, everything else about duration, difficulty
+                // and cost. Passed over, a homestay would be walked through
+                // an outing's questions and never asked how many rooms it has.
+                'skippable' => false],
             'name' => ['label' => 'Name', 'ask' => 'what the experience is called', 'q' => ['hi' => 'इस अनुभव का नाम क्या है?', 'en' => 'What is this experience called?'], 'type' => 'string'],
             'type' => ['label' => 'Type', 'ask' => 'what sort of experience it is', 'q' => ['hi' => 'यह किस तरह का अनुभव है?', 'en' => 'What sort of experience is it?'], 'type' => 'string', 'list' => 'experience_type'],
             'short_description' => ['label' => 'Short description', 'ask' => 'a sentence or two describing it to a traveller', 'q' => ['hi' => 'एक-दो लाइन में बताइए, यात्री को इसमें क्या मिलेगा?', 'en' => 'In a line or two, what does a traveller get from it?'], 'type' => 'string'],
@@ -499,6 +505,22 @@ class VoiceAssistantService
         }
 
         return null;
+    }
+
+    /**
+     * Whether a field may be passed over.
+     *
+     * Nearly all of them may. The one that decides the shape of the rest — what
+     * kind of service this is — may not: skipping it leaves nothing to ask, and
+     * the sheet used to announce "that is everything I can ask about" over an
+     * empty form. It is refused server-side either way; this is so the app can
+     * stop offering a button that cannot do anything, which is how a member
+     * came to press Skip and watch the same question come straight back with
+     * no word about why.
+     */
+    public function skippable(string $form, string $field, array $known = []): bool
+    {
+        return $this->schema($form, $known)[$field]['skippable'] ?? true;
     }
 
     /**

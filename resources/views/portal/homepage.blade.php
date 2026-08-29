@@ -846,7 +846,8 @@ jQuery(function() {
             if (!lat || !lng) return;
 
             var durationText = '';
-            if (exp.duration_type === 'less_than_day') durationText = exp.duration_hours + 'h';
+            if (exp.category === 'Experiential accommodation') durationText = (exp.total_rooms || '?') + ' Rooms';
+            else if (exp.duration_type === 'less_than_day') durationText = parseFloat(exp.duration_hours) + 'h';
             else if (exp.duration_type === 'single_day') durationText = '1 Day';
             else durationText = (exp.duration_days || '?') + ' Days';
 
@@ -1194,9 +1195,13 @@ jQuery(function() {
             ? '<img src="' + exp.card_image + '" alt="' + exp.name + '">'
             : '<div class="exp-placeholder"><i class="bi bi-image"></i></div>';
 
+        // A stay has no duration — it is sold by the night — so its card says
+        // how big the house is instead of inventing a length for it.
         var durationText = '';
-        if (exp.duration_type === 'less_than_day') {
-            durationText = exp.duration_hours + ' hours';
+        if (exp.category === 'Experiential accommodation') {
+            durationText = (exp.total_rooms || '?') + ' Rooms';
+        } else if (exp.duration_type === 'less_than_day') {
+            durationText = parseFloat(exp.duration_hours) + ' hours';
         } else if (exp.duration_type === 'single_day') {
             durationText = '1 Day';
         } else {

@@ -367,7 +367,10 @@ class AuthService
     /** Tell the applicant it arrived, and HCT that it is waiting. */
     private function announce(ServiceProvider $provider): void
     {
-        $label = ServiceProvider::TYPE_LABELS[$provider->provider_type] ?? 'Partner';
+        // Every type they signed up as, not just the one the enum kept. An
+        // applicant who ticked host, supplier and partner was thanked for
+        // applying as a host and nothing else.
+        $label = $provider->typeSentence();
 
         $this->mail(
             $provider->email,

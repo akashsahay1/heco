@@ -40,37 +40,58 @@
         {{-- Main Content --}}
         <div class="col-lg-8">
 
+            @php
+                // A stay is not an outing. It has no duration, no difficulty
+                // and no party size — both experience forms leave those out
+                // for this category — and what it does have, rooms and beds,
+                // has never been shown here at all.
+                $isStay = $experience->isStay();
+                $statWidth = $isStay ? 'col-md-4' : 'col-md-3';
+            @endphp
+
             {{-- Info stat cards --}}
             <div class="row g-3 mb-4">
-                <div class="col-6 col-md-3">
+                <div class="col-6 {{ $statWidth }}">
                     <div class="card info-stat-card shadow-sm h-100">
                         <div class="card-body p-3">
-                            <div class="stat-icon"><i class="bi bi-clock"></i></div>
-                            <div class="stat-value">
-                                @if($experience->duration_type === 'less_than_day')
-                                    {{ $experience->duration_hours }}h
-                                @elseif($experience->duration_type === 'single_day')
-                                    1 Day
-                                @else
-                                    {{ $experience->duration_days }}D / {{ $experience->duration_nights }}N
-                                @endif
-                            </div>
-                            <div class="stat-label">Duration</div>
+                            @if($isStay)
+                                <div class="stat-icon"><i class="bi bi-house-door"></i></div>
+                                <div class="stat-value">{{ $experience->total_rooms ?? '—' }}</div>
+                                <div class="stat-label">Rooms</div>
+                            @else
+                                <div class="stat-icon"><i class="bi bi-clock"></i></div>
+                                <div class="stat-value">
+                                    @if($experience->duration_type === 'less_than_day')
+                                        {{ (float) $experience->duration_hours }}h
+                                    @elseif($experience->duration_type === 'single_day')
+                                        1 Day
+                                    @else
+                                        {{ $experience->duration_days }}D / {{ $experience->duration_nights }}N
+                                    @endif
+                                </div>
+                                <div class="stat-label">Duration</div>
+                            @endif
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-3">
+                <div class="col-6 {{ $statWidth }}">
                     <div class="card info-stat-card shadow-sm h-100">
                         <div class="card-body p-3">
                             <div class="stat-icon"><i class="bi bi-people"></i></div>
-                            <div class="stat-value">
-                                {{ $experience->group_size_min ?? '?' }} - {{ $experience->group_size_max ?? '?' }}
-                            </div>
-                            <div class="stat-label">Group Size</div>
+                            @if($isStay)
+                                <div class="stat-value">{{ $experience->total_guests ?? '—' }}</div>
+                                <div class="stat-label">Guests</div>
+                            @else
+                                <div class="stat-value">
+                                    {{ $experience->group_size_min ?? '?' }} - {{ $experience->group_size_max ?? '?' }}
+                                </div>
+                                <div class="stat-label">Group Size</div>
+                            @endif
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-3">
+                @unless($isStay)
+                <div class="col-6 {{ $statWidth }}">
                     <div class="card info-stat-card shadow-sm h-100">
                         <div class="card-body p-3">
                             <div class="stat-icon"><i class="bi bi-speedometer2"></i></div>
@@ -79,7 +100,8 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-3">
+                @endunless
+                <div class="col-6 {{ $statWidth }}">
                     <div class="card info-stat-card shadow-sm h-100">
                         <div class="card-body p-3">
                             <div class="stat-icon"><i class="bi bi-currency-exchange"></i></div>
