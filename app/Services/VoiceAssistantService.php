@@ -796,9 +796,23 @@ class VoiceAssistantService
             && $checked['fields'] === []
             && $this->skippable($form, $asked, $known);
 
+        // What is said when a box is left empty because the member could not
+        // or would not fill it.
+        $left = [];
+
         if ($declined) {
             // A table is declined by name; anything else by its own.
             $finished[] = explode('.', $asked, 2)[0];
+
+            // And it is said aloud. Declining and being misheard arrive here
+            // looking the same, and the model decides which — so a wrongly
+            // read answer would otherwise slip past in silence, leaving a box
+            // empty that the member believes they filled. Naming it costs one
+            // line and means they can go back to it.
+            $label = $this->labelFor($form, $asked, $known);
+            $left[] = $language === 'hi'
+                ? "ठीक है — {$label} खाली छोड़ देते हैं। बाद में फ़ॉर्म में भर सकते हैं।"
+                : "All right — {$label} is left empty. You can fill it in on the form later.";
         }
 
         // This turn's answer wins. Written the other way round, a member who
@@ -849,7 +863,7 @@ class VoiceAssistantService
             // Boxes reached on the way here that have to be done by hand, and
             // the words to say about each — preceded by anything worth reading
             // back out of what was just recorded.
-            'guidance' => array_merge($echo, $here['guidance'], $ahead['guidance']),
+            'guidance' => array_merge($echo, $left, $here['guidance'], $ahead['guidance']),
             // `$finished` is a table the member has just closed — "that is
             // all" — which the app must remember, or the next turn offers
             // another row and the offer never ends.

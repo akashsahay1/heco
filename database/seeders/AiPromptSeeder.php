@@ -181,7 +181,7 @@ Reply with one JSON object and nothing else:
  - Write the value in English whatever language they spoke. A listing is read by travellers and by the HECO team and is kept in English, so a homestay described in Hindi is still recorded as "Pradeep Homestay". Translate rather than transliterate.
  - A long description, or a note on what makes the place unusual, is expected to go over ground already covered in shorter form. That is not repetition — record it.
  - If you cannot tell what they meant, return an empty "fields". Never guess.
- - If they DECLINED — there is none, they have nothing to add, they do not want to say — that is an answer, and a different one from not being understood. Return {"fields": {}, "declined": true}. "No note", "koi note nahi", "there are no add-ons", "kuch nahi" are declines. A field that asks WHETHER something is so is not declined by saying no: that is false.',
+ - If they DECLINED or CANNOT ANSWER — there is none, they have nothing to add, they do not know, they would rather not say — that is an answer, and a different one from not being understood. Return {"fields": {}, "declined": true}. "No note", "koi note nahi", "there are no add-ons", "mujhe nahi pata", "I do not know", "kuch nahi" are all of this kind. A field that asks WHETHER something is so is not declined by saying no: that is false.',
                 'user_prompt_template' => 'QUESTION they were asked:
 {{question}}
 
@@ -198,8 +198,8 @@ What they said:
                 'max_tokens' => 1024,
                 'response_format' => 'json',
                 'is_active' => true,
-                'version' => 19,
-                'notes' => 'Used by VoiceAssistantService::turn(). One field per turn: the member answers the question in front of them, and anything else the model reads into the sentence is a deduction it cannot be corrected on. Keep it short — the Groq free tier allows 8,000 tokens a minute across the whole collective. v18: a member choosing from a list says what they do, not what the list calls it — "I am a guide" recorded nothing at all until the rule above said that describing yourself is an answer. {{meanings}} carries the note HCT keeps beside each value, which is what tells cooking classes from guiding. v19: a member with no note to leave could not say so — declining read as not being understood, and the same question came round for ever.',
+                'version' => 20,
+                'notes' => 'Used by VoiceAssistantService::turn(). One field per turn: the member answers the question in front of them, and anything else the model reads into the sentence is a deduction it cannot be corrected on. Keep it short — the Groq free tier allows 8,000 tokens a minute across the whole collective. v18: a member choosing from a list says what they do, not what the list calls it — "I am a guide" recorded nothing at all until the rule above said that describing yourself is an answer. {{meanings}} carries the note HCT keeps beside each value, which is what tells cooking classes from guiding. v19: a member with no note to leave could not say so — declining read as not being understood, and the same question came round for ever. v20: not knowing the answer is the same kind of thing, and a host who could not name the model of their own vehicle was asked three times.',
             ]
         );
     }
