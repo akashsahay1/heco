@@ -188,11 +188,9 @@ class VoiceAssistantService
      */
     private function experienceSchema(array $known): array
     {
-        // The order the app's own form lays these out in, section by section:
-        // Basic information, then Duration & schedule, Inclusions, Location,
-        // Requirements, Costing, and Practical information last. A member
-        // answering aloud is working down the same page they would otherwise
-        // be tapping through, so the two must not drift apart.
+        $stay = ($known['category'] ?? null) === self::STAY;
+
+        // Basic information.
         $basic = [
             'category' => ['label' => 'What kind of experience is this?', 'ask' => 'which category it belongs to', 'q' => ['hi' => 'यह किस श्रेणी का अनुभव है?', 'en' => 'Which category does this experience belong to?'], 'type' => 'string', 'list' => 'experience_category',
                 // Decides the whole shape of the form below it, the way
@@ -203,6 +201,9 @@ class VoiceAssistantService
                 'skippable' => false],
             'name' => ['label' => 'Name', 'ask' => 'what the experience is called', 'q' => ['hi' => 'इस अनुभव का नाम क्या है?', 'en' => 'What is this experience called?'], 'type' => 'string'],
             'type' => ['label' => 'Type', 'ask' => 'what sort of experience it is', 'q' => ['hi' => 'यह किस तरह का अनुभव है?', 'en' => 'What sort of experience is it?'], 'type' => 'string', 'list' => 'experience_type'],
+            // The valleys HECO works in. Offered by name and stored by id —
+            // see allowedFor() and keepValid().
+            'region_id' => ['label' => 'Region', 'ask' => 'which region it belongs to', 'q' => ['hi' => 'यह किस क्षेत्र में आता है?', 'en' => 'Which region does it belong to?'], 'type' => 'string', 'source' => 'regions'],
             'short_description' => ['label' => 'Short description', 'ask' => 'a sentence or two describing it to a traveller', 'q' => ['hi' => 'एक-दो लाइन में बताइए, यात्री को इसमें क्या मिलेगा?', 'en' => 'In a line or two, what does a traveller get from it?'], 'type' => 'string'],
             'long_description' => ['label' => 'Long description', 'ask' => 'the fuller story of the experience', 'q' => ['hi' => 'इस अनुभव की पूरी बात बताइए।', 'en' => 'Tell me the fuller story of this experience.'], 'type' => 'string'],
             'unique_description' => ['label' => 'What makes it unique', 'ask' => 'what makes this one different from anyone else offering something similar', 'q' => ['hi' => 'इसमें ऐसा क्या है जो और कहीं नहीं मिलेगा?', 'en' => 'What is there in this that a traveller would not find elsewhere?'], 'type' => 'string'],
@@ -231,36 +232,33 @@ class VoiceAssistantService
                 'duration_nights' => ['label' => 'Nights', 'ask' => 'how many nights that includes', 'q' => ['hi' => 'इसमें कितनी रातें आती हैं?', 'en' => 'How many nights does that include?'], 'type' => 'int'],
             ],
             default => [],
-        };
+        } + [
+            'start_time' => ['label' => 'Start time', 'ask' => 'what time of day it starts', 'q' => ['hi' => 'दिन में किस समय शुरू होता है?', 'en' => 'What time of day does it start?'], 'type' => 'string'],
+            'end_time' => ['label' => 'End time', 'ask' => 'what time it finishes', 'q' => ['hi' => 'किस समय ख़त्म होता है?', 'en' => 'What time does it finish?'], 'type' => 'string'],
+        ];
 
-        // A stay is not a scheduled thing. The app's own form drops Duration,
-        // Requirements and Costing the moment the category is a stay, and puts
-        // rooms and beds in their place — so asking a homestay owner how hard
-        // their experience is, and never asking how many rooms they have, both
-        // stop here rather than being tidied up afterwards.
-        if (($known['category'] ?? null) === self::STAY) {
-            return $basic + [
-                // The Inclusions section is not hidden for a stay, so a member
-                // correcting "no, the stay itself is not part of it" must have
-                // somewhere for that to land.
-                'includes_accommodation' => ['label' => 'Accommodation', 'ask' => 'whether a place to stay is included', 'q' => ['hi' => 'रहने का इंतज़ाम इसमें शामिल है?', 'en' => 'Is a place to stay included?'], 'type' => 'bool'],
-                'includes_guide' => ['label' => 'Guide', 'ask' => 'whether a guide comes with it', 'q' => ['hi' => 'इसके साथ गाइड जाता है क्या?', 'en' => 'Does a guide go along with it?'], 'type' => 'bool'],
-                'includes_transport' => ['label' => 'Transport', 'ask' => 'whether transport is included', 'q' => ['hi' => 'आने-जाने का इंतज़ाम इसमें शामिल है?', 'en' => 'Is transport included?'], 'type' => 'bool'],
-                'area' => ['label' => 'Area', 'ask' => 'the valley or area it happens in', 'q' => ['hi' => 'यह किस इलाके में होता है?', 'en' => 'Which area does it take place in?'], 'type' => 'string'],
-                'total_rooms' => ['label' => 'Rooms', 'ask' => 'how many rooms the place has', 'q' => ['hi' => 'इस जगह में कितने कमरे हैं?', 'en' => 'How many rooms does the place have?'], 'type' => 'int'],
-                'total_guests' => ['label' => 'Guests it sleeps', 'ask' => 'how many guests it sleeps in all', 'q' => ['hi' => 'कुल कितने मेहमान रुक सकते हैं?', 'en' => 'How many guests can stay in all?'], 'type' => 'int'],
-                'traveller_bring_list' => ['label' => 'What travellers should bring', 'ask' => 'what a traveller should bring', 'q' => ['hi' => 'यात्री को अपने साथ क्या लाना चाहिए?', 'en' => 'What should a traveller bring with them?'], 'type' => 'string'],
-            ];
-        }
-
-        return $basic + $duration + [
-            // Inclusions
+        // Inclusions. The comfort tier only matters once a bed is part of it.
+        $inclusions = [
             'includes_accommodation' => ['label' => 'Accommodation', 'ask' => 'whether a place to stay is included', 'q' => ['hi' => 'रहने का इंतज़ाम इसमें शामिल है?', 'en' => 'Is a place to stay included?'], 'type' => 'bool'],
+        ] + (($known['includes_accommodation'] ?? false) ? [
+            'accommodation_category' => ['label' => 'Accommodation category', 'ask' => 'what sort of place travellers stay in', 'q' => ['hi' => 'यात्री किस तरह की जगह पर रुकते हैं?', 'en' => 'What sort of place do travellers stay in?'], 'type' => 'string', 'list' => 'accommodation_category'],
+        ] : []) + [
+            'includes_meals_breakfast' => ['label' => 'Breakfast', 'ask' => 'whether breakfast is included', 'q' => ['hi' => 'नाश्ता इसमें शामिल है?', 'en' => 'Is breakfast included?'], 'type' => 'bool'],
+            'includes_meals_lunch' => ['label' => 'Lunch', 'ask' => 'whether lunch is included', 'q' => ['hi' => 'दोपहर का खाना शामिल है?', 'en' => 'Is lunch included?'], 'type' => 'bool'],
+            'includes_meals_dinner' => ['label' => 'Dinner', 'ask' => 'whether dinner is included', 'q' => ['hi' => 'रात का खाना शामिल है?', 'en' => 'Is dinner included?'], 'type' => 'bool'],
             'includes_guide' => ['label' => 'Guide', 'ask' => 'whether a guide comes with it', 'q' => ['hi' => 'इसके साथ गाइड जाता है क्या?', 'en' => 'Does a guide go along with it?'], 'type' => 'bool'],
             'includes_transport' => ['label' => 'Transport', 'ask' => 'whether transport is included', 'q' => ['hi' => 'आने-जाने का इंतज़ाम इसमें शामिल है?', 'en' => 'Is transport included?'], 'type' => 'bool'],
-            // Location
+        ];
+
+        $location = [
             'area' => ['label' => 'Area', 'ask' => 'the valley or area it happens in', 'q' => ['hi' => 'यह किस इलाके में होता है?', 'en' => 'Which area does it take place in?'], 'type' => 'string'],
-            // Requirements
+            'trekking_required' => ['label' => 'Trekking required', 'ask' => 'whether travellers have to walk to reach it', 'q' => ['hi' => 'क्या यहाँ पहुँचने के लिए पैदल चलना पड़ता है?', 'en' => 'Do travellers have to walk to get there?'], 'type' => 'bool'],
+            'road_seasonal_closure' => ['label' => 'Road closes seasonally', 'ask' => 'whether the road shuts at some times of year', 'q' => ['hi' => 'क्या साल के किसी समय रास्ता बंद हो जाता है?', 'en' => 'Does the road close at some times of year?'], 'type' => 'bool'],
+        ];
+
+        // Requirements. A stay has none of this — it is not a thing that takes
+        // a body somewhere.
+        $requirements = [
             'difficulty_level' => [
                 'label' => 'Difficulty level',
                 'ask' => 'how hard it is physically',
@@ -271,13 +269,87 @@ class VoiceAssistantService
                 'type' => 'string',
                 'only' => ['easy', 'moderate', 'challenging', 'extreme'],
             ],
+            'fitness_requirements' => ['label' => 'Fitness requirements', 'ask' => 'how fit a traveller needs to be', 'q' => ['hi' => 'यात्री का शरीर कितना चलने-फिरने लायक होना चाहिए?', 'en' => 'How fit does a traveller need to be for this?'], 'type' => 'string'],
+            'weather_dependency' => ['label' => 'Weather dependency', 'ask' => 'how the weather affects it', 'q' => ['hi' => 'मौसम का इस पर क्या असर पड़ता है?', 'en' => 'How does the weather affect it?'], 'type' => 'string'],
+            'cultural_sensitivities' => ['label' => 'Cultural sensitivities', 'ask' => 'anything a visitor should be careful about', 'q' => ['hi' => 'यात्री को किन बातों का ध्यान रखना चाहिए?', 'en' => 'Is there anything a visitor should be careful about?'], 'type' => 'string'],
+            'environmental_constraints' => ['label' => 'Environmental constraints', 'ask' => 'anything about the place that limits how many people can come, or when', 'q' => ['hi' => 'जगह की वजह से कोई पाबंदी है — कितने लोग आ सकते हैं, या कब?', 'en' => 'Does the place itself limit how many can come, or when?'], 'type' => 'string'],
             'group_size_min' => ['label' => 'Min group size', 'ask' => 'the smallest group they will take', 'q' => ['hi' => 'कम से कम कितने लोग होने चाहिए?', 'en' => 'What is the smallest group you will take?'], 'type' => 'int'],
             'group_size_max' => ['label' => 'Max group size', 'ask' => 'the largest group they will take', 'q' => ['hi' => 'ज़्यादा से ज़्यादा कितने लोग आ सकते हैं?', 'en' => 'What is the largest group you will take?'], 'type' => 'int'],
-            // Costing
-            'base_cost_per_person' => ['label' => 'Price pp (Rs)', 'ask' => 'what one person pays', 'q' => ['hi' => 'एक व्यक्ति का कितना लगता है?', 'en' => 'What does one person pay?'], 'type' => 'number'],
-            // Practical information
-            'traveller_bring_list' => ['label' => 'What travellers should bring', 'ask' => 'what a traveller should bring', 'q' => ['hi' => 'यात्री को अपने साथ क्या लाना चाहिए?', 'en' => 'What should a traveller bring with them?'], 'type' => 'string'],
         ];
+
+        // Seasonality. Months are numbers here because that is how the form
+        // stores them; a member says "March to June" and means 3, 4, 5, 6.
+        $seasonality = [
+            'best_seasons' => ['label' => 'Best seasons', 'ask' => 'which seasons are the best time to come', 'q' => ['hi' => 'आने का सबसे अच्छा मौसम कौन सा है?', 'en' => 'Which seasons are the best time to come?'], 'type' => 'multi', 'list' => 'best_season'],
+            'available_months' => ['label' => 'Available months', 'ask' => 'which months of the year it runs', 'q' => ['hi' => 'साल के किन महीनों में यह होता है?', 'en' => 'Which months of the year does it run?'], 'type' => 'months'],
+            'restricted_months' => ['label' => 'Restricted months', 'ask' => 'which months it runs only with difficulty', 'q' => ['hi' => 'किन महीनों में यह मुश्किल से हो पाता है?', 'en' => 'In which months does it run only with difficulty?'], 'type' => 'months'],
+            'unavailable_months' => ['label' => 'Unavailable months', 'ask' => 'which months it does not run at all', 'q' => ['hi' => 'किन महीनों में यह बिल्कुल नहीं होता?', 'en' => 'In which months does it not run at all?'], 'type' => 'months'],
+            'seasonality_notes' => ['label' => 'Seasonality notes', 'ask' => 'anything else about the seasons here', 'q' => ['hi' => 'मौसम के बारे में और कुछ बताना चाहेंगे?', 'en' => 'Anything else about the seasons here?'], 'type' => 'string'],
+        ];
+
+        // Every box below this point is a table or a file. Each is announced
+        // as it is reached rather than passed over: a member who is never told
+        // about the itinerary finishes the conversation believing the listing
+        // is finished too, and only the save button disagrees.
+        $byHand = [
+            'experience_days' => ['label' => 'Day-wise itinerary', 'manual' => [
+                'hi' => 'दिन-ब-दिन का कार्यक्रम आपको फ़ॉर्म में खुद भरना होगा — हर दिन का अलग कार्ड है, उसमें उस दिन का नाम, ब्यौरा और क्या-क्या शामिल है, यह लिखना होता है।',
+                'en' => 'The day-by-day itinerary you will need to fill in yourself — each day is its own card, with a title, what happens, and what that day includes.',
+            ]],
+            'addons' => ['label' => 'Add-ons', 'manual' => [
+                'hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।',
+                'en' => 'If you sell anything alongside this, add it yourself under Add-ons. Each one needs its own name and price.',
+            ]],
+            'gallery' => ['label' => 'Photos', 'manual' => [
+                'hi' => 'तस्वीरें आपको खुद जोड़नी होंगी — एक कार्ड वाली तस्वीर और बाकी गैलरी में। बोलकर तस्वीर नहीं बनती, और यात्री सबसे पहले वही देखता है।',
+                'en' => 'Photos you will need to add yourself — one for the card and the rest in the gallery. A microphone does not take pictures, and they are the first thing a traveller looks at.',
+            ]],
+        ];
+
+        // Practical information, then operational notes: the last two sections
+        // of the form, and both plain prose.
+        $practical = [
+            'osps_involved' => ['label' => 'Other service providers involved', 'ask' => 'whether anyone else from the collective is part of this', 'q' => ['hi' => 'क्या इसमें कोई और साथी भी शामिल है?', 'en' => 'Is anyone else from the collective involved in this?'], 'type' => 'bool'],
+        ] + (($known['osps_involved'] ?? false) ? [
+            'osp_services' => ['label' => 'OSP services', 'ask' => 'what those others provide', 'q' => ['hi' => 'वे क्या-क्या सेवा देते हैं?', 'en' => 'What do they provide?'], 'type' => 'multi', 'list' => 'service_type'],
+        ] : []) + [
+            'traveller_bring_list' => ['label' => 'What travellers should bring', 'ask' => 'what a traveller should bring', 'q' => ['hi' => 'यात्री को अपने साथ क्या लाना चाहिए?', 'en' => 'What should a traveller bring with them?'], 'type' => 'string'],
+            'clothing_recommendations' => ['label' => 'Clothing recommendations', 'ask' => 'what a traveller should wear', 'q' => ['hi' => 'यात्री को कैसे कपड़े पहनने चाहिए?', 'en' => 'What should a traveller wear?'], 'type' => 'string'],
+            'health_notes' => ['label' => 'Health notes', 'ask' => 'anything about health a traveller should know', 'q' => ['hi' => 'सेहत के बारे में यात्री को कुछ बताना ज़रूरी है?', 'en' => 'Is there anything about health a traveller should know?'], 'type' => 'string'],
+            'connectivity_notes' => ['label' => 'Connectivity notes', 'ask' => 'whether there is phone signal or internet there', 'q' => ['hi' => 'वहाँ फ़ोन का नेटवर्क या इंटरनेट मिलता है?', 'en' => 'Is there phone signal or internet there?'], 'type' => 'string'],
+            'cultural_etiquette' => ['label' => 'Cultural etiquette', 'ask' => 'how a visitor should behave with local people', 'q' => ['hi' => 'यात्री को यहाँ के लोगों के साथ कैसे पेश आना चाहिए?', 'en' => 'How should a visitor behave with local people?'], 'type' => 'string'],
+        ];
+
+        $operational = [
+            'operational_risks' => ['label' => 'Operational risks', 'ask' => 'what could go wrong on the day', 'q' => ['hi' => 'उस दिन क्या-क्या गड़बड़ हो सकती है?', 'en' => 'What could go wrong on the day?'], 'type' => 'string'],
+            'past_issues' => ['label' => 'Past issues', 'ask' => 'anything that has gone wrong before', 'q' => ['hi' => 'पहले कभी कुछ गड़बड़ हुई है? क्या?', 'en' => 'Has anything gone wrong before? What?'], 'type' => 'string'],
+            'backup_options' => ['label' => 'Backup options', 'ask' => 'what they do instead when it cannot go ahead', 'q' => ['hi' => 'अगर यह न हो पाए तो उसकी जगह क्या करते हैं?', 'en' => 'If this cannot go ahead, what do you do instead?'], 'type' => 'string'],
+            'emergency_notes' => ['label' => 'Emergency notes', 'ask' => 'what happens in an emergency, and who is called', 'q' => ['hi' => 'आपात स्थिति में क्या करते हैं, और किसे बुलाते हैं?', 'en' => 'In an emergency, what do you do and who do you call?'], 'type' => 'string'],
+        ];
+
+        // A stay is not a scheduled thing. The app's own form drops Duration,
+        // Requirements and Costing the moment the category is a stay, and puts
+        // rooms and beds in their place — so asking a homestay owner how hard
+        // their experience is, and never asking how many rooms they have, both
+        // stop here rather than being tidied up afterwards.
+        if ($stay) {
+            return $basic + $inclusions + $location + $seasonality + [
+                'total_rooms' => ['label' => 'Rooms', 'ask' => 'how many rooms the place has', 'q' => ['hi' => 'इस जगह में कितने कमरे हैं?', 'en' => 'How many rooms does the place have?'], 'type' => 'int'],
+                'total_guests' => ['label' => 'Guests it sleeps', 'ask' => 'how many guests it sleeps in all', 'q' => ['hi' => 'कुल कितने मेहमान रुक सकते हैं?', 'en' => 'How many guests can stay in all?'], 'type' => 'int'],
+                'room_rates' => ['label' => 'Rooms and prices', 'manual' => [
+                    'hi' => 'हर कमरे का दाम आपको खुद जोड़ना होगा — कमरे की किस्म, खाना, और उसका दाम, हर पंक्ति के लिए अलग।',
+                    'en' => 'The price of each room you will need to add yourself — the room type, the meal plan and the price, a row at a time.',
+                ]],
+            ] + $byHand + $practical + $operational;
+        }
+
+        return $basic + $duration + $inclusions + $location + $requirements + $seasonality + [
+            'base_cost_per_person' => ['label' => 'Price pp (Rs)', 'ask' => 'what one person pays', 'q' => ['hi' => 'एक व्यक्ति का कितना लगता है?', 'en' => 'What does one person pay?'], 'type' => 'number'],
+            'price_slabs' => ['label' => 'Per-person price tiers', 'manual' => [
+                'hi' => 'अगर बड़े समूह का दाम अलग है तो वे स्लैब आपको फ़ॉर्म में खुद जोड़ने होंगे — कितने लोगों तक, और उसका दाम।',
+                'en' => 'If a bigger group pays a different rate, those tiers you will need to add yourself — up to how many people, and the price.',
+            ]],
+        ] + $byHand + $practical + $operational;
     }
 
     /**
@@ -365,6 +437,8 @@ class VoiceAssistantService
                     // into a box that takes a list, and the whole answer was
                     // turned away for matching nothing.
                     'multi' => 'a JSON array of one or more of the allowed values',
+                    // "March to June" is four months, not a sentence.
+                    'months' => 'a JSON array of month numbers, 1 for January through 12 for December, with every month they name spelled out — a range like March to June is [3, 4, 5, 6]',
                     default => 'text',
                 },
             ),
@@ -747,6 +821,34 @@ class VoiceAssistantService
                 continue;
             }
 
+            // Months are numbers on this form, not names: a member says
+            // "March to June" and the four boxes hold 3, 4, 5 and 6. Anything
+            // outside the twelve is dropped rather than stored as a month that
+            // does not exist.
+            if (($field['type'] ?? 'string') === 'months') {
+                $said = is_array($value)
+                    ? $value
+                    : (preg_split('/\s*(?:,|and|और|aur|to|से|se)\s*/ui', (string) $value) ?: []);
+
+                $months = [];
+                foreach ($said as $one) {
+                    $n = (int) preg_replace('/\D+/', '', (string) $one);
+                    if ($n >= 1 && $n <= 12) {
+                        $months[] = $n;
+                    }
+                }
+
+                $months = array_values(array_unique($months));
+                sort($months);
+                if ($months === []) {
+                    $rejected[] = (string) $key;
+                    continue;
+                }
+
+                $fields[$key] = $months;
+                continue;
+            }
+
             $allowed = $this->allowedFor($field);
 
             // A box that holds several of the list at once, not one of them —
@@ -792,6 +894,20 @@ class VoiceAssistantService
                     $rejected[] = (string) $key;
                     continue;
                 }
+
+                // A region is chosen by name and stored by id. Said aloud,
+                // "Tirthan Valley" is what a member means; what the form holds
+                // is the number beside it.
+                if (($field['source'] ?? null) === 'regions') {
+                    $region = $this->regions()->firstWhere('name', $match);
+                    if (! $region) {
+                        $rejected[] = (string) $key;
+                        continue;
+                    }
+                    $fields[$key] = $region->id;
+                    continue;
+                }
+
                 $fields[$key] = $match;
                 continue;
             }
