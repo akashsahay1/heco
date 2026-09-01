@@ -100,7 +100,31 @@ class VoiceAssistantService
                 'guest_capacity' =>['label' => 'Guests it sleeps', 'ask' => 'how many guests the place sleeps in all', 'q' => ['hi' => 'कुल कितने मेहमान रुक सकते हैं?', 'en' => 'How many guests can stay in all?'], 'type' => 'int'],
                 'seasonality_notes' => ['label' => 'Seasonality', 'ask' => 'which months they take guests, and which they do not', 'q' => ['hi' => 'साल के किन महीनों में मेहमान आ सकते हैं?', 'en' => 'Which months of the year can guests come?'], 'type' => 'string'],
                 'photos' => ['label' => 'Photos', 'manual' => ['hi' => 'तस्वीरें आपको खुद जोड़नी होंगी — फ़ॉर्म में Photos वाले हिस्से से। यात्री सबसे पहले वही देखता है, इसलिए दो-तीन अच्छी तस्वीरें ज़रूर लगाइए।', 'en' => 'Photos you will need to add yourself, from the Photos part of the form. They are the first thing a traveller looks at, so put two or three good ones in.']],
-                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
+                'addons' => [
+                    'label' => 'Add-ons',
+                    'more' => [
+                        'q' => [
+                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा, या स्टेशन से लिवाना?',
+                            'en' => 'Do you sell anything alongside this — an extra mattress, a pickup from the station?',
+                        ],
+                        'q_more' => [
+                            'hi' => 'और कोई चीज़?',
+                            'en' => 'Anything else?',
+                        ],
+                    ],
+                    'row' => [
+                        'name' => [
+                            'ask' => 'what that extra is called',
+                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
+                            'type' => 'string',
+                        ],
+                        'price' => [
+                            'ask' => 'what that extra costs',
+                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
+                            'type' => 'number',
+                        ],
+                    ],
+                ],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'transport' => [
@@ -140,7 +164,31 @@ class VoiceAssistantService
                 'vehicle_count' => ['label' => 'Number of vehicles', 'ask' => 'how many such vehicles they run', 'q' => ['hi' => 'ऐसी कितनी गाड़ियाँ हैं आपके पास?', 'en' => 'How many such vehicles do you have?'], 'type' => 'int'],
                 'ac_available' => ['label' => 'Air conditioning available', 'ask' => 'whether the vehicle has air conditioning', 'q' => ['hi' => 'क्या गाड़ी में एसी है?', 'en' => 'Does the vehicle have air conditioning?'], 'type' => 'bool'],
                 'ac_extra_cost' => ['label' => 'Extra cost for AC (Rs)', 'ask' => 'what air conditioning costs on top, if anything', 'q' => ['hi' => 'एसी का अलग से कितना लगता है?', 'en' => 'What does air conditioning cost on top?'], 'type' => 'number'],
-                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
+                'addons' => [
+                    'label' => 'Add-ons',
+                    'more' => [
+                        'q' => [
+                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा, या स्टेशन से लिवाना?',
+                            'en' => 'Do you sell anything alongside this — an extra mattress, a pickup from the station?',
+                        ],
+                        'q_more' => [
+                            'hi' => 'और कोई चीज़?',
+                            'en' => 'Anything else?',
+                        ],
+                    ],
+                    'row' => [
+                        'name' => [
+                            'ask' => 'what that extra is called',
+                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
+                            'type' => 'string',
+                        ],
+                        'price' => [
+                            'ask' => 'what that extra costs',
+                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
+                            'type' => 'number',
+                        ],
+                    ],
+                ],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'guide' => [
@@ -157,7 +205,31 @@ class VoiceAssistantService
                 'speaks_english' => ['label' => 'Speaks English', 'ask' => 'whether they speak English', 'q' => ['hi' => 'क्या आप अंग्रेज़ी बोल लेते हैं?', 'en' => 'Do you speak English?'], 'type' => 'bool'],
                 'is_certified' => ['label' => 'Certified guide', 'ask' => 'whether they hold a guiding certificate', 'q' => ['hi' => 'क्या आपके पास गाइड का कोई सर्टिफिकेट है?', 'en' => 'Do you hold a guiding certificate?'], 'type' => 'bool'],
                 'has_first_aid' => ['label' => 'First-aid trained', 'ask' => 'whether they are trained in first aid', 'q' => ['hi' => 'क्या आपने फर्स्ट-एड की ट्रेनिंग ली है?', 'en' => 'Have you had first-aid training?'], 'type' => 'bool'],
-                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
+                'addons' => [
+                    'label' => 'Add-ons',
+                    'more' => [
+                        'q' => [
+                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा, या स्टेशन से लिवाना?',
+                            'en' => 'Do you sell anything alongside this — an extra mattress, a pickup from the station?',
+                        ],
+                        'q_more' => [
+                            'hi' => 'और कोई चीज़?',
+                            'en' => 'Anything else?',
+                        ],
+                    ],
+                    'row' => [
+                        'name' => [
+                            'ask' => 'what that extra is called',
+                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
+                            'type' => 'string',
+                        ],
+                        'price' => [
+                            'ask' => 'what that extra costs',
+                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
+                            'type' => 'number',
+                        ],
+                    ],
+                ],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'activity' => [
@@ -169,7 +241,31 @@ class VoiceAssistantService
                 'min_group' => ['label' => 'Min group size', 'ask' => 'the smallest group they will take', 'q' => ['hi' => 'कम से कम कितने लोगों का समूह ले सकते हैं?', 'en' => 'What is the smallest group you will take?'], 'type' => 'int'],
                 'max_group' => ['label' => 'Max group size', 'ask' => 'the largest group they will take', 'q' => ['hi' => 'ज़्यादा से ज़्यादा कितने लोगों का समूह ले सकते हैं?', 'en' => 'What is the largest group you will take?'], 'type' => 'int'],
                 'specialties' => ['label' => 'Specialties', 'ask' => 'what the activity involves', 'q' => ['hi' => 'आप किस चीज़ के बारे में बताते हैं?', 'en' => 'What is it that you show people?'], 'type' => 'string'],
-                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
+                'addons' => [
+                    'label' => 'Add-ons',
+                    'more' => [
+                        'q' => [
+                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा, या स्टेशन से लिवाना?',
+                            'en' => 'Do you sell anything alongside this — an extra mattress, a pickup from the station?',
+                        ],
+                        'q_more' => [
+                            'hi' => 'और कोई चीज़?',
+                            'en' => 'Anything else?',
+                        ],
+                    ],
+                    'row' => [
+                        'name' => [
+                            'ask' => 'what that extra is called',
+                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
+                            'type' => 'string',
+                        ],
+                        'price' => [
+                            'ask' => 'what that extra costs',
+                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
+                            'type' => 'number',
+                        ],
+                    ],
+                ],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             // The form offers this too, and without an arm of its own the
@@ -180,14 +276,62 @@ class VoiceAssistantService
                 'category' => ['label' => 'Service name', 'ask' => 'what to call this service', 'q' => ['hi' => 'इस सेवा को क्या नाम दें?', 'en' => 'What should this service be called?'], 'type' => 'string'],
                 'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
                 'unit' => ['label' => 'Unit', 'ask' => 'what that price is for', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
-                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
+                'addons' => [
+                    'label' => 'Add-ons',
+                    'more' => [
+                        'q' => [
+                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा, या स्टेशन से लिवाना?',
+                            'en' => 'Do you sell anything alongside this — an extra mattress, a pickup from the station?',
+                        ],
+                        'q_more' => [
+                            'hi' => 'और कोई चीज़?',
+                            'en' => 'Anything else?',
+                        ],
+                    ],
+                    'row' => [
+                        'name' => [
+                            'ask' => 'what that extra is called',
+                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
+                            'type' => 'string',
+                        ],
+                        'price' => [
+                            'ask' => 'what that extra costs',
+                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
+                            'type' => 'number',
+                        ],
+                    ],
+                ],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'rental' => [
                 'rental_item' => ['label' => 'Item on rent', 'ask' => 'what they rent out', 'q' => ['hi' => 'आप किराये पर क्या देते हैं?', 'en' => 'What do you rent out?'], 'type' => 'string'],
                 'price' => ['label' => 'Charges per day (Rs)', 'ask' => 'what it costs to rent for a day', 'q' => ['hi' => 'एक दिन का किराया कितना है?', 'en' => 'What does it cost to rent for a day?'], 'type' => 'number'],
                                 'security_deposit' => ['label' => 'Security deposit (Rs)', 'ask' => 'what deposit they hold, if any', 'q' => ['hi' => 'कितनी रकम जमानत के तौर पर रखते हैं?', 'en' => 'What deposit do you hold?'], 'type' => 'number'],
-                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
+                'addons' => [
+                    'label' => 'Add-ons',
+                    'more' => [
+                        'q' => [
+                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा, या स्टेशन से लिवाना?',
+                            'en' => 'Do you sell anything alongside this — an extra mattress, a pickup from the station?',
+                        ],
+                        'q_more' => [
+                            'hi' => 'और कोई चीज़?',
+                            'en' => 'Anything else?',
+                        ],
+                    ],
+                    'row' => [
+                        'name' => [
+                            'ask' => 'what that extra is called',
+                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
+                            'type' => 'string',
+                        ],
+                        'price' => [
+                            'ask' => 'what that extra costs',
+                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
+                            'type' => 'number',
+                        ],
+                    ],
+                ],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             default => [],
@@ -310,10 +454,31 @@ class VoiceAssistantService
                 'hi' => 'दिन-ब-दिन का कार्यक्रम आपको फ़ॉर्म में खुद भरना होगा — हर दिन का अलग कार्ड है, उसमें उस दिन का नाम, ब्यौरा और क्या-क्या शामिल है, यह लिखना होता है।',
                 'en' => 'The day-by-day itinerary you will need to fill in yourself — each day is its own card, with a title, what happens, and what that day includes.',
             ]],
-            'addons' => ['label' => 'Add-ons', 'manual' => [
-                'hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।',
-                'en' => 'If you sell anything alongside this, add it yourself under Add-ons. Each one needs its own name and price.',
-            ]],
+            'addons' => [
+                    'label' => 'Add-ons',
+                    'more' => [
+                        'q' => [
+                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा, या स्टेशन से लिवाना?',
+                            'en' => 'Do you sell anything alongside this — an extra mattress, a pickup from the station?',
+                        ],
+                        'q_more' => [
+                            'hi' => 'और कोई चीज़?',
+                            'en' => 'Anything else?',
+                        ],
+                    ],
+                    'row' => [
+                        'name' => [
+                            'ask' => 'what that extra is called',
+                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
+                            'type' => 'string',
+                        ],
+                        'price' => [
+                            'ask' => 'what that extra costs',
+                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
+                            'type' => 'number',
+                        ],
+                    ],
+                ],
             'gallery' => ['label' => 'Photos', 'manual' => [
                 'hi' => 'तस्वीरें आपको खुद जोड़नी होंगी — एक कार्ड वाली तस्वीर और बाकी गैलरी में। बोलकर तस्वीर नहीं बनती, और यात्री सबसे पहले वही देखता है।',
                 'en' => 'Photos you will need to add yourself — one for the card and the rest in the gallery. A microphone does not take pictures, and they are the first thing a traveller looks at.',
@@ -423,11 +588,15 @@ class VoiceAssistantService
         // so it needs nothing beyond the field in front of it. That also makes
         // a turn small, which matters: the free tier allows 8,000 tokens a
         // minute across the whole collective.
-        $options = $this->allowedFor($schema[$asked]);
+        // A column of a table answers to the same rules as a box on the form,
+        // so everything below reads the field through the same resolver.
+        $spec = $this->specFor($form, $asked, $known);
+
+        $options = $this->allowedFor($spec);
 
         // What those options mean, where HCT has said. Bounded by the same
         // rule: one field's list, not the whole form's.
-        $meanings = $this->meaningsFor($schema[$asked]);
+        $meanings = $this->meaningsFor($spec);
 
         $prompt = app(PromptBuilderService::class)->build('provider_voice_form', [
             // The question in the member's own words. Without it the model was
@@ -441,8 +610,8 @@ class VoiceAssistantService
             'asked' => sprintf(
                 '%s — %s. This field holds %s.',
                 $asked,
-                $schema[$asked]['ask'] ?? '',
-                match ($schema[$asked]['type'] ?? 'string') {
+                $spec['ask'] ?? '',
+                match ($spec['type'] ?? 'string') {
                     'int' => 'a whole number, digits only',
                     'number' => 'a number, digits only',
                     'bool' => 'true or false',
@@ -516,6 +685,12 @@ class VoiceAssistantService
 
         $checked = $this->keepValid($form, $known, (array) ($data['fields'] ?? []), $asked);
 
+        // One column of a table becomes the row it belongs to, and a member
+        // saying there are no more finishes the table for good.
+        $rows = $this->assembleRows($form, $known, $checked['fields'], $asked);
+        $checked['fields'] = $rows['fields'];
+        $finished = $rows['finished'] === null ? [] : [$rows['finished']];
+
         // This turn's answer wins. Written the other way round, a member who
         // said "no, the name is Pradeep Homestay, not just Homestay" had their
         // correction quietly dropped in favour of what it was correcting.
@@ -523,7 +698,7 @@ class VoiceAssistantService
 
         // Which field comes next, decided here in the form's own order — the
         // model is not asked what to ask, only what was said.
-        $ahead = $this->walk($form, $filled, array_merge($skipped, $here['passed']), $language);
+        $ahead = $this->walk($form, $filled, array_merge($skipped, $here['passed'], $finished), $language);
         $next = $ahead['next'];
 
         // A few answers are worth reading back. A registration number is
@@ -532,7 +707,6 @@ class VoiceAssistantService
         // to somebody else's vehicle. Said once, on the turn it is recorded,
         // and it costs nothing: the value is already in hand.
         $echo = [];
-        $spec = $schema[$asked] ?? [];
         if (isset($spec['echo'], $checked['fields'][$asked])) {
             $echo[] = sprintf(
                 $spec['echo'][$language] ?? $spec['echo']['en'] ?? '%s',
@@ -546,7 +720,10 @@ class VoiceAssistantService
             // the words to say about each — preceded by anything worth reading
             // back out of what was just recorded.
             'guidance' => array_merge($echo, $here['guidance'], $ahead['guidance']),
-            'passed' => array_merge($here['passed'], $ahead['passed']),
+            // `$finished` is a table the member has just closed — "that is
+            // all" — which the app must remember, or the next turn offers
+            // another row and the offer never ends.
+            'passed' => array_merge($here['passed'], $finished, $ahead['passed']),
             // Nothing was taken and nothing was turned away — the answer did
             // not answer the question. Left unsaid, the same question simply
             // comes round again and the member repeats themselves at a screen
@@ -633,9 +810,134 @@ class VoiceAssistantService
      */
     public function questionFor(string $form, string $field, string $language, array $known = []): ?string
     {
-        $spec = $this->schema($form, $known)[$field] ?? null;
+        $spec = $this->specFor($form, $field, $known);
+
+        // A row's opening question changes once there is a row: "do you sell
+        // anything alongside this?" the first time, "anything else?" after.
+        // Asked the first question a second time, a member reasonably answers
+        // it again and adds what they have already added.
+        if (isset($spec['q_more']) && $this->rowsOf($form, $field, $known) !== []) {
+            return $spec['q_more'][$language] ?? $spec['q_more']['en'] ?? null;
+        }
 
         return $spec['q'][$language] ?? $spec['q']['en'] ?? null;
+    }
+
+    /**
+     * Turn one column's answer into the table the form actually holds.
+     *
+     * The model is asked for one thing at a time — a name, then a price — and
+     * the form holds rows. This puts the answer into the row being built, and
+     * says so when the member has said there are no more.
+     *
+     * @return array{fields:array<string,mixed>,finished:?string}
+     */
+    private function assembleRows(string $form, array $known, array $fields, ?string $asked): array
+    {
+        if ($asked === null || ! str_contains($asked, '.') || ! array_key_exists($asked, $fields)) {
+            return ['fields' => $fields, 'finished' => null];
+        }
+
+        [$table, $column] = explode('.', $asked, 2);
+        $rows = $this->rowsOf($form, $table, $known);
+        $value = $fields[$asked];
+        unset($fields[$asked]);
+
+        // Whether there is another one. Yes opens an empty row, which is what
+        // makes the next turn ask for its first column — nothing about this
+        // conversation is stored, so the half-built row IS the memory of it.
+        if ($column === 'more') {
+            if ($value !== true) {
+                return ['fields' => $fields, 'finished' => $table];
+            }
+
+            $rows[] = [];
+            $fields[$table] = $rows;
+
+            return ['fields' => $fields, 'finished' => null];
+        }
+
+        if ($rows === []) {
+            $rows[] = [];
+        }
+
+        $rows[array_key_last($rows)][$column] = $value;
+        $fields[$table] = $rows;
+
+        return ['fields' => $fields, 'finished' => null];
+    }
+
+    /**
+     * The specification for a field, whether it is a box on the form or one
+     * column of a table on it.
+     *
+     * A table — the extras sold alongside a rate, the price tiers, the rooms,
+     * the days of an itinerary — is not one question but a handful asked over
+     * and over. Its parts are addressed as `addons.name`, and everything that
+     * takes a field name goes through here so that a column answers to the
+     * same questions a box does.
+     *
+     * @return array<string,mixed>
+     */
+    private function specFor(string $form, string $field, array $known = []): array
+    {
+        $schema = $this->schema($form, $known);
+
+        if (! str_contains($field, '.')) {
+            return $schema[$field] ?? [];
+        }
+
+        [$table, $column] = explode('.', $field, 2);
+        $spec = $schema[$table] ?? [];
+
+        // `.more` is the yes or no that opens a row, and it carries the
+        // table's own label so a member sees which part of the form is meant.
+        if ($column === 'more') {
+            return ($spec['more'] ?? []) + ['label' => $spec['label'] ?? null, 'type' => 'bool'];
+        }
+
+        // A column the table does not have is not a field at all. Left to
+        // return a label and nothing else, an invented column would look
+        // enough like a field to be written into the form.
+        if (! isset($spec['row'][$column])) {
+            return [];
+        }
+
+        return $spec['row'][$column] + ['label' => $spec['label'] ?? null];
+    }
+
+    /**
+     * The rows a table already holds, as the app last sent them.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function rowsOf(string $form, string $field, array $known): array
+    {
+        $table = explode('.', $field, 2)[0];
+        $rows = $known[$table] ?? [];
+
+        return is_array($rows) ? array_values($rows) : [];
+    }
+
+    /**
+     * Which column of a table is still waiting, or null when the last row is
+     * complete and it is time to ask whether there is another.
+     */
+    private function unfilledColumn(array $spec, array $rows): ?string
+    {
+        if ($rows === []) {
+            return null;
+        }
+
+        $last = end($rows);
+        foreach (array_keys($spec['row'] ?? []) as $column) {
+            $value = is_array($last) ? ($last[$column] ?? null) : null;
+            if ($value === null || $value === '' || $value === []) {
+                return $column;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -648,8 +950,8 @@ class VoiceAssistantService
      */
     public function choicesFor(string $form, string $field, array $known = []): ?array
     {
-        $spec = $this->schema($form, $known)[$field] ?? null;
-        if (! $spec || ! isset($spec['list'])) {
+        $spec = $this->specFor($form, $field, $known);
+        if (! isset($spec['list'])) {
             return null;
         }
 
@@ -665,7 +967,7 @@ class VoiceAssistantService
      */
     public function labelFor(string $form, string $field, array $known = []): ?string
     {
-        return $this->schema($form, $known)[$field]['label'] ?? null;
+        return $this->specFor($form, $field, $known)['label'] ?? null;
     }
 
     /**
@@ -743,7 +1045,7 @@ class VoiceAssistantService
      */
     public function skippable(string $form, string $field, array $known = []): bool
     {
-        return $this->schema($form, $known)[$field]['skippable'] ?? true;
+        return $this->specFor($form, $field, $known)['skippable'] ?? true;
     }
 
     /**
@@ -805,6 +1107,19 @@ class VoiceAssistantService
             if (in_array($key, $skipped, true) && ($field['skippable'] ?? true)) {
                 continue;
             }
+
+            // A table is never "filled": there is always the possibility of
+            // one more row. It is finished when the member says so, which
+            // arrives here as the table's name among the skipped.
+            if (isset($field['row'])) {
+                $rows = $this->rowsOf($form, $key, $known);
+                $column = $this->unfilledColumn($field, $rows);
+
+                // A row half said — a name with no price against it — is
+                // finished before another is offered.
+                return $column === null ? $key . '.more' : $key . '.' . $column;
+            }
+
             $value = $known[$key] ?? null;
             if ($value === null || $value === '' || $value === []) {
                 return $key;
@@ -831,7 +1146,12 @@ class VoiceAssistantService
         $rejected = [];
 
         foreach ($offered as $key => $value) {
-            $field = $schema[$key] ?? null;
+            // A column of a table answers to the same rules as a box on the
+            // form; it is only addressed differently.
+            $field = str_contains((string) $key, '.')
+                ? ($this->specFor($form, (string) $key, $known) ?: null)
+                : ($schema[$key] ?? null);
+
             if (! $field || $value === null || $value === '') {
                 $rejected[] = (string) $key;
                 continue;
