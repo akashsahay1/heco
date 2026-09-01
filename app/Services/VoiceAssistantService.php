@@ -786,6 +786,21 @@ class VoiceAssistantService
         $checked['fields'] = $rows['fields'];
         $finished = $rows['finished'] === null ? [] : [$rows['finished']];
 
+        // "There is no note", "koi add-on nahi hai". A member declining is an
+        // answer, and until now it looked exactly like not being understood:
+        // nothing was written, the same question came round, and a host with
+        // nothing to add was asked three times and then had to find the Skip
+        // button. It is only honoured where the field may be passed over —
+        // the one that decides the shape of the form cannot be declined away.
+        $declined = ($data['declined'] ?? false) === true
+            && $checked['fields'] === []
+            && $this->skippable($form, $asked, $known);
+
+        if ($declined) {
+            // A table is declined by name; anything else by its own.
+            $finished[] = explode('.', $asked, 2)[0];
+        }
+
         // This turn's answer wins. Written the other way round, a member who
         // said "no, the name is Pradeep Homestay, not just Homestay" had their
         // correction quietly dropped in favour of what it was correcting.
@@ -843,7 +858,11 @@ class VoiceAssistantService
             // not answer the question. Left unsaid, the same question simply
             // comes round again and the member repeats themselves at a screen
             // that looks deaf. It is the one thing they were never told.
-            'note' => $checked['fields'] === [] && $checked['rejected'] === []
+            //
+            // Said when a member declines, or when they close a table, it is
+            // worse than useless: they answered, the assistant moved on, and
+            // then told them it had not understood.
+            'note' => $finished === [] && $checked['fields'] === [] && $checked['rejected'] === []
                 ? $this->notHeard($form, $asked, $language, $known)
                 : null,
             'reply' => $next === null ? null : $this->questionFor($form, $next, $language, $filled),
