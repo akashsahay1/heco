@@ -1120,6 +1120,49 @@ class VoiceAssistantService
             ->implode("\n");
     }
 
+    /**
+     * Which of the allowed values the model meant, or null if none of them.
+     *
+     * Case and spacing are the model's to get wrong; the value itself is not,
+     * so anything matched here is stored exactly as HCT spells it.
+     *
+     * Some of HCT's values carry a code in front — "MAP - Breakfast + one
+     * meal", "Cat D - Basic/Homestay" — and a model asked for one of those
+     * naturally answers with the code alone. On a real phone a host said
+     * "breakfast plus one meal", the model correctly answered "MAP", and the
+     * answer was thrown away for not being the whole string; the host ended up
+     * having to say "MAP" out loud, which is the one thing they should never
+     * need to know. So either half of such a value is recognised — but only
+     * when it names exactly one of them, because half a name that fits two
+     * values names neither.
+     */
+    private function matchOption(array $allowed, mixed $value): ?string
+    {
+        $said = mb_strtolower(trim((string) $value));
+        if ($said === '') {
+            return null;
+        }
+
+        foreach ($allowed as $option) {
+            if ($said === mb_strtolower($option)) {
+                return $option;
+            }
+        }
+
+        $byHalf = [];
+        foreach ($allowed as $option) {
+            if (! str_contains($option, ' - ')) {
+                continue;
+            }
+            [$code, $rest] = explode(' - ', $option, 2);
+            if ($said === mb_strtolower(trim($code)) || $said === mb_strtolower(trim($rest))) {
+                $byHalf[] = $option;
+            }
+        }
+
+        return count($byHalf) === 1 ? $byHalf[0] : null;
+    }
+
     /** The values a field will accept, or null when it takes free text. */
     public function allowedFor(array $field): ?array
     {
@@ -1326,11 +1369,9 @@ class VoiceAssistantService
 
                 $kept = [];
                 foreach ($said as $one) {
-                    foreach ($allowed as $option) {
-                        if (mb_strtolower(trim((string) $one)) === mb_strtolower($option)) {
-                            $kept[] = $option;
-                            break;
-                        }
+                    $option = $this->matchOption($allowed, $one);
+                    if ($option !== null) {
+                        $kept[] = $option;
                     }
                 }
 
@@ -1347,13 +1388,7 @@ class VoiceAssistantService
             if ($allowed !== null) {
                 // Case and spacing are the model's to get wrong; the value
                 // itself is not. Match loosely, store exactly.
-                $match = null;
-                foreach ($allowed as $option) {
-                    if (mb_strtolower(trim((string) $value)) === mb_strtolower($option)) {
-                        $match = $option;
-                        break;
-                    }
-                }
+                $match = $this->matchOption($allowed, $value);
                 if ($match === null) {
                     $rejected[] = (string) $key;
                     continue;
