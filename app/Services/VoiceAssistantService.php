@@ -107,10 +107,24 @@ class VoiceAssistantService
                 'category' => ['label' => 'Vehicle name', 'ask' => 'what to call this vehicle on their rate card', 'q' => ['hi' => 'इस गाड़ी को रेट कार्ड पर क्या नाम दें?', 'en' => 'What should this vehicle be called on your rate card?'], 'type' => 'string'],
                 'vehicle_type' => ['label' => 'Vehicle type', 'ask' => 'what kind of vehicle it is', 'q' => ['hi' => 'गाड़ी कौन सी है?', 'en' => 'What kind of vehicle is it?'], 'type' => 'string', 'list' => 'vehicle_type'],
                 'vehicle_make_model' => ['label' => 'Make & model', 'ask' => 'the make and model of the vehicle', 'q' => ['hi' => 'गाड़ी का मेक और मॉडल क्या है?', 'en' => 'What is the make and model of the vehicle?'], 'type' => 'string'],
-                // Letters and digits with no meaning to lean on — "HP 01 AB
-                // 1234" — which a transcription gets wrong as often as right,
-                // and a wrong one names somebody else's vehicle.
-                'vehicle_registration_no' => ['label' => 'Registration no.', 'manual' => ['hi' => 'गाड़ी का नंबर आपको खुद टाइप करना होगा। बोलने पर मशीन उसे अक्सर ग़लत लिखती है, और ग़लत नंबर किसी और की गाड़ी का बन जाता है।', 'en' => 'The registration number you will need to type yourself. Spoken aloud a machine gets it wrong as often as right, and a wrong one belongs to somebody else\'s vehicle.']],
+                // Letters and digits with no sense to check them against, so a
+                // member has no way of knowing it went down wrong — and a
+                // wrong one names somebody else's vehicle. Asked slowly, and
+                // read straight back so the mistake is caught while they are
+                // still listening rather than at the save button.
+                'vehicle_registration_no' => [
+                    'label' => 'Registration no.',
+                    'ask' => 'the vehicle\'s registration number, exactly as it is written on the plate, letters and digits with no spaces changed',
+                    'q' => [
+                        'hi' => 'गाड़ी का नंबर बताइए — धीरे-धीरे, एक-एक अक्षर और अंक।',
+                        'en' => 'What is the vehicle\'s registration number? Say it slowly, letter by letter.',
+                    ],
+                    'type' => 'string',
+                    'echo' => [
+                        'hi' => 'मैंने लिखा है: %s — अगर ग़लत है तो फ़ॉर्म में ठीक कर लीजिए।',
+                        'en' => 'I have written: %s — if that is wrong, correct it in the form.',
+                    ],
+                ],
                 'vehicle_year' =>['label' => 'Year', 'ask' => 'which year the vehicle is from', 'q' => ['hi' => 'गाड़ी किस साल की है?', 'en' => 'What year is the vehicle from?'], 'type' => 'int'],
                 'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
                 'unit' => ['label' => 'Unit', 'ask' => 'whether that is per day, per trip or per kilometre', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
@@ -512,11 +526,26 @@ class VoiceAssistantService
         $ahead = $this->walk($form, $filled, array_merge($skipped, $here['passed']), $language);
         $next = $ahead['next'];
 
+        // A few answers are worth reading back. A registration number is
+        // letters and digits with no sense to check them against, so a member
+        // has no way of knowing it went down wrong — and a wrong one belongs
+        // to somebody else's vehicle. Said once, on the turn it is recorded,
+        // and it costs nothing: the value is already in hand.
+        $echo = [];
+        $spec = $schema[$asked] ?? [];
+        if (isset($spec['echo'], $checked['fields'][$asked])) {
+            $echo[] = sprintf(
+                $spec['echo'][$language] ?? $spec['echo']['en'] ?? '%s',
+                $checked['fields'][$asked],
+            );
+        }
+
         return [
             'fields' => $checked['fields'],
             // Boxes reached on the way here that have to be done by hand, and
-            // the words to say about each.
-            'guidance' => array_merge($here['guidance'], $ahead['guidance']),
+            // the words to say about each — preceded by anything worth reading
+            // back out of what was just recorded.
+            'guidance' => array_merge($echo, $here['guidance'], $ahead['guidance']),
             'passed' => array_merge($here['passed'], $ahead['passed']),
             // Nothing was taken and nothing was turned away — the answer did
             // not answer the question. Left unsaid, the same question simply
