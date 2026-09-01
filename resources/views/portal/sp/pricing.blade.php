@@ -214,9 +214,9 @@
                         <label class="form-label small mb-1">Unit <span class="text-danger">*</span></label>
                         <select class="form-select form-select-sm custom-select bulk-field" data-field="unit">
                             <option value="">Pick...</option>
-                            <option value="per km">per km</option>
-                            <option value="per day">per day</option>
-                            <option value="per trip">per trip</option>
+                            @foreach($transportUnits as $u)
+                                <option value="{{ $u->name }}">{{ $u->name }}</option>
+                            @endforeach
                         </select>
                     </div>
                     <div class="col-md-3">
@@ -343,9 +343,9 @@
                     <label class="form-label small">Unit <span class="text-danger">*</span></label>
                     <select class="form-select form-select-sm custom-select" name="unit_transport">
                         <option value="">Select...</option>
-                        <option value="per km">per km</option>
-                        <option value="per day">per day</option>
-                        <option value="per trip">per trip</option>
+                        @foreach($transportUnits as $u)
+                            <option value="{{ $u->name }}">{{ $u->name }}</option>
+                        @endforeach
                     </select>
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
@@ -539,10 +539,9 @@
                     <label class="form-label small">Unit <span class="text-danger">*</span></label>
                     <select class="form-select form-select-sm custom-select" name="unit_activity">
                         <option value="">Select...</option>
-                        <option value="per person">per person</option>
-                        <option value="per group">per group</option>
-                        <option value="per day">per day</option>
-                        <option value="per person per day">per person per day</option>
+                        @foreach($activityUnits as $u)
+                            <option value="{{ $u->name }}">{{ $u->name }}</option>
+                        @endforeach
                     </select>
                     <small class="form-help-text text-muted d-block mt-1"></small>
                 </div>
@@ -716,9 +715,9 @@
                         <label class="form-label small mb-1">Unit <span class="text-danger">*</span></label>
                         <select class="form-select form-select-sm custom-select bulk-field" data-field="unit">
                             <option value="">Pick...</option>
-                            <option value="per km">per km</option>
-                            <option value="per day">per day</option>
-                            <option value="per trip">per trip</option>
+                            @foreach($transportUnits as $u)
+                                <option value="{{ $u->name }}">{{ $u->name }}</option>
+                            @endforeach
                         </select>
                     </div>
                     <div class="col-md-3">
@@ -779,10 +778,9 @@
                         <label class="form-label small mb-1">Unit <span class="text-danger">*</span></label>
                         <select class="form-select form-select-sm custom-select bulk-field" data-field="unit">
                             <option value="">Pick...</option>
-                            <option value="per person">per person</option>
-                            <option value="per group">per group</option>
-                            <option value="per day">per day</option>
-                            <option value="per person per day">per person per day</option>
+                            @foreach($activityUnits as $u)
+                                <option value="{{ $u->name }}">{{ $u->name }}</option>
+                            @endforeach
                         </select>
                     </div>
                     <div class="col-md-1 text-end">

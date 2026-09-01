@@ -30,6 +30,11 @@ class ReferenceController extends Controller
         'guide_preference',
         'activity_type',
         'occupancy_unit',
+        // The three jobs `occupancy_unit` used to do at once. It stays for
+        // anything still reading it; these are what the forms now offer.
+        'room_occupancy',
+        'transport_unit',
+        'activity_unit',
         'meal_plan',
         'room_category',
         'business_type',

@@ -190,13 +190,19 @@ class HctController extends Controller
         $experienceCategories    = SystemList::ofType("experience_category")->get();
         $serviceCategories       = SystemList::ofType("service_category")->get();
         $occupancyUnits          = SystemList::ofType("occupancy_unit")->get();
+        // `occupancy_unit` mixes how a room is sold with how a price is
+        // charged, so each picker reads the list that is actually its own.
+        $roomOccupancies         = SystemList::ofType("room_occupancy")->get();
+        $transportUnits          = SystemList::ofType("transport_unit")->get();
+        $activityUnits           = SystemList::ofType("activity_unit")->get();
         $mealPlans               = SystemList::ofType("meal_plan")->get();
         $roomCategories          = SystemList::ofType("room_category")->get();
         return view("admin.providers.edit", compact(
             "provider", "regions",
             "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes",
             "experienceCategories", "serviceCategories",
-            "occupancyUnits", "mealPlans", "roomCategories"
+            "occupancyUnits", "roomOccupancies", "transportUnits", "activityUnits",
+            "mealPlans", "roomCategories"
         ));
     }
 

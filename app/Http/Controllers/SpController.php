@@ -162,6 +162,11 @@ class SpController extends Controller
         $guideTypes              = SystemList::ofType("guide_preference")->get();
         $activityTypes           = SystemList::ofType("activity_type")->get();
         $occupancyUnits          = SystemList::ofType("occupancy_unit")->get();
+        // `occupancy_unit` mixes how a room is sold with how a price is
+        // charged, so each picker reads the list that is actually its own.
+        $roomOccupancies         = SystemList::ofType("room_occupancy")->get();
+        $transportUnits          = SystemList::ofType("transport_unit")->get();
+        $activityUnits           = SystemList::ofType("activity_unit")->get();
         $mealPlans               = SystemList::ofType("meal_plan")->get();
         $roomCategories          = SystemList::ofType("room_category")->get();
         // "Other langages (from a list)" for a guide — HCT extends the list
@@ -170,7 +175,8 @@ class SpController extends Controller
         return view("portal.sp.pricing", compact(
             "provider",
             "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes",
-            "occupancyUnits", "mealPlans", "roomCategories", "languages"
+            "occupancyUnits", "roomOccupancies", "transportUnits", "activityUnits",
+            "mealPlans", "roomCategories", "languages"
         ));
     }
 }
