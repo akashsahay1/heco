@@ -100,11 +100,16 @@ class VoiceController extends Controller
         $known = (array) $request->input('known', []);
         $skipped = (array) $request->input('skipped', []);
         $language = $request->input('language') === 'en' ? 'en' : 'hi';
-        $next = $this->assistant->nextField($request->input('form'), $known, $skipped);
+        $ahead = $this->assistant->walk($request->input('form'), $known, $skipped, $language);
+        $next = $ahead['next'];
 
         return response()->json([
             'success' => true,
             'fields' => (object) [],
+            // Boxes walked past on the way here that cannot be spoken, and
+            // what to say about each. See the note in turn().
+            'guidance' => $ahead['guidance'],
+            'passed' => $ahead['passed'],
             'reply' => $next === null ? null : $this->assistant->questionFor($request->input('form'), $next, $language, $known),
             'asked' => $next,
             'label' => $next === null ? null : $this->assistant->labelFor($request->input('form'), $next, $known),
@@ -327,6 +332,13 @@ class VoiceController extends Controller
             // nothing was turned away either — the answer was about something
             // else. Null on an ordinary turn.
             'note' => $result['note'] ?? null,
+            // Boxes the conversation walked past because no one can fill them
+            // by talking — photographs, a map pin, the table of extras — and
+            // what to tell the member about each. `passed` names them so the
+            // app can put them behind it: nothing is stored here, so a box not
+            // marked as passed would be announced again every turn.
+            'guidance' => $result['guidance'] ?? [],
+            'passed' => $result['passed'] ?? [],
             'done' => $result['done'],
         ]);
     }

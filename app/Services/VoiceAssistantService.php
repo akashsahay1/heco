@@ -37,8 +37,16 @@ class VoiceAssistantService
      *
      * `list` names the SystemList the value must be copied from, `only` a fixed
      * set the database enum already fixes, and `ask` is the hint the model
-     * turns into a question. Order is the order they are asked, and it follows
-     * how a person describes their place rather than how the table stores it.
+     * turns into a question.
+     *
+     * Order is the order they are asked, and it is the order of the app's own
+     * form — section by section, required boxes before optional ones. A member
+     * has the form open in front of them while they talk: asked about a box
+     * two sections further down, with the one under their thumb passed over,
+     * they can only conclude the assistant has lost its place. It had not, but
+     * the order was written by field rather than by page, so a guide was asked
+     * for their specialties — an optional box — before their daily rate, which
+     * sits directly beneath the question just answered.
      *
      * @return array<string,array<string,mixed>>
      */
@@ -85,15 +93,40 @@ class VoiceAssistantService
                 'price' => ['label' => 'Rate per night (Rs)', 'ask' => 'what one room costs', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
                 'meal_plan' => ['label' => 'Meal plan', 'ask' => 'which meals are included in that price', 'q' => ['hi' => 'इस दाम में कौन सा खाना शामिल है?', 'en' => 'Which meals are included in that price?'], 'type' => 'string', 'list' => 'meal_plan'],
                 'default_occupancy' => ['label' => 'Default occupancy', 'ask' => 'whether the room is normally sold as a single, a double, and so on', 'q' => ['hi' => 'यह कमरा आम तौर पर किस हिसाब से दिया जाता है — सिंगल, डबल या कोई और?', 'en' => 'How is this room normally sold — as a single, a double, or something else?'], 'type' => 'string', 'list' => 'occupancy_unit'],
+                // Nobody says their own coordinates aloud, and a misheard
+                // digit puts the place in the wrong valley — so this is said
+                // rather than asked.
+                'coordinates' => ['label' => 'Latitude & longitude', 'manual' => ['hi' => 'नक्शे पर जगह का निशान — अक्षांश और देशांतर — आपको फ़ॉर्म में खुद भरना होगा। बोलकर नहीं हो सकता, और एक अंक भी ग़लत सुना गया तो जगह दूसरी घाटी में चली जाएगी।', 'en' => 'The map pin — latitude and longitude — you will need to fill in yourself. It cannot be spoken, and one digit heard wrong puts your place in the wrong valley.']],
+                'guest_capacity' =>['label' => 'Guests it sleeps', 'ask' => 'how many guests the place sleeps in all', 'q' => ['hi' => 'कुल कितने मेहमान रुक सकते हैं?', 'en' => 'How many guests can stay in all?'], 'type' => 'int'],
+                'seasonality_notes' => ['label' => 'Seasonality', 'ask' => 'which months they take guests, and which they do not', 'q' => ['hi' => 'साल के किन महीनों में मेहमान आ सकते हैं?', 'en' => 'Which months of the year can guests come?'], 'type' => 'string'],
+                'photos' => ['label' => 'Photos', 'manual' => ['hi' => 'तस्वीरें आपको खुद जोड़नी होंगी — फ़ॉर्म में Photos वाले हिस्से से। यात्री सबसे पहले वही देखता है, इसलिए दो-तीन अच्छी तस्वीरें ज़रूर लगाइए।', 'en' => 'Photos you will need to add yourself, from the Photos part of the form. They are the first thing a traveller looks at, so put two or three good ones in.']],
+                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'transport' => [
-                'category' => ['label' => 'Service name', 'ask' => 'what to call this vehicle on their rate card', 'q' => ['hi' => 'इस गाड़ी को रेट कार्ड पर क्या नाम दें?', 'en' => 'What should this vehicle be called on your rate card?'], 'type' => 'string'],
+                'category' => ['label' => 'Vehicle name', 'ask' => 'what to call this vehicle on their rate card', 'q' => ['hi' => 'इस गाड़ी को रेट कार्ड पर क्या नाम दें?', 'en' => 'What should this vehicle be called on your rate card?'], 'type' => 'string'],
                 'vehicle_type' => ['label' => 'Vehicle type', 'ask' => 'what kind of vehicle it is', 'q' => ['hi' => 'गाड़ी कौन सी है?', 'en' => 'What kind of vehicle is it?'], 'type' => 'string', 'list' => 'vehicle_type'],
-                'vehicle_capacity' => ['label' => 'Seating capacity', 'ask' => 'how many passengers it seats', 'q' => ['hi' => 'इसमें कितने लोग बैठ सकते हैं?', 'en' => 'How many passengers does it seat?'], 'type' => 'int'],
+                'vehicle_make_model' => ['label' => 'Make & model', 'ask' => 'the make and model of the vehicle', 'q' => ['hi' => 'गाड़ी का मेक और मॉडल क्या है?', 'en' => 'What is the make and model of the vehicle?'], 'type' => 'string'],
+                // Letters and digits with no meaning to lean on — "HP 01 AB
+                // 1234" — which a transcription gets wrong as often as right,
+                // and a wrong one names somebody else's vehicle.
+                'vehicle_registration_no' => ['label' => 'Registration no.', 'manual' => ['hi' => 'गाड़ी का नंबर आपको खुद टाइप करना होगा। बोलने पर मशीन उसे अक्सर ग़लत लिखती है, और ग़लत नंबर किसी और की गाड़ी का बन जाता है।', 'en' => 'The registration number you will need to type yourself. Spoken aloud a machine gets it wrong as often as right, and a wrong one belongs to somebody else\'s vehicle.']],
+                'vehicle_year' =>['label' => 'Year', 'ask' => 'which year the vehicle is from', 'q' => ['hi' => 'गाड़ी किस साल की है?', 'en' => 'What year is the vehicle from?'], 'type' => 'int'],
                 'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
                 'unit' => ['label' => 'Unit', 'ask' => 'whether that is per day, per trip or per kilometre', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
+                // Optional details, and the form keeps them in their own
+                // section below the required ones.
+                'vehicle_capacity' => ['label' => 'Seating capacity', 'ask' => 'how many passengers it seats', 'q' => ['hi' => 'इसमें कितने लोग बैठ सकते हैं?', 'en' => 'How many passengers does it seat?'], 'type' => 'int'],
                 'driver_allowance' => ['label' => 'Driver allowance (Rs/day)', 'ask' => 'what the driver is paid on top, if anything', 'q' => ['hi' => 'ड्राइवर का अलग से कुछ खर्च है क्या?', 'en' => 'Is there anything paid to the driver on top?'], 'type' => 'number'],
+                'driver_included' => ['label' => 'Driver included', 'ask' => 'whether a driver comes with that rate', 'q' => ['hi' => 'क्या इस दाम में ड्राइवर शामिल है?', 'en' => 'Does that rate include a driver?'], 'type' => 'bool'],
+                'fuel_tolls_extra' => ['label' => 'Fuel & tolls billed separately', 'ask' => 'whether fuel and tolls are charged on top', 'q' => ['hi' => 'क्या तेल और टोल अलग से लगते हैं?', 'en' => 'Are fuel and tolls charged separately?'], 'type' => 'bool'],
+                'vehicle_photos' => ['label' => 'Vehicle photos', 'manual' => ['hi' => 'गाड़ी की तस्वीरें आपको खुद जोड़नी होंगी — बोलकर नहीं हो सकतीं।', 'en' => 'Photos of the vehicle you will need to add yourself — they cannot be spoken.']],
+                'price_per_km_plains' =>['label' => 'Cost per km — plains (Rs)', 'ask' => 'what a kilometre costs on flat roads', 'q' => ['hi' => 'मैदान में एक किलोमीटर का कितना लगता है?', 'en' => 'What does a kilometre cost on the plains?'], 'type' => 'number'],
+                'price_per_km_hills' => ['label' => 'Cost per km — hills (Rs)', 'ask' => 'what a kilometre costs in the hills', 'q' => ['hi' => 'पहाड़ में एक किलोमीटर का कितना लगता है?', 'en' => 'What does a kilometre cost in the hills?'], 'type' => 'number'],
+                'vehicle_count' => ['label' => 'Number of vehicles', 'ask' => 'how many such vehicles they run', 'q' => ['hi' => 'ऐसी कितनी गाड़ियाँ हैं आपके पास?', 'en' => 'How many such vehicles do you have?'], 'type' => 'int'],
+                'ac_available' => ['label' => 'Air conditioning available', 'ask' => 'whether the vehicle has air conditioning', 'q' => ['hi' => 'क्या गाड़ी में एसी है?', 'en' => 'Does the vehicle have air conditioning?'], 'type' => 'bool'],
+                'ac_extra_cost' => ['label' => 'Extra cost for AC (Rs)', 'ask' => 'what air conditioning costs on top, if anything', 'q' => ['hi' => 'एसी का अलग से कितना लगता है?', 'en' => 'What does air conditioning cost on top?'], 'type' => 'number'],
+                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'guide' => [
@@ -102,18 +135,27 @@ class VoiceAssistantService
                 // the member said was stored and then shown as an empty
                 // "Select" — a value they could neither see nor correct.
                 'category' => ['label' => 'Guide type / language', 'ask' => 'what kind of guiding they do', 'q' => ['hi' => 'आप किस तरह की गाइडिंग करते हैं?', 'en' => 'What kind of guiding do you do?'], 'type' => 'string', 'list' => 'guide_preference'],
-                'specialties' => ['label' => 'Specialties', 'ask' => 'what they guide — birds, forest, culture, and so on', 'q' => ['hi' => 'आप किस चीज़ के बारे में बताते हैं?', 'en' => 'What is it that you show people?'], 'type' => 'string'],
                 'price' => ['label' => 'Rate per day (Rs)', 'ask' => 'what they charge for a day', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
-                                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
+                // Optional details, in the order the form's own section has them.
+                'specialties' => ['label' => 'Specialties', 'ask' => 'what they guide — birds, forest, culture, and so on', 'q' => ['hi' => 'आप किस चीज़ के बारे में बताते हैं?', 'en' => 'What is it that you show people?'], 'type' => 'string'],
+                'wage_multi_day' => ['label' => 'Rate per day — multi-day with night stay (Rs)', 'ask' => 'what they charge a day on a trip where they stay the night', 'q' => ['hi' => 'जिस काम में रात रुकना पड़े, उसका एक दिन का कितना लेते हैं?', 'en' => 'On a trip where you stay the night, what do you charge for a day?'], 'type' => 'number'],
+                'languages' => ['label' => 'Other languages', 'ask' => 'which languages they can guide in', 'q' => ['hi' => 'आप किन-किन भाषाओं में गाइड कर सकते हैं?', 'en' => 'Which languages can you guide in?'], 'type' => 'multi', 'list' => 'language'],
+                'speaks_english' => ['label' => 'Speaks English', 'ask' => 'whether they speak English', 'q' => ['hi' => 'क्या आप अंग्रेज़ी बोल लेते हैं?', 'en' => 'Do you speak English?'], 'type' => 'bool'],
+                'is_certified' => ['label' => 'Certified guide', 'ask' => 'whether they hold a guiding certificate', 'q' => ['hi' => 'क्या आपके पास गाइड का कोई सर्टिफिकेट है?', 'en' => 'Do you hold a guiding certificate?'], 'type' => 'bool'],
+                'has_first_aid' => ['label' => 'First-aid trained', 'ask' => 'whether they are trained in first aid', 'q' => ['hi' => 'क्या आपने फर्स्ट-एड की ट्रेनिंग ली है?', 'en' => 'Have you had first-aid training?'], 'type' => 'bool'],
+                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
+                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'activity' => [
                 // Also a picker in the form, over HCT's activity types.
                 'category' => ['label' => 'Activity type', 'ask' => 'what kind of activity it is', 'q' => ['hi' => 'यह किस तरह की गतिविधि है?', 'en' => 'What kind of activity is it?'], 'type' => 'string', 'list' => 'activity_type'],
-                'specialties' => ['label' => 'Specialties', 'ask' => 'what the activity involves', 'q' => ['hi' => 'आप किस चीज़ के बारे में बताते हैं?', 'en' => 'What is it that you show people?'], 'type' => 'string'],
                 'price' => ['label' => 'Rate (Rs)', 'ask' => 'what it costs', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
                 'unit' => ['label' => 'Unit', 'ask' => 'whether that price is per person or per group', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
+                // Optional details, in the order the form's own section has them.
                 'min_group' => ['label' => 'Min group size', 'ask' => 'the smallest group they will take', 'q' => ['hi' => 'कम से कम कितने लोगों का समूह ले सकते हैं?', 'en' => 'What is the smallest group you will take?'], 'type' => 'int'],
                 'max_group' => ['label' => 'Max group size', 'ask' => 'the largest group they will take', 'q' => ['hi' => 'ज़्यादा से ज़्यादा कितने लोगों का समूह ले सकते हैं?', 'en' => 'What is the largest group you will take?'], 'type' => 'int'],
+                'specialties' => ['label' => 'Specialties', 'ask' => 'what the activity involves', 'q' => ['hi' => 'आप किस चीज़ के बारे में बताते हैं?', 'en' => 'What is it that you show people?'], 'type' => 'string'],
+                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             // The form offers this too, and without an arm of its own the
@@ -124,12 +166,14 @@ class VoiceAssistantService
                 'category' => ['label' => 'Service name', 'ask' => 'what to call this service', 'q' => ['hi' => 'इस सेवा को क्या नाम दें?', 'en' => 'What should this service be called?'], 'type' => 'string'],
                 'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
                 'unit' => ['label' => 'Unit', 'ask' => 'what that price is for', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'occupancy_unit'],
+                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             'rental' => [
                 'rental_item' => ['label' => 'Item on rent', 'ask' => 'what they rent out', 'q' => ['hi' => 'आप किराये पर क्या देते हैं?', 'en' => 'What do you rent out?'], 'type' => 'string'],
-                'price' => ['label' => 'Rate (Rs)', 'ask' => 'what it costs to rent', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
+                'price' => ['label' => 'Charges per day (Rs)', 'ask' => 'what it costs to rent for a day', 'q' => ['hi' => 'एक दिन का किराया कितना है?', 'en' => 'What does it cost to rent for a day?'], 'type' => 'number'],
                                 'security_deposit' => ['label' => 'Security deposit (Rs)', 'ask' => 'what deposit they hold, if any', 'q' => ['hi' => 'कितनी रकम जमानत के तौर पर रखते हैं?', 'en' => 'What deposit do you hold?'], 'type' => 'number'],
+                'addons' => ['label' => 'Add-ons', 'manual' => ['hi' => 'अगर इसके साथ कोई अलग चीज़ भी बेचते हैं — जैसे एक गद्दा या स्टेशन से लिवाना — तो वह Add-ons में खुद जोड़िए। हर एक का नाम और दाम अलग-अलग लिखना होता है।', 'en' => 'If you sell anything alongside this — an extra mattress, a pickup from the station — add it yourself under Add-ons. Each one needs its own name and price.']],
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string'],
             ],
             default => [],
@@ -255,12 +299,17 @@ class VoiceAssistantService
         array $skipped = [],
     ): array
     {
-        $asked = $this->nextField($form, $known, $skipped);
+        // Where the form has got to, and a word about any box reached on the
+        // way that nobody can fill by talking.
+        $here = $this->walk($form, $known, $skipped, $language);
+        $asked = $here['next'];
 
         // Nothing said means nothing to read: hand back the question for
         // wherever the form has got to, without troubling the model at all.
         if ($asked !== null && trim($said) === '') {
             return [
+                'guidance' => $here['guidance'],
+                'passed' => $here['passed'],
                 'fields' => [],
                 'reply' => $this->questionFor($form, $asked, $language, $known),
                 'asked' => $asked,
@@ -277,7 +326,8 @@ class VoiceAssistantService
             // Everything this can ask for has an answer. What is left — photos,
             // the day-by-day plan — is not something anyone can say aloud.
             return ['fields' => [], 'reply' => null, 'asked' => null, 'label' => null, 'choices' => null, 'done' => true,
-                    'rejected' => [], 'note' => null, 'unavailable' => false];
+                    'rejected' => [], 'note' => null, 'unavailable' => false,
+                    'guidance' => $here['guidance'], 'passed' => $here['passed']];
         }
 
         $schema = $this->schema($form, $known);
@@ -310,6 +360,11 @@ class VoiceAssistantService
                     'int' => 'a whole number, digits only',
                     'number' => 'a number, digits only',
                     'bool' => 'true or false',
+                    // Several of the allowed values at once, as a JSON array.
+                    // Told it held text, the model wrote "Hindi and English"
+                    // into a box that takes a list, and the whole answer was
+                    // turned away for matching nothing.
+                    'multi' => 'a JSON array of one or more of the allowed values',
                     default => 'text',
                 },
             ),
@@ -330,7 +385,8 @@ class VoiceAssistantService
 
             return ['fields' => [], 'reply' => null, 'asked' => $asked, 'label' => $this->labelFor($form, $asked, $known),
                     'choices' => $this->choicesFor($form, $asked, $known),
-                    'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => true];
+                    'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => true,
+                    'guidance' => $here['guidance'], 'passed' => $here['passed']];
         }
 
         $answer = app(GroqService::class)->chat([
@@ -354,7 +410,8 @@ class VoiceAssistantService
             // one is worth trying again in a moment, the other is not.
             return ['fields' => [], 'reply' => null, 'asked' => $asked, 'label' => $this->labelFor($form, $asked, $known),
                     'choices' => $this->choicesFor($form, $asked, $known),
-                    'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => true];
+                    'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => true,
+                    'guidance' => $here['guidance'], 'passed' => $here['passed']];
         }
 
         $data = json_decode($answer['content'], true);
@@ -365,7 +422,8 @@ class VoiceAssistantService
 
             return ['fields' => [], 'reply' => null, 'asked' => $asked, 'label' => $this->labelFor($form, $asked, $known),
                     'choices' => $this->choicesFor($form, $asked, $known),
-                    'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => false];
+                    'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => false,
+                    'guidance' => $here['guidance'], 'passed' => $here['passed']];
         }
 
         $checked = $this->keepValid($form, $known, (array) ($data['fields'] ?? []), $asked);
@@ -377,10 +435,15 @@ class VoiceAssistantService
 
         // Which field comes next, decided here in the form's own order — the
         // model is not asked what to ask, only what was said.
-        $next = $this->nextField($form, $filled, $skipped);
+        $ahead = $this->walk($form, $filled, array_merge($skipped, $here['passed']), $language);
+        $next = $ahead['next'];
 
         return [
             'fields' => $checked['fields'],
+            // Boxes reached on the way here that have to be done by hand, and
+            // the words to say about each.
+            'guidance' => array_merge($here['guidance'], $ahead['guidance']),
+            'passed' => array_merge($here['passed'], $ahead['passed']),
             // Nothing was taken and nothing was turned away — the answer did
             // not answer the question. Left unsaid, the same question simply
             // comes round again and the member repeats themselves at a screen
@@ -546,8 +609,22 @@ class VoiceAssistantService
         if (isset($field['list'])) {
             return SystemList::ofType($field['list'])->pluck('name')->values()->all();
         }
+        // The valleys HECO works in. Not a SystemList — they are records with
+        // an id, and the form stores the id — so the member is offered the
+        // names and what they choose is turned back into an id in keepValid().
+        if (($field['source'] ?? null) === 'regions') {
+            return $this->regions()->pluck('name')->values()->all();
+        }
 
         return null;
+    }
+
+    /** The regions on offer, read once per turn rather than per field. */
+    private function regions(): \Illuminate\Support\Collection
+    {
+        return \App\Models\Region::where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name']);
     }
 
     /**
@@ -564,6 +641,43 @@ class VoiceAssistantService
     public function skippable(string $form, string $field, array $known = []): bool
     {
         return $this->schema($form, $known)[$field]['skippable'] ?? true;
+    }
+
+    /**
+     * The next question, and a word about everything passed to reach it.
+     *
+     * Some boxes on the form cannot be filled by talking — photographs, a map
+     * pin, a registration number a machine mishears, a table of extras with a
+     * price against each. Left silently out, a member finishes the
+     * conversation believing the form is finished too, and only the save
+     * button disagrees. So they are kept in the running order and announced
+     * as they are reached: this one is yours, here is the next question.
+     *
+     * `passed` names them so the app can put them behind it. Nothing about
+     * this conversation is stored here, and without that the same box would
+     * be announced again on every turn for the rest of the form.
+     *
+     * @return array{next:?string,guidance:array<int,string>,passed:array<int,string>}
+     */
+    public function walk(string $form, array $known, array $skipped, string $language): array
+    {
+        $guidance = [];
+        $passed = [];
+
+        while (true) {
+            $next = $this->nextField($form, $known, array_merge($skipped, $passed));
+            if ($next === null) {
+                return ['next' => null, 'guidance' => $guidance, 'passed' => $passed];
+            }
+
+            $spec = $this->schema($form, $known)[$next] ?? [];
+            if (! isset($spec['manual'])) {
+                return ['next' => $next, 'guidance' => $guidance, 'passed' => $passed];
+            }
+
+            $guidance[] = $spec['manual'][$language] ?? $spec['manual']['en'] ?? '';
+            $passed[] = $next;
+        }
     }
 
     /**
@@ -634,6 +748,36 @@ class VoiceAssistantService
             }
 
             $allowed = $this->allowedFor($field);
+
+            // A box that holds several of the list at once, not one of them —
+            // the languages a guide works in. Asked "which languages can you
+            // guide in", nobody names one, and read as a single value the
+            // whole answer was thrown away for not being on the list.
+            if ($allowed !== null && ($field['type'] ?? 'string') === 'multi') {
+                $said = is_array($value)
+                    ? $value
+                    : (preg_split('/\s*(?:,|and|और|aur)\s*/ui', (string) $value) ?: []);
+
+                $kept = [];
+                foreach ($said as $one) {
+                    foreach ($allowed as $option) {
+                        if (mb_strtolower(trim((string) $one)) === mb_strtolower($option)) {
+                            $kept[] = $option;
+                            break;
+                        }
+                    }
+                }
+
+                $kept = array_values(array_unique($kept));
+                if ($kept === []) {
+                    $rejected[] = (string) $key;
+                    continue;
+                }
+
+                $fields[$key] = $kept;
+                continue;
+            }
+
             if ($allowed !== null) {
                 // Case and spacing are the model's to get wrong; the value
                 // itself is not. Match loosely, store exactly.
