@@ -289,6 +289,10 @@ class VoiceAssistantService
         // minute across the whole collective.
         $options = $this->allowedFor($schema[$asked]);
 
+        // What those options mean, where HCT has said. Bounded by the same
+        // rule: one field's list, not the whole form's.
+        $meanings = $this->meaningsFor($schema[$asked]);
+
         $prompt = app(PromptBuilderService::class)->build('provider_voice_form', [
             // The question in the member's own words. Without it the model was
             // reading an answer against a field name and had no way to tell an
@@ -312,6 +316,10 @@ class VoiceAssistantService
             'allowed' => $options
                 ? json_encode($options, JSON_UNESCAPED_UNICODE)
                 : '(none — this field takes free text)',
+            // The notes carry their own heading rather than the template
+            // carrying it, so a list with nothing written beside it leaves no
+            // empty heading behind for the model to wonder about.
+            'meanings' => $meanings === null ? '' : "\n\nWhat each of those covers:\n" . $meanings,
             'said' => $said,
         ]);
 
@@ -492,6 +500,41 @@ class VoiceAssistantService
     public function labelFor(string $form, string $field, array $known = []): ?string
     {
         return $this->schema($form, $known)[$field]['label'] ?? null;
+    }
+
+    /**
+     * What each allowed value covers, in HCT's own words, or null when the
+     * list carries no notes at all.
+     *
+     * The names on their own are a taxonomy, not an explanation. Told only
+     * that "Workshops, Handicrafts, Local Knowledge & Storytelling" is one of
+     * three things it may answer, the model read "I teach cooking to tourists"
+     * as guiding — the words a member uses are nothing like the words the list
+     * uses, and nothing said which was which. HCT already writes a note beside
+     * each value; sending it for the one field being asked costs a handful of
+     * tokens and is the difference between a member being understood and being
+     * asked again.
+     *
+     * Every value is listed whether or not it has a note. Sending only the
+     * ones that do would quietly weight the answer towards them.
+     */
+    public function meaningsFor(array $field): ?string
+    {
+        if (! isset($field['list'])) {
+            return null;
+        }
+
+        $rows = SystemList::ofType($field['list'])->get(['name', 'description']);
+
+        if ($rows->isEmpty() || $rows->every(fn ($row) => trim((string) $row->description) === '')) {
+            return null;
+        }
+
+        return $rows
+            ->map(fn ($row) => trim((string) $row->description) !== ''
+                ? sprintf('"%s" — %s', $row->name, trim($row->description))
+                : sprintf('"%s"', $row->name))
+            ->implode("\n");
     }
 
     /** The values a field will accept, or null when it takes free text. */

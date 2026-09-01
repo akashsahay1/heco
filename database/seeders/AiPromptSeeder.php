@@ -174,8 +174,8 @@ Reply with one JSON object and nothing else:
 
  - FIELD names the field they were asked about. That key is the only one you may return.
  - Say nothing about any other field, however much the sentence seems to tell you. Each of those has its own question coming.
- - QUESTION is what they were actually asked, in their own words. If what they said is not an answer to that question, return an empty "fields". A member asked what their place is called who talks about rooms has not named it, and a name pieced together out of that sentence is never asked about again, so nobody can correct it.
- - Where ALLOWED lists values, return one of them copied exactly, character for character. Match on what they MEANT, not on how it came out in writing: what they said was spoken aloud and written down by a machine, so "tempo traveler" is Tempo Traveller and "a basic homestay" is Cat D - Basic/Homestay. Return an empty "fields" only when nothing on the list is what they meant — never pick the nearest for its own sake.
+ - QUESTION is what they were actually asked, in their own words. If what they said is not an answer to that question, return an empty "fields". A member asked what their place is called who talks about rooms has not named it, and a name pieced together out of that sentence is never asked about again, so nobody can correct it. Where ALLOWED lists values, though, a description of what they do, offer or run IS an answer to it.
+ - Where ALLOWED lists values, the member is choosing between them, and they will almost never say a value by name. They describe what they do, what they offer or what they own, and reading which value that is IS the job: "I am a guide" and "मैं गाइड हूँ" describe guiding, "I have a homestay" and "मेरा होमस्टे है" describe a place to stay, "I teach cooking" describes teaching a skill. Match on what they MEANT, not on how it came out in writing, because it was spoken aloud and written down by a machine: "tempo traveler" is Tempo Traveller and "a basic homestay" is Cat D - Basic/Homestay. Where a note is given under a value it says what that value covers, so read it before choosing. Return the value copied exactly, character for character, and return an empty "fields" only when nothing on the list covers what they said — never stretch to the nearest for its own sake.
  - Where FIELD says the field holds a number, return only the digits — 2, not "two", and not "at least two people". "do hazaar" is 2000, "teen" is 3, "kam se kam do log" is 2.
  - A field whose question asks WHETHER something is so takes true or false.
  - Write the value in English whatever language they spoke. A listing is read by travellers and by the HECO team and is kept in English, so a homestay described in Hindi is still recorded as "Pradeep Homestay". Translate rather than transliterate.
@@ -188,7 +188,7 @@ FIELD that question is about:
 {{asked}}
 
 ALLOWED values for that field:
-{{allowed}}
+{{allowed}}{{meanings}}
 
 What they said:
 "{{said}}"',
@@ -197,8 +197,8 @@ What they said:
                 'max_tokens' => 1024,
                 'response_format' => 'json',
                 'is_active' => true,
-                'version' => 17,
-                'notes' => 'Used by VoiceAssistantService::turn(). One field per turn: the member answers the question in front of them, and anything else the model reads into the sentence is a deduction it cannot be corrected on. Keep it short — the Groq free tier allows 8,000 tokens a minute across the whole collective.',
+                'version' => 18,
+                'notes' => 'Used by VoiceAssistantService::turn(). One field per turn: the member answers the question in front of them, and anything else the model reads into the sentence is a deduction it cannot be corrected on. Keep it short — the Groq free tier allows 8,000 tokens a minute across the whole collective. v18: a member choosing from a list says what they do, not what the list calls it — "I am a guide" recorded nothing at all until the rule above said that describing yourself is an answer. {{meanings}} carries the note HCT keeps beside each value, which is what tells cooking classes from guiding.',
             ]
         );
     }
