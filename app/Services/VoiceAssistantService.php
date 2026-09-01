@@ -156,13 +156,50 @@ class VoiceAssistantService
                 // section below the required ones.
                 'vehicle_capacity' => ['label' => 'Seating capacity', 'ask' => 'how many passengers it seats', 'q' => ['hi' => 'इसमें कितने लोग बैठ सकते हैं?', 'en' => 'How many passengers does it seat?'], 'type' => 'int'],
                 'driver_allowance' => ['label' => 'Driver allowance (Rs/day)', 'ask' => 'what the driver is paid on top, if anything', 'q' => ['hi' => 'ड्राइवर का अलग से कुछ खर्च है क्या?', 'en' => 'Is there anything paid to the driver on top?'], 'type' => 'number'],
-                'driver_included' => ['label' => 'Driver included', 'ask' => 'whether a driver comes with that rate', 'q' => ['hi' => 'क्या इस दाम में ड्राइवर शामिल है?', 'en' => 'Does that rate include a driver?'], 'type' => 'bool'],
-                'fuel_tolls_extra' => ['label' => 'Fuel & tolls billed separately', 'ask' => 'whether fuel and tolls are charged on top', 'q' => ['hi' => 'क्या तेल और टोल अलग से लगते हैं?', 'en' => 'Are fuel and tolls charged separately?'], 'type' => 'bool'],
+                // The three that decide who pays. Each is asked as a choice
+                // between the two states rather than as a polarity — a member
+                // answering "no, it is included" is describing the other
+                // state, not negating the question — and each is read back in
+                // words, because a switch looks the same however it got there.
+                'driver_included' => [
+                    'label' => 'Driver included',
+                    'ask' => 'whether a driver comes with that rate, or the traveller arranges one',
+                    'q' => ['hi' => 'क्या इस दाम में ड्राइवर शामिल है?', 'en' => 'Does that rate include a driver?'],
+                    'type' => 'bool',
+                    'echo' => [
+                        'hi' => ['true' => 'ठीक है — ड्राइवर दाम में शामिल है।', 'false' => 'ठीक है — ड्राइवर दाम में शामिल नहीं है।'],
+                        'en' => ['true' => 'Noted — the driver comes with the rate.', 'false' => 'Noted — the driver is not included in the rate.'],
+                    ],
+                ],
+                'fuel_tolls_extra' => [
+                    'label' => 'Fuel & tolls billed separately',
+                    'ask' => 'whether fuel and tolls are charged on top of the rate. True when they are extra and the traveller pays them, false when the rate already covers them',
+                    // Asked as a plain yes or no, and left that way. Worded as
+                    // a choice between the two states — "included, or charged
+                    // on top?" — it read better and cost more: a bare "no",
+                    // which is what most people answer, stopped meaning
+                    // anything and was recorded as the opposite.
+                    'q' => ['hi' => 'क्या तेल और टोल अलग से लगते हैं?', 'en' => 'Are fuel and tolls charged separately?'],
+                    'type' => 'bool',
+                    'echo' => [
+                        'hi' => ['true' => 'ठीक है — तेल और टोल अलग से लगेंगे।', 'false' => 'ठीक है — तेल और टोल दाम में शामिल हैं।'],
+                        'en' => ['true' => 'Noted — fuel and tolls are charged on top.', 'false' => 'Noted — fuel and tolls are included in the rate.'],
+                    ],
+                ],
                 'vehicle_photos' => ['label' => 'Vehicle photos', 'manual' => ['hi' => 'गाड़ी की तस्वीरें आपको खुद जोड़नी होंगी — बोलकर नहीं हो सकतीं।', 'en' => 'Photos of the vehicle you will need to add yourself — they cannot be spoken.']],
                 'price_per_km_plains' =>['label' => 'Cost per km — plains (Rs)', 'ask' => 'what a kilometre costs on flat roads', 'q' => ['hi' => 'मैदान में एक किलोमीटर का कितना लगता है?', 'en' => 'What does a kilometre cost on the plains?'], 'type' => 'number'],
                 'price_per_km_hills' => ['label' => 'Cost per km — hills (Rs)', 'ask' => 'what a kilometre costs in the hills', 'q' => ['hi' => 'पहाड़ में एक किलोमीटर का कितना लगता है?', 'en' => 'What does a kilometre cost in the hills?'], 'type' => 'number'],
                 'vehicle_count' => ['label' => 'Number of vehicles', 'ask' => 'how many such vehicles they run', 'q' => ['hi' => 'ऐसी कितनी गाड़ियाँ हैं आपके पास?', 'en' => 'How many such vehicles do you have?'], 'type' => 'int'],
-                'ac_available' => ['label' => 'Air conditioning available', 'ask' => 'whether the vehicle has air conditioning', 'q' => ['hi' => 'क्या गाड़ी में एसी है?', 'en' => 'Does the vehicle have air conditioning?'], 'type' => 'bool'],
+                'ac_available' => [
+                    'label' => 'Air conditioning available',
+                    'ask' => 'whether the vehicle has air conditioning',
+                    'q' => ['hi' => 'क्या गाड़ी में एसी है?', 'en' => 'Does the vehicle have air conditioning?'],
+                    'type' => 'bool',
+                    'echo' => [
+                        'hi' => ['true' => 'ठीक है — गाड़ी में एसी है।', 'false' => 'ठीक है — गाड़ी में एसी नहीं है।'],
+                        'en' => ['true' => 'Noted — the vehicle has air conditioning.', 'false' => 'Noted — the vehicle has no air conditioning.'],
+                    ],
+                ],
                 'ac_extra_cost' => ['label' => 'Extra cost for AC (Rs)', 'ask' => 'what air conditioning costs on top, if anything', 'q' => ['hi' => 'एसी का अलग से कितना लगता है?', 'en' => 'What does air conditioning cost on top?'], 'type' => 'number'],
                 'addons' => [
                     'label' => 'Add-ons',
@@ -759,17 +796,37 @@ class VoiceAssistantService
         $ahead = $this->walk($form, $filled, array_merge($skipped, $here['passed'], $finished), $language);
         $next = $ahead['next'];
 
-        // A few answers are worth reading back. A registration number is
-        // letters and digits with no sense to check them against, so a member
-        // has no way of knowing it went down wrong — and a wrong one belongs
-        // to somebody else's vehicle. Said once, on the turn it is recorded,
-        // and it costs nothing: the value is already in hand.
+        // A few answers are worth reading back, and they are the ones a member
+        // has no way of checking by ear.
+        //
+        // A registration number sounds like nothing, so a wrong one goes down
+        // unnoticed and names somebody else's vehicle. The switches that
+        // decide who pays are worse: they are a single word either way, and
+        // the answers people actually give are not always the polarity of the
+        // question. "No, fuel and tolls are included" can be read as "no fuel;
+        // and tolls are included", which is the opposite, and it is not an
+        // unreasonable reading — the sentence is genuinely ambiguous. No
+        // wording of the question settles it, and asking the model harder only
+        // moves which sentence it gets wrong.
+        //
+        // So it is not settled here. What it wrote is said back in words, and
+        // a member who hears the wrong one can put it right while they are
+        // still listening — instead of finding it on a rate card weeks later,
+        // having quietly agreed to buy the diesel.
         $echo = [];
-        if (isset($spec['echo'], $checked['fields'][$asked])) {
-            $echo[] = sprintf(
-                $spec['echo'][$language] ?? $spec['echo']['en'] ?? '%s',
-                $checked['fields'][$asked],
-            );
+        if (isset($spec['echo']) && array_key_exists($asked, $checked['fields'])) {
+            $value = $checked['fields'][$asked];
+            $words = $spec['echo'][$language] ?? $spec['echo']['en'] ?? null;
+
+            // A yes or no has no value worth printing — it has two readings,
+            // and the whole point is to say which one was taken.
+            $line = is_bool($value)
+                ? ($words[$value ? 'true' : 'false'] ?? null)
+                : (is_string($words) ? sprintf($words, $value) : null);
+
+            if ($line) {
+                $echo[] = $line;
+            }
         }
 
         return [
