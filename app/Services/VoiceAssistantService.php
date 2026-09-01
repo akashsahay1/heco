@@ -450,10 +450,31 @@ class VoiceAssistantService
         // about the itinerary finishes the conversation believing the listing
         // is finished too, and only the save button disagrees.
         $byHand = [
-            'experience_days' => ['label' => 'Day-wise itinerary', 'manual' => [
-                'hi' => 'दिन-ब-दिन का कार्यक्रम आपको फ़ॉर्म में खुद भरना होगा — हर दिन का अलग कार्ड है, उसमें उस दिन का नाम, ब्यौरा और क्या-क्या शामिल है, यह लिखना होता है।',
-                'en' => 'The day-by-day itinerary you will need to fill in yourself — each day is its own card, with a title, what happens, and what that day includes.',
-            ]],
+            'experience_days' => [
+                'label' => 'Day-wise itinerary',
+                'more' => [
+                    'q' => ['hi' => 'क्या आप दिन-ब-दिन का कार्यक्रम बताना चाहेंगे?', 'en' => 'Would you like to tell me the day-by-day plan?'],
+                    'q_more' => ['hi' => 'अगला दिन बताइए?', 'en' => 'Shall we do the next day?'],
+                ],
+                'row' => [
+                    'title' => [
+                        'ask' => 'a short name for that day',
+                        'q' => ['hi' => 'उस दिन को छोटा सा नाम दीजिए।', 'en' => 'Give that day a short name.'],
+                        'type' => 'string',
+                    ],
+                    'short_description' => [
+                        'ask' => 'what happens on that day',
+                        'q' => ['hi' => 'उस दिन क्या-क्या होता है?', 'en' => 'What happens on that day?'],
+                        'type' => 'string',
+                    ],
+                    'inclusions' => [
+                        'ask' => 'what that day includes — meals, a place to stay, a guide, transport',
+                        'q' => ['hi' => 'उस दिन में क्या-क्या शामिल है — खाना, रहना, गाइड, आना-जाना?', 'en' => 'What does that day include — meals, a bed, a guide, transport?'],
+                        'type' => 'multi',
+                        'list' => 'day_inclusion',
+                    ],
+                ],
+            ],
             'addons' => [
                     'label' => 'Add-ons',
                     'more' => [
@@ -515,19 +536,56 @@ class VoiceAssistantService
             return $basic + $inclusions + $location + $seasonality + [
                 'total_rooms' => ['label' => 'Rooms', 'ask' => 'how many rooms the place has', 'q' => ['hi' => 'इस जगह में कितने कमरे हैं?', 'en' => 'How many rooms does the place have?'], 'type' => 'int'],
                 'total_guests' => ['label' => 'Guests it sleeps', 'ask' => 'how many guests it sleeps in all', 'q' => ['hi' => 'कुल कितने मेहमान रुक सकते हैं?', 'en' => 'How many guests can stay in all?'], 'type' => 'int'],
-                'room_rates' => ['label' => 'Rooms and prices', 'manual' => [
-                    'hi' => 'हर कमरे का दाम आपको खुद जोड़ना होगा — कमरे की किस्म, खाना, और उसका दाम, हर पंक्ति के लिए अलग।',
-                    'en' => 'The price of each room you will need to add yourself — the room type, the meal plan and the price, a row at a time.',
-                ]],
+                'room_rates' => [
+                    'label' => 'Rooms and prices',
+                    'more' => [
+                        'q' => ['hi' => 'क्या किसी कमरे का दाम बताना चाहेंगे?', 'en' => 'Would you like to give me a room and its price?'],
+                        'q_more' => ['hi' => 'और कोई कमरा?', 'en' => 'Another room?'],
+                    ],
+                    'row' => [
+                        'occupancy' => [
+                            'ask' => 'which kind of room this price is for',
+                            'q' => ['hi' => 'यह दाम किस तरह के कमरे का है?', 'en' => 'Which kind of room is this price for?'],
+                            'type' => 'string',
+                            'list' => 'room_category',
+                        ],
+                        'meal_plan' => [
+                            'ask' => 'which meals that price includes',
+                            'q' => ['hi' => 'इस दाम में कौन सा खाना शामिल है?', 'en' => 'Which meals does that price include?'],
+                            'type' => 'string',
+                            'list' => 'meal_plan',
+                        ],
+                        'price' => [
+                            'ask' => 'what that room costs a night',
+                            'q' => ['hi' => 'उस कमरे का एक रात का कितना?', 'en' => 'What does that room cost a night?'],
+                            'type' => 'number',
+                        ],
+                    ],
+                ],
             ] + $byHand + $practical + $operational;
         }
 
         return $basic + $duration + $inclusions + $location + $requirements + $seasonality + [
             'base_cost_per_person' => ['label' => 'Price pp (Rs)', 'ask' => 'what one person pays', 'q' => ['hi' => 'एक व्यक्ति का कितना लगता है?', 'en' => 'What does one person pay?'], 'type' => 'number'],
-            'price_slabs' => ['label' => 'Per-person price tiers', 'manual' => [
-                'hi' => 'अगर बड़े समूह का दाम अलग है तो वे स्लैब आपको फ़ॉर्म में खुद जोड़ने होंगे — कितने लोगों तक, और उसका दाम।',
-                'en' => 'If a bigger group pays a different rate, those tiers you will need to add yourself — up to how many people, and the price.',
-            ]],
+            'price_slabs' => [
+                'label' => 'Per-person price tiers',
+                'more' => [
+                    'q' => ['hi' => 'क्या बड़े समूह का दाम अलग होता है?', 'en' => 'Does a bigger group pay a different rate?'],
+                    'q_more' => ['hi' => 'और कोई स्लैब?', 'en' => 'Another tier?'],
+                ],
+                'row' => [
+                    'min_persons' => [
+                        'ask' => 'the smallest number of people that tier starts at',
+                        'q' => ['hi' => 'यह दाम कितने लोगों से शुरू होता है?', 'en' => 'From how many people does that rate start?'],
+                        'type' => 'int',
+                    ],
+                    'price_per_person' => [
+                        'ask' => 'what one person pays at that size',
+                        'q' => ['hi' => 'उतने लोगों पर एक व्यक्ति का कितना?', 'en' => 'At that size, what does one person pay?'],
+                        'type' => 'number',
+                    ],
+                ],
+            ],
         ] + $byHand + $practical + $operational;
     }
 
