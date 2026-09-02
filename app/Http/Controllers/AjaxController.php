@@ -562,6 +562,7 @@ class AjaxController extends Controller
         'get_leads' => 'hct',
         'update_lead' => 'hct',
         'get_lead_history' => 'hct',
+        'create_lead' => 'hct',
         'get_upcoming_trips' => 'hct',
         'get_trips_by_date_range' => 'hct',
         'update_trip_status' => 'hct',
@@ -1176,6 +1177,9 @@ class AjaxController extends Controller
             }
             if ($request->has('get_lead_history')) {
                 return $this->getLeadHistory($request);
+            }
+            if ($request->has('create_lead')) {
+                return $this->createLead($request);
             }
             if ($request->has('get_upcoming_trips')) {
                 return $this->getUpcomingTrips($request);
@@ -5627,6 +5631,113 @@ class AjaxController extends Controller
             'fields' => array_keys($data), 'stage' => $request->stage,
         ]);
         return response()->json(["success" => true]);
+    }
+
+    /**
+     * File an enquiry that did not come through the portal.
+     *
+     * HECO is told about most trips by WhatsApp or over the phone, and until
+     * now there was no way to put one into the system: a lead is only ever
+     * born from a trip, and a trip is only ever born from a traveller sitting
+     * at the portal building one. So an enquiry that arrived any other way
+     * could not be worked on at all.
+     *
+     * It creates the same three rows that path creates, in the same order and
+     * through the same service, so a lead filed here is indistinguishable
+     * afterwards from one the traveller raised themselves — the trip manager,
+     * the reminders and the won/lost flow all work on it unchanged.
+     */
+    protected function createLead(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'traveller_id' => 'nullable|exists:users,id',
+            'full_name' => 'required_without:traveller_id|nullable|string|max:150',
+            'email' => 'required_without:traveller_id|nullable|email|max:150',
+            'mobile' => 'nullable|string|max:30',
+            'region_id' => 'nullable|exists:regions,id',
+            'adults' => 'nullable|integer|min:1|max:60',
+            'children' => 'nullable|integer|min:0|max:60',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'assigned_hct_id' => 'nullable|exists:users,id',
+            'interaction_mode' => 'nullable|string|max:30',
+            'notes' => 'nullable|string|max:2000',
+        ], [
+            'full_name.required_without' => 'Give the traveller a name, or pick one already on file.',
+            'email.required_without' => 'Give the traveller an email, or pick one already on file.',
+        ]);
+
+        // An email already on file is the same person. Filing a second enquiry
+        // for somebody must not give them a second account, or their trips end
+        // up split across two travellers who cannot see each other.
+        // validate() hands back only the keys that were actually sent, so every
+        // optional one has to be reached for as though it were absent.
+        $chosen = $data['traveller_id'] ?? null;
+        $email = $data['email'] ?? null;
+
+        $traveller = $chosen
+            ? User::where('id', $chosen)->where('user_role', 'traveller')->first()
+            : User::where('email', $email)->where('user_role', 'traveller')->first();
+
+        if (! $traveller) {
+            $traveller = User::create([
+                'full_name' => $data['full_name'] ?? null,
+                'email' => $email,
+                // They did not choose this and are never told it. Signing in
+                // is done through the emailed reset code like any other
+                // traveller who has forgotten theirs — an account with no
+                // password at all could not be signed into by any route.
+                'password' => Str::random(32),
+                'auth_type' => 'email',
+                'user_role' => 'traveller',
+                'mobile' => $data['mobile'] ?? null,
+            ]);
+        } elseif (! empty($data['mobile']) && ! $traveller->mobile) {
+            $traveller->update(['mobile' => $data['mobile']]);
+        }
+
+        // A trip has no region of its own — it takes one from the experiences
+        // that go into it, which have not been chosen yet. What the enquiry was
+        // about is worth keeping all the same, so it names the trip: it is the
+        // only thing distinguishing one fresh enquiry from another in the list.
+        $region = empty($data['region_id']) ? null : Region::find($data['region_id']);
+
+        $trip = Trip::create([
+            'trip_id' => Trip::generateTripId(),
+            'user_id' => $traveller->id,
+            'trip_name' => $region ? $region->name . ' enquiry' : 'Enquiry',
+            'status' => 'not_confirmed',
+            'stage' => 'open',
+            'adults' => $data['adults'] ?? 2,
+            'children' => $data['children'] ?? 0,
+            'start_date' => $data['start_date'] ?? null,
+            'end_date' => $data['end_date'] ?? null,
+        ]);
+
+        $lead = app(LeadService::class)->createOrGetLead($trip);
+
+        $lead->update(array_filter([
+            'assigned_hct_id' => $data['assigned_hct_id'] ?? null,
+            'interaction_mode' => $data['interaction_mode'] ?? null,
+            'notes' => $data['notes'] ?? null,
+            // The enquiry reached HECO before it reached the system, and the
+            // date it was filed is not the date it came in. Only the first
+            // interaction is dated now; the enquiry keeps the date given.
+            'last_interaction_date' => empty($data['interaction_mode']) ? null : now(),
+        ], fn ($v) => $v !== null));
+
+        $this->logActivity('lead_created', 'Lead', $lead->id, [
+            'traveller' => $traveller->email,
+            'trip' => $trip->trip_id,
+            'by_hand' => true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'lead_id' => $lead->id,
+            'trip_id' => $trip->trip_id,
+            'traveller' => $traveller->full_name,
+        ]);
     }
 
     protected function getLeadHistory(Request $request): JsonResponse

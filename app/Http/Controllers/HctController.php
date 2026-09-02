@@ -102,7 +102,15 @@ class HctController extends Controller
         }
         $leads = $query->orderBy('enquiry_date', 'desc')->paginate(config('pagination.admin_per_page', 20))->withQueryString();
 
-        return view('admin.leads', compact('hctUsers', 'leads', 'stage', 'search'));
+        // For filing an enquiry that came in by phone or WhatsApp: the regions
+        // HECO works in, and the travellers already on file so a second
+        // enquiry for the same person does not create a second account.
+        $regions = Region::where('is_active', true)->orderBy('name')->get(['id', 'name', 'country']);
+        $travellers = User::where('user_role', 'traveller')
+            ->orderBy('full_name')
+            ->get(['id', 'full_name', 'email']);
+
+        return view('admin.leads', compact('hctUsers', 'leads', 'stage', 'search', 'regions', 'travellers'));
     }
 
     public function trips(\Illuminate\Http\Request $request)

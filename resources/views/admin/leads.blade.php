@@ -7,6 +7,11 @@
         Leads Management
         <span class="badge bg-secondary ms-2" title="Total in current view">{{ number_format($leads->total()) }}</span>
     </h5>
+    {{-- Most enquiries reach HECO by phone or WhatsApp rather than through the
+         portal, and until now there was no way to put one into the system. --}}
+    <button type="button" class="btn btn-primary btn-sm" id="addLeadBtn">
+        <i class="bi bi-plus-lg"></i> Add Lead
+    </button>
 </div>
 
 {{-- Server-side filter card (Travelers-style). --}}
@@ -106,6 +111,113 @@
     </div>
 @endif
 
+<div class="modal fade" id="addLeadModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Lead</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger d-none" id="addLeadError"></div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-12">
+                        <label class="form-label small text-muted mb-1">Traveller already on file</label>
+                        <select class="form-select form-select-sm custom-select" id="leadTraveller">
+                            <option value="">Someone new</option>
+                            @foreach($travellers as $t)
+                                <option value="{{ $t->id }}">{{ $t->full_name }} — {{ $t->email }}</option>
+                            @endforeach
+                        </select>
+                        <small class="text-muted d-block mt-1">Pick them here, or leave it and fill in the three boxes below.</small>
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-3" id="newTravellerFields">
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-1">Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="leadName">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-1">Email <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control form-control-sm" id="leadEmail">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-1">Phone</label>
+                        <input type="text" class="form-control form-control-sm" id="leadMobile">
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted mb-1">Region</label>
+                        <select class="form-select form-select-sm custom-select" id="leadRegion">
+                            <option value="">Not said yet</option>
+                            @foreach($regions as $r)
+                                <option value="{{ $r->id }}">{{ $r->name }} ({{ $r->country }})</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">Adults</label>
+                        <input type="number" class="form-control form-control-sm" id="leadAdults" value="2" min="1" max="60">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">Children</label>
+                        <input type="number" class="form-control form-control-sm" id="leadChildren" value="0" min="0" max="60">
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">From</label>
+                        <input type="text" class="form-control form-control-sm" id="leadStartDisplay" placeholder="dd-mm-yyyy" autocomplete="off">
+                        <input type="hidden" id="leadStart">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">To</label>
+                        <input type="text" class="form-control form-control-sm" id="leadEndDisplay" placeholder="dd-mm-yyyy" autocomplete="off">
+                        <input type="hidden" id="leadEnd">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">Came in by</label>
+                        <select class="form-select form-select-sm custom-select" id="leadMode">
+                            <option value="">Not recorded</option>
+                            <option value="whatsapp">WhatsApp</option>
+                            <option value="phone">Phone</option>
+                            <option value="email">Email</option>
+                            <option value="in_person">In person</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">Assign to</label>
+                        <select class="form-select form-select-sm custom-select" id="leadAssigned">
+                            <option value="">Unassigned</option>
+                            @foreach($hctUsers as $u)
+                                <option value="{{ $u->id }}">{{ $u->full_name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row g-2">
+                    <div class="col-md-12">
+                        <label class="form-label small text-muted mb-1">Notes</label>
+                        <textarea class="form-control form-control-sm" id="leadNotes" rows="3" placeholder="What they asked for, in their own words."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" id="saveLeadBtn">Save Lead</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="leadModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -182,5 +294,79 @@ function updateLead(id) {
         location.reload();
     });
 }
+// Filing an enquiry that came in by phone or WhatsApp. It builds the same
+// three rows the portal builds when a traveller does it themselves — the
+// traveller, the trip, and the lead — so everything downstream works on it
+// unchanged.
+jQuery(function() {
+    // Air Datepicker hands back a Date; the hidden box holds what the server
+    // wants. Local parts, not toISOString(), which shifts a morning in India
+    // back to the day before.
+    function isoFromDate(d) {
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        return d.getFullYear() + '-' + m + '-' + day;
+    }
+
+    new AirDatepicker('#leadStartDisplay', {
+        locale: window.airDatepickerEn,
+        dateFormat: 'dd-MM-yyyy',
+        autoClose: true,
+        position: 'bottom left',
+        onSelect: function(o) { jQuery('#leadStart').val(o.date ? isoFromDate(o.date) : ''); }
+    });
+    new AirDatepicker('#leadEndDisplay', {
+        locale: window.airDatepickerEn,
+        dateFormat: 'dd-MM-yyyy',
+        autoClose: true,
+        position: 'bottom left',
+        onSelect: function(o) { jQuery('#leadEnd').val(o.date ? isoFromDate(o.date) : ''); }
+    });
+
+    // Picking somebody already on file leaves nothing to type about them, and
+    // a half-filled set of new-traveller boxes beside a chosen name is only a
+    // question about which one wins.
+    jQuery(document).on('change', '#leadTraveller', function() {
+        jQuery('#newTravellerFields').toggleClass('d-none', jQuery(this).val() !== '');
+    });
+
+    jQuery(document).on('click', '#addLeadBtn', function() {
+        jQuery('#addLeadError').addClass('d-none').text('');
+        new bootstrap.Modal(document.getElementById('addLeadModal')).show();
+    });
+
+    jQuery(document).on('click', '#saveLeadBtn', function() {
+        var $btn = jQuery(this).prop('disabled', true);
+
+        ajaxPost({
+            create_lead: 1,
+            traveller_id: jQuery('#leadTraveller').val(),
+            full_name: jQuery('#leadName').val(),
+            email: jQuery('#leadEmail').val(),
+            mobile: jQuery('#leadMobile').val(),
+            region_id: jQuery('#leadRegion').val(),
+            adults: jQuery('#leadAdults').val(),
+            children: jQuery('#leadChildren').val(),
+            start_date: jQuery('#leadStart').val(),
+            end_date: jQuery('#leadEnd').val(),
+            interaction_mode: jQuery('#leadMode').val(),
+            assigned_hct_id: jQuery('#leadAssigned').val(),
+            notes: jQuery('#leadNotes').val()
+        }, function(resp) {
+            showAlert('Lead filed for ' + resp.traveller + ' (trip ' + resp.trip_id + ').', 'success');
+            location.reload();
+        }, function(xhr) {
+            // Shown inside the form rather than as a banner: what is wrong is
+            // one of the boxes they are looking at.
+            var msg = 'Could not file that lead.';
+            if (xhr && xhr.responseJSON) {
+                var e = xhr.responseJSON.errors;
+                msg = e ? jQuery.map(e, function(v) { return v[0]; }).join(' ') : (xhr.responseJSON.message || msg);
+            }
+            jQuery('#addLeadError').removeClass('d-none').text(msg);
+            $btn.prop('disabled', false);
+        });
+    });
+});
 </script>
 @endsection
