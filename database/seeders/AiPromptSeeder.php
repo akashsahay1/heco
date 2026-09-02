@@ -227,5 +227,44 @@ What they said:
                 'notes' => 'Used by VoiceAssistantService::turn(). One field per turn: the member answers the question in front of them, and anything else the model reads into the sentence is a deduction it cannot be corrected on. Keep it short — the Groq free tier allows 8,000 tokens a minute across the whole collective. v18: a member choosing from a list says what they do, not what the list calls it — "I am a guide" recorded nothing at all until the rule above said that describing yourself is an answer. {{meanings}} carries the note HCT keeps beside each value, which is what tells cooking classes from guiding. v19: a member with no note to leave could not say so — declining read as not being understood, and the same question came round for ever. v20: not knowing the answer is the same kind of thing, and a host who could not name the model of their own vehicle was asked three times. v21: \"say\" is what the member hears before the next question — the questions themselves are written down and never varied, which is reliable and reads as a form being recited unless something reacts to what was actually said. v22: that line drifted between tongues and read back the filed value rather than what was said — a member who said homestay was told hotel. v23: it then said the same thing every turn — \"X, noted\" over and over — which is one formula traded for another, and it began writing the spoken words into the field as well. v24: asking it to vary did nothing at temperature 0.10, so the shape is now dictated per turn and rotated by the caller. v25: the questions themselves were still one written sentence each, said the same way every time and to everybody; the model now words the next one, and the caller uses its wording only when it is about the box that actually came next. v26: a member could not ask to skip in words, could not go back to a box already answered, and when an answer was turned away was told only that it had been. v27: a member can ask as well as answer — every question they put was met with \"that did not answer it\" — and naming a box to go back to needed the list of boxes there are. v28: FILLED carries the answers as well as the headings, so \"what did I say the name was\" can be answered; and an unrelated question in Hindi was not turned away the way an English one was.',
             ]
         );
+
+        // Saying one question differently. Kept apart from the assistant's own
+        // prompt because it is a tenth of the size and is asked far more often
+        // — every question that is not the one the model was already wording
+        // goes through here, and the collective has 8,000 tokens a minute
+        // between it.
+        AiPrompt::updateOrCreate(
+            ['key' => 'provider_voice_ask'],
+            [
+                'name' => 'Provider Voice Assistant — asking',
+                'system_prompt' => 'You put one question into different words.
+
+Give back one JSON object and nothing else: {"ask": "<the question>"}
+
+ - Ask the SAME thing. Not more of it, not less, nothing beside it. If it names the choices, keep them; if it does not, do not invent any.
+ - REPLY IN says which tongue. All of it.
+ - ANGLE says how to come at it this time. Follow it. The written sentence goes to every member of the collective one after another, and the point of this is that no two of them hear it the same way — so do not hand the written sentence back.
+ - ABOUT is what the form calls this box, if you want to name the thing rather than say "it".
+ - One short question. No greeting, no preamble, no explaining.',
+                'user_prompt_template' => 'REPLY IN:
+{{reply_in}}
+
+ANGLE:
+{{angle}}
+
+ABOUT:
+{{label}}
+
+THE QUESTION:
+{{question}}',
+                'model' => 'openai/gpt-oss-20b',
+                'temperature' => 0.60,
+                'max_tokens' => 200,
+                'response_format' => 'json',
+                'is_active' => true,
+                'version' => 2,
+                'notes' => 'Used by VoiceAssistantService::phrase(). Deliberately warmer than provider_voice_form: nothing is read out of the answer here, so there is nothing for a loose temperature to get wrong, and a cold one asked the same question the same way every time.',
+            ]
+        );
     }
 }

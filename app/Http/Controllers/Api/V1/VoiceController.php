@@ -73,10 +73,11 @@ class VoiceController extends Controller
     /**
      * The next question, without anyone having to say anything.
      *
-     * Used when a member passes over a field. Questions are written down beside
-     * the fields rather than composed by a model, so this costs nothing and
-     * answers instantly — there is no reason to make someone speak in order to
-     * be told what comes next.
+     * Used when a member passes over a field. Which question comes next is
+     * still settled here rather than by a model — there is no reason to make
+     * someone speak in order to be told what comes next — but the words it is
+     * put in are not, or Skip would be the one place the same sentence came
+     * back every time.
      */
     public function next(Request $request): JsonResponse
     {
@@ -110,7 +111,15 @@ class VoiceController extends Controller
             // what to say about each. See the note in turn().
             'guidance' => $ahead['guidance'],
             'passed' => $ahead['passed'],
-            'reply' => $next === null ? null : $this->assistant->questionFor($request->input('form'), $next, $language, $known),
+            // Said differently each time, like every other question. This is
+            // the one place a question went out without a model having seen
+            // it — pressing Skip forty times heard the same forty sentences.
+            'reply' => $next === null ? null : $this->assistant->phrase(
+                $this->assistant->questionFor($request->input('form'), $next, $language, $known),
+                $language,
+                (string) $this->assistant->labelFor($request->input('form'), $next, $known),
+                count($known),
+            ),
             'asked' => $next,
             'label' => $next === null ? null : $this->assistant->labelFor($request->input('form'), $next, $known),
             'choices' => $next === null ? null : $this->assistant->choicesFor($request->input('form'), $next, $known),

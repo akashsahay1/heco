@@ -657,7 +657,7 @@ class VoiceAssistantService
                 'guidance' => $here['guidance'],
                 'passed' => $here['passed'],
                 'fields' => [],
-                'reply' => $this->questionFor($form, $asked, $language, $known),
+                'reply' => $this->phrase($this->questionFor($form, $asked, $language, $known), $language, (string) $this->labelFor($form, $asked, $known), count($known)),
                 'asked' => $asked,
                 'label' => $this->labelFor($form, $asked, $known),
                 'choices' => $this->choicesFor($form, $asked, $known),
@@ -1005,12 +1005,12 @@ class VoiceAssistantService
             // Otherwise the written question is put after whatever it said —
             // which is where this began, and is still perfectly serviceable.
             'reply' => $answer !== '' && $next !== null
-                ? $this->questionFor($form, $next, $language, $filled)
+                ? $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled))
                 : ($next === null
                 ? ($say ?: null)
                 : ($ask !== '' && $next === $guessed
                     ? trim($say . ' ' . $ask)
-                    : trim($say . ' ' . $this->questionFor($form, $next, $language, $filled)))),
+                    : trim($say . ' ' . $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled))))),
             'asked' => $next,
             'label' => $next === null ? null : $this->labelFor($form, $next, $filled),
             'choices' => $next === null ? null : $this->choicesFor($form, $next, $filled),
@@ -1221,6 +1221,69 @@ class VoiceAssistantService
         }
 
         return null;
+    }
+
+    /**
+     * One question, said differently.
+     *
+     * The questions are written down, which is what keeps them accurate and in
+     * order — and is also why the same forty sentences went to every member of
+     * the collective in the same words. The model asking is not choosing what
+     * to ask; it is choosing how, and if it fails or wanders the written one is
+     * used, so the worst case is what this has always done.
+     *
+     * A tenth the size of a turn and asked far more often, so it has a prompt
+     * of its own rather than the assistant's.
+     */
+    public function phrase(?string $question, string $language, string $label = '', int $seed = 0): ?string
+    {
+        if ($question === null || trim($question) === '') {
+            return $question;
+        }
+
+        $prompt = app(PromptBuilderService::class)->build('provider_voice_ask', [
+            'reply_in' => $language === 'hi' ? 'Hindi' : 'English',
+            // Which way to come at it this time. Told only to say the same
+            // thing differently, it said the same thing: "What does it cost?"
+            // came back word for word four times out of four, because there is
+            // no obviously different way to put four words and nothing was
+            // pushing it to look for one.
+            // None of the four may be answered by handing the written
+            // sentence back, which is what "ask it plainly" turned out to
+            // mean: each asks for a different construction.
+            'angle' => [
+                'Ask it as a follow-on to what they just said — "And what about ...?", "और ...?"',
+                'Build the question around the words in ABOUT — "And the rate per day?" rather than "What does it cost?"',
+                'Ask it the shortest way you can without losing any of it.',
+                'Ask it the way somebody who has been talking to them for a few minutes would — easy, not formal.',
+            ][$seed % 4],
+            // What the form calls this box, so it can be named.
+            'label' => $label ?: '(not named)',
+            'question' => $question,
+        ]);
+
+        if (! $prompt) {
+            return $question;
+        }
+
+        $answer = app(GroqService::class)->chat([
+            ['role' => 'system', 'content' => $prompt['system_prompt']],
+            ['role' => 'user',   'content' => $prompt['user_prompt']],
+        ], [
+            'groq_model' => $prompt['model'] ?: null,
+            'temperature' => $prompt['temperature'],
+            'max_tokens' => $prompt['max_tokens'],
+            'format' => 'json',
+            'reasoning_effort' => 'low',
+        ]);
+
+        $said = trim((string) (json_decode((string) ($answer['content'] ?? ''), true)['ask'] ?? ''));
+
+        // Longer than the question it came from by any margin means it has
+        // started explaining, and a member answers what they heard last.
+        return ($said === '' || mb_strlen($said) > mb_strlen($question) + 60)
+            ? $question
+            : $said;
     }
 
     /**
