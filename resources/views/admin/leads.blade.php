@@ -186,10 +186,9 @@
                         <label class="form-label small text-muted mb-1">Came in by</label>
                         <select class="form-select form-select-sm custom-select" id="leadMode">
                             <option value="">Not recorded</option>
+                            <option value="call">Call</option>
                             <option value="whatsapp">WhatsApp</option>
-                            <option value="phone">Phone</option>
                             <option value="email">Email</option>
-                            <option value="in_person">In person</option>
                         </select>
                     </div>
                     <div class="col-md-3">
@@ -206,7 +205,7 @@
                 <div class="row g-2">
                     <div class="col-md-12">
                         <label class="form-label small text-muted mb-1">Notes</label>
-                        <textarea class="form-control form-control-sm" id="leadNotes" rows="3" placeholder="What they asked for, in their own words."></textarea>
+                        <textarea class="form-control form-control-sm" id="newLeadNotes" rows="3" placeholder="What they asked for, in their own words."></textarea>
                     </div>
                 </div>
             </div>
@@ -351,7 +350,7 @@ jQuery(function() {
             end_date: jQuery('#leadEnd').val(),
             interaction_mode: jQuery('#leadMode').val(),
             assigned_hct_id: jQuery('#leadAssigned').val(),
-            notes: jQuery('#leadNotes').val()
+            notes: jQuery('#newLeadNotes').val()
         }, function(resp) {
             showAlert('Lead filed for ' + resp.traveller + ' (trip ' + resp.trip_id + ').', 'success');
             location.reload();

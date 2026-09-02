@@ -5660,7 +5660,7 @@ class AjaxController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'assigned_hct_id' => 'nullable|exists:users,id',
-            'interaction_mode' => 'nullable|string|max:30',
+            'interaction_mode' => 'nullable|in:call,whatsapp,email',
             'notes' => 'nullable|string|max:2000',
         ], [
             'full_name.required_without' => 'Give the traveller a name, or pick one already on file.',
@@ -5670,6 +5670,11 @@ class AjaxController extends Controller
         // An email already on file is the same person. Filing a second enquiry
         // for somebody must not give them a second account, or their trips end
         // up split across two travellers who cannot see each other.
+        // Three rows that only mean anything together. A failure part way
+        // through — which is how a stray traveller and a trip with no lead
+        // against them were left behind while this was being built — leaves
+        // rows nobody will ever look at and nothing to find them by.
+        return DB::transaction(function () use ($data) {
         // validate() hands back only the keys that were actually sent, so every
         // optional one has to be reached for as though it were absent.
         $chosen = $data['traveller_id'] ?? null;
@@ -5732,12 +5737,13 @@ class AjaxController extends Controller
             'by_hand' => true,
         ]);
 
-        return response()->json([
-            'success' => true,
-            'lead_id' => $lead->id,
-            'trip_id' => $trip->trip_id,
-            'traveller' => $traveller->full_name,
-        ]);
+            return response()->json([
+                'success' => true,
+                'lead_id' => $lead->id,
+                'trip_id' => $trip->trip_id,
+                'traveller' => $traveller->full_name,
+            ]);
+        });
     }
 
     protected function getLeadHistory(Request $request): JsonResponse
