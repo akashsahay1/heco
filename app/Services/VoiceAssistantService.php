@@ -698,6 +698,42 @@ class VoiceAssistantService
             // reading an answer against a field name and had no way to tell an
             // answer to THIS question from a sentence about something else —
             // so anything said became the value of whatever was open.
+            // Which tongue the line back must be in. Left to work it out from
+            // the transcript, it drifted — "Pradeep Homestay noted" in the
+            // middle of a Hindi conversation, "समझ गया" in the middle of an
+            // English one — and a word of the wrong language is the surest
+            // sign of a machine there is.
+            'reply_in' => $language === 'hi' ? 'Hindi' : 'English',
+            // What shape the line back should take THIS time.
+            //
+            // Asking the model to vary does not make it vary: it answers at
+            // temperature 0.10, which is what keeps the values it reads out
+            // reliable and is also why it chose the same six words every turn.
+            // Raising the temperature to loosen its phrasing would loosen its
+            // reading of prices along with it.
+            //
+            // So the variation is asked for outright, and it rotates on how
+            // much of the form is done — no memory needed, and a member goes
+            // through the shapes rather than hearing one of them forty times.
+            'tone' => $this->toneFor(count($known)),
+            // The headings of the boxes already answered. Asked to name one a
+            // member wants to change without being told what there is to name,
+            // the model named nothing at all — the instruction was abstract and
+            // it had no list to point at.
+            'filled' => $this->filledLabels($form, $known) ?: '(nothing yet)',
+            // The question that will almost certainly come next, so the model
+            // can put it in its own words rather than have the written one
+            // appended to whatever it says.
+            //
+            // Almost certainly, not certainly: an answer can change the shape
+            // of the form under it — saying what kind of service this is, or
+            // that a stay is a stay — and a member who declines moves somewhere
+            // else again. When the guess turns out wrong the written question
+            // is used instead, so the worst case is the wording it has always
+            // had rather than a question about the wrong box.
+            'next_question' => ($guessed = $this->likelyNext($form, $known, $asked, $skipped)) === null
+                ? ''
+                : ($this->questionFor($form, $guessed, $language, $known) ?? ''),
             'question' => $this->questionFor($form, $asked, $language, $known) ?? '',
             // The shape matters as much as the meaning. Told only what the
             // field is about, the model wrote "at least two people" into a box
@@ -717,7 +753,12 @@ class VoiceAssistantService
                     'multi' => 'a JSON array of one or more of the allowed values',
                     // "March to June" is four months, not a sentence.
                     'months' => 'a JSON array of month numbers, 1 for January through 12 for December, with every month they name spelled out — a range like March to June is [3, 4, 5, 6]',
-                    default => 'text',
+                    // The rule about English is in the system prompt too, and
+                    // was quietly lost about half the time — a homestay named
+                    // in Hindi went into the listing in Devanagari. It is
+                    // repeated here, beside the field, where the model is
+                    // looking when it decides what to write.
+                    default => 'text, written in English whatever language they spoke',
                 },
             ),
             'allowed' => $options
@@ -778,7 +819,71 @@ class VoiceAssistantService
                     'guidance' => $here['guidance'], 'passed' => $here['passed']];
         }
 
+        // What the member hears before the next question. The questions
+        // themselves are written down and never vary — which is what keeps the
+        // conversation ordered and complete, and is also exactly why it reads
+        // as a form being recited. This is the half that reacts: "Local guide,
+        // noted", "पंद्रह सौ रुपये रोज़ — ठीक है". It costs a dozen words on a
+        // turn that was being made anyway.
+        //
+        // It is only ever said, never stored, so there is nothing it can get
+        // wrong beyond sounding odd — and it is cut short rather than trusted,
+        // because a model given room to talk eventually asks its own question
+        // and the member answers that instead of the one that follows.
+        $say = trim((string) ($data['say'] ?? ''));
+        $say = mb_strlen($say) > 160 ? '' : $say;
+
+        // It runs straight into the question that follows it otherwise —
+        // "fifteen hundred a day What is it that you show people?" — which
+        // reads as one garbled sentence rather than two. The danda is Hindi's
+        // full stop and counts as one.
+        if ($say !== '' && ! preg_match('/[.!?।]$/u', $say)) {
+            $say .= $language === 'hi' ? '।' : '.';
+        }
+
+        // The next question in the model's own words. A written question is
+        // the same forty times over, which is most of what makes this sound
+        // like a form being read out; the model asks the same thing differently
+        // each time. What it may not do is ask something else, so it is only
+        // used when it turns out to be about the box that actually came next,
+        // and it is refused if it has grown into a speech.
+        $ask = trim((string) ($data['ask'] ?? ''));
+        $ask = mb_strlen($ask) > 200 ? '' : $ask;
+
+        // A member does not only answer. They ask — what does comfort tier
+        // mean, why do you want the registration number, how many rooms should
+        // I put. Every one of those used to come back as "that did not answer
+        // it", which is both untrue and the plainest sign that nothing was
+        // listening. So the model answers, and the question they were on is
+        // put to them again after.
+        $answer = trim((string) ($data['answer'] ?? ''));
+        $answer = mb_strlen($answer) > 400 ? '' : $answer;
+
         $checked = $this->keepValid($form, $known, (array) ($data['fields'] ?? []), $asked);
+
+        // What was heard and could not be used. The app said only "I could not
+        // use that one" and left the member guessing at what would have done
+        // instead — which, when the box takes one of HCT's own values, is a
+        // list we are holding and they are not. So it is read out, along with
+        // the two ways past it.
+        // A wrong answer to a box that takes one of HCT's own values arrives
+        // two ways: as a value that is not on the list, or as nothing at all
+        // because the model would not guess. Both leave the member none the
+        // wiser about what would have done instead, and both are met the same
+        // way — by reading the list out.
+        $refused = null;
+        $missed = ! isset($data['revisit']) && ! isset($data['answer'])
+            && (in_array($asked, $checked['rejected'], true)
+                || ($checked['fields'] === [] && $checked['rejected'] === []));
+
+        if ($missed && ! str_contains($asked, '.')) {
+            $choices = $this->choicesFor($form, $asked, $known);
+            $label = $this->labelFor($form, $asked, $known);
+
+            $refused = $choices === null ? null : ($language === 'hi'
+                ? 'यह इनमें से नहीं है — ' . implode(', ', $choices) . '। इनमें से कोई बताइए, या कहिए कि छोड़ दें।'
+                : 'That did not match — it is one of these: ' . implode(', ', $choices) . '. Pick one, or say to leave it.');
+        }
 
         // One column of a table becomes the row it belongs to, and a member
         // saying there are no more finishes the table for good.
@@ -793,6 +898,7 @@ class VoiceAssistantService
         // button. It is only honoured where the field may be passed over —
         // the one that decides the shape of the form cannot be declined away.
         $declined = ($data['declined'] ?? false) === true
+            && ! isset($data['revisit'])
             && $checked['fields'] === []
             && $this->skippable($form, $asked, $known);
 
@@ -813,6 +919,19 @@ class VoiceAssistantService
             $left[] = $language === 'hi'
                 ? "ठीक है — {$label} खाली छोड़ देते हैं। बाद में फ़ॉर्म में भर सकते हैं।"
                 : "All right — {$label} is left empty. You can fill it in on the form later.";
+        }
+
+        // "The name is wrong", "let me change the price". A member who has
+        // moved past a box has, until now, had no way back to it by talking:
+        // the assistant only ever walks forward, and the only way to correct
+        // anything was to close the sheet and type over it.
+        //
+        // Reopening is blanking. The box is emptied, which is what puts it
+        // back in front of the next question, and the app is told so it can
+        // stop counting it among the ones passed over.
+        $reopened = $this->fieldNamed($form, $known, trim((string) ($data['revisit'] ?? '')));
+        if ($reopened !== null) {
+            $checked['fields'][$reopened] = '';
         }
 
         // This turn's answer wins. Written the other way round, a member who
@@ -876,14 +995,30 @@ class VoiceAssistantService
             // Said when a member declines, or when they close a table, it is
             // worse than useless: they answered, the assistant moved on, and
             // then told them it had not understood.
-            'note' => $finished === [] && $checked['fields'] === [] && $checked['rejected'] === []
-                ? $this->notHeard($form, $asked, $language, $known)
-                : null,
-            'reply' => $next === null ? null : $this->questionFor($form, $next, $language, $filled),
+            'note' => $answer
+                ?: ($refused
+                    ?: ($finished === [] && $checked['fields'] === [] && $checked['rejected'] === []
+                        ? ($say ?: $this->notHeard($form, $asked, $language, $known))
+                        : null)),
+            // The model's own wording of the next question, used only when the
+            // question it was wording is the one that actually came next.
+            // Otherwise the written question is put after whatever it said —
+            // which is where this began, and is still perfectly serviceable.
+            'reply' => $answer !== '' && $next !== null
+                ? $this->questionFor($form, $next, $language, $filled)
+                : ($next === null
+                ? ($say ?: null)
+                : ($ask !== '' && $next === $guessed
+                    ? trim($say . ' ' . $ask)
+                    : trim($say . ' ' . $this->questionFor($form, $next, $language, $filled)))),
             'asked' => $next,
             'label' => $next === null ? null : $this->labelFor($form, $next, $filled),
             'choices' => $next === null ? null : $this->choicesFor($form, $next, $filled),
             'rejected' => $checked['rejected'],
+            // A box the member asked to go back to, emptied and put in front
+            // of them again. Named so the app can take it out of what it is
+            // treating as passed over, or it would be stepped straight past.
+            'reopened' => $reopened,
             'done' => $next === null,
             'unavailable' => false,
         ];
@@ -1116,6 +1251,105 @@ class VoiceAssistantService
     public function labelFor(string $form, string $field, array $known = []): ?string
     {
         return $this->specFor($form, $field, $known)['label'] ?? null;
+    }
+
+    /**
+     * The headings of the boxes already answered, for the model to name one of
+     * when a member asks to go back.
+     *
+     * Headings rather than field names: it is what the member sees, what they
+     * will say, and what fieldNamed() matches against on the way back.
+     */
+    private function filledLabels(string $form, array $known): string
+    {
+        $labels = [];
+        foreach ($this->schema($form, $known) as $key => $field) {
+            $value = $known[$key] ?? null;
+            if ($value === null || $value === '' || $value === [] || ! isset($field['label'])) {
+                continue;
+            }
+            // With the value beside it, not just the heading. Asked "what did
+            // I say my place was called", the model could only repeat the
+            // question back — it had been told which boxes were full and
+            // nothing about what was in them.
+            $shown = is_array($value) ? implode(', ', $value) : (is_bool($value) ? ($value ? 'yes' : 'no') : $value);
+            $labels[] = $field['label'] . ': ' . $shown;
+        }
+
+        return implode(', ', $labels);
+    }
+
+    /**
+     * The box a member has asked to go back to, or null if they named nothing
+     * on this form.
+     *
+     * They say what it is about — "the name", "daam", "guide type" — and the
+     * model hands that on as the nearest heading it knows. It is matched
+     * against the headings the form actually shows, and only when it names one
+     * of them is anything reopened: a wrong guess here would empty a box they
+     * had already filled correctly.
+     *
+     * A box that was never filled is not reopened either. There is nothing to
+     * go back to, and the conversation is already on its way there.
+     */
+    private function fieldNamed(string $form, array $known, string $said): ?string
+    {
+        $said = mb_strtolower(trim($said));
+        if ($said === '') {
+            return null;
+        }
+
+        foreach ($this->schema($form, $known) as $key => $field) {
+            $label = mb_strtolower((string) ($field['label'] ?? ''));
+            if ($label === '' || ! isset($known[$key]) || $known[$key] === '' || $known[$key] === []) {
+                continue;
+            }
+
+            if ($said === $label || $said === mb_strtolower($key)) {
+                return $key;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Which question will probably follow, worked out by supposing the one
+     * being asked is about to be answered.
+     *
+     * Wrong exactly when the answer decides what comes after it, which is why
+     * the caller checks it against what actually came next before using the
+     * wording built on it.
+     */
+    private function likelyNext(string $form, array $known, string $asked, array $skipped): ?string
+    {
+        // A column of a table cannot be stood in for this way — the row it
+        // belongs to is half built and the schema does not describe it.
+        if (str_contains($asked, '.')) {
+            return null;
+        }
+
+        $walk = $this->walk($form, $known + [$asked => '—'], $skipped, 'en');
+
+        return $walk['next'];
+    }
+
+    /**
+     * How the assistant should sound on this turn, rotated so it does not
+     * sound the same way twice running.
+     *
+     * The silent one earns its place: a person filling in a form does not
+     * murmur after every answer, and a number following a number needs no
+     * remark at all. Hearing nothing is what makes the others land.
+     */
+    private function toneFor(int $answered): string
+    {
+        return [
+            'Say the thing back to them, briefly.',
+            'Just acknowledge it — a word or two, nothing more.',
+            'Return "say" as an empty string this time. The question stands on its own.',
+            'Remark on what they said, the way somebody listening would.',
+        ][$answered % 4];
     }
 
     /**

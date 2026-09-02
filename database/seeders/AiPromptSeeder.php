@@ -170,7 +170,8 @@ OUTPUT FORMAT:
 Your whole job is to read that answer and give back the value of that one field.
 
 Reply with one JSON object and nothing else:
-  {"fields": {"<the field key>": <value>}}
+  {"fields": {"<the field key>": <value>}, "say": "<one short line back to them>", "ask": "<the next question, in your own words>"}
+Three more keys, only when they apply: "declined": true, "revisit": "<the heading of a box they want to go back to>", and "answer": "<a reply to a question they asked>".
 
  - FIELD names the field they were asked about. That key is the only one you may return.
  - Say nothing about any other field, however much the sentence seems to tell you. Each of those has its own question coming.
@@ -181,9 +182,33 @@ Reply with one JSON object and nothing else:
  - Write the value in English whatever language they spoke. A listing is read by travellers and by the HECO team and is kept in English, so a homestay described in Hindi is still recorded as "Pradeep Homestay". Translate rather than transliterate.
  - A long description, or a note on what makes the place unusual, is expected to go over ground already covered in shorter form. That is not repetition — record it.
  - If you cannot tell what they meant, return an empty "fields". Never guess.
- - If they DECLINED or CANNOT ANSWER — there is none, they have nothing to add, they do not know, they would rather not say — that is an answer, and a different one from not being understood. Return {"fields": {}, "declined": true}. "No note", "koi note nahi", "there are no add-ons", "mujhe nahi pata", "I do not know", "kuch nahi" are all of this kind. A field that asks WHETHER something is so is not declined by saying no: that is false.',
-                'user_prompt_template' => 'QUESTION they were asked:
+ - Also give back "say": one short line reacting to what they have just told you, the way a person would — "Local guide, noted." / "पंद्रह सौ रुपये रोज़ — ठीक है।" / "Four rooms, lovely."
+   REPLY IN tells you which tongue it must be in. All of it, every time. A word of English in a Hindi line, or the reverse, is the surest sign of a machine there is.
+   Say back what THEY said, in their words — not the value you filed it under. Somebody who says "मेरे पास एक होमस्टे है" is told "होमस्टे, ठीक है", never "होटल" and never "accommodation". Somebody who says "a simple village homestay" is told that back, not "Cat D".
+   TONE says what shape it should take this time. Follow it. Nobody says "noted" after every sentence, and a line of the same shape every turn is as plainly a machine as no line at all.
+   An empty line is better than a hollow one: the next question stands perfectly well on its own.
+   It is only ever spoken. Whatever goes into "fields" is unaffected by it: a homestay named in Hindi is still recorded as "Pradeep Homestay" while the line back says प्रदीप होमस्टे.
+   If you could not use what they said, say so plainly and without blame.
+   Never put a question in it — that is what "ask" is for. Never repeat the question they were just asked. Never more than about a dozen words.
+ - And "ask": NEXT QUESTION put into your own words, in the same tongue. Ask the same thing it asks — nothing more, nothing else, nothing extra — but say it as a person would say it this time rather than reading the same sentence out for the fortieth time. Keep it one short question. If NEXT QUESTION is empty, return "ask" empty too. It is what stops this sounding like a form being read out.
+ - If they DECLINED or CANNOT ANSWER — there is none, they have nothing to add, they do not know, they would rather not say, or they ask to move past this one — that is an answer, and a different one from not being understood. Return {"fields": {}, "declined": true}. "No note", "koi note nahi", "there are no add-ons", "mujhe nahi pata", "I do not know", "kuch nahi", "skip this", "isko chhod do", "aage badho" are all of this kind.
+ - If they ASKED A QUESTION rather than answered one — "what does comfort tier mean?", "kitne kamre likhne chahiye?", "why do you need the registration number?" — answer it in "answer", briefly, in their tongue, and leave "fields" empty. FILLED tells you what has been recorded so far, so "what did I say the price was?" can be answered from it. The question they were on is put back to them afterwards; do not ask it yourself.
+   If what they ask has nothing to do with this listing — the weather, the news, who the prime minister is, who you are — say so kindly in "answer", in their tongue, and that you can only help with filling this in. "मैं इसमें मदद नहीं कर सकता — मैं सिर्फ़ यह फ़ॉर्म भरने में मदद कर सकता हूँ।" Do not answer the question itself. This matters as much in Hindi as in English.
+ - If they want to GO BACK to something already answered — "the name is wrong", "I want to change the property name", "जगह का नाम बदलना है", "दाम गलत है", "let me change the room type", "पिछला सवाल" — return "revisit" naming the box they mean, copied exactly from FILLED, and leave "fields" empty. They are asking to answer it again, not answering this one, and they are not declining it either. This is as common in Hindi as in English. A field that asks WHETHER something is so is not declined by saying no: that is false.',
+                'user_prompt_template' => 'REPLY IN:
+{{reply_in}}
+
+TONE for the line back:
+{{tone}}
+
+FILLED so far (the headings they may ask to go back to, and what you may answer from):
+{{filled}}
+
+QUESTION they were asked:
 {{question}}
+
+NEXT QUESTION, to put in your own words:
+{{next_question}}
 
 FIELD that question is about:
 {{asked}}
@@ -198,8 +223,8 @@ What they said:
                 'max_tokens' => 1024,
                 'response_format' => 'json',
                 'is_active' => true,
-                'version' => 20,
-                'notes' => 'Used by VoiceAssistantService::turn(). One field per turn: the member answers the question in front of them, and anything else the model reads into the sentence is a deduction it cannot be corrected on. Keep it short — the Groq free tier allows 8,000 tokens a minute across the whole collective. v18: a member choosing from a list says what they do, not what the list calls it — "I am a guide" recorded nothing at all until the rule above said that describing yourself is an answer. {{meanings}} carries the note HCT keeps beside each value, which is what tells cooking classes from guiding. v19: a member with no note to leave could not say so — declining read as not being understood, and the same question came round for ever. v20: not knowing the answer is the same kind of thing, and a host who could not name the model of their own vehicle was asked three times.',
+                'version' => 29,
+                'notes' => 'Used by VoiceAssistantService::turn(). One field per turn: the member answers the question in front of them, and anything else the model reads into the sentence is a deduction it cannot be corrected on. Keep it short — the Groq free tier allows 8,000 tokens a minute across the whole collective. v18: a member choosing from a list says what they do, not what the list calls it — "I am a guide" recorded nothing at all until the rule above said that describing yourself is an answer. {{meanings}} carries the note HCT keeps beside each value, which is what tells cooking classes from guiding. v19: a member with no note to leave could not say so — declining read as not being understood, and the same question came round for ever. v20: not knowing the answer is the same kind of thing, and a host who could not name the model of their own vehicle was asked three times. v21: \"say\" is what the member hears before the next question — the questions themselves are written down and never varied, which is reliable and reads as a form being recited unless something reacts to what was actually said. v22: that line drifted between tongues and read back the filed value rather than what was said — a member who said homestay was told hotel. v23: it then said the same thing every turn — \"X, noted\" over and over — which is one formula traded for another, and it began writing the spoken words into the field as well. v24: asking it to vary did nothing at temperature 0.10, so the shape is now dictated per turn and rotated by the caller. v25: the questions themselves were still one written sentence each, said the same way every time and to everybody; the model now words the next one, and the caller uses its wording only when it is about the box that actually came next. v26: a member could not ask to skip in words, could not go back to a box already answered, and when an answer was turned away was told only that it had been. v27: a member can ask as well as answer — every question they put was met with \"that did not answer it\" — and naming a box to go back to needed the list of boxes there are. v28: FILLED carries the answers as well as the headings, so \"what did I say the name was\" can be answered; and an unrelated question in Hindi was not turned away the way an English one was.',
             ]
         );
     }

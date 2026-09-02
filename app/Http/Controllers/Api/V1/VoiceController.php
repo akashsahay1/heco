@@ -339,6 +339,10 @@ class VoiceController extends Controller
             // marked as passed would be announced again every turn.
             'guidance' => $result['guidance'] ?? [],
             'passed' => $result['passed'] ?? [],
+            // A box the member asked to go back to. It has been emptied, and
+            // the app has to stop counting it among the ones passed over or it
+            // will be stepped straight past again.
+            'reopened' => $result['reopened'] ?? null,
             'done' => $result['done'],
         ]);
     }
