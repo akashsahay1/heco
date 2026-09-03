@@ -442,7 +442,12 @@
                 <div class="row g-2">
                     @foreach($experience->gallery as $img)
                     <div class="col-6 col-md-4">
-                        <img src="/storage/{{ $img }}" alt="Gallery image" class="gallery-thumb" onclick="openGallery('{{ $img }}')">
+                        {{-- The path stored is already rooted at /uploads. Putting
+                             /storage in front of it made /storage//uploads/...,
+                             which is nothing, so every gallery photo on every
+                             experience showed as a broken image. The card photo
+                             above uses the value as it stands, and is right. --}}
+                        <img src="{{ $img }}" alt="Gallery image" class="gallery-thumb" onclick="openGallery('{{ $img }}')">
                     </div>
                     @endforeach
                 </div>
@@ -595,9 +600,15 @@
                                 <span><i class="bi bi-speedometer2 text-success"></i> Difficulty</span>
                                 <strong>{{ ucfirst($experience->difficulty_level ?? 'N/A') }}</strong>
                             </li>
+                            {{-- Stacked, not set against the label like the rows
+                                 above it. Those hold two or three words; this
+                                 holds whatever the host wrote about the weather,
+                                 and a sentence pushed into the right-hand column
+                                 wrapped back under the word "Weather" and read as
+                                 one run-on line. --}}
                             @if($experience->weather_dependency)
-                            <li class="list-group-item d-flex justify-content-between small">
-                                <span><i class="bi bi-cloud-sun text-success"></i> Weather</span>
+                            <li class="list-group-item small">
+                                <div class="text-muted mb-1"><i class="bi bi-cloud-sun text-success"></i> Weather</div>
                                 <strong>{{ ucfirst($experience->weather_dependency) }}</strong>
                             </li>
                             @endif
@@ -926,7 +937,8 @@ jQuery(function() {
 });
 
 function openGallery(imgPath) {
-    jQuery('#galleryModalImg').attr('src', '/storage/' + imgPath);
+    // Already a path from the site root — see the note beside the thumbnails.
+    jQuery('#galleryModalImg').attr('src', imgPath);
     new bootstrap.Modal(jQuery('#galleryModal')[0]).show();
 }
 
