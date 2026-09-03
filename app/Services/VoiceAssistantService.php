@@ -163,7 +163,10 @@ class VoiceAssistantService
                 // words, because a switch looks the same however it got there.
                 'driver_included' => [
                     'label' => 'Driver included',
-                    'ask' => 'whether a driver comes with that rate, or the traveller arranges one',
+                    // "Yes I drive it myself" was read as false — no driver
+                    // hired, therefore none included — when it is the plainest
+                    // yes there is. Who the driver is was never the question.
+                    'ask' => 'whether somebody drives the vehicle as part of this rate. True when a driver comes with it, the owner driving it themselves included; false only when the traveller has to find one',
                     'q' => ['hi' => 'क्या इस दाम में ड्राइवर शामिल है?', 'en' => 'Does that rate include a driver?'],
                     'type' => 'bool',
                     'echo' => [
@@ -657,7 +660,7 @@ class VoiceAssistantService
                 'guidance' => $here['guidance'],
                 'passed' => $here['passed'],
                 'fields' => [],
-                'reply' => $this->phrase($this->questionFor($form, $asked, $language, $known), $language, (string) $this->labelFor($form, $asked, $known), count($known)),
+                'reply' => $this->phrase($this->questionFor($form, $asked, $language, $known), $language, (string) $this->labelFor($form, $asked, $known), count($known), $this->choicesFor($form, $asked, $known), $this->meaningsFor($this->specFor($form, $asked, $known))),
                 'asked' => $asked,
                 'label' => $this->labelFor($form, $asked, $known),
                 'choices' => $this->choicesFor($form, $asked, $known),
@@ -768,6 +771,20 @@ class VoiceAssistantService
             // carrying it, so a list with nothing written beside it leaves no
             // empty heading behind for the model to wonder about.
             'meanings' => $meanings === null ? '' : "\n\nWhat each of those covers:\n" . $meanings,
+            // Boxes further down they may have answered in the same breath.
+            'extras' => ($extras = $this->extrasFor($form, $known, $asked, $skipped))
+                ? implode("
+", array_map(
+                    fn ($key, $field) => sprintf('%s — %s (%s)', $key, $field['ask'] ?? '',
+                        match ($field['type'] ?? 'string') {
+                            'int' => 'a whole number',
+                            'number' => 'a number',
+                            default => 'text, in English',
+                        }),
+                    array_keys($extras),
+                    $extras,
+                ))
+                : '(none — only the field above)',
             'said' => $said,
         ]);
 
@@ -859,7 +876,7 @@ class VoiceAssistantService
         $answer = trim((string) ($data['answer'] ?? ''));
         $answer = mb_strlen($answer) > 400 ? '' : $answer;
 
-        $checked = $this->keepValid($form, $known, (array) ($data['fields'] ?? []), $asked);
+        $checked = $this->keepValid($form, $known, (array) ($data['fields'] ?? []), $asked, array_keys($extras));
 
         // What was heard and could not be used. The app said only "I could not
         // use that one" and left the member guessing at what would have done
@@ -902,9 +919,52 @@ class VoiceAssistantService
             && $checked['fields'] === []
             && $this->skippable($form, $asked, $known);
 
-        // What is said when a box is left empty because the member could not
-        // or would not fill it.
+        // The first answer is the one that brings the rest of the form into
+        // existence: until a member says they have a homestay there are no
+        // rooms and no nightly rate to fill, so "mera paanch kamre ka homestay
+        // hai, pandrah sau rupaye" had two thirds of it fall on the floor.
+        //
+        // So the same sentence is read once more against the form it has just
+        // brought into being. Once per listing, at the turn that decides its
+        // shape, and only when there is now something to find.
+        if (($spec['skippable'] ?? true) === false && isset($checked['fields'][$asked])) {
+            $checked['fields'] += $this->mineAgain(
+                $form,
+                $known + [$asked => $checked['fields'][$asked]],
+                $asked,
+                $said,
+                $skipped,
+                $language,
+                $this->labelFor($form, $asked, $known) . ': ' . $checked['fields'][$asked],
+            );
+        }
+
+        // Every box filled without being asked about, named with what went
+        // into it.
+        //
+        // A member who says one sentence and has three boxes filled from it
+        // has no way of knowing which three, or what went where — and the one
+        // thing that can go wrong here is two numbers changing places. Being
+        // told is what makes it safe to do at all: they hear it, and they can
+        // say the price is wrong and go back to it.
         $left = [];
+        $unasked = array_diff_key($checked['fields'], [$asked => null]);
+
+        if ($unasked !== []) {
+            // Against the form as it now is, not as it was when the turn
+            // began: on the turn that settles what a listing is, none of these
+            // boxes existed a moment ago and every heading came back empty.
+            $nowKnown = $checked['fields'] + $known;
+
+            $named = [];
+            foreach ($unasked as $key => $value) {
+                $named[] = $this->labelFor($form, $key, $nowKnown) . ': '
+                    . (is_array($value) ? implode(', ', $value) : (is_bool($value) ? ($value ? 'yes' : 'no') : $value));
+            }
+
+            $left[] = ($language === 'hi' ? 'यह भी लिख लिया — ' : 'I have put that down too — ')
+                . implode(', ', $named) . '.';
+        }
 
         if ($declined) {
             // A table is declined by name; anything else by its own.
@@ -1005,12 +1065,12 @@ class VoiceAssistantService
             // Otherwise the written question is put after whatever it said —
             // which is where this began, and is still perfectly serviceable.
             'reply' => $answer !== '' && $next !== null
-                ? $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled))
+                ? $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled), $this->choicesFor($form, $next, $filled), $this->meaningsFor($this->specFor($form, $next, $filled)))
                 : ($next === null
                 ? ($say ?: null)
                 : ($ask !== '' && $next === $guessed
                     ? trim($say . ' ' . $ask)
-                    : trim($say . ' ' . $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled))))),
+                    : trim($say . ' ' . $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled), $this->choicesFor($form, $next, $filled), $this->meaningsFor($this->specFor($form, $next, $filled)))))),
             'asked' => $next,
             'label' => $next === null ? null : $this->labelFor($form, $next, $filled),
             'choices' => $next === null ? null : $this->choicesFor($form, $next, $filled),
@@ -1224,6 +1284,148 @@ class VoiceAssistantService
     }
 
     /**
+     * Read the same sentence again, against the boxes the answer just created.
+     *
+     * Called only where the answer settles what the form is — the kind of
+     * service, the kind of experience — because those are the turns where the
+     * boxes a member has already spoken about did not exist yet to be offered.
+     *
+     * Everything it finds goes through the same gate as anything else, and it
+     * is announced aloud with the rest.
+     *
+     * @return array<string,mixed>
+     */
+    private function mineAgain(
+        string $form,
+        array $known,
+        string $asked,
+        string $said,
+        array $skipped,
+        string $language,
+        string $taken = '',
+    ): array {
+        // A box that holds a name is left out of this. It is asked next in any
+        // case, and a sentence that says what KIND of thing somebody has is
+        // exactly where a name gets invented from: "mera homestay hai" was
+        // read as a place called Homestay. Nothing is lost by waiting one
+        // question, and a listing named after its own category is worse than
+        // one named a moment later.
+        $extras = array_filter(
+            $this->extrasFor($form, $known, $asked, $skipped),
+            fn ($field) => ! str_contains(mb_strtolower((string) ($field['label'] ?? '')), 'name'),
+        );
+
+        if ($extras === []) {
+            return [];
+        }
+
+        $prompt = app(PromptBuilderService::class)->build('provider_voice_mine', [
+            'reply_in' => $language === 'hi' ? 'Hindi' : 'English',
+            'boxes' => implode("
+", array_map(
+                fn ($key, $field) => sprintf('%s — %s (%s)', $key, $field['ask'] ?? '',
+                    match ($field['type'] ?? 'string') {
+                        'int' => 'a whole number, digits only',
+                        'number' => 'a number, digits only',
+                        default => 'text, in English',
+                    }),
+                array_keys($extras),
+                $extras,
+            )),
+            // What the first reading already took out of this sentence. Told
+            // only to find what it could, it took the word that had just
+            // answered the question — "mera homestay hai" gave the kind of
+            // place, and then gave "homestay" again as the name of it.
+            'taken' => $taken ?: '(nothing yet)',
+            'said' => $said,
+        ]);
+
+        if (! $prompt) {
+            return [];
+        }
+
+        $answer = app(GroqService::class)->chat([
+            ['role' => 'system', 'content' => $prompt['system_prompt']],
+            ['role' => 'user',   'content' => $prompt['user_prompt']],
+        ], [
+            'groq_model' => $prompt['model'] ?: null,
+            'temperature' => $prompt['temperature'],
+            'max_tokens' => $prompt['max_tokens'],
+            'format' => 'json',
+            'reasoning_effort' => 'low',
+        ]);
+
+        $data = json_decode((string) ($answer['content'] ?? ''), true);
+
+        return is_array($data)
+            ? $this->keepValid($form, $known, (array) ($data['fields'] ?? []), null, array_keys($extras))['fields']
+            : [];
+    }
+
+    /**
+     * Boxes further down that a member may have answered without being asked.
+     *
+     * "Mera paanch kamre ka homestay hai, pandrah sau rupaye" answers three
+     * things at once, and being asked the other two afterwards is exactly what
+     * makes this feel like a form. So the model is told which boxes are coming
+     * and may fill any it heard plainly.
+     *
+     * Only boxes that hold a number, a whole number or free text. A box that
+     * takes one of HCT own values needs its list sent with it to be answered
+     * safely, and sending four lists a turn is how the collective minute was
+     * spent in three exchanges — so those are still asked for one at a time,
+     * with their choices, as they always were.
+     *
+     * Four at most, and never past the box that decides the shape of the rest.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    private function extrasFor(string $form, array $known, string $asked, array $skipped): array
+    {
+        if (str_contains($asked, '.')) {
+            return [];
+        }
+
+        $extras = [];
+        $reached = false;
+
+        foreach ($this->schema($form, $known) as $key => $field) {
+            if ($key === $asked) {
+                $reached = true;
+                continue;
+            }
+            if (! $reached || in_array($key, $skipped, true)) {
+                continue;
+            }
+
+            // Anything that changes what comes after it stops the list: the
+            // boxes past it may not exist once it is answered.
+            if (($field['skippable'] ?? true) === false) {
+                break;
+            }
+
+            $value = $known[$key] ?? null;
+            if ($value !== null && $value !== '' && $value !== []) {
+                continue;
+            }
+
+            $constrained = isset($field['list']) || isset($field['only'])
+                || isset($field['source']) || isset($field['row']) || isset($field['manual']);
+
+            if ($constrained || ! in_array($field['type'] ?? 'string', ['int', 'number', 'string'], true)) {
+                continue;
+            }
+
+            $extras[$key] = $field;
+            if (count($extras) === 4) {
+                break;
+            }
+        }
+
+        return $extras;
+    }
+
+    /**
      * One question, said differently.
      *
      * The questions are written down, which is what keeps them accurate and in
@@ -1235,7 +1437,14 @@ class VoiceAssistantService
      * A tenth the size of a turn and asked far more often, so it has a prompt
      * of its own rather than the assistant's.
      */
-    public function phrase(?string $question, string $language, string $label = '', int $seed = 0): ?string
+    public function phrase(
+        ?string $question,
+        string $language,
+        string $label = '',
+        int $seed = 0,
+        ?array $choices = null,
+        ?string $notes = null,
+    ): ?string
     {
         if ($question === null || trim($question) === '') {
             return $question;
@@ -1253,12 +1462,24 @@ class VoiceAssistantService
             // mean: each asks for a different construction.
             'angle' => [
                 'Ask it as a follow-on to what they just said — "And what about ...?", "और ...?"',
-                'Build the question around the words in ABOUT — "And the rate per day?" rather than "What does it cost?"',
+                // The example here used to be a price one, and it was bolted
+                // onto whatever else was being asked: a member was offered
+                // "What sort of place is it, and the rate per day?"
+                'Put the name from ABOUT inside the question, and ask about nothing else.',
                 'Ask it the shortest way you can without losing any of it.',
                 'Ask it the way somebody who has been talking to them for a few minutes would — easy, not formal.',
             ][$seed % 4],
             // What the form calls this box, so it can be named.
             'label' => $label ?: '(not named)',
+            // What may be answered, and what HCT says each one covers.
+            //
+            // "Cat D - Basic/Homestay" is how the collective files a room and
+            // means nothing to the person who sleeps in it. The notes beside
+            // those values are written in plain words and were only ever shown
+            // to the model reading the answer; a member hearing the question
+            // got the filing code and no help at all.
+            'choices' => $choices ? implode(', ', $choices) : '(it is not a list — anything can be said)',
+            'notes' => $notes ?: '(none)',
             'question' => $question,
         ]);
 
@@ -1281,7 +1502,7 @@ class VoiceAssistantService
 
         // Longer than the question it came from by any margin means it has
         // started explaining, and a member answers what they heard last.
-        return ($said === '' || mb_strlen($said) > mb_strlen($question) + 60)
+        return ($said === '' || mb_strlen($said) > mb_strlen($question) + 160)
             ? $question
             : $said;
     }
@@ -1626,7 +1847,7 @@ class VoiceAssistantService
      *
      * @return array{fields:array<string,mixed>,rejected:array<int,string>}
      */
-    public function keepValid(string $form, array $known, array $offered, ?string $asked = null): array
+    public function keepValid(string $form, array $known, array $offered, ?string $asked = null, array $alsoAllowed = []): array
     {
         $schema = $this->schema($form, $known);
         $lengths = $this->lengths($form);
@@ -1654,7 +1875,14 @@ class VoiceAssistantService
             // could not be corrected either.
             //
             // Nothing is lost by waiting: every field gets its own question.
-            if ($asked !== null && $key !== $asked) {
+            // Named boxes only. With no field asked about and no list of
+            // allowed ones this lets everything through, which is right for a
+            // caller that has neither and wrong for one that has the second —
+            // the pass that reads a sentence again is confined to the boxes it
+            // was told to look for.
+            if (($asked !== null || $alsoAllowed !== [])
+                && $key !== $asked
+                && ! in_array($key, $alsoAllowed, true)) {
                 continue;
             }
 

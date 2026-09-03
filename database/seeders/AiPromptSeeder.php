@@ -173,8 +173,9 @@ Reply with one JSON object and nothing else:
   {"fields": {"<the field key>": <value>}, "say": "<one short line back to them>", "ask": "<the next question, in your own words>"}
 Three more keys, only when they apply: "declined": true, "revisit": "<the heading of a box they want to go back to>", and "answer": "<a reply to a question they asked>".
 
- - FIELD names the field they were asked about. That key is the only one you may return.
- - Say nothing about any other field, however much the sentence seems to tell you. Each of those has its own question coming.
+ - FIELD names the field they were asked about, and is the one you are here for.
+ - EXTRAS lists boxes further down. If they plainly answered one of those in the same breath — "mera paanch kamre ka homestay hai, pandrah sau rupaye" answers the rooms and the price as well as what kind of place it is — return those too, under their own keys. PLAINLY: only what they actually said. Never work one out, never take a number from one box for another, and where a sentence holds one number and two boxes want one, leave both alone.
+ - Say nothing about any box that is neither FIELD nor in EXTRAS. Each of those has its own question coming, with its own choices.
  - QUESTION is what they were actually asked, in their own words. If what they said is not an answer to that question, return an empty "fields". A member asked what their place is called who talks about rooms has not named it, and a name pieced together out of that sentence is never asked about again, so nobody can correct it. Where ALLOWED lists values, though, a description of what they do, offer or run IS an answer to it.
  - Where ALLOWED lists values, the member is choosing between them, and they will almost never say a value by name. They describe what they do, what they offer or what they own, and reading which value that is IS the job: "I am a guide" and "मैं गाइड हूँ" describe guiding, "I have a homestay" and "मेरा होमस्टे है" describe a place to stay, "I teach cooking" describes teaching a skill. Match on what they MEANT, not on how it came out in writing, because it was spoken aloud and written down by a machine: "tempo traveler" is Tempo Traveller and "a basic homestay" is Cat D - Basic/Homestay. Where a note is given under a value it says what that value covers, so read it before choosing. Return the value copied exactly, character for character, and return an empty "fields" only when nothing on the list covers what they said — never stretch to the nearest for its own sake.
  - Where FIELD says the field holds a number, return only the digits — 2, not "two", and not "at least two people". "do hazaar" is 2000, "teen" is 3, "kam se kam do log" is 2.
@@ -192,8 +193,10 @@ Three more keys, only when they apply: "declined": true, "revisit": "<the headin
    Never put a question in it — that is what "ask" is for. Never repeat the question they were just asked. Never more than about a dozen words.
  - And "ask": NEXT QUESTION put into your own words, in the same tongue. Ask the same thing it asks — nothing more, nothing else, nothing extra — but say it as a person would say it this time rather than reading the same sentence out for the fortieth time. Keep it one short question. If NEXT QUESTION is empty, return "ask" empty too. It is what stops this sounding like a form being read out.
  - If they DECLINED or CANNOT ANSWER — there is none, they have nothing to add, they do not know, they would rather not say, or they ask to move past this one — that is an answer, and a different one from not being understood. Return {"fields": {}, "declined": true}. "No note", "koi note nahi", "there are no add-ons", "mujhe nahi pata", "I do not know", "kuch nahi", "skip this", "isko chhod do", "aage badho" are all of this kind.
- - If they ASKED A QUESTION rather than answered one — "what does comfort tier mean?", "kitne kamre likhne chahiye?", "why do you need the registration number?" — answer it in "answer", briefly, in their tongue, and leave "fields" empty. FILLED tells you what has been recorded so far, so "what did I say the price was?" can be answered from it. The question they were on is put back to them afterwards; do not ask it yourself.
-   If what they ask has nothing to do with this listing — the weather, the news, who the prime minister is, who you are — say so kindly in "answer", in their tongue, and that you can only help with filling this in. "मैं इसमें मदद नहीं कर सकता — मैं सिर्फ़ यह फ़ॉर्म भरने में मदद कर सकता हूँ।" Do not answer the question itself. This matters as much in Hindi as in English.
+ - If they ASKED A QUESTION rather than answered one, answer it in "answer", briefly, in their tongue, and leave "fields" empty. The question they were on is put back to them afterwards; do not ask it yourself.
+   Anything about this listing is yours to answer, and being confused is the commonest reason a person speaks at all. What a box means. What an option means. Why it is being asked. Whether it has to be answered — it does not, except the one that decides the shape of the form; they may say to leave it. What happens to what they say — HECO reads it, and it goes on their listing. What they have already told you: FILLED holds it, so "what did I say the price was?" is answered from there.
+   Answer it and then let the question stand again. Do not scold them for asking.
+   Only what has nothing whatever to do with this listing is turned away — the weather, the news, who the prime minister is. A question about the form, the box, HECO, or why any of it is being asked is NOT that. Where it is genuinely none of those, say so kindly in "answer", in their tongue, and that you can only help with filling this in. "मैं इसमें मदद नहीं कर सकता — मैं सिर्फ़ यह फ़ॉर्म भरने में मदद कर सकता हूँ।" Do not answer the question itself. This matters as much in Hindi as in English.
  - If they want to GO BACK to something already answered — "the name is wrong", "I want to change the property name", "जगह का नाम बदलना है", "दाम गलत है", "let me change the room type", "पिछला सवाल" — return "revisit" naming the box they mean, copied exactly from FILLED, and leave "fields" empty. They are asking to answer it again, not answering this one, and they are not declining it either. This is as common in Hindi as in English. A field that asks WHETHER something is so is not declined by saying no: that is false.',
                 'user_prompt_template' => 'REPLY IN:
 {{reply_in}}
@@ -213,6 +216,9 @@ NEXT QUESTION, to put in your own words:
 FIELD that question is about:
 {{asked}}
 
+EXTRAS — boxes further down they may have answered in the same breath:
+{{extras}}
+
 ALLOWED values for that field:
 {{allowed}}{{meanings}}
 
@@ -223,7 +229,7 @@ What they said:
                 'max_tokens' => 1024,
                 'response_format' => 'json',
                 'is_active' => true,
-                'version' => 29,
+                'version' => 31,
                 'notes' => 'Used by VoiceAssistantService::turn(). One field per turn: the member answers the question in front of them, and anything else the model reads into the sentence is a deduction it cannot be corrected on. Keep it short — the Groq free tier allows 8,000 tokens a minute across the whole collective. v18: a member choosing from a list says what they do, not what the list calls it — "I am a guide" recorded nothing at all until the rule above said that describing yourself is an answer. {{meanings}} carries the note HCT keeps beside each value, which is what tells cooking classes from guiding. v19: a member with no note to leave could not say so — declining read as not being understood, and the same question came round for ever. v20: not knowing the answer is the same kind of thing, and a host who could not name the model of their own vehicle was asked three times. v21: \"say\" is what the member hears before the next question — the questions themselves are written down and never varied, which is reliable and reads as a form being recited unless something reacts to what was actually said. v22: that line drifted between tongues and read back the filed value rather than what was said — a member who said homestay was told hotel. v23: it then said the same thing every turn — \"X, noted\" over and over — which is one formula traded for another, and it began writing the spoken words into the field as well. v24: asking it to vary did nothing at temperature 0.10, so the shape is now dictated per turn and rotated by the caller. v25: the questions themselves were still one written sentence each, said the same way every time and to everybody; the model now words the next one, and the caller uses its wording only when it is about the box that actually came next. v26: a member could not ask to skip in words, could not go back to a box already answered, and when an answer was turned away was told only that it had been. v27: a member can ask as well as answer — every question they put was met with \"that did not answer it\" — and naming a box to go back to needed the list of boxes there are. v28: FILLED carries the answers as well as the headings, so \"what did I say the name was\" can be answered; and an unrelated question in Hindi was not turned away the way an English one was.',
             ]
         );
@@ -245,7 +251,12 @@ Give back one JSON object and nothing else: {"ask": "<the question>"}
  - REPLY IN says which tongue. All of it.
  - ANGLE says how to come at it this time. Follow it. The written sentence goes to every member of the collective one after another, and the point of this is that no two of them hear it the same way — so do not hand the written sentence back.
  - ABOUT is what the form calls this box, if you want to name the thing rather than say "it".
- - One short question. No greeting, no preamble, no explaining.',
+ - CHOICES is what may be answered, and NOTES says what each one covers in plain words.
+   If the choices would mean nothing to somebody hearing them — a filing code like "Cat D - Basic/Homestay", a shorthand like "MAP", or simply too many to hold in the head — give ONE short example so they can place themselves. "A simple village room with a shared bathroom would be Cat D." Take the example from NOTES; do not invent one.
+   A different example each time. There is more than one kind of place that is Cat D and more than one way to describe it, and a member should not hear the sentence the last one heard.
+   If the choices explain themselves — Sedan, Bus, Trek, per day — give no example at all. Explaining the obvious is its own kind of machine.
+ - ONE question. Never two, never one with another folded into it. Whatever ANGLE suggests, it is still the single thing THE QUESTION asks.
+ - At most one short example after it. No greeting, no preamble, nothing else.',
                 'user_prompt_template' => 'REPLY IN:
 {{reply_in}}
 
@@ -255,15 +266,56 @@ ANGLE:
 ABOUT:
 {{label}}
 
+CHOICES:
+{{choices}}
+
+NOTES on those choices:
+{{notes}}
+
 THE QUESTION:
 {{question}}',
                 'model' => 'openai/gpt-oss-20b',
                 'temperature' => 0.60,
-                'max_tokens' => 200,
+                'max_tokens' => 300,
                 'response_format' => 'json',
                 'is_active' => true,
-                'version' => 2,
+                'version' => 4,
                 'notes' => 'Used by VoiceAssistantService::phrase(). Deliberately warmer than provider_voice_form: nothing is read out of the answer here, so there is nothing for a loose temperature to get wrong, and a cold one asked the same question the same way every time.',
+            ]
+        );
+
+        // Reading one sentence again, once the answer in it has settled what
+        // the rest of the form is. Small and rare — once per listing, at the
+        // turn that decides its shape.
+        AiPrompt::updateOrCreate(
+            ['key' => 'provider_voice_mine'],
+            [
+                'name' => 'Provider Voice Assistant — second look',
+                'system_prompt' => 'A member of the HECO collective said one sentence about what they offer. It has already been read once, for the one thing that was asked. Read it again for the boxes below, which did not exist until that answer was given.
+
+Give back one JSON object and nothing else: {"fields": {"<key>": <value>}}
+
+ - Only what they plainly said. This is reading, not working out: if they did not say it, leave it out.
+ - ALREADY TAKEN is what the first reading got out of this same sentence. Those words are spent. A member who says "मेरा होमस्टे है" or "I have a homestay" has said what KIND of place it is, not what it is CALLED. "होमस्टे", "homestay", "guest house", "गाड़ी", "taxi" are kinds, never names. A name is a name — "Pradeep Homestay", "नदी किनारे होमस्टे" — and where they have not given one, leave it out. This applies in every tongue.
+ - A sentence with one number in it and two boxes wanting a number answers neither. Leave both.
+ - Where a box says it holds a number, give digits only — "pandrah sau" is 1500, "paanch" is 5.
+ - Text goes in English whatever they spoke.
+ - If they said nothing about any of these boxes, return {"fields": {}}. That is the ordinary case and is perfectly fine.',
+                'user_prompt_template' => 'ALREADY TAKEN from this sentence:
+{{taken}}
+
+BOXES to look for:
+{{boxes}}
+
+What they said:
+"{{said}}"',
+                'model' => 'openai/gpt-oss-20b',
+                'temperature' => 0.10,
+                'max_tokens' => 400,
+                'response_format' => 'json',
+                'is_active' => true,
+                'version' => 3,
+                'notes' => 'Used by VoiceAssistantService::mineAgain(). Runs once per listing, on the turn where the answer brings the rest of the form into existence — until a member says they have a homestay there are no rooms and no nightly rate for "mera paanch kamre ka homestay hai, pandrah sau rupaye" to fill.',
             ]
         );
     }
