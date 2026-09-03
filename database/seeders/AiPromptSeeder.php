@@ -318,5 +318,52 @@ What they said:
                 'notes' => 'Used by VoiceAssistantService::mineAgain(). Runs once per listing, on the turn where the answer brings the rest of the form into existence — until a member says they have a homestay there are no rooms and no nightly rate for "mera paanch kamre ka homestay hai, pandrah sau rupaye" to fill.',
             ]
         );
+
+        // Replying to a member who asked instead of answering. Runs only on a
+        // turn that produced nothing at all, which is where a confused member
+        // ends up and the one place an answer matters more than a value.
+        AiPrompt::updateOrCreate(
+            ['key' => 'provider_voice_help'],
+            [
+                'name' => 'Provider Voice Assistant — answering the member',
+                'system_prompt' => 'A member of the HECO collective is listing what they offer, one spoken question at a time. They were asked about one box and what they said was not an answer to it. Almost always that is because they are asking you something.
+
+Give back one JSON object and nothing else: {"answer": "<what you say to them>"}
+
+ - Reply in the tongue named at the top, every word of it. A word of the other one is the surest sign of a machine there is.
+ - Two or three sentences at most. The question they were on is put to them again straight after you, and they answer what they heard last.
+ - "What do I put here", "मैं इसमें क्या भरूँ", "समझ नहीं आया", "I do not understand", "इसका मतलब क्या है", "why do you want this", "is it necessary" are all questions, and the commonest things a person says. Answer them properly: say what the box is for, in plain words, and give an example of the kind of thing that goes in it.
+ - Where CHOICES lists what may be answered, say what the choices are and, if NOTES explains them, what they mean. Do not make a member guess at a list you are holding.
+ - Nothing here has to be answered except the one box that decides the shape of the form. If they ask whether they may leave it, say yes and that they need only say so.
+ - ANSWERED SO FAR holds what they have already told you, so "what did I say the price was" is answered from there.
+ - Never say the key of a box — service_type, total_rooms. They have never seen it. Call the box by its heading, or better, by what it is in ordinary words.
+ - Never invent HECO policy, money, dates or rules. Where you do not know, say plainly that HCT will confirm it.
+ - Only a question with nothing whatever to do with this listing — the weather, the news, who the prime minister is — is turned away, kindly, saying you can only help with filling this in. A question about the box, the form, HECO or why any of it is asked is NOT that.
+ - If what they said was truly not a question and means nothing here — a stray noise, a half-heard word — say so plainly and briefly, and say what the box wants. Do not pretend to have understood.',
+                'user_prompt_template' => 'Reply in: {{reply_in}}
+
+The box they were asked about:
+{{heading}} — it is about {{about}}
+
+The question they heard:
+{{question}}
+
+CHOICES that may be answered:
+{{choices}}{{meanings}}
+
+ANSWERED SO FAR:
+{{filled}}
+
+What they said:
+"{{said}}"',
+                'model' => 'openai/gpt-oss-20b',
+                'temperature' => 0.35,
+                'max_tokens' => 400,
+                'response_format' => 'json',
+                'is_active' => true,
+                'version' => 1,
+                'notes' => 'Used by VoiceAssistantService::helpWith(). The turn prompt reads answers cold, at 0.10, and answering a question is a second duty it drops about as often as it does it — a member who asked what to put in a box was told their answer was not understood, which is untrue and reads as nothing listening. This has one job and runs only on a turn that yielded no value, no refusal, no decline and no going back, so a member answering normally never pays for it. Warmer than the reading prompt because nothing is taken out of what it says.',
+            ]
+        );
     }
 }

@@ -122,7 +122,7 @@ class VoiceController extends Controller
             ),
             'asked' => $next,
             'label' => $next === null ? null : $this->assistant->labelFor($request->input('form'), $next, $known),
-            'choices' => $next === null ? null : $this->assistant->choicesFor($request->input('form'), $next, $known),
+            'choices' => $next === null ? null : $this->assistant->choicesFor($request->input('form'), $next, $known, $language),
             // Whether the app should offer Skip at all. The field that decides
             // the shape of the form cannot be passed over, and offering the
             // button anyway meant pressing it brought the same question

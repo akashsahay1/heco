@@ -78,6 +78,13 @@ class VoiceAssistantService
                 ],
                 'type' => 'string',
                 'only' => ['accommodation', 'transport', 'guide', 'activity', 'rental', 'other'],
+                // What the codes above are called when they are shown. The
+                // column stores 'accommodation'; a member looking for the
+                // choices is looking for "a place to stay".
+                'words' => [
+                    'hi' => ['रहने की जगह', 'गाड़ी', 'गाइड', 'कोई गतिविधि', 'किराये पर सामान', 'कुछ और'],
+                    'en' => ['A place to stay', 'A vehicle', 'A guide', 'An activity', 'Something you rent out', 'Something else'],
+                ],
                 'skippable' => false,
             ],
         ];
@@ -420,6 +427,12 @@ class VoiceAssistantService
                 ],
                 'type' => 'string',
                 'only' => ['less_than_day', 'single_day', 'multi_day'],
+                // The codes are how the column files it; these are how
+                // anybody would say it.
+                'words' => [
+                    'hi' => ['एक दिन से कम', 'एक पूरा दिन', 'एक से ज़्यादा दिन'],
+                    'en' => ['Less than a day', 'A single day', 'More than one day'],
+                ],
             ],
         ] + match ($known['duration_type'] ?? null) {
             'less_than_day' => [
@@ -466,6 +479,10 @@ class VoiceAssistantService
                 ],
                 'type' => 'string',
                 'only' => ['easy', 'moderate', 'challenging', 'extreme'],
+                'words' => [
+                    'hi' => ['आसान', 'थोड़ा मुश्किल', 'मुश्किल', 'बहुत मुश्किल'],
+                    'en' => ['Easy', 'Moderate', 'Challenging', 'Extreme'],
+                ],
             ],
             'fitness_requirements' => ['label' => 'Fitness requirements', 'ask' => 'how fit a traveller needs to be', 'q' => ['hi' => 'यात्री का शरीर कितना चलने-फिरने लायक होना चाहिए?', 'en' => 'How fit does a traveller need to be for this?'], 'type' => 'string'],
             'weather_dependency' => ['label' => 'Weather dependency', 'ask' => 'how the weather affects it', 'q' => ['hi' => 'मौसम का इस पर क्या असर पड़ता है?', 'en' => 'How does the weather affect it?'], 'type' => 'string'],
@@ -660,10 +677,10 @@ class VoiceAssistantService
                 'guidance' => $here['guidance'],
                 'passed' => $here['passed'],
                 'fields' => [],
-                'reply' => $this->phrase($this->questionFor($form, $asked, $language, $known), $language, (string) $this->labelFor($form, $asked, $known), count($known), $this->choicesFor($form, $asked, $known), $this->meaningsFor($this->specFor($form, $asked, $known))),
+                'reply' => $this->phrase($this->questionFor($form, $asked, $language, $known), $language, (string) $this->labelFor($form, $asked, $known), count($known), $this->choicesFor($form, $asked, $known, $language), $this->meaningsFor($this->specFor($form, $asked, $known))),
                 'asked' => $asked,
                 'label' => $this->labelFor($form, $asked, $known),
-                'choices' => $this->choicesFor($form, $asked, $known),
+                'choices' => $this->choicesFor($form, $asked, $known, $language),
                 'done' => false,
                 'rejected' => [],
                 'note' => null,
@@ -794,7 +811,7 @@ class VoiceAssistantService
             Log::error('Voice assistant prompt provider_voice_form is missing or inactive');
 
             return ['fields' => [], 'reply' => null, 'asked' => $asked, 'label' => $this->labelFor($form, $asked, $known),
-                    'choices' => $this->choicesFor($form, $asked, $known),
+                    'choices' => $this->choicesFor($form, $asked, $known, $language),
                     'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => true,
                     'guidance' => $here['guidance'], 'passed' => $here['passed']];
         }
@@ -819,7 +836,7 @@ class VoiceAssistantService
             // simply down. Worth telling apart from "it heard nothing useful":
             // one is worth trying again in a moment, the other is not.
             return ['fields' => [], 'reply' => null, 'asked' => $asked, 'label' => $this->labelFor($form, $asked, $known),
-                    'choices' => $this->choicesFor($form, $asked, $known),
+                    'choices' => $this->choicesFor($form, $asked, $known, $language),
                     'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => true,
                     'guidance' => $here['guidance'], 'passed' => $here['passed']];
         }
@@ -831,7 +848,7 @@ class VoiceAssistantService
             ]);
 
             return ['fields' => [], 'reply' => null, 'asked' => $asked, 'label' => $this->labelFor($form, $asked, $known),
-                    'choices' => $this->choicesFor($form, $asked, $known),
+                    'choices' => $this->choicesFor($form, $asked, $known, $language),
                     'done' => false, 'rejected' => [], 'note' => null, 'unavailable' => false,
                     'guidance' => $here['guidance'], 'passed' => $here['passed']];
         }
@@ -894,7 +911,7 @@ class VoiceAssistantService
                 || ($checked['fields'] === [] && $checked['rejected'] === []));
 
         if ($missed && ! str_contains($asked, '.')) {
-            $choices = $this->choicesFor($form, $asked, $known);
+            $choices = $this->choicesFor($form, $asked, $known, $language);
             $label = $this->labelFor($form, $asked, $known);
 
             $refused = $choices === null ? null : ($language === 'hi'
@@ -1037,6 +1054,20 @@ class VoiceAssistantService
             }
         }
 
+        // The turn gave nothing back: no value, nothing turned away, no row
+        // closed, and not a word to say. That is where a member who asked a
+        // question ends up, and telling them they were not understood is the
+        // one reply an assistant with an answer would never give. So it is
+        // asked for one.
+        //
+        // Only here. A member who answers, declines, closes a table or is told
+        // their answer was not on the list never reaches this line, and never
+        // pays for the call.
+        $help = ($answer === '' && $say === '' && $finished === []
+                && $checked['fields'] === [] && $checked['rejected'] === [])
+            ? $this->helpWith($form, $asked, $said, $language, $known)
+            : null;
+
         return [
             'fields' => $checked['fields'],
             // Boxes reached on the way here that have to be done by hand, and
@@ -1055,25 +1086,30 @@ class VoiceAssistantService
             // Said when a member declines, or when they close a table, it is
             // worse than useless: they answered, the assistant moved on, and
             // then told them it had not understood.
+            // An answer of its own comes first, then one asked for on the spot,
+            // then the list read out when what they said was not on it. Only
+            // when all three come to nothing is a member told they were not
+            // understood — which is now the rarest thing said, not the usual.
             'note' => $answer
-                ?: ($refused
-                    ?: ($finished === [] && $checked['fields'] === [] && $checked['rejected'] === []
-                        ? ($say ?: $this->notHeard($form, $asked, $language, $known))
-                        : null)),
+                ?: ($help
+                    ?: ($refused
+                        ?: ($finished === [] && $checked['fields'] === [] && $checked['rejected'] === []
+                            ? ($say ?: $this->notHeard($form, $asked, $language, $known))
+                            : null))),
             // The model's own wording of the next question, used only when the
             // question it was wording is the one that actually came next.
             // Otherwise the written question is put after whatever it said —
             // which is where this began, and is still perfectly serviceable.
             'reply' => $answer !== '' && $next !== null
-                ? $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled), $this->choicesFor($form, $next, $filled), $this->meaningsFor($this->specFor($form, $next, $filled)))
+                ? $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled), $this->choicesFor($form, $next, $filled, $language), $this->meaningsFor($this->specFor($form, $next, $filled)))
                 : ($next === null
                 ? ($say ?: null)
                 : ($ask !== '' && $next === $guessed
                     ? trim($say . ' ' . $ask)
-                    : trim($say . ' ' . $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled), $this->choicesFor($form, $next, $filled), $this->meaningsFor($this->specFor($form, $next, $filled)))))),
+                    : trim($say . ' ' . $this->phrase($this->questionFor($form, $next, $language, $filled), $language, (string) $this->labelFor($form, $next, $filled), count($filled), $this->choicesFor($form, $next, $filled, $language), $this->meaningsFor($this->specFor($form, $next, $filled)))))),
             'asked' => $next,
             'label' => $next === null ? null : $this->labelFor($form, $next, $filled),
-            'choices' => $next === null ? null : $this->choicesFor($form, $next, $filled),
+            'choices' => $next === null ? null : $this->choicesFor($form, $next, $filled, $language),
             'rejected' => $checked['rejected'],
             // A box the member asked to go back to, emptied and put in front
             // of them again. Named so the app can take it out of what it is
@@ -1281,6 +1317,79 @@ class VoiceAssistantService
         }
 
         return null;
+    }
+
+    /**
+     * Answer a member who said something that was not an answer.
+     *
+     * The turn's own reading has one job — take the value out of the sentence —
+     * and it is run cold so the values it takes can be trusted. Answering is a
+     * second duty, and a model at temperature 0.10 with a field to fill drops
+     * it about as often as it does it: the member asks what to put in the box
+     * and is told their answer was not understood, which is both untrue and
+     * the plainest possible sign that nothing is listening.
+     *
+     * So when a turn yields nothing at all — no value, nothing turned away,
+     * no decline, no going back, no answer — the sentence is put to a model
+     * whose only job is to reply to it. That is the case a member is in when
+     * they are confused, and it is the one case where an answer matters more
+     * than a value.
+     *
+     * One extra call, only on those turns. A member who is answering normally
+     * never pays for it.
+     */
+    private function helpWith(
+        string $form,
+        string $field,
+        string $said,
+        string $language,
+        array $known,
+    ): ?string {
+        $spec = $this->specFor($form, $field, $known);
+        if ($spec === []) {
+            return null;
+        }
+
+        $choices = $this->choicesFor($form, $field, $known, $language);
+
+        $prompt = app(PromptBuilderService::class)->build('provider_voice_help', [
+            'reply_in' => $language === 'hi' ? 'Hindi' : 'English',
+            // The heading, not the key. Asked about the box by its key, the
+            // model said the key back — "आपको 'service_type' में..." — which
+            // names nothing a member has ever seen on their screen.
+            'heading' => $spec['label'] ?? '(not named)',
+            'about' => $spec['ask'] ?? '',
+            'question' => $this->questionFor($form, $field, $language, $known) ?? '',
+            // What may be answered, in the words the member will see beneath
+            // the question, and what HCT says each one covers. Half of being
+            // stuck is not knowing what the choices are.
+            'choices' => $choices ? implode(', ', $choices) : '(free text — anything they like)',
+            'meanings' => ($m = $this->meaningsFor($spec)) === null ? '' : "\n\nWhat each covers:\n" . $m,
+            'filled' => $this->filledLabels($form, $known) ?: '(nothing yet)',
+            'said' => $said,
+        ]);
+
+        if (! $prompt) {
+            return null;
+        }
+
+        $answer = app(GroqService::class)->chat([
+            ['role' => 'system', 'content' => $prompt['system_prompt']],
+            ['role' => 'user',   'content' => $prompt['user_prompt']],
+        ], [
+            'groq_model' => $prompt['model'] ?: null,
+            'temperature' => $prompt['temperature'],
+            'max_tokens' => $prompt['max_tokens'],
+            'format' => 'json',
+            'reasoning_effort' => 'low',
+        ]);
+
+        $said = trim((string) (json_decode((string) ($answer['content'] ?? ''), true)['answer'] ?? ''));
+
+        // Long enough to have started lecturing is long enough to have lost
+        // them: the question is put again straight after this, and a member
+        // answers what they heard last.
+        return ($said === '' || mb_strlen($said) > 400) ? null : $said;
     }
 
     /**
@@ -1510,19 +1619,37 @@ class VoiceAssistantService
     /**
      * The choices to show beneath a question, or null when there are none.
      *
-     * Only for fields fed by one of HCT's lists. The other constrained fields
-     * hold internal codes — `less_than_day`, `easy` — and reading those out
-     * would be worse than useless; their questions already name the choices in
-     * words a person would use.
+     * Three kinds of box have answers to show, and until now only the first
+     * showed any:
+     *
+     *  - fed by one of HCT's lists, where the value shown is the value stored;
+     *  - one of a fixed few, where the value stored is a code — `less_than_day`,
+     *    `easy` — and what is shown is the words beside it. Those codes were
+     *    left unshown rather than translated, so the first question of the rate
+     *    card, which is one of these, offered nothing at all;
+     *  - yes or no, which is two answers like any other and was being left to
+     *    the member to guess at.
      */
-    public function choicesFor(string $form, string $field, array $known = []): ?array
+    public function choicesFor(string $form, string $field, array $known = [], ?string $language = null): ?array
     {
         $spec = $this->specFor($form, $field, $known);
-        if (! isset($spec['list'])) {
-            return null;
+        $tongue = $language === 'hi' ? 'hi' : 'en';
+
+        // HCT's own lists, and the valleys HECO works in — twenty of them, and
+        // no member can be expected to guess which twenty.
+        if (isset($spec['list']) || isset($spec['source'])) {
+            return $this->allowedFor($spec) ?: null;
         }
 
-        return $this->allowedFor($spec) ?: null;
+        if (($spec['type'] ?? '') === 'bool') {
+            return $tongue === 'hi' ? ['हाँ', 'नहीं'] : ['Yes', 'No'];
+        }
+
+        // No words written beside the codes means nothing fit to show, and a
+        // raw code is worse than an empty space.
+        return isset($spec['only']) && isset($spec['words'][$tongue])
+            ? array_values($spec['words'][$tongue])
+            : null;
     }
 
     /**
