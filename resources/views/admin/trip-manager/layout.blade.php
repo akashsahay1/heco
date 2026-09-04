@@ -270,7 +270,21 @@ function loadItinerary() {
                         var exp = de.experience || {};
                         html += '<div class="d-flex align-items-center p-1 mb-1 bg-success bg-opacity-10 rounded">';
                         html += '<i class="bi bi-star-fill text-success me-2"></i>';
-                        html += '<span class="small flex-fill">' + (exp.name || 'Experience') + '</span>';
+                        html += '<span class="small flex-fill">' + (exp.name || 'Experience');
+                        // A listing on this itinerary that is no longer live.
+                        // It happens when its host is removed: the experience is
+                        // kept so the trip keeps its record, but nobody can
+                        // deliver it any more. Saying only "not active" leaves
+                        // HCT wondering what to do, so it says what to do.
+                        if (exp.id && !exp.is_active) {
+                            html += '<span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-2">Not active</span>';
+                            html += '<div class="text-danger" style="font-size:.72rem">'
+                                + (exp.hlh_id
+                                    ? 'This experience is not active. Publish it again, or replace it in this itinerary.'
+                                    : 'This experience is not active — its host was removed. Assign a new HLH, or replace it in this itinerary.')
+                                + '</div>';
+                        }
+                        html += '</span>';
                         if (de.start_time) html += '<small class="text-muted me-2">' + de.start_time + '</small>';
                         if (de.total_cost > 0) html += '<small class="text-success me-2">&#8377;' + Number(de.total_cost).toLocaleString('en-IN') + '</small>';
                         if (!isLocked) html += '<button class="btn btn-sm btn-outline-danger btn-rm-day-exp" data-id="' + de.id + '"><i class="bi bi-x"></i></button>';

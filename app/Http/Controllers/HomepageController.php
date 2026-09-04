@@ -22,7 +22,7 @@ class HomepageController extends Controller
         $regions = Region::where("is_active", true)->orderBy("sort_order")->get();
         // Category cards must link with the real experience-type strings so the
         // /home filter actually matches them (audit H2).
-        $experienceTypes = Experience::where("is_active", true)
+        $experienceTypes = Experience::live()
             ->whereNotNull("type")
             ->where("type", "!=", "")
             ->distinct()
@@ -30,7 +30,7 @@ class HomepageController extends Controller
             ->pluck("type")
             ->values();
         // Real headline counts for the landing-page stats (no more hard-coded "20+").
-        $experienceCount = Experience::where("is_active", true)->count();
+        $experienceCount = Experience::live()->count();
         $regionCount = $regions->count();
         // Every row here is a provider, so there is nothing to narrow by —
         // this used to filter on provider_type purely to exclude nothing.
@@ -43,7 +43,7 @@ class HomepageController extends Controller
     public function home(Request $request)
     {
         $regions = Region::where("is_active", true)->orderBy("sort_order")->get();
-        $experiences = Experience::where("is_active", true)
+        $experiences = Experience::live()
             ->with(["region", "hlh"])
             // A stay's price_from reads the cheapest room rate; without this
             // aggregate each stay card would fire its own query.
@@ -123,14 +123,14 @@ class HomepageController extends Controller
         // Filter dropdown options must mirror the actual DB strings so every option
         // returns results (see audit H2). 'extreme' is forced in even if the seed
         // data happens not to contain it yet.
-        $experienceTypes = Experience::where("is_active", true)
+        $experienceTypes = Experience::live()
             ->whereNotNull("type")
             ->where("type", "!=", "")
             ->distinct()
             ->orderBy("type")
             ->pluck("type")
             ->values();
-        $difficultyLevels = Experience::where("is_active", true)
+        $difficultyLevels = Experience::live()
             ->whereNotNull("difficulty_level")
             ->where("difficulty_level", "!=", "")
             ->distinct()
@@ -214,12 +214,26 @@ class HomepageController extends Controller
     public function experienceDetail(string $slug)
     {
         $experience = Experience::where("slug", $slug)
-            ->where("is_active", true)
             // roomRates carry the price of a stay, which is quoted by the room
             // rather than per person — the detail page reads them directly.
             ->with(["region", "hlh", "regenerativeProject", "roomRates"])
             ->withCount('reviews')
             ->firstOrFail();
+
+        // Never approved means no public existence at all. The filter here used
+        // to be is_active alone, and every experience is created active, so a
+        // listing nobody at HECO had yet looked at was reachable by anyone with
+        // its address.
+        if ($experience->approval_status !== 'approved') {
+            abort(404);
+        }
+
+        // Approved but switched off is a different thing, and a 404 told the
+        // traveller the wrong story: the page existed, they may have it saved,
+        // and what changed is that the experience is no longer on offer. It
+        // happens when HCT takes a listing down, and when a host is removed and
+        // the listing is kept because somebody's itinerary already holds it.
+        $notActive = ! $experience->is_active;
 
         $avgRating = $experience->reviews()->avg('rating');
 
@@ -236,6 +250,6 @@ class HomepageController extends Controller
                 ->exists();
         }
 
-        return view("portal.experience-detail", compact("experience", "avgRating", "hostHasRooms"));
+        return view("portal.experience-detail", compact("experience", "avgRating", "hostHasRooms", "notActive"));
     }
 }

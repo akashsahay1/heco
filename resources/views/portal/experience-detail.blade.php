@@ -23,6 +23,15 @@
                 </span>
             @endif
             <h1 class="fw-bold mb-1">{{ $experience->name }}</h1>
+            @if($notActive)
+                {{-- Approved once, not on offer now. Saying so is kinder than a
+                     404: the traveller may have this saved or shared, and what
+                     changed is the offer, not the address. --}}
+                <div class="alert alert-warning d-inline-flex align-items-center gap-2 py-2 px-3 mb-2">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>This experience is not active. It is not open for booking at the moment.</span>
+                </div>
+            @endif
             <p class="mb-0">
                 @if($experience->region)
                     <i class="bi bi-geo-alt-fill"></i> {{ $experience->region->name }}
@@ -565,7 +574,11 @@
                             <p class="text-muted mb-2">Price on request</p>
                         @endif
 
-                        @auth
+                        @if($notActive)
+                            <button class="btn btn-secondary btn-lg w-100 mb-2" disabled>
+                                <i class="bi bi-slash-circle"></i> Not available
+                            </button>
+                        @elseif(auth()->check())
                             <button class="btn btn-success btn-lg w-100 mb-2" id="btnAddToJourney">
                                 <i class="bi bi-plus-lg"></i> Add to Journey
                             </button>
@@ -579,7 +592,7 @@
                             <button class="btn btn-outline-success w-100" id="btnGuestWishlist">
                                 <i class="bi bi-heart"></i> Save to Wishlist
                             </button>
-                        @endauth
+                        @endif
                     </div>
                 </div>
 

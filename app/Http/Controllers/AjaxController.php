@@ -1847,7 +1847,7 @@ class AjaxController extends Controller
 
     protected function getExperiencesForDiscover(Request $request): JsonResponse
     {
-        $query = Experience::where("is_active", true)->with(["region", "hlh", "days"])
+        $query = Experience::live()->with(["region", "hlh", "days"])
             // A stay quotes the cheapest room it offers; without this
             // aggregate every stay card would fetch its own rates.
             ->withRoomRateFrom();
@@ -1915,7 +1915,7 @@ class AjaxController extends Controller
     {
         $experience = Experience::with(["region", "hlh", "regenerativeProject", "days"])
             ->where("id", $request->experience_id)
-            ->where("is_active", true)
+            ->live()
             ->first();
 
         if (!$experience) {
@@ -2305,7 +2305,7 @@ class AjaxController extends Controller
             $rawIds = array_map("intval", explode(",", $matches[1]));
             $responseText = trim(preg_replace('/\s*\[RECOMMEND_IDS:[\d,]+\]/', '', $responseText));
             if (!empty($rawIds)) {
-                $q = Experience::where('is_active', true)->whereIn('id', $rawIds);
+                $q = Experience::live()->whereIn('id', $rawIds);
                 if ($activeRegionId) {
                     $q->where('region_id', $activeRegionId);
                 }
@@ -2408,7 +2408,7 @@ class AjaxController extends Controller
             $responseText = trim(preg_replace('/\s*\[ADD_TO_TRIP:\s*[\d,\s]+?\s*\]/', '', $responseText));
 
             // Validate experience IDs exist
-            $validIds = Experience::where('is_active', true)->whereIn('id', $requestedIds)->pluck('id')->toArray();
+            $validIds = Experience::live()->whereIn('id', $requestedIds)->pluck('id')->toArray();
 
             // Filter by single-region constraint
             $validIds = array_filter($validIds, function ($id) use (&$currentTripRegionId) {
@@ -2454,7 +2454,7 @@ class AjaxController extends Controller
             // to the trip's region when known (mirrors the single-region constraint).
             // Previously this loop referenced an undefined $experiences, throwing a
             // 500 whenever the AI said "added" without an [ADD_TO_TRIP] tag (#23).
-            $candidateExperiences = Experience::where('is_active', true)
+            $candidateExperiences = Experience::live()
                 ->when($currentTripRegionId, fn($q) => $q->where('region_id', $currentTripRegionId))
                 ->get(['id', 'name', 'region_id']);
             foreach ($candidateExperiences as $exp) {
@@ -6985,7 +6985,7 @@ class AjaxController extends Controller
     {
         $fail = fn (string $error, ?array $blockers = null) => [
             'ok' => false, 'error' => $error, 'blockers' => $blockers,
-            'user' => 'none', 'reason' => null, 'detached_experiences' => 0,
+            'user' => 'none', 'reason' => null, 'detached_experiences' => 0, 'deleted_experiences' => 0,
         ];
 
         // Only sp_payments hard-blocks — financial history must be archived
@@ -7003,16 +7003,37 @@ class AjaxController extends Controller
         $userId = $provider->user_id;
         $providerId = $provider->id;
         $disposition = $this->providerUserDisposition($userId);
-        $detachedExperiences = \App\Models\Experience::where('hlh_id', $provider->id)->count();
+        // An experience belongs to the host who runs it. When the host goes,
+        // the listing goes with them — it is their homestay, their kitchen, and
+        // nobody else can deliver it. Detaching them was leaving hostless rows
+        // behind that HCT then had to find and tidy by hand.
+        //
+        // One kind survives: a listing some traveller's itinerary has already
+        // picked up. Deleting that would empty a trip somebody planned, which is
+        // the one thing deleteExperience() refuses to do, and it is refused here
+        // for the same reason. Those are detached and switched off instead, so
+        // the trip keeps its record and the listing tells anyone looking that it
+        // is no longer active.
+        $hosted = \App\Models\Experience::where('hlh_id', $provider->id)->pluck('id')->all();
+        $onTrips = $hosted === [] ? [] : array_values(array_unique(array_merge(
+            DB::table('trip_day_experiences')->whereIn('experience_id', $hosted)->pluck('experience_id')->all(),
+            DB::table('trip_selected_experiences')->whereIn('experience_id', $hosted)->pluck('experience_id')->all(),
+        )));
+        $toDelete = array_values(array_diff($hosted, $onTrips));
+        $detachedExperiences = count($onTrips);
+        $deletedExperiences = count($toDelete);
 
-        \DB::transaction(function () use ($provider, $userId, $disposition) {
-            // Detach hosted experiences (hlh_id → NULL, is_active → false)
-            // so traveller listings stop surfacing them. Admin can reassign
-            // them to a new HLH later if needed.
-            \App\Models\Experience::where('hlh_id', $provider->id)->update([
-                'hlh_id'    => null,
-                'is_active' => false,
-            ]);
+        \DB::transaction(function () use ($provider, $userId, $disposition, $onTrips, $toDelete) {
+            if ($onTrips !== []) {
+                \App\Models\Experience::whereIn('id', $onTrips)->update([
+                    'hlh_id'    => null,
+                    'is_active' => false,
+                ]);
+            }
+            if ($toDelete !== []) {
+                // Days, price slabs, add-ons and reviews go with them by FK.
+                \App\Models\Experience::whereIn('id', $toDelete)->delete();
+            }
             $provider->delete();  // cascades to sp_pricing, sp_availability, sp_room_bookings
             if (!$userId) {
                 return;
@@ -7045,6 +7066,7 @@ class AjaxController extends Controller
             'user' => $userOutcome,
             'reason' => $disposition['reason'],
             'detached_experiences' => $detachedExperiences,
+            'deleted_experiences' => $deletedExperiences,
         ];
     }
 
@@ -7816,6 +7838,37 @@ class AjaxController extends Controller
     protected function disableExperience(Request $request): JsonResponse
     {
         $experience = Experience::findOrFail($request->id);
+
+        // Taking one down needs no permission; putting one back up does. An
+        // experience is hosted — it is somebody's homestay, somebody's kitchen —
+        // and one with no host is a listing a traveller can book from nobody.
+        //
+        // That state is reachable: deleting a provider empties hlh_id on every
+        // experience it hosted and switches them off in the same breath. Off is
+        // where they should stay until HCT gives them a new host, and this
+        // toggle was the one door that let them back on with the column still
+        // empty. The form cannot produce it — its dropdown lists approved HLHs
+        // and hlh_id is required — so this is the only place to hold the line.
+        if (! $experience->is_active) {
+            $hlh = $experience->hlh_id ? ServiceProvider::find($experience->hlh_id) : null;
+
+            if (! $hlh) {
+                return response()->json([
+                    "error" => "This experience has no host. Assign it to an HLH — edit it and choose one — before publishing it.",
+                ], 422);
+            }
+            if ($hlh->status !== "approved") {
+                return response()->json([
+                    "error" => "Its host, {$hlh->name}, is not approved. Approve that provider, or give the experience to another HLH, before publishing it.",
+                ], 422);
+            }
+            if (! $hlh->hasType("hlh")) {
+                return response()->json([
+                    "error" => "Its host, {$hlh->name}, is not an HLH. An experience is hosted by an HLH; assign one before publishing it.",
+                ], 422);
+            }
+        }
+
         $experience->update(["is_active" => !$experience->is_active]);
         return response()->json(["success" => true, "is_active" => $experience->is_active]);
     }
@@ -9076,7 +9129,7 @@ class AjaxController extends Controller
 
     protected function searchExperiencesForTrip(Request $request): JsonResponse
     {
-        $query = Experience::where("is_active", true)->with(["region", "hlh"])
+        $query = Experience::live()->with(["region", "hlh"])
             ->withRoomRateFrom();
 
         if ($request->filled("search")) {

@@ -26,9 +26,54 @@
         <i class="bi bi-compass"></i> {{ $e ? 'Edit' : 'Create' }} Experience
     </h5>
     @if($e)
-        <span class="badge bg-{{ $e->is_active ? 'success' : 'secondary' }}">{{ $e->is_active ? 'Active' : 'Inactive' }}</span>
+        {{-- What this badge is asked is "can a traveller see it", so it has to
+             read both columns. It read is_active alone, and said "Active" at
+             the top of a page whose own banner said the listing is not shown to
+             travellers until it is approved. Both were true; together they were
+             nonsense. --}}
+        @if($e->approval_status !== 'approved')
+            <span class="badge bg-warning text-dark">Not published — {{ $e->approval_status }}</span>
+        @elseif($e->is_active)
+            <span class="badge bg-success">Live</span>
+        @else
+            <span class="badge bg-secondary">Not live</span>
+        @endif
     @endif
 </div>
+
+@if($e && ($e->approval_status === 'pending' || $e->pending_changes))
+    {{-- Deciding on a listing belongs where the listing is: the reviewer reads
+         what was filed and then rules on it. On the list these two buttons sat
+         in a stack of five in a narrow column and read as clutter, with nothing
+         of the experience visible to judge. --}}
+    <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div>
+            <i class="bi bi-hourglass-split me-1"></i>
+            <strong>{{ $e->pending_changes ? 'An edit is waiting for review.' : 'This experience is waiting for review.' }}</strong>
+            <span class="d-block small text-muted">
+                {{ $e->pending_changes
+                    ? 'The live version keeps selling until you decide.'
+                    : 'It is not shown to travellers until it is approved.' }}
+            </span>
+        </div>
+        <div class="text-nowrap">
+            <button type="button" class="btn btn-success" id="btnApproveExp" data-id="{{ $e->id }}">
+                <i class="bi bi-check-lg"></i> Approve
+            </button>
+            <button type="button" class="btn btn-outline-danger" id="btnRejectExp" data-id="{{ $e->id }}">
+                <i class="bi bi-x-lg"></i> Reject
+            </button>
+        </div>
+    </div>
+@elseif($e && $e->approval_status === 'rejected')
+    <div class="alert alert-danger mb-3">
+        <i class="bi bi-x-circle me-1"></i>
+        <strong>This experience was rejected.</strong>
+        @if($e->rejection_reason)
+            <span class="d-block small mt-1">{{ $e->rejection_reason }}</span>
+        @endif
+    </div>
+@endif
 
 <form id="experienceForm" enctype="multipart/form-data" novalidate>
     @if($e)
@@ -755,10 +800,72 @@
     </div>
 </form>
 
+@if($e && ($e->approval_status === 'pending' || $e->pending_changes))
+    {{-- Why it was turned down is written on the row and shown to the provider,
+         so it is asked for. Optional: some rejections need no explaining. --}}
+    <div class="modal fade" id="rejectExpModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Reject this experience</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label" for="rejectExpReason">Why? The provider will see this.</label>
+                    <textarea class="form-control" id="rejectExpReason" rows="3" maxlength="500"
+                              placeholder="What needs to change before this can go live"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmRejectExp">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+@endif
+
 @endsection
 
 @section('js')
 <script>
+// ---- Approve / reject ----
+// The server work has been here since the pending page existed; what it lost
+// on 2026-07-30, when that page became a redirect to the list, was any button.
+$(document).on('click', '#btnApproveExp', function() {
+    var btn = $(this).prop('disabled', true);
+    ajaxPost({ approve_experience: 1, id: btn.data('id') }, function() {
+        showAlert('Approved — it is live now.', 'success');
+        setTimeout(function() { window.location.reload(); }, 600);
+    }, function(xhr) {
+        // Approving a parked edit replays it through the normal save, so this
+        // fails the way any save fails, and the reason is the useful part.
+        btn.prop('disabled', false);
+        showAlert((xhr.responseJSON && xhr.responseJSON.error) || 'Could not approve this experience.', 'danger');
+    });
+});
+
+$(document).on('click', '#btnRejectExp', function() {
+    $('#rejectExpReason').val('');
+    new bootstrap.Modal($('#rejectExpModal')[0]).show();
+});
+
+$(document).on('click', '#confirmRejectExp', function() {
+    var btn = $(this).prop('disabled', true);
+    ajaxPost({
+        reject_experience: 1,
+        id: $('#btnRejectExp').data('id'),
+        reason: $('#rejectExpReason').val()
+    }, function() {
+        btn.prop('disabled', false);
+        bootstrap.Modal.getInstance($('#rejectExpModal')[0]).hide();
+        showAlert('Rejected — the provider can revise it and send it again.', 'success');
+        setTimeout(function() { window.location.reload(); }, 600);
+    }, function(xhr) {
+        btn.prop('disabled', false);
+        showAlert((xhr.responseJSON && xhr.responseJSON.error) || 'Could not reject this experience.', 'danger');
+    });
+});
+
 // Pre-loaded experience days data for edit mode
 var existingDays = @json($e && $e->days ? $e->days : []);
 var inclusionOptions = ['breakfast', 'lunch', 'dinner', 'snacks', 'accommodation', 'guide', 'transport'];
