@@ -36,7 +36,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'hct' => \App\Http\Middleware\HctMiddleware::class,
-            'hct_admin' => \App\Http\Middleware\HctAdminMiddleware::class,
+            // Named for the role it checks. It was registered as 'hct_admin'
+            // while routes/web.php asked for 'administrator' — the rename in
+            // fe58fe8 reached the roles, the model and the routes but not this
+            // line, so /admin and /travel-preferences answered 500 with
+            // "Target class [administrator] does not exist" from 2026-08-07 on.
+            'administrator' => \App\Http\Middleware\HctAdminMiddleware::class,
             'sp' => \App\Http\Middleware\SpMiddleware::class,
             // Bearer-token auth for the mobile app (see AuthenticateApiToken).
             'api.token' => \App\Http\Middleware\AuthenticateApiToken::class,
