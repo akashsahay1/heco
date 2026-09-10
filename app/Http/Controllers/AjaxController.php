@@ -178,12 +178,9 @@ class AjaxController extends Controller
         $expIds = array_values(array_unique($guestData['experience_ids'] ?? []));
         $experiences = !empty($expIds) ? Experience::whereIn('id', $expIds)->with('priceSlabs')->get() : collect();
         foreach ($experiences as $exp) {
-            $perPerson = $exp->slabPricePerPerson($groupSize);
-            if ($perPerson <= 0) {
-                $perPerson = (float) ($exp->base_cost_per_person
-                    ?: ($exp->cost_accommodation + $exp->cost_logistics + $exp->cost_guide
-                        + $exp->cost_activities + $exp->cost_other));
-            }
+            // Margin included; the fallbacks for an experience with no slabs
+            // live in the model beside it.
+            $perPerson = $exp->travellerPricePerPerson($groupSize);
             $experienceCost += (int) round($perPerson * $peopleFactor);
         }
 
@@ -317,7 +314,7 @@ class AjaxController extends Controller
                 // Skip experiences that were removed from the trip
                 if ($eid && !in_array($eid, $currentExpIds)) continue;
                 $expModel = $eid ? ($experiences[$eid] ?? null) : null;
-                $costPerPerson = $expModel ? $expModel->base_cost_per_person : 0;
+                $costPerPerson = $expModel ? $expModel->travellerPricePerPerson() : 0;
 
                 $dayExperiences[] = [
                     'id' => ($i + 1) * 100 + $j + 1,
@@ -3358,8 +3355,7 @@ class AjaxController extends Controller
             $e = $exps->get($id);
             if (!$e) continue;
             // Per-person price for THIS group size (req 3.2), matching the calculator.
-            $perPerson = $e->slabPricePerPerson(max($groupSize, 1));
-            if ($perPerson <= 0) $perPerson = (float) $e->base_cost_per_person;
+            $perPerson = $e->travellerPricePerPerson(max($groupSize, 1));
             if ($perPerson <= 0) continue;
             $lines[] = [
                 'name'             => $e->name,
@@ -4358,7 +4354,31 @@ class AjaxController extends Controller
 
     protected function getAiPrompts(Request $request): JsonResponse
     {
-        $prompts = AiPrompt::orderBy("key")->get();
+        // Each row names its own model, and for most of them that is the whole
+        // story. The four provider_voice_* rows are the exception: when the
+        // voice assistant is pointed at OpenAI, VoiceAssistantService takes the
+        // model from config and the stored name is not read at all. The column
+        // then showed a model that was not running, which sent somebody to edit
+        // it — reasonably — and that edit would have broken the Groq path the
+        // day anyone switched back.
+        //
+        // So the list carries both: what is actually being used, and what is
+        // stored underneath it. The stored value is still what the edit form
+        // opens and saves.
+        $voiceOnOpenAi = strtolower(trim((string) \App\Models\Setting::getValue(
+            'voice_provider',
+            config('voice.provider', 'groq'),
+        ))) === 'openai';
+
+        $prompts = AiPrompt::orderBy("key")->get()->map(function ($p) use ($voiceOnOpenAi) {
+            $row = $p->toArray();
+            $row["effective_model"] = $voiceOnOpenAi && str_starts_with((string) $p->key, 'provider_voice_')
+                ? (string) config('openai.model')
+                : (string) $p->model;
+
+            return $row;
+        });
+
         return response()->json(["prompts" => $prompts]);
     }
 
@@ -7574,6 +7594,7 @@ class AjaxController extends Controller
             "cost_other"           => "nullable|numeric|min:0|max:99999999.99",
             "single_supplement"    => "nullable|numeric|min:0|max:99999999.99",
             "price_currency"       => "nullable|string|size:3",
+            "markup_percent"       => "nullable|numeric|min:0|max:100",
             // What the price covers, and what the ground is like.
             "includes_accommodation"   => "nullable|boolean",
             "includes_meals_breakfast" => "nullable|boolean",
@@ -8123,23 +8144,24 @@ class AjaxController extends Controller
             if ($capErr) return $capErr;
         }
 
-        // Ownership is never taken from the client. `hlh_id` stays a valid FK:
-        // an HLH hosts its own experience, an OSP may name the host it runs at
-        // and otherwise points the column at itself.
-        $hlhId = $sp->hasType('hlh')
-            ? $sp->id
-            : ($request->input('hlh_id') ?: ($existing->hlh_id ?? $sp->id));
-
+        // Ownership is never taken from the client. Only a host reaches this
+        // line — resolveExperienceAuthor() above answers 403 to anyone else —
+        // so the host is always this provider. The branch that used to let a
+        // non-host name the host it runs at could not be reached, and read as
+        // though OSPs authored experiences, which they do not.
         $request->merge([
             'owner_provider_id' => $sp->id,
             'owner_type'        => $sp->provider_type,
-            'hlh_id'            => $hlhId,
+            'hlh_id'            => $sp->id,
         ]);
 
         // Fields only HCT controls — a provider must not be able to reorder the
         // catalogue, publish itself, or stamp its own approval.
         foreach ([
             'sort_order', 'approval_status', 'approved_at', 'approved_by', 'rejection_reason',
+            // What HECO adds on top is HECO's to decide. A host setting
+            // their own margin would be setting the traveller's price.
+            'markup_percent',
             'pending_changes', 'pending_submitted_at', 'pending_submitted_by',
         ] as $field) {
             $request->request->remove($field);

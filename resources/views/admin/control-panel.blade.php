@@ -274,6 +274,12 @@ jQuery(function() {
     });
 
     // ===== Settings =====
+    // Settings whose answer is one of a few known words. Everything not
+    // listed here stays a plain text box, as it always was.
+    var CP_SETTING_CHOICES = {
+        voice_provider: ['groq', 'openai'],
+    };
+
     function loadSettings() {
         var group = jQuery('#cpSettingsGroup').val();
         jQuery('#cpSettingsBody').html('<tr><td colspan="2" class="text-center text-muted small">Loading...</td></tr>');
@@ -287,7 +293,26 @@ jQuery(function() {
                 var label = s.key.replace(/_/g, ' ').replace(/^./, function(c) { return c.toUpperCase(); });
                 html += '<tr><td><div class="small">' + escapeHtml(label) + '</div>'
                      +  '<div class="text-muted" style="font-size:11px;">' + escapeHtml(s.key) + '</div></td>';
-                html += '<td><input type="text" class="form-control form-control-sm cp-setting-input" data-key="' + escapeHtml(s.key) + '" value="' + escapeHtml(s.value) + '"></td></tr>';
+                // A setting with a fixed set of answers gets a list rather than
+                // an empty box. The save path is untouched: .val() reads a
+                // select exactly as it reads an input, so only the drawing
+                // changes. Add a key to CP_SETTING_CHOICES to give it a list.
+                if (CP_SETTING_CHOICES[s.key]) {
+                    html += '<td><select class="form-select form-select-sm cp-setting-input" data-key="' + escapeHtml(s.key) + '">';
+                    CP_SETTING_CHOICES[s.key].forEach(function(opt) {
+                        html += '<option value="' + escapeHtml(opt) + '"'
+                             +  (String(s.value) === opt ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+                    });
+                    // A value somebody typed in before this list existed, or set
+                    // by hand in the database: shown rather than silently
+                    // swapped for the first option.
+                    if (CP_SETTING_CHOICES[s.key].indexOf(String(s.value)) === -1) {
+                        html += '<option value="' + escapeHtml(s.value) + '" selected>' + escapeHtml(s.value) + ' (not a known value)</option>';
+                    }
+                    html += '</select></td></tr>';
+                } else {
+                    html += '<td><input type="text" class="form-control form-control-sm cp-setting-input" data-key="' + escapeHtml(s.key) + '" value="' + escapeHtml(s.value) + '"></td></tr>';
+                }
             });
             jQuery('#cpSettingsBody').html(html);
         });
@@ -399,7 +424,14 @@ jQuery(function() {
                 html += '<td><i class="bi bi-square cp-prompt-check" role="button" data-id="' + p.id + '"></i></td>';
                 html += '<td class="small"><code>' + escapeHtml(p.key) + '</code></td>';
                 html += '<td>' + escapeHtml(p.name) + '</td>';
-                html += '<td class="small">' + escapeHtml(p.model) + '</td>';
+                // What is actually being used. Where that differs from what is
+                // stored — the voice rows, while the assistant is pointed at
+                // OpenAI — the stored name is on the hover rather than under
+                // it: this column is narrow, and a second line turned every row
+                // into five wrapped ones.
+                var shown = p.effective_model || p.model;
+                var title = (p.model && shown !== p.model) ? ' title="saved: ' + escapeHtml(p.model) + '"' : '';
+                html += '<td class="small"' + title + '>' + escapeHtml(shown) + '</td>';
                 html += '<td>' + (p.is_active ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>') + '</td>';
                 html += '<td><button class="btn btn-sm btn-outline-primary cp-prompt-edit" title="Edit"><i class="bi bi-pencil"></i></button></td>';
                 html += '</tr>';
@@ -459,6 +491,14 @@ jQuery(function() {
             function(xhr) { showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Save failed') : 'Save failed', 'danger'); });
     });
     loadPrompts();
+
+    // Again every time the tab is opened, not once on page load. The Model
+    // column now shows the model actually in use, and that answer changes the
+    // moment somebody saves Voice provider two tabs away — so a list fetched
+    // when the page opened is out of date by the time they come back to look
+    // at it. Logs and PDF templates load once because nothing else on the page
+    // can change them; this one can.
+    jQuery('button[data-bs-target="#cpPrompts"]').on('shown.bs.tab', loadPrompts);
 
     // ===== Activity Logs =====
     var logPage = 1, logLastPage = 1;

@@ -29,7 +29,7 @@ class Experience extends Model
         'group_size_min', 'group_size_max', 'weather_dependency',
         'cultural_sensitivities', 'environmental_constraints',
         'best_seasons', 'available_months', 'restricted_months', 'unavailable_months', 'seasonality_notes',
-        'base_cost_per_person', 'price_currency', 'cost_accommodation', 'cost_logistics', 'cost_guide',
+        'base_cost_per_person', 'price_currency', 'markup_percent', 'cost_accommodation', 'cost_logistics', 'cost_guide',
         'cost_activities', 'cost_other', 'seasonal_price_variation', 'single_supplement',
         'osps_involved', 'osp_services',
         'traveller_bring_list', 'clothing_recommendations', 'health_notes',
@@ -62,6 +62,7 @@ class Experience extends Model
             'osp_services' => 'array',
             'gallery' => 'array',
             'base_cost_per_person' => 'decimal:2',
+            'markup_percent' => 'decimal:2',
             'duration_hours' => 'decimal:2',
             // Integers, so the API answers with the same type whichever way the
             // row was filed. A JSON save returned 3 and a multipart save (what
@@ -120,7 +121,8 @@ class Experience extends Model
     public function getPriceFromAttribute(): ?array
     {
         if (!$this->isStay()) {
-            $amount = (float) $this->base_cost_per_person;
+            // Margin included: this is the number on a card a traveller reads.
+            $amount = $this->travellerPricePerPerson();
             return $amount > 0
                 ? ['amount' => $amount, 'unit' => 'per person', 'currency' => $this->price_currency ?: 'INR']
                 : null;
@@ -273,6 +275,41 @@ class Experience extends Model
      * to base_cost_per_person when the experience has no slabs configured, so
      * legacy experiences keep pricing exactly as before.
      */
+    /**
+     * What HECO adds to this experience before a traveller sees the price.
+     *
+     * Set here or nowhere. Nothing set means the host's price IS the price the
+     * traveller is quoted, which is the plainest reading of it and the one that
+     * cannot surprise anybody: no percentage arrives from a setting somewhere
+     * else that nobody remembered to look at.
+     */
+    public function effectiveMarkupPercent(): float
+    {
+        return (float) ($this->markup_percent ?: 0);
+    }
+
+    /**
+     * The per-person price a TRAVELLER pays, margin included.
+     *
+     * Everything traveller-facing asks this rather than reading the columns:
+     * the card's "from" price, the trip pricing panel, the guest timeline, the
+     * calculator. The raw figure is what the host is owed and what HCT edits,
+     * and it is never what is quoted.
+     */
+    public function travellerPricePerPerson(int $pax = 1): float
+    {
+        $raw = $this->slabPricePerPerson($pax);
+
+        if ($raw <= 0) {
+            // Older experiences carry no slabs: the headline, then the parts.
+            $raw = (float) ($this->base_cost_per_person
+                ?: ($this->cost_accommodation + $this->cost_logistics + $this->cost_guide
+                    + $this->cost_activities + $this->cost_other));
+        }
+
+        return $raw > 0 ? $raw * (1 + $this->effectiveMarkupPercent() / 100) : 0.0;
+    }
+
     public function slabPricePerPerson(int $pax): float
     {
         $pax = max($pax, 1);

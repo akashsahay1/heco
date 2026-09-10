@@ -523,6 +523,20 @@
                             </div>
                             <small class="text-muted">Cheapest group-size slab below (or the sum of components if no slabs are set). Shown as the "from" price on cards.</small>
                         </div>
+                        <div class="col-md-6">
+                            {{-- What HECO adds on top before a traveller is
+                                 quoted. Left empty, the host's price is the
+                                 price. A provider never sets this and never
+                                 sees it: saveExperience strips it from anything
+                                 they post, the way it strips approval. --}}
+                            <label class="form-label">Admin Markup %</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="markup_percent" min="0" max="100" step="0.01"
+                                       value="{{ $e->markup_percent ?? '' }}" placeholder="0">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <small class="text-muted">Added to the price above before the traveller sees it. Leave empty to quote the host's price as it stands. The host is always paid the raw amount.</small>
+                        </div>
                         <div class="col-md-12">
                             <label class="form-label mb-1">Per-Person Price by Group Size</label>
                             <p class="text-muted small mb-2">The experience is priced per person, varying with the number of travellers (fewer travellers usually cost more each). The last row ("6+") applies to that many travellers or more. Leave a row blank to skip it. Traveller pays this price × number of travellers.</p>

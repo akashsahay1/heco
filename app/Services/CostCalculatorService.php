@@ -176,14 +176,9 @@ class CostCalculatorService
                 // by group size × billable heads. Trek stay (tent), hotel↔trek
                 // transport, included guide and activities are all inside this bundle;
                 // provider hotel/transport/guide are separate stacked lines below.
-                $perPerson = $exp->slabPricePerPerson($groupSize);
-                if ($perPerson <= 0) {
-                    // Legacy experiences with no slabs: fall back to the headline
-                    // per-person price, then to the sum of the cost components.
-                    $perPerson = (float) ($exp->base_cost_per_person
-                        ?: ($exp->cost_accommodation + $exp->cost_logistics + $exp->cost_guide
-                            + $exp->cost_activities + $exp->cost_other));
-                }
+                // Margin included, and the fallbacks for an experience with no
+                // slabs live in the model with it.
+                $perPerson = $exp->travellerPricePerPerson($groupSize);
                 $line = (int) round($perPerson * $peopleFactor);
                 $experienceCost += $line;
                 $dayExp->update(['total_cost' => $line]);

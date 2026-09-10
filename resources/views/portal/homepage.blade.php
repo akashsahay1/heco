@@ -161,9 +161,16 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 </div>
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Region</label>
+                                    {{-- Every filter opens on "all". Continent opened on
+                                         Asia, country on India and region on Tirthan
+                                         Valley by name, so a visitor landing here saw
+                                         two experiences out of five and no way to tell
+                                         the catalogue was larger — the other three were
+                                         filtered out before they ever looked. --}}
                                     <select class="form-select form-select-sm custom-select" id="filterRegion">
+                                        <option value="">All Regions</option>
                                         @foreach($regions as $region)
-                                            <option value="{{ $region->id }}" @if($region->name === 'Tirthan Valley') selected @endif>{{ $region->name }}</option>
+                                            <option value="{{ $region->id }}">{{ $region->name }}</option>
                                         @endforeach
                                     </select>
                                 </div>
@@ -661,11 +668,11 @@ jQuery(function() {
         });
         continents.sort();
         var cSel = jQuery('#filterContinent');
+        cSel.append('<option value="">All Continents</option>');
         continents.forEach(function(c) {
             cSel.append('<option value="' + c + '">' + c + '</option>');
         });
-        // Default to Asia
-        if (cSel.find('option[value="Asia"]').length) cSel.val('Asia');
+        cSel.val('');
     })();
 
     // Cascade: Continent â†’ Country â†’ Region
@@ -681,14 +688,13 @@ jQuery(function() {
             }
         });
         countries.sort();
+        cSel.append('<option value="">All Countries</option>');
         countries.forEach(function(c) {
             cSel.append('<option value="' + c + '">' + c + '</option>');
         });
-        if (!cSel.find('option[value="' + prevVal + '"]').length) {
-            // Default to India if available, otherwise first option
-            if (cSel.find('option[value="India"]').length) cSel.val('India');
-            else cSel.val(cSel.find('option:first').val());
-        }
+        // A country chosen before survives a continent change if it is still on
+        // offer; otherwise the filter widens rather than picking one for them.
+        cSel.val(cSel.find('option[value="' + prevVal + '"]').length ? prevVal : '');
     }
 
     function updateRegionOptions() {
@@ -697,12 +703,13 @@ jQuery(function() {
         var rSel = jQuery('#filterRegion');
         var prevVal = rSel.val();
         rSel.empty();
+        rSel.append('<option value="">All Regions</option>');
         allRegions.forEach(function(r) {
             if ((!continent || r.continent === continent) && (!country || r.country === country)) {
                 rSel.append('<option value="' + r.id + '">' + r.name + '</option>');
             }
         });
-        if (!rSel.find('option[value="' + prevVal + '"]').length) rSel.val(rSel.find('option:first').val());
+        rSel.val(rSel.find('option[value="' + prevVal + '"]').length ? prevVal : '');
     }
 
     // Initialize country options on load
@@ -1166,7 +1173,7 @@ jQuery(function() {
     // Clear filters (reset to first option for continent/country/region, empty for others)
     jQuery('#clearFilters').on('click', function() {
         jQuery('#filterType, #filterDifficulty, #filterMonth').val('');
-        jQuery('#filterContinent').val('Asia');
+        jQuery('#filterContinent').val('');
         updateCountryOptions();
         updateRegionOptions();
         jQuery('.filter-bar select').each(function() { buildCustomDropdown(this); });

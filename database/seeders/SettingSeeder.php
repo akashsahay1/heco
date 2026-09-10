@@ -42,8 +42,8 @@ class SettingSeeder extends Seeder
             // can change how the collective greets a new member without
             // shipping a build. English, because it is said before anyone has
             // chosen a language — the very next thing asked is which one.
-            ['key' => 'voice_greeting', 'value' => 'Hello from HECO. I can fill this form in for you — just talk to me.', 'group' => 'general'],
-            ['key' => 'voice_language_question', 'value' => 'Which language would you like to speak in — Hindi or English?', 'group' => 'general'],
+            ['key' => 'voice_greeting', 'value' => 'Hello from HECO. I can fill this form in for you. Just talk to me.', 'group' => 'general'],
+            ['key' => 'voice_language_question', 'value' => 'Which language would you like to speak in: Hindi or English?', 'group' => 'general'],
             ['key' => 'ollama_enabled', 'value' => '1', 'group' => 'ai'],
             ['key' => 'default_ai_model', 'value' => 'mistral', 'group' => 'ai'],
         ];

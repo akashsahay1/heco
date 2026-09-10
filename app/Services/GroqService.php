@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -12,9 +13,26 @@ class GroqService
     protected int $timeout;
     protected string $baseUrl = 'https://api.groq.com/openai/v1';
 
+    /** Every key this account has, in the order they are tried. */
+    protected array $keys = [];
+
+    /**
+     * How long a refused key is left alone.
+     *
+     * Groq's daily ceiling is a rolling window rather than a calendar day —
+     * capacity trickles back through the day rather than arriving at midnight —
+     * so a key that is spent now may well answer in twenty minutes. Long enough
+     * not to re-ask on every turn; short enough to notice the recovery.
+     */
+    protected const RESTED = 900;
+
     public function __construct()
     {
-        $this->apiKey = config('groq.api_key', '');
+        $this->keys = array_values(array_unique(array_filter(array_merge(
+            [(string) config('groq.api_key', '')],
+            (array) config('groq.api_keys', []),
+        ))));
+        $this->apiKey = $this->keys[0] ?? '';
         $this->model = config('groq.model', 'llama-3.3-70b-versatile');
         $this->timeout = config('groq.timeout', 60);
     }
@@ -22,6 +40,39 @@ class GroqService
     public function isAvailable(): bool
     {
         return !empty($this->apiKey);
+    }
+
+    /**
+     * The keys worth trying, spent ones last.
+     *
+     * Not "spent ones removed": if every key has been refused the caller still
+     * gets an attempt rather than a silence, and the voice assistant falling
+     * silent is the one failure a member cannot tell from a broken feature.
+     */
+    protected function keysToTry(): array
+    {
+        $fresh = [];
+        $tired = [];
+        foreach ($this->keys as $key) {
+            if (Cache::has('groq_key_spent:' . md5($key))) {
+                $tired[] = $key;
+            } else {
+                $fresh[] = $key;
+            }
+        }
+
+        return array_merge($fresh, $tired) ?: [$this->apiKey];
+    }
+
+    /** Put a key aside, by its hash — the key itself never reaches a log. */
+    protected function rest(string $key, string $why): void
+    {
+        Cache::put('groq_key_spent:' . md5($key), true, self::RESTED);
+        Log::warning('Groq key set aside', [
+            'key' => '…' . substr($key, -4),
+            'why' => $why,
+            'for_seconds' => self::RESTED,
+        ]);
     }
 
     /**
@@ -61,8 +112,14 @@ class GroqService
                 $payload[] = ['name' => 'prompt', 'contents' => $options['prompt']];
             }
 
+            // The first key not currently set aside. Transcription has its own
+            // allowance — audio seconds, not tokens — so a key out of tokens for
+            // the day still hears perfectly well; but a revoked one does not,
+            // and that is the case worth stepping past. One attempt, no
+            // rotation: an unheard recording is gone, and a member repeating
+            // themselves through several keys is worse than being asked again.
             $response = Http::timeout($options['timeout'] ?? $this->timeout)
-                ->withHeaders(['Authorization' => 'Bearer ' . $this->apiKey])
+                ->withHeaders(['Authorization' => 'Bearer ' . ($this->keysToTry()[0] ?? $this->apiKey)])
                 ->attach('file', $bytes, $filename)
                 ->post($this->baseUrl . '/audio/transcriptions', $payload);
 
@@ -173,52 +230,87 @@ class GroqService
             $attempt = 0;
             $maxAttempts = 2;
 
-            do {
-                $attempt++;
-                $response = Http::timeout($timeout)
-                    ->withHeaders([
-                        'Authorization' => 'Bearer ' . $this->apiKey,
-                        'Content-Type' => 'application/json',
-                    ])
-                    ->post($this->baseUrl . '/chat/completions', $payload);
+            // Each key in turn, spent ones last. A key is set aside when it is
+            // out of tokens for the day or no longer valid — not when the
+            // MINUTE's allowance is reached, which is a wait, not an ending,
+            // and which every key on the account shares anyway.
+            foreach ($this->keysToTry() as $key) {
+                $attempt = 0;
 
-                if ($response->successful()) {
-                    $data = $response->json();
-                    $text = $data['choices'][0]['message']['content'] ?? '';
+                do {
+                    $attempt++;
+                    $response = Http::timeout($timeout)
+                        ->withHeaders([
+                            'Authorization' => 'Bearer ' . $key,
+                            'Content-Type' => 'application/json',
+                        ])
+                        ->post($this->baseUrl . '/chat/completions', $payload);
 
-                    if (empty($text)) {
-                        Log::warning('Groq returned empty response', ['data' => $data]);
+                    if ($response->successful()) {
+                        $data = $response->json();
+                        $text = $data['choices'][0]['message']['content'] ?? '';
+
+                        if (empty($text)) {
+                            Log::warning('Groq returned empty response', ['data' => $data]);
+                            return null;
+                        }
+
+                        return [
+                            'content' => $text,
+                            'model' => $data['model'] ?? $this->model,
+                        ];
+                    }
+
+                    // 429 = rate limit. Honor Retry-After (seconds) up to 5s once, then give up.
+                    if ($response->status() === 429 && $attempt < $maxAttempts) {
+                        $retryAfter = (int) ($response->header('Retry-After') ?: 0);
+                        if ($retryAfter <= 0) {
+                            // Fall back to parsing Groq's "try again in X.YYs" hint from the body.
+                            if (preg_match('/try again in ([\d.]+)s/i', $response->body(), $m)) {
+                                $retryAfter = (int) ceil((float) $m[1]);
+                            }
+                        }
+                        if ($retryAfter > 0 && $retryAfter <= 5) {
+                            Log::info("Groq 429 — sleeping {$retryAfter}s then retrying");
+                            sleep($retryAfter);
+                            continue;
+                        }
+                    }
+
+                    Log::error('Groq API error', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+
+                    // Worth moving on to the next key, or not:
+                    //   401 — revoked, deleted or mistyped. This key is finished.
+                    //   429 on the DAY's tokens — nothing more from it for a while.
+                    //   429 on the MINUTE's — every key shares that ceiling, so
+                    //     moving on would only spend a second key on the same wall.
+                    // The day's tokens are counted per organisation, not per
+                    // key, so when one key is out they all are. Trying the rest
+                    // spends nothing but it does make the member wait three
+                    // times as long for the same silence, which is what
+                    // happened on 2026-09-09: three "out of tokens for the day"
+                    // in a row inside a single turn. Set them all aside and
+                    // stop.
+                    if ($response->status() === 429 && str_contains($response->body(), 'tokens per day')) {
+                        foreach ($this->keys as $spent) {
+                            $this->rest($spent, 'the day is spent for this model, on every key');
+                        }
                         return null;
                     }
 
-                    return [
-                        'content' => $text,
-                        'model' => $data['model'] ?? $this->model,
-                    ];
-                }
-
-                // 429 = rate limit. Honor Retry-After (seconds) up to 5s once, then give up.
-                if ($response->status() === 429 && $attempt < $maxAttempts) {
-                    $retryAfter = (int) ($response->header('Retry-After') ?: 0);
-                    if ($retryAfter <= 0) {
-                        // Fall back to parsing Groq's "try again in X.YYs" hint from the body.
-                        if (preg_match('/try again in ([\d.]+)s/i', $response->body(), $m)) {
-                            $retryAfter = (int) ceil((float) $m[1]);
-                        }
+                    // A key that is no longer valid is the one case another key
+                    // really does answer.
+                    if ($response->status() === 401 && count($this->keys) > 1) {
+                        $this->rest($key, 'invalid');
+                        break;   // out of the retry loop, on to the next key
                     }
-                    if ($retryAfter > 0 && $retryAfter <= 5) {
-                        Log::info("Groq 429 — sleeping {$retryAfter}s then retrying");
-                        sleep($retryAfter);
-                        continue;
-                    }
-                }
 
-                Log::error('Groq API error', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                return null;
-            } while ($attempt < $maxAttempts);
+                    return null;
+                } while ($attempt < $maxAttempts);
+            }
 
             return null;
         } catch (\Exception $e) {

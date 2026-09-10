@@ -35,6 +35,32 @@ class VoiceController extends Controller
     }
 
     /**
+     * Whether this member may be talked through this form at all.
+     *
+     * An experience is authored by an HLH. Everywhere else that rule was
+     * already held — the portal turns a non-host away from the page
+     * (SpController::experiences), the app shows the Experiences tab only to a
+     * host, and all four of AjaxController's experience handlers go through
+     * resolveExperienceAuthor, which answers 403. The voice assistant was the
+     * one door left open: it would take an OSP through sixty questions and let
+     * them find out at the save button, twenty minutes later, that none of it
+     * could be kept.
+     *
+     * A provider holds a set of types, so an OSP that is also an HLH passes.
+     */
+    private function refuseForm(\App\Models\ServiceProvider $provider, ?string $form): ?JsonResponse
+    {
+        if ($form !== 'experience' || $provider->isHost()) {
+            return null;
+        }
+
+        return response()->json([
+            'error' => 'Experiences are authored by homestay and lodge hosts. '
+                . 'Your rate card is the form for what you offer.',
+        ], 403);
+    }
+
+    /**
      * How the assistant opens: a word from HECO, then the first question.
      *
      * Both come from here rather than the app. The greeting is a setting HCT
@@ -55,6 +81,10 @@ class VoiceController extends Controller
 
         if ($validator->fails()) {
             return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        if ($refusal = $this->refuseForm($provider, $request->input('form'))) {
+            return $refusal;
         }
 
         // Both lines are HCT's own words, and no model is called to produce
@@ -98,6 +128,10 @@ class VoiceController extends Controller
             return response()->json(['error' => $validator->errors()->first()], 422);
         }
 
+        if ($refusal = $this->refuseForm($provider, $request->input('form'))) {
+            return $refusal;
+        }
+
         $known = (array) $request->input('known', []);
         $skipped = (array) $request->input('skipped', []);
         $language = $request->input('language') === 'en' ? 'en' : 'hi';
@@ -118,7 +152,6 @@ class VoiceController extends Controller
                 $this->assistant->questionFor($request->input('form'), $next, $language, $known),
                 $language,
                 (string) $this->assistant->labelFor($request->input('form'), $next, $known),
-                count($known),
             ),
             'asked' => $next,
             'label' => $next === null ? null : $this->assistant->labelFor($request->input('form'), $next, $known),
@@ -194,6 +227,12 @@ class VoiceController extends Controller
             return response()->json(['error' => $validator->errors()->first()], 422);
         }
 
+        // Before the recording is transcribed, and before anything is counted
+        // against them: a form they may not fill is refused whatever they said.
+        if ($refusal = $this->refuseForm($provider, $request->input('form'))) {
+            return $refusal;
+        }
+
         // Groq's free tier allows 8,000 tokens a minute across the whole
         // organisation — not per member. Without a cap here, one member holding
         // a long conversation silently takes the assistant away from everyone
@@ -231,8 +270,63 @@ class VoiceController extends Controller
         $name = 'turn.' . ($file->guessExtension() ?: 'm4a');
 
         if ($chosen) {
-            $heard = $this->groq->transcribe($audio, $name, ['language' => $chosen]);
+            // No language is suggested, and that is a change: it used to be
+            // told which tongue to expect, which is faster and more accurate.
+            // The cost was that a member who chose English and then spoke Hindi
+            // had it TRANSLATED and filed as though they had said it in
+            // English. Whisper does that quietly and there is no way to notice
+            // afterwards — asked to read English audio as Hindi it answered
+            // "language: Hindi" with the English text untouched, so the field
+            // it returns is the hint echoed back, not what it heard (proved
+            // 2026-09-09). Unhinted, it reports the tongue correctly, and that
+            // is the only way to catch the mismatch at all.
+            $heard = $this->groq->transcribe($audio, $name);
             $language = $chosen;
+
+            $spoke = match (strtolower((string) ($heard['language'] ?? ''))) {
+                'hindi', 'hi' => 'hi',
+                'english', 'en' => 'en',
+                default => null,
+            };
+
+            // The two directions are not alike, so they are not judged alike.
+            //
+            // Devanagari on an English form settles it: nobody types or speaks
+            // देवनागरी by accident, however short. "मुझे नहीं पता" is three
+            // words and got through a rule that asked for four.
+            //
+            // The other way round is genuinely uncertain. A member speaking
+            // Hindi answers "Innova", "double room", "AC" — English words every
+            // one, written in Latin, and a short answer of that kind reads as
+            // English however it was meant. Turning those away would make the
+            // assistant unusable for the way people here actually speak, so on
+            // a Hindi form only a whole sentence of English is turned back.
+            $text = trim((string) ($heard['text'] ?? ''));
+
+            // Not Devanagari, which is what this looked for at first: Whisper
+            // wrote a member's "नहीं" as "نہیں" and called it Urdu, and the
+            // check let it straight through. Any script but the Latin one
+            // settles it the same way, whichever script it happens to be.
+            $foreign = (bool) preg_match('/[^\p{Latin}\p{Common}\p{Inherited}]/u', $text);
+            $words = count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: []);
+
+            // On an English form a foreign script is enough on its own, and it
+            // does not matter what Whisper called the language: Urdu, Hindi,
+            // Nepali are all "not the English this form is set to". That is why
+            // the script is tested before $spoke, which was null for Urdu and
+            // let the whole check fall through.
+            $mismatch = $heard && ($chosen === 'en'
+                ? ($foreign || ($spoke === 'hi' && $words > 3))
+                : ($spoke === 'en' && $words > 3));
+
+            if ($mismatch) {
+                return response()->json([
+                    'error' => $chosen === 'hi'
+                        ? 'यह फ़ॉर्म हिंदी पर है, पर यह अंग्रेज़ी में लगा। हिंदी में बोलिए, या फ़ॉर्म में खुद भर लीजिए।'
+                        : 'This form is set to English, but that sounded like Hindi. Say it in English, or fill this in on the form yourself.',
+                    'transcript' => null,
+                ], 422);
+            }
         } else {
             // Nothing is suggested to Whisper here, and that is deliberate.
             // Naming the expected answers does make it better at a single
