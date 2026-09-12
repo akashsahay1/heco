@@ -298,7 +298,11 @@
                     showAlert(resp.error, 'danger');
                 }
             } else if (jqXHR.status >= 500) {
-                showAlert('Server error. Please try again.', 'danger');
+                // Say what the server said, when it said anything — it names
+                // the one 500 a member can act on (a database behind the code)
+                // and carries a reference that is in the log beside it.
+                var fault = jqXHR.responseJSON;
+                showAlert((fault && fault.error) ? fault.error : 'Server error. Please try again.', 'danger');
             }
         });
 

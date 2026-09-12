@@ -1214,6 +1214,9 @@ jQuery('#experienceForm').on('submit', function(ev) {
         data: formData,
         processData: false,
         contentType: false,
+        // This page shows the reasons itself, in a box that stays. Without
+        // this the global handler also fires a toast for the same failure.
+        skipGlobalError: true,
         success: function(resp) {
             showAlert(asDraft ? 'Saved as a draft. It stays off sale until you publish it.' : 'Experience saved successfully!', 'success');
             setTimeout(function() {

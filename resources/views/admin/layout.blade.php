@@ -324,7 +324,13 @@
         })();
 
         // Global AJAX error handler
-        jQuery(document).ajaxError(function(event, jqXHR) {
+        jQuery(document).ajaxError(function(event, jqXHR, settings) {
+            // A page that shows the failure itself says so, and this keeps
+            // quiet. The portal's handler has always taken `settings` and
+            // honoured this; the admin's did not, so the two pages here that
+            // set the flag were setting nothing and reporting every failure
+            // twice.
+            if (settings && settings.skipGlobalError) return;
             if (jqXHR.status === 401) {
                 window.location.href = '/login';
             } else if (jqXHR.status === 422) {
@@ -333,7 +339,15 @@
                     showAlert(resp.error, 'danger');
                 }
             } else if (jqXHR.status >= 500) {
-                showAlert('Server error. Please try again.', 'danger');
+                // Say what the server said, when it said anything. This threw
+                // away the body and printed "Server error. Please try again."
+                // whatever had happened — which is what an admin saw for two
+                // days while every experience save failed on a column the live
+                // database did not have. The server names that case now, and
+                // gives a reference that is in the log beside it; none of that
+                // reached anybody through here.
+                var resp = jqXHR.responseJSON;
+                showAlert((resp && resp.error) ? resp.error : 'Server error. Please try again.', 'danger');
             }
         });
     </script>
