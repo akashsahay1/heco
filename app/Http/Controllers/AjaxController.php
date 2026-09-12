@@ -8019,6 +8019,27 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 + (float) ($data["cost_other"] ?? 0);
         }
 
+        // A box left alone is not an instruction to store nothing.
+        //
+        // The browser posts every field on the page, filled or not, and
+        // ConvertEmptyStringsToNull turns each untouched one into null. Most
+        // columns take that happily. The money ones do not: they were built
+        // `decimal(10,2) default 0`, which in MySQL is NOT NULL, so an admin
+        // who opened Costing and left one box empty got
+        // "Column 'cost_accommodation' cannot be null" and a 500 — for a box
+        // they had never touched, on a form of eighty-five fields where
+        // leaving most alone is the normal case. This is what the client was
+        // hitting; it is not the missing column it looked like from outside.
+        //
+        // Dropping the key rather than writing a zero is deliberate: on a
+        // create the column's own default applies, and on an edit the stored
+        // value is left alone instead of being quietly reset.
+        foreach ($data as $column => $value) {
+            if ($value === null && $this->columnRefusesNull('experiences', $column)) {
+                unset($data[$column]);
+            }
+        }
+
         // One save, all of it or none of it.
         //
         // The day cards, slabs, rooms and add-ons are replaced by deleting the
@@ -9001,6 +9022,16 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $data[$periodField] = $this->normalisePeriods($data[$periodField]);
         }
 
+        // Same reason as on the experience form: a box left alone arrives as
+        // null, and a column built NOT NULL with a default refuses it. The
+        // required ones are caught by the validator above; these are the
+        // others, like measurement_frequency, that nobody is asked for.
+        foreach ($data as $column => $value) {
+            if ($value === null && $this->columnRefusesNull('regenerative_projects', $column)) {
+                unset($data[$column]);
+            }
+        }
+
         $editId = $request->input("project_id", $request->input("id"));
         if ($editId) {
             $project = RegenerativeProject::findOrFail($editId);
@@ -9823,6 +9854,29 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * Send a mail without letting failures break the calling action.
      * Errors are logged with the supplied tag for traceability.
      */
+    /**
+     * Does this column refuse a null?
+     *
+     * Asked of the schema rather than kept as a list here, because a list here
+     * would be right on the day it was written and wrong after the next
+     * migration — and being wrong would mean either a 500 nobody expected or a
+     * value quietly dropped. Cached for the request; the schema does not
+     * change under a running one.
+     */
+    protected function columnRefusesNull(string $table, string $column): bool
+    {
+        static $known = [];
+
+        if (! isset($known[$table])) {
+            $known[$table] = [];
+            foreach (DB::select("SHOW COLUMNS FROM `{$table}`") as $c) {
+                $known[$table][$c->Field] = $c->Null === 'NO';
+            }
+        }
+
+        return $known[$table][$column] ?? false;
+    }
+
     protected function sendMail(string $to, $mailable, string $tag = ''): void
     {
         // Sent after the response, not before it.
