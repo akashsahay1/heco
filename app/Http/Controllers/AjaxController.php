@@ -1458,15 +1458,31 @@ class AjaxController extends Controller
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json(['error' => 'Not found'], 404);
         } catch (\Exception $e) {
-            \Log::error('AjaxController error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            // A code the member can quote and that appears beside the entry in
+            // the log. "Something went wrong" left an admin with nothing to
+            // report and nothing to search for, which is how a save that had
+            // been failing for days went undiagnosed.
+            $reference = strtoupper(substr(md5($e->getMessage() . microtime()), 0, 6));
 
-            // The message only travels when debugging. A driver exception
-            // carries the whole failing statement — table, columns, values,
-            // and the host, port and database name — and this handed it to
-            // whoever made the request, on the live site as much as here.
-            // Anything a member is meant to act on is a 422 raised above.
+            \Log::error("AjaxController error [{$reference}]: " . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+
+            // A schema the code has outgrown is worth naming. It is the one
+            // failure here an admin can act on — the site was deployed without
+            // its database update — and saying so gives away nothing, unlike
+            // the driver's own message below.
+            $outgrown = $e instanceof \Illuminate\Database\QueryException
+                && in_array($e->getCode(), ['42S22', '42S02'], true);
+
+            // Otherwise the message only travels when debugging. A driver
+            // exception carries the whole failing statement — table, columns,
+            // values, and the host, port and database name — and this handed
+            // it to whoever made the request, on the live site as much as
+            // here. Anything a member is meant to act on is a 422 raised above.
             return response()->json(array_filter([
-                'error' => 'Something went wrong. Please try again, or contact HECO if it keeps happening.',
+                'error' => $outgrown
+                    ? "This site's database is missing an update the current version needs, so nothing can be saved here until it is applied. Please send HECO reference {$reference}."
+                    : "Something went wrong. Please try again, or contact HECO with reference {$reference} if it keeps happening.",
+                'reference' => $reference,
                 'message' => config('app.debug') ? $e->getMessage() : null,
             ]), 500);
         }
@@ -7502,9 +7518,20 @@ class AjaxController extends Controller
 
         $validator = Validator::make($request->all(), [
             "id"                => "nullable|integer|exists:experiences,id",
+            // Where the listing stands. Admin-only — the provider path strips
+            // it further down — but it reaches $data unread otherwise, and a
+            // typo would be written to the column as-is.
+            "approval_status"   => "nullable|in:draft,pending,approved,rejected",
             "name"              => "required|string|max:255",
             "region_id"         => $unlessDraft("required|integer|exists:regions,id"),
-            "hlh_id"            => "required|integer|exists:service_providers,id",
+            // Relaxed for a draft like everything else around it. The comment
+            // above says a draft insists only on the name; this rule did not,
+            // so an admin parking a half-finished listing was refused for a
+            // host they had not chosen yet. The column is nullable, and a
+            // draft is never live — nothing reads it until it is published.
+            // The provider app files through saveSpExperience(), which stamps
+            // the host from the signed-in provider and is untouched by this.
+            "hlh_id"            => $unlessDraft("required|integer|exists:service_providers,id"),
             "type"              => $unlessDraft("required|string|max:100"),
             // Which of the three structural categories this is — it decides
             // which fields the form even shows. Nullable so rows created before
@@ -7618,8 +7645,53 @@ class AjaxController extends Controller
             "short_description.required" => "Please write a short description.",
             "duration_type.required"     => "Please choose a duration type.",
         ]);
+
+        // Field names as the form labels them. Without these a rule that has no
+        // hand-written message above reads as "The hlh id field is required",
+        // which names a column rather than anything on the page.
+        $validator->setAttributeNames([
+            "name" => "Experience name",
+            "region_id" => "Region",
+            "hlh_id" => "HLH Provider",
+            "type" => "Experience type",
+            "category" => "Category",
+            "short_description" => "Short description",
+            "long_description" => "Full description",
+            "duration_type" => "Duration type",
+            "duration_hours" => "Duration (hours)",
+            "duration_days" => "Duration (days)",
+            "duration_nights" => "Duration (nights)",
+            "difficulty_level" => "Difficulty",
+            "total_rooms" => "Number of rooms",
+            "total_guests" => "Number of guests",
+            "base_cost_per_person" => "Cost per person",
+            "markup_percent" => "HECO margin %",
+            "price_currency" => "Currency",
+            "group_size_min" => "Minimum group size",
+            "group_size_max" => "Maximum group size",
+            "start_latitude" => "Start latitude",
+            "start_longitude" => "Start longitude",
+            "end_latitude" => "End latitude",
+            "end_longitude" => "End longitude",
+        ]);
+
+        // EVERY reason, not just the first. One at a time meant an admin who
+        // had left four boxes empty saved four times to be told four things,
+        // and each attempt looked like the same refusal.
         if ($validator->fails()) {
-            return response()->json(["error" => $validator->errors()->first()], 422);
+            $reasons = array_values(array_unique($validator->errors()->all()));
+
+            // `error` stays the first reason, the shape every existing caller
+            // already reads — the provider app among them. The heading and the
+            // full list are additions, so a caller that ignores them behaves
+            // exactly as it did.
+            return response()->json([
+                "error" => $reasons[0],
+                "error_title" => $isDraft
+                    ? "This draft could not be saved."
+                    : "This experience cannot be published yet.",
+                "reasons" => $reasons,
+            ], 422);
         }
 
         // Which providers may host is decided by the form's dropdown, which

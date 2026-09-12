@@ -75,6 +75,20 @@
     </div>
 @endif
 
+{{-- Why the save was refused, in full and where it can be read while the boxes
+     are being filled in. The toast this used to use escapes HTML, so a list
+     came out as markup, and it cleared itself after four seconds. --}}
+<div id="saveProblem" class="alert alert-danger d-none" role="alert">
+    <div class="d-flex align-items-start gap-2">
+        <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+        <div class="flex-grow-1">
+            <strong id="saveProblemTitle"></strong>
+            <ul id="saveProblemReasons" class="mb-0 mt-1 ps-3"></ul>
+        </div>
+        <button type="button" class="btn-close" id="saveProblemClose" aria-label="Dismiss"></button>
+    </div>
+</div>
+
 <form id="experienceForm" enctype="multipart/form-data" novalidate>
     @if($e)
         <input type="hidden" name="id" value="{{ $e->id }}">
@@ -347,8 +361,13 @@
                 <div class="accordion-body">
                     <div class="row g-3">
                         <div class="col-md-3">
-                            <label class="form-label">Difficulty Level <span class="text-danger">*</span></label>
-                            <select class="form-select custom-select" name="difficulty_level" required>
+                            {{-- Marked required here but nullable on the server,
+                                 so the form refused a save the server would have
+                                 taken. It stays optional: a stay has no
+                                 difficulty, and listings filed before this
+                                 field existed have none either. --}}
+                            <label class="form-label">Difficulty Level</label>
+                            <select class="form-select custom-select" name="difficulty_level">
                                 <option value="">Select</option>
                                 <option value="easy" {{ $e && $e->difficulty_level === 'easy' ? 'selected' : '' }}>Easy</option>
                                 <option value="moderate" {{ $e && $e->difficulty_level === 'moderate' ? 'selected' : '' }}>Moderate</option>
@@ -808,9 +827,19 @@
         <a href="{{ url('/experiences') }}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> Cancel
         </a>
-        <button type="submit" class="btn btn-success btn-lg" id="btnSave">
-            <i class="bi bi-check-lg"></i> Save Experience
-        </button>
+        <div class="d-flex gap-2">
+            {{-- A half-finished listing can be parked instead of lost. Offered
+                 on a new experience and on one already a draft — never on a
+                 published one, where it would quietly take it off sale. --}}
+            @if(!$e || $e->approval_status === 'draft')
+            <button type="submit" class="btn btn-outline-secondary btn-lg" id="btnSaveDraft">
+                <i class="bi bi-file-earmark"></i> Save as Draft
+            </button>
+            @endif
+            <button type="submit" class="btn btn-success btn-lg" id="btnSave">
+                <i class="bi bi-check-lg"></i> Save Experience
+            </button>
+        </div>
     </div>
 </form>
 
@@ -1076,15 +1105,56 @@ jQuery('#cardImageInput').on('change', function() {
     }
 });
 
+// Which button was pressed. A draft is parked half-finished on purpose, so it
+// is held to the name alone — everything else can be filled in later.
+var savingAsDraft = false;
+// True for a new listing and for one still a draft — the only two states the
+// draft button is offered in, and the only two where pressing Save Experience
+// should change where the listing stands. On anything else the status is left
+// exactly as it is: an edit to a rejected listing must not quietly approve it.
+var draftOrNew = {{ (!$e || $e->approval_status === 'draft') ? 'true' : 'false' }};
+jQuery('#btnSaveDraft').on('click', function() { savingAsDraft = true; });
+jQuery('#btnSave').on('click', function() { savingAsDraft = false; });
+
+// Enter in a text box submits the form without either button being pressed, so
+// the flag above would still hold whatever was last clicked — a failed draft
+// followed by Enter would have saved another draft. The browser names the
+// button that actually submitted; the flag is only the fallback for browsers
+// that do not.
+function submittedAsDraft(ev) {
+    var by = ev.originalEvent && ev.originalEvent.submitter;
+    return by ? by.id === 'btnSaveDraft' : savingAsDraft;
+}
+
+// What the form calls a field, for saying which one is missing. The label sits
+// beside the input in the same column; the asterisk that marks it required is
+// not part of the name.
+function fieldLabel(el) {
+    var $el = jQuery(el);
+    var text = $el.closest('.col-md-2, .col-md-3, .col-md-4, .col-md-6, .col-md-12, .col-12')
+        .find('label').first().text();
+    return jQuery.trim((text || $el.attr('name') || 'A required field').replace('*', ''));
+}
+
 // Form submission
 jQuery('#experienceForm').on('submit', function(ev) {
     ev.preventDefault();
+    jQuery('#saveProblem').addClass('d-none');
+    savingAsDraft = submittedAsDraft(ev);
 
     // Check required fields (no need to expand accordions first)
     var firstInvalid = null;
+    var missing = [];
     jQuery(this).find('[required]').each(function() {
+        // A draft insists only on the name — without it nobody can find the
+        // draft again, and that is the whole of what a draft promises.
+        if (savingAsDraft && jQuery(this).attr('name') !== 'name') {
+            jQuery(this).removeClass('is-invalid');
+            return;
+        }
         if (!jQuery(this).val()) {
             jQuery(this).addClass('is-invalid');
+            missing.push(fieldLabel(this));
             if (!firstInvalid) firstInvalid = jQuery(this);
         } else {
             jQuery(this).removeClass('is-invalid');
@@ -1100,13 +1170,26 @@ jQuery('#experienceForm').on('submit', function(ev) {
             firstInvalid.focus();
             firstInvalid[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 400);
-        showAlert('Please fill in all required fields', 'danger');
+        // Name them. "Please fill in all required fields" sent the admin back
+        // to hunt through nine collapsed sections for the one box at fault.
+        showSaveProblem(
+            savingAsDraft ? 'This draft cannot be saved yet.' : 'This experience cannot be published yet.',
+            missing.map(function(f) { return f + ' is required.'; })
+        );
         return;
     }
 
     var form = this;
     var formData = new FormData(form);
     formData.append('save_experience', 1);
+    if (savingAsDraft) {
+        formData.set('approval_status', 'draft');
+    } else if (draftOrNew) {
+        // Publishing. Without this a draft stayed a draft however complete it
+        // became, because the form sends no status of its own and the row
+        // already held one.
+        formData.set('approval_status', 'approved');
+    }
 
     // Handle unchecked checkboxes - send 0 for boolean fields
     var booleanFields = [
@@ -1120,7 +1203,9 @@ jQuery('#experienceForm').on('submit', function(ev) {
         }
     });
 
-    var btn = jQuery('#btnSave');
+    var asDraft = savingAsDraft;
+    var btn = jQuery(asDraft ? '#btnSaveDraft' : '#btnSave');
+    var btnLabel = btn.html();
     btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
 
     jQuery.ajax({
@@ -1130,32 +1215,53 @@ jQuery('#experienceForm').on('submit', function(ev) {
         processData: false,
         contentType: false,
         success: function(resp) {
-            showAlert('Experience saved successfully!', 'success');
+            showAlert(asDraft ? 'Saved as a draft. It stays off sale until you publish it.' : 'Experience saved successfully!', 'success');
             setTimeout(function() {
-                window.location.href = "{{ url('/experiences') }}";
+                window.location.href = "{{ url('/experiences') }}" + (asDraft ? '?status=draft' : '');
             }, 1000);
         },
         error: function(xhr) {
-            btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Save Experience');
-            var msg = 'Failed to save experience (HTTP ' + xhr.status + ')';
-            if (xhr.responseJSON) {
-                if (xhr.responseJSON.error) {
-                    msg = xhr.responseJSON.error;
-                } else if (xhr.responseJSON.message) {
-                    msg = xhr.responseJSON.message;
-                } else if (xhr.responseJSON.errors) {
-                    var errors = xhr.responseJSON.errors;
-                    var errorList = [];
-                    for (var field in errors) {
-                        errorList.push(field + ': ' + errors[field].join(', '));
-                    }
-                    msg = errorList.join('<br>');
+            btn.prop('disabled', false).html(btnLabel);
+
+            var r = xhr.responseJSON || {};
+            var title = r.error_title
+                || (asDraft ? 'This draft could not be saved.' : 'This experience cannot be published yet.');
+            var reasons = r.reasons || [];
+
+            if (!reasons.length && r.errors) {
+                // Laravel's own shape, if anything upstream still returns it.
+                for (var field in r.errors) {
+                    reasons = reasons.concat(r.errors[field]);
                 }
             }
-            showAlert(msg, 'danger');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (!reasons.length) {
+                // No list to show — a server fault rather than a form fault.
+                // Its own message already says what to do, reference and all.
+                title = r.error || r.message || 'Failed to save experience (HTTP ' + xhr.status + ')';
+            }
+
+            showSaveProblem(title, reasons);
         }
     });
+});
+
+// Says what is wrong, and every reason at once. An admin who has left four
+// boxes empty should not have to save four times to be told four things.
+function showSaveProblem(title, reasons) {
+    jQuery('#saveProblemTitle').text(title);
+
+    var list = jQuery('#saveProblemReasons').empty();
+    (reasons || []).forEach(function(reason) {
+        list.append(jQuery('<li>').text(reason));
+    });
+    list.toggleClass('d-none', !(reasons && reasons.length));
+
+    jQuery('#saveProblem').removeClass('d-none');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+jQuery('#saveProblemClose').on('click', function() {
+    jQuery('#saveProblem').addClass('d-none');
 });
 </script>
 @endsection

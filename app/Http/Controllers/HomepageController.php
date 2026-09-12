@@ -60,10 +60,17 @@ class HomepageController extends Controller
                     ->with(["selectedExperiences.experience", "tripDays.experiences.experience", "tripDays.services", "tripRegions.region"])
                     ->first();
             } else {
+                // Most recently WORKED ON, not most recently created. Every
+                // AJAX handler picks the trip with `resolveTrip()`, which
+                // orders by updated_at; this page ordered by created_at. A
+                // traveller with more than one open trip therefore had their
+                // experiences written to one trip and this page rendering
+                // another, so the journey they had just built came up empty
+                // and there was nothing to book.
                 $trip = Trip::where("user_id", auth()->id())
                     ->whereIn("status", ["not_confirmed"])
                     ->with(["selectedExperiences.experience", "tripDays.experiences.experience", "tripDays.services", "tripRegions.region"])
-                    ->latest()
+                    ->orderBy("updated_at", "desc")
                     ->first();
             }
         } else {

@@ -846,11 +846,34 @@ jQuery(function() {
 
         clearMarkers();
         var bounds = [];
+        // How many pins have already landed on each point. An experience with
+        // no coordinates of its own falls back to its region's centre, and
+        // coordinates are optional on the admin form — so every experience in
+        // a region stacked on one identical pin and only the top one could be
+        // opened. The rest are fanned around that point below.
+        var pinsAtPoint = {};
 
         experiences.forEach(function(exp) {
             var lat = parseFloat(exp.start_latitude || (exp.region ? exp.region.latitude : 0));
             var lng = parseFloat(exp.start_longitude || (exp.region ? exp.region.longitude : 0));
             if (!lat || !lng) return;
+
+            // Rounded to ~11 m: two listings this close are the same pin to a
+            // reader whatever the decimals say.
+            var point = lat.toFixed(4) + ',' + lng.toFixed(4);
+            var nth = pinsAtPoint[point] = (pinsAtPoint[point] || 0) + 1;
+            if (nth > 1) {
+                // Eight to a ring, ~45 m out per ring, so the tenth listing in
+                // one place is still reachable. Longitude is divided by
+                // cos(lat) so the ring stays round rather than squashing
+                // towards the poles.
+                var extra = nth - 2;
+                var ring = Math.floor(extra / 8) + 1;
+                var angle = (extra % 8) * (Math.PI / 4);
+                var spread = ring * 0.0004;
+                lat += spread * Math.cos(angle);
+                lng += spread * Math.sin(angle) / Math.cos(lat * Math.PI / 180);
+            }
 
             var durationText = '';
             if (exp.category === 'Experiential accommodation') durationText = (exp.total_rooms || '?') + ' Rooms';
