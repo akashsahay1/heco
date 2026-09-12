@@ -32,8 +32,11 @@
                             <input type="text" class="form-input" name="first_name" required>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Last Name *</label>
-                            <input type="text" class="form-input" name="last_name" required>
+                            {{-- Not required, and no longer marked as though it
+                                 were: the server has never asked for it, and
+                                 plenty of people write in with one name. --}}
+                            <label class="form-label">Last Name</label>
+                            <input type="text" class="form-input" name="last_name">
                         </div>
                     </div>
 
@@ -110,18 +113,10 @@
                         </div>
                     </div>
 
-                    <div class="contact-info-card">
-                        <div class="contact-info-icon">
-                            <i class="bi bi-chat-dots"></i>
-                        </div>
-                        <div class="contact-info-content">
-                            <h4>Live Chat</h4>
-                            <p>Quick answers to your questions</p>
-                            <button type="button" class="btn btn-secondary btn-sm" id="openChat">
-                                Start Chat
-                            </button>
-                        </div>
-                    </div>
+                    {{-- No live chat card here. There is no live chat: the
+                         button opened nothing, and a Start Chat that starts
+                         nothing is worse than no offer at all. The three ways
+                         above are the ways HECO can actually be reached. --}}
                 </div>
 
                 <!-- Social Links -->

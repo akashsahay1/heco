@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use function Illuminate\Support\defer;
 use App\Models\User;
@@ -59,6 +60,7 @@ use App\Mail\AdminNewExperienceEmail;
 use App\Mail\AdminNewPricingEmail;
 use App\Mail\ExperienceApprovedEmail;
 use App\Mail\AdminNewSubscriberEmail;
+use App\Mail\ContactMessageEmail;
 use App\Mail\NewsletterCampaignEmail;
 use App\Mail\BookingConfirmationEmail;
 use App\Mail\PaymentReceivedEmail;
@@ -554,6 +556,7 @@ class AjaxController extends Controller
         'get_trip_impact' => 'public',
         'request_support' => 'public',
         'subscribe_newsletter' => 'public',
+        'contact_form' => 'public',
         'get_user_trips' => 'auth',
         'reopen_trip' => 'auth',
         'confirm_trip' => 'auth',
@@ -1089,6 +1092,9 @@ class AjaxController extends Controller
             }
             if ($request->has('get_trip_impact')) {
                 return $this->getTripImpact($request);
+            }
+            if ($request->has('contact_form')) {
+                return $this->contactForm($request);
             }
             if ($request->has('request_support')) {
                 return $this->requestSupport($request);
@@ -3558,6 +3564,107 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $this->sendMail($adminEmail, new SupportRequestEmail($support), 'support_request:' . $support->id);
 
         return response()->json(["success" => true, "message" => "Support request submitted"]);
+    }
+
+    /**
+     * Somebody wrote in from the Contact page.
+     *
+     * The page has always posted `contact_form`, and nothing here has ever
+     * known that key: every message got "Unknown action" and the visitor got
+     * "Failed to send message. Please try again." — however many times they
+     * tried. A public site with a contact form that cannot be contacted
+     * through.
+     *
+     * It sends the message on and keeps no row of its own. Only one of the
+     * seven topics is about a trip; turning "Media & Press" into a Trip and a
+     * Lead to have somewhere to put it would fill HCT's pipeline with things
+     * nobody is selling to. A reply-to on the mail is what makes this useful:
+     * HCT presses Reply and it reaches the person who wrote.
+     */
+    protected function contactForm(Request $request): JsonResponse
+    {
+        // A public endpoint that sends mail is a way to fill somebody's inbox,
+        // so it is held to a handful an hour from one address.
+        //
+        // Only a message that actually goes counts against that. Charging the
+        // allowance on the way in spends it on mistyped addresses, and five
+        // typos would have shut somebody out for an hour without a single
+        // message reaching us. The counter is raised further down, once there
+        // is something to send.
+        $key = 'contact-form:' . $request->ip();
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            return response()->json([
+                'error' => 'You have sent us a few messages already. Please give us a little time to reply to those first.',
+            ], 429);
+        }
+
+        $topics = [
+            'booking' => 'Booking Inquiry',
+            'experience' => 'Experience Information',
+            'partnership' => 'Partnership Opportunity',
+            'support' => 'Customer Support',
+            'feedback' => 'Feedback & Suggestions',
+            'media' => 'Media & Press',
+            'other' => 'Other',
+        ];
+
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required|string|max:100',
+            'last_name' => 'nullable|string|max:100',
+            'email' => 'required|email|max:150',
+            'phone' => 'nullable|string|max:30',
+            'subject' => 'required|in:' . implode(',', array_keys($topics)),
+            'message' => 'required|string|max:5000',
+        ], [
+            'first_name.required' => 'Please tell us your name.',
+            'email.required' => 'Please leave an email address so we can reply.',
+            'email.email' => 'That email address does not look right.',
+            'subject.required' => 'Please choose what this is about.',
+            'subject.in' => 'Please choose what this is about.',
+            'message.required' => 'Please write your message.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        RateLimiter::hit($key, 3600);
+
+        $name = trim($request->input('first_name') . ' ' . (string) $request->input('last_name'));
+        $to = Setting::getValue('site_email') ?: config('mail.admin_address');
+
+        // Written down before it is sent. `sendMail` defers the SMTP round trip
+        // to after the response, so a mail server that is down fails where
+        // nobody is looking — and this is the only copy of what they said.
+        Log::info('Contact form message', [
+            'name' => $name,
+            'email' => $request->input('email'),
+            'phone' => $request->input('phone'),
+            'topic' => $topics[$request->input('subject')],
+            'message' => $request->input('message'),
+            'ip' => $request->ip(),
+        ]);
+
+        $this->sendMail($to, new ContactMessageEmail(
+            $name,
+            (string) $request->input('email'),
+            $request->input('phone'),
+            $topics[$request->input('subject')],
+            (string) $request->input('message'),
+            $request->headers->get('referer'),
+        ), 'contact_form');
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'contact_form',
+            'details' => $topics[$request->input('subject')] . ' — ' . $request->input('email'),
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Thank you — we have your message and will come back to you.",
+        ]);
     }
 
     protected function subscribeNewsletter(Request $request): JsonResponse
