@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -19,9 +20,25 @@ class GeminiService
         $this->timeout = config('gemini.timeout', 60);
     }
 
+    /**
+     * Where a key Google has already refused is remembered.
+     *
+     * Keyed on the key itself, so putting a working one in `.env` starts it
+     * trying again without anybody clearing a cache.
+     */
+    private const REFUSED = 'gemini.key-refused.';
+
     public function isAvailable(): bool
     {
-        return !empty($this->apiKey);
+        if (empty($this->apiKey)) {
+            return false;
+        }
+
+        // A key Google answers "API key not valid" to will answer that to
+        // every call after it, and this sits in front of the chain: each
+        // request paid a round trip to be told the same thing, and the log
+        // filled with the same error. Asking once is enough.
+        return ! Cache::get(self::REFUSED . md5($this->apiKey), false);
     }
 
     /**
@@ -102,6 +119,15 @@ class GeminiService
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
+
+            // Not a bad request, a bad key: it will never come good on its own,
+            // so stop asking. Replacing the key in `.env` clears this by
+            // itself, because what is remembered is keyed on the key.
+            if ($response->status() === 400 && str_contains($response->body(), 'API_KEY_INVALID')) {
+                Log::warning('Gemini key refused — not trying it again until it changes');
+                Cache::forever(self::REFUSED . md5($this->apiKey), true);
+            }
+
             return null;
         } catch (\Exception $e) {
             Log::error('Gemini exception: ' . $e->getMessage());

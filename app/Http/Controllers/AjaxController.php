@@ -43,6 +43,7 @@ use App\Services\AuthService;
 use App\Services\OllamaService;
 use App\Services\GeminiService;
 use App\Services\GroqService;
+use App\Services\OpenAiService;
 use App\Services\PromptBuilderService;
 use App\Services\ItineraryService;
 use App\Services\CostCalculatorService;
@@ -412,7 +413,22 @@ class AjaxController extends Controller
     }
 
     /**
-     * Call AI: try Gemini first, fall back to Ollama.
+     * Call AI for the portal: OpenAI first, then the older chain behind it.
+     *
+     * The portal alone — the traveller's chat and the itinerary builder. The
+     * provider app's voice assistant has its own path in VoiceAssistantService,
+     * is not reached from here, and does not reach here. They share an HTTP
+     * client and a key the way two rooms share the mains: the prompts, the
+     * settings and the behaviour stay apart, and nothing switched on one side
+     * moves the other. The voice assistant's `voice_provider` setting is not
+     * read here, deliberately.
+     *
+     * Why OpenAI first: Groq's free tier allows 8,000 tokens a minute across
+     * the whole organisation, and one of these requests is about 3,150 of them
+     * once the eight-message history is counted, so a traveller was being told
+     * "the assistant is busy" at their third message. OpenAI allows two million
+     * a minute. Gemini sits behind, answering "API key not valid" to every call
+     * until somebody replaces the key, and Groq behind that as the net.
      */
     protected function callAi(array $messages, array $options = []): ?array
     {
@@ -420,6 +436,24 @@ class AjaxController extends Controller
         $fastTimeout = $options['fast_timeout'] ?? null;
         // Default timeout of 20s for faster failure instead of hanging
         $defaultTimeout = 20;
+
+        // `openai => false` keeps a caller off this. The itinerary builder sets
+        // it: that one asks for a fortnight of days in a single answer, which
+        // this model writes in 52 to 67 seconds, and nginx returns 504 at 60
+        // whatever PHP is still doing. Chat is three to five seconds and has no
+        // such trouble.
+        $openai = app(OpenAiService::class);
+        if (($options['openai'] ?? true) && $openai->isAvailable()) {
+            // Thinking is charged to the same clock as the answer, and on a
+            // chat turn it buys nothing: measured over the same four-message
+            // conversation, left to itself the model spent up to 157 tokens
+            // deliberating and answered in 3.4 seconds on average, with spikes
+            // to 5.1. Told to keep it low it answered the same things in 2.6,
+            // and never took longer than 3.4. A caller that genuinely wants it
+            // to think can say so.
+            $response = $openai->chat($messages, $options + ['reasoning_effort' => 'low']);
+            if ($response) return $response;
+        }
 
         $gemini = app(GeminiService::class);
         if ($gemini->isAvailable()) {
@@ -2185,9 +2219,21 @@ class AjaxController extends Controller
             }
 
             if ($activeRegionId) {
-                // (B) Region is in scope — send only that region's active experiences.
-                $experiencesJson = Experience::where('region_id', $activeRegionId)
-                    ->where('is_active', true)
+                // (B) Region is in scope — send that region's LIVE experiences.
+                //
+                // `is_active` alone was letting an unapproved listing through,
+                // and the assistant sold it: "Great Himalayan National Park,
+                // moderate, 4 days, Rs 14,500 per person" for something nobody
+                // at HECO had looked at yet. The Add-to-trip path validates
+                // separately and refused the id, so a traveller could be told
+                // about it, want it, and find it would not go in.
+                //
+                // live() is approved AND active, the same test the traveller
+                // pages use. The rest of them were fixed in September; this one
+                // was missed because the catalogue is built here rather than
+                // through the usual query.
+                $experiencesJson = Experience::live()
+                    ->where('region_id', $activeRegionId)
                     ->select($expCols)->withRoomRateFrom()
                 ->with('region:id,name,continent,country')
                     ->get()->map($expMap)->toJson();
@@ -2195,13 +2241,24 @@ class AjaxController extends Controller
                 // (C) No region in scope — empty experiences list, and a region list
                 // so the AI can present options instead of inventing names.
                 $experiencesJson = '[]';
+                // Only the places that actually have something in them, and how
+                // much. HECO has twenty active regions and live experiences in
+                // four of them, so the assistant was offering Africa, Europe
+                // and Oceania as choices with nothing behind any of them, and
+                // sixteen regions a traveller could pick and find empty. The
+                // count comes with each one so it can say what is there rather
+                // than only where.
                 $availableRegions = Region::where('is_active', true)
                     ->select('id', 'name', 'continent', 'country')
+                    ->withCount(['experiences' => fn($q) => $q->live()])
                     ->orderBy('continent')->orderBy('country')->orderBy('name')
-                    ->get()->map(fn($r) => [
+                    ->get()
+                    ->filter(fn($r) => $r->experiences_count > 0)
+                    ->map(fn($r) => [
                         'id' => $r->id, 'name' => $r->name,
                         'continent' => $r->continent, 'country' => $r->country,
-                    ])->toArray();
+                        'experiences' => $r->experiences_count,
+                    ])->values()->toArray();
             }
         }
 
@@ -2257,7 +2314,9 @@ class AjaxController extends Controller
 
         $recommendIdInstruction = "\n\nRECOMMEND: When recommending experiences, append [RECOMMEND_IDS:1,5,12] at end (hidden from user).";
 
-        $tripDetailsInstruction = "\n\nTRIP DETAILS: When traveller provides details, summarize & confirm first. After confirmation, append [TRIP_DETAILS:{\"key\":\"value\"}] (hidden). Keys: traveller_name (no confirm needed), start_location, end_location, start_date (YYYY-MM-DD), end_date, budget_notes, anchor_point, pickup_preference (private_taxi/local_transport), adults, children, infants (integers), accommodation_comfort (Cat A/B/C/D/E), vehicle_comfort (Local Transport / SUV (Bolero/Scorpio) / SUV (Innova/Crysta) / Premium (Fortuner/Similar) / Tempo Traveller), guide_preference (No Guide / Local Guide / English-speaking / Certified/Expert), travel_pace (Relaxed / Moderate / Active / Intensive), budget_sensitivity (Budget-friendly / Mid-range / Premium / No Limit).";
+        $tripDetailsInstruction = "
+
+TRIP DETAILS: When traveller provides details, summarize & confirm first. After confirmation, append [TRIP_DETAILS:{\"key\":\"value\"}] (hidden). Keys: traveller_name, start_location, end_location, start_date (YYYY-MM-DD), end_date, budget_notes, anchor_point, pickup_preference (private_taxi/local_transport), adults, children, infants (integers), accommodation_comfort (Cat A/B/C/D/E), vehicle_comfort (Local Transport / SUV (Bolero/Scorpio) / SUV (Innova/Crysta) / Premium (Fortuner/Similar) / Tempo Traveller), guide_preference (No Guide / Local Guide / English-speaking / Certified/Expert), travel_pace (Relaxed / Moderate / Active / Intensive), budget_sensitivity (Budget-friendly / Mid-range / Premium / No Limit).";
 
         $addToTripInstruction = "\n\nADD/REMOVE: Confirm before adding/removing. After confirmation: [ADD_TO_TRIP:1,5] or [REMOVE_FROM_TRIP:5] (hidden). If traveller confirms details + experiences together, include BOTH [TRIP_DETAILS] and [ADD_TO_TRIP] in same response.";
 
@@ -2279,9 +2338,27 @@ class AjaxController extends Controller
             }
         }
 
-        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only).\n2. Destination: ask Continent then Country then Region step by step. The ONLY valid regions are in CURRENT_TRIP_CONTEXT.available_regions (when that field is present). NEVER name a region or country not in that list. NEVER mention Nepal, Tibet, Bhutan, Pakistan, or any country that's not represented in available_regions.\n3. Experience type & difficulty preference.\n4. Travel date, group size, starting city — ask 2 at a time max.\n5. ABSOLUTE RULE on experience names + IDs:\n   • You may ONLY name an experience that appears (by exact name) in AVAILABLE EXPERIENCES.\n   • You may ONLY put an id in RECOMMEND_IDS or ADD_TO_TRIP that appears (by exact id) in AVAILABLE EXPERIENCES.\n   • If AVAILABLE EXPERIENCES is `[]` (empty), you have NO catalog yet. In that case your response must NOT contain ANY of: trek names, peak names, route names, sample itineraries, mountain names, fictional experience names, or RECOMMEND_IDS. Even if the traveller asks for specific trek suggestions, you must respond with: 'I'd love to suggest specific treks — first, let's pick a region so I show you only experiences we actually run.' Then present 3-5 region NAMES from CURRENT_TRIP_CONTEXT.available_regions (group by continent if helpful), ask the traveller to pick one, and emit [SET_FILTERS:{\"region_id\":N}] with the chosen region's id. Do NOT proceed to recommend treks/experiences until the next turn (when AVAILABLE EXPERIENCES will be populated).\n   • Famous Himalayan names you must NEVER mention unless they're literally in AVAILABLE EXPERIENCES by exact name: Annapurna, Everest, Manaslu, Markha, Pin Parvati, Hampta Pass, Roopkund, Kuari Pass, Kilimanjaro, Poon Hill, Tilicho.\n6. ABSOLUTE RULE on accommodation / stay suggestions:\n   • Recommend stays/rooms ONLY from CURRENT_TRIP_CONTEXT.stay_options_for_dates (this is the live inventory for the active region + trip dates).\n   • Never invent hotel names, room types, or per-night rates. Never say 'we have a charming guesthouse' unless it appears by exact name in stay_options_for_dates.\n   • If stay_options_for_dates is empty: either dates aren't set yet (ask the traveller for start/end date) OR the active region has no rooms available for those dates (say so and offer alternatives from available_regions). Never fabricate stays.\n   • When stay_options_for_dates has entries, list rooms as: '**[sp_name]** — [room_category] (₹[rate_per_night]/night [meal_plan]) · [rooms_available] left'.\n\nIf filters already selected (see CURRENT FILTERS), skip the region question. Only ask MISSING details. Single region per trip — all selections must come from the same region (active_region_id).\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
+        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only).\n2. Destination: ask Continent then Country then Region step by step. The ONLY valid regions are in CURRENT_TRIP_CONTEXT.available_regions (when that field is present). Each one carries an `experiences` count, and a traveller cannot choose what they cannot see, so SAY THE COUNT every time you offer a place: \"**Asia** (4 experiences)\", \"**Tirthan Valley**, India — 2 experiences\". For a continent or a country, add up the regions inside it. Only places with something in them are in that list at all, so if it is empty there is nothing on offer anywhere yet and you say so plainly rather than inventing somewhere. NEVER name a region or country not in that list. NEVER mention Nepal, Tibet, Bhutan, Pakistan, or any country that's not represented in available_regions.\n3. Experience type & difficulty preference.\n4. Travel date, then group size, then starting city. ONE QUESTION PER REPLY, always. Never two in a breath, never a list of things to fill in. Ask, wait for the answer, write it down, ask the next.\n5. ABSOLUTE RULE on experience names + IDs:\n   • You may ONLY name an experience that appears (by exact name) in AVAILABLE EXPERIENCES. That governs what you SAY, not what you UNDERSTAND. A traveller will refer to one loosely, and should be understood: \"the village walk\" and \"that morning one\" both mean \"Morning Walk Through the Village\", and \"the half day trek\" means \"Probe · half a day in India\". Match what they said to the catalogue, then use the exact name back. Only where nothing in the list plausibly fits do you say you cannot find it, and then you name what there IS rather than leaving them guessing.\n   • You may ONLY put an id in RECOMMEND_IDS or ADD_TO_TRIP that appears (by exact id) in AVAILABLE EXPERIENCES.\n   • If AVAILABLE EXPERIENCES is `[]` (empty), you have NO catalog yet. In that case your response must NOT contain ANY of: trek names, peak names, route names, sample itineraries, mountain names, fictional experience names, or RECOMMEND_IDS. Even if the traveller asks for specific trek suggestions, you must respond with: 'I'd love to suggest specific treks — first, let's pick a region so I show you only experiences we actually run.' Then present 3-5 region NAMES from CURRENT_TRIP_CONTEXT.available_regions (group by continent if helpful), ask the traveller to pick one, and emit [SET_FILTERS:{\"region_id\":N}] with the chosen region's id. Do NOT proceed to recommend treks/experiences until the next turn (when AVAILABLE EXPERIENCES will be populated).\n   • Famous Himalayan names you must NEVER mention unless they're literally in AVAILABLE EXPERIENCES by exact name: Annapurna, Everest, Manaslu, Markha, Pin Parvati, Hampta Pass, Roopkund, Kuari Pass, Kilimanjaro, Poon Hill, Tilicho.\n6. ABSOLUTE RULE on accommodation / stay suggestions:\n   • Recommend stays/rooms ONLY from CURRENT_TRIP_CONTEXT.stay_options_for_dates (this is the live inventory for the active region + trip dates).\n   • Never invent hotel names, room types, or per-night rates. Never say 'we have a charming guesthouse' unless it appears by exact name in stay_options_for_dates.\n   • If stay_options_for_dates is empty: either dates aren't set yet (ask the traveller for start/end date) OR the active region has no rooms available for those dates (say so and offer alternatives from available_regions). Never fabricate stays.\n   • When stay_options_for_dates has entries, list rooms as: '**[sp_name]** — [room_category] (₹[rate_per_night]/night [meal_plan]) · [rooms_available] left'.\n\nIf filters already selected (see CURRENT FILTERS), skip the region question. Only ask MISSING details. Single region per trip — all selections must come from the same region (active_region_id).\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
 
-        $allInstructions = $currentDateInstruction . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $confirmationRule . $conversationFlowInstruction;
+        // Last of all, and that is the whole point. Set in the middle of the stack
+        // this was buried: the conversation flow that follows opens "1. Name
+        // (guests only)", and the model went back to asking rather than writing
+        // the name down. So a traveller who introduced themselves at the start
+        // was a stranger again by the tenth message, when the eight-message
+        // history it had been reading the name off ran out. Sent last it works.
+        $nameInstruction = "
+
+THE NAME GOES DOWN THE MOMENT YOU HEAR IT. When the traveller gives their name, end that same reply with [TRIP_DETAILS:{\"traveller_name\":\"<name>\"}]. Not next turn, not after confirming it, not once they have told you something else as well. That tag is the only place the name is kept: without it you are reading it off the last few messages, and those run out.";
+
+        // What the itinerary cannot be built without. The traveller is not
+        // shown a reason when it is missing, only "Please set start date and
+        // group size", so an assistant that adds an experience before asking
+        // hands them a bare instruction instead of a plan.
+        $requiredInstruction = "
+
+BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one experience chosen, a START DATE, and the number of ADULTS. Without all three there is no itinerary to build. So take them in the conversation, in your own time and without interrogating them, and write each down the moment it is given: [TRIP_DETAILS:{\"start_date\":\"YYYY-MM-DD\",\"adults\":2,\"children\":0}]. Have the date and the group size BEFORE you put an experience into the trip, because the plan is built the instant it goes in and a plan cannot be built without them. If the traveller wants to add something before you have them, take it, then ask for the date. The group size comes after they answer, not alongside it.";
+
+        $allInstructions = $currentDateInstruction . $formattingInstruction . $recommendIdInstruction . $tripDetailsInstruction . $addToTripInstruction . $confirmationRule . $conversationFlowInstruction . $nameInstruction . $requiredInstruction;
 
         $messages = [];
         if ($promptData) {
@@ -2303,11 +2380,19 @@ class AjaxController extends Controller
 
         $responseText = $aiResponse["content"] ?? "Our AI assistant is busy right now (rate limit). Please wait about a minute and try again — or use the controls on the right to update your trip directly.";
 
-        // Parse SET_FILTERS tag
+        // Parse SET_FILTERS tag.
+        //
+        // Read only when the JSON is sound, but TAKEN OUT either way. Both used
+        // to hang off the same well-formed pattern, so a model that dropped a
+        // closing brace left the whole tag standing in what the traveller read:
+        // "[SET_FILTERS:{"continent":"South America","country":"Peru","region_id":16]".
+        // The filters not moving is a small loss; the raw tag on screen is not.
         $setFilters = null;
-        if (preg_match('/\[SET_FILTERS:(\{.+?\})\]/s', $responseText, $filterMatch)) {
+        if (preg_match('/\[SET_FILTERS:(\{.*?\})\]/s', $responseText, $filterMatch)) {
             $setFilters = json_decode($filterMatch[1], true) ?: null;
-            $responseText = trim(preg_replace('/\s*\[SET_FILTERS:\{.+?\}\]/s', '', $responseText));
+        }
+        if (str_contains($responseText, '[SET_FILTERS:')) {
+            $responseText = trim(preg_replace('/\s*\[SET_FILTERS:.*?\](?=\s|$)|\s*\[SET_FILTERS:[^\]]*\]?\s*$/s', '', $responseText));
         }
 
         // Parse recommended experience IDs. Validate against real catalog so
@@ -2691,6 +2776,17 @@ class AjaxController extends Controller
             return response()->json(['error' => 'Invalid experience.'], 422);
         }
         $experience = Experience::findOrFail($request->experience_id);
+
+        // Only a listing HECO has approved and switched on may go into a trip.
+        // The id arrives from the client, so it can be one the catalogue never
+        // offered: a page left open since before a listing was taken down, a
+        // stale bookmark, or anybody typing. Left unchecked, an unapproved
+        // experience went into the trip, into the itinerary and into the price.
+        if ($experience->approval_status !== 'approved' || ! $experience->is_active) {
+            return response()->json([
+                'error' => 'That experience is not available to book just now.',
+            ], 422);
+        }
 
         if (!Auth::check()) {
             $gt = $this->guestTrip();
@@ -3978,6 +4074,13 @@ class AjaxController extends Controller
             "format" => "json",
             "gemini_model" => "gemini-2.5-flash-lite",
             "fast_timeout" => 30,
+            // The longest answer this system asks for: a fortnight of days,
+            // each with its timings, transport, meals and costs. It used to be
+            // about 7,250 tokens and 67 seconds, which is past the 60 nginx
+            // allows a request; the prompt was shortened at v3 and it is now
+            // about 5,000 and 32. The ceiling that lets it finish lives on the
+            // prompt row, where the rest of its settings are.
+            "timeout" => 55,
         ]);
 
         // Try to get AI titles/notes, but don't fail if AI is unavailable
@@ -4386,11 +4489,26 @@ class AjaxController extends Controller
             config('voice.provider', 'groq'),
         ))) === 'openai';
 
-        $prompts = AiPrompt::orderBy("key")->get()->map(function ($p) use ($voiceOnOpenAi) {
+        // The portal's own rows have the same trouble for a different reason:
+        // callAi picks the provider, and the `model` column is not read at all.
+        // Every one of them says "mistral", from the days this ran on Ollama,
+        // while the answers came from Groq and now from OpenAI. Somebody
+        // reading the panel would have had no way of knowing.
+        $portalKeys = ['traveller_chat', 'hct_chat', 'itinerary_generation', 'itinerary_optimization'];
+        $portalModel = app(OpenAiService::class)->isAvailable()
+            ? (string) config('openai.model')
+            : (string) config('groq.model');
+
+        $prompts = AiPrompt::orderBy("key")->get()->map(function ($p) use ($voiceOnOpenAi, $portalKeys, $portalModel) {
             $row = $p->toArray();
-            $row["effective_model"] = $voiceOnOpenAi && str_starts_with((string) $p->key, 'provider_voice_')
-                ? (string) config('openai.model')
-                : (string) $p->model;
+
+            if (in_array($p->key, $portalKeys, true)) {
+                $row["effective_model"] = $portalModel;
+            } else {
+                $row["effective_model"] = $voiceOnOpenAi && str_starts_with((string) $p->key, 'provider_voice_')
+                    ? (string) config('openai.model')
+                    : (string) $p->model;
+            }
 
             return $row;
         });

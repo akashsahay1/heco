@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -12,6 +13,17 @@ use Illuminate\Support\Facades\Log;
  * is shared with the portal's trek-planning chat (AjaxController::callAi), and
  * the standing rule on this project is that the two AIs never reach into each
  * other. A separate class means the portal cannot be changed by accident.
+ *
+ * The portal was tried on this and taken off again on 2026-09-11. Its chat ran
+ * well — three to five seconds, and free of the Groq minute that was stopping a
+ * traveller at their third message — but the itinerary builder could not be
+ * made to fit. That one call asks for a fortnight of days in a single answer,
+ * which gpt-5.6-luna writes in 52 to 67 seconds, and nginx returns 504 at 60
+ * whatever PHP is still doing. Worth knowing if it is tried again: without
+ * `reasoning_effort` the model spent the WHOLE budget thinking and wrote
+ * nothing at all, and 8,192 tokens was not enough to think and then answer.
+ * With `low` and 16,000 it was right three times out of three. Only the web
+ * server's patience is in the way.
  *
  * The wire format is the same one GroqService speaks — Groq copied it — so this
  * is mostly a different host and a different key. Three things do differ, and
@@ -32,6 +44,15 @@ use Illuminate\Support\Facades\Log;
  */
 class OpenAiService
 {
+    /**
+     * Where what the API taught us is kept, one entry per model.
+     *
+     * Forever, because a model's parameter rules change when the model does,
+     * and a model that changes gets a new name. Clear it with `cache:clear`
+     * if OpenAI ever contradicts that.
+     */
+    private const REMEMBERED = 'openai.unsupported.';
+
     protected string $apiKey;
     protected string $model;
     protected int $timeout;
@@ -59,8 +80,10 @@ class OpenAiService
             return null;
         }
 
+        $model = $options['openai_model'] ?? $options['groq_model'] ?? $this->model;
+
         $payload = [
-            'model' => $options['openai_model'] ?? $options['groq_model'] ?? $this->model,
+            'model' => $model,
             'messages' => $messages,
             'temperature' => $options['temperature'] ?? 0.7,
             'max_completion_tokens' => $options['max_tokens'] ?? 4096,
@@ -78,8 +101,19 @@ class OpenAiService
         // this one does not know either. Rather than keep a table of which
         // family allows what — which would be wrong within the month — an
         // unsupported parameter is dropped when the API says which one it is,
-        // and the call is made again. At most a few times, and only ever
-        // narrowing the request.
+        // and the call is made again.
+        //
+        // What was missing was remembering. gpt-5.6-luna takes only the default
+        // temperature, so EVERY call was made twice: once refused, once
+        // without. 2,108 of them in a single day before anybody noticed, since
+        // both the voice assistant and the portal go through here. What the API
+        // teaches is now kept, so each model costs one wasted call ever rather
+        // than one per turn.
+        $learned = self::REMEMBERED . $model;
+        foreach ((array) Cache::get($learned, []) as $dropped) {
+            unset($payload[$dropped]);
+        }
+
         $timeout = $options['timeout'] ?? $this->timeout;
 
         for ($attempt = 1; $attempt <= 4; $attempt++) {
@@ -141,8 +175,12 @@ class OpenAiService
                 && preg_match("/Unsupported (?:parameter|value): '([a-z_]+)'/i", $body, $m)
                 && array_key_exists($m[1], $payload)
                 && ! in_array($m[1], ['model', 'messages'], true)) {
-                Log::info("OpenAI does not take '{$m[1]}' on this model — asking again without it");
+                Log::info("OpenAI does not take '{$m[1]}' on this model — asking again without it, and remembering");
                 unset($payload[$m[1]]);
+
+                Cache::forever($learned, array_values(array_unique(
+                    array_merge((array) Cache::get($learned, []), [$m[1]]),
+                )));
 
                 continue;
             }
