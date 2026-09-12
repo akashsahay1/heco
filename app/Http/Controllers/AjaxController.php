@@ -18,6 +18,7 @@ use App\Models\Region;
 use App\Models\ServiceProvider;
 use App\Models\SpPricing;
 use App\Models\Experience;
+use App\Models\ExperienceRoomRate;
 use App\Models\RegenerativeProject;
 use App\Models\Trip;
 use App\Models\TripRegion;
@@ -92,6 +93,17 @@ class AjaxController extends Controller
             ->whereIn('status', ['not_confirmed'])
             ->orderBy('updated_at', 'desc')
             ->first();
+    }
+
+    /**
+     * May the caller act on this trip? Its owner may, and so may HCT, who runs
+     * every trip from the admin side.
+     */
+    protected function userOwnsTrip(Trip $trip): bool
+    {
+        $user = Auth::user();
+
+        return $user && ((int) $trip->user_id === (int) $user->id || $user->isHct());
     }
 
     /**
@@ -746,6 +758,11 @@ class AjaxController extends Controller
         'add_experience_to_trip', 'remove_experience_from_trip',
         'add_day_to_trip', 'remove_day_from_trip',
         'update_group_details', 'update_trip_start_date', 'reorder_experiences',
+        // Working the price out again WRITES it: CostCalculatorService::calculate()
+        // ends in $trip->update(). Every other way of changing a trip was
+        // refused on a paid booking while this one went through, and moved the
+        // stored price of a trip somebody had already paid for.
+        'recalculate_trip_cost',
     ];
 
     /**
@@ -1690,7 +1707,7 @@ class AjaxController extends Controller
             "date_of_birth" => $request->date_of_birth,
         ]);
 
-        $this->sendMail($user->email, new WelcomeEmail($user->full_name, url('/home')), 'welcome:' . $user->id);
+        $this->sendMail($user->email, new WelcomeEmail($user->full_name, \App\Support\SiteUrl::portal('/home')), 'welcome:' . $user->id);
 
         Auth::login($user);
 
@@ -1950,9 +1967,16 @@ class AjaxController extends Controller
             });
         }
         if ($request->filled("month")) {
+            // Both spellings, because the column holds both. The admin form
+            // posts checkbox values, which arrive as strings and are stored as
+            // ["3","4"]; anything written from code tends to store [3,4]. This
+            // asked only for the number, so every listing that had months set
+            // was hidden in all twelve months and only the ones with no months
+            // at all came through, via the orWhereNull below.
             $month = (int) $request->month;
             $query->where(function ($q) use ($month) {
                 $q->whereJsonContains("available_months", $month)
+                  ->orWhereJsonContains("available_months", (string) $month)
                   ->orWhereNull("available_months");
             });
         }
@@ -1961,6 +1985,10 @@ class AjaxController extends Controller
             ->withAvg('reviews', 'rating')
             ->orderBy("sort_order")
             ->paginate(12);
+
+        // Public endpoint: strip the host's cost breakdown and HECO's margin.
+        $experiences->getCollection()->each->makeHidden(Experience::INTERNAL_COLUMNS);
+
         return response()->json($experiences);
     }
 
@@ -1974,7 +2002,7 @@ class AjaxController extends Controller
         if (!$experience) {
             return response()->json(["error" => "Experience not found"], 404);
         }
-        return response()->json(["experience" => $experience]);
+        return response()->json(["experience" => $experience->makeHidden(Experience::INTERNAL_COLUMNS)]);
     }
 
     protected function checkReviewEligibility(Request $request): JsonResponse
@@ -2830,6 +2858,18 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
         }
 
+        // The same limit read the other way round: a party already set on the
+        // trip must fit the experience being added.
+        $party = (int) $trip->adults + (int) $trip->children + (int) $trip->infants;
+        if ($party > 0) {
+            if ($experience->group_size_min && $party < $experience->group_size_min) {
+                return response()->json(["error" => "{$experience->name} needs at least {$experience->group_size_min} travellers, and this trip has {$party}."], 422);
+            }
+            if ($experience->group_size_max && $party > $experience->group_size_max) {
+                return response()->json(["error" => "{$experience->name} takes at most {$experience->group_size_max} travellers, and this trip has {$party}."], 422);
+            }
+        }
+
         $maxSort = TripSelectedExperience::where('trip_id', $trip->id)->max('sort_order') ?? 0;
         TripSelectedExperience::firstOrCreate([
             "trip_id" => $trip->id,
@@ -2886,8 +2926,37 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         // Rebuild the timeline so day count tracks the remaining experiences.
         app(ItineraryService::class)->rebuildFromExperiences($trip);
+        $this->syncTripRegions($trip);
+
+        // The days changed, so the total did too. Without this the trip keeps
+        // quoting the price of an itinerary it no longer has.
+        app(CostCalculatorService::class)->calculate($trip->refresh());
 
         return response()->json(["success" => true, "trip_id" => $trip->id]);
+    }
+
+    /**
+     * Keep trip_regions equal to the regions the trip's chosen experiences sit
+     * in. Every writer of that table derives it from exactly that, so a removal
+     * has to prune it too — an HRP is shown the trips touching their region, and
+     * a row left behind hands them one that no longer goes anywhere near them.
+     */
+    protected function syncTripRegions(Trip $trip): void
+    {
+        $wanted = TripSelectedExperience::where('trip_id', $trip->id)
+            ->join('experiences', 'experiences.id', '=', 'trip_selected_experiences.experience_id')
+            ->whereNotNull('experiences.region_id')
+            ->pluck('experiences.region_id')
+            ->unique()
+            ->all();
+
+        TripRegion::where('trip_id', $trip->id)
+            ->when($wanted, fn ($q) => $q->whereNotIn('region_id', $wanted))
+            ->delete();
+
+        foreach ($wanted as $regionId) {
+            TripRegion::firstOrCreate(['trip_id' => $trip->id, 'region_id' => $regionId]);
+        }
     }
 
     protected function preferExperience(Request $request): JsonResponse
@@ -3015,12 +3084,45 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["error" => "Trip not found"], 404);
 
+        if ($clash = $this->groupSizeClash($trip, $adults + $children + $infants)) {
+            return response()->json(["error" => $clash], 422);
+        }
+
         $data = ["adults" => $adults, "children" => $children, "infants" => $infants];
         if ($request->filled("traveller_origin")) {
             $data["traveller_origin"] = $request->traveller_origin;
         }
         $trip->update($data);
         return response()->json(["success" => true]);
+    }
+
+    /**
+     * A host states the party size their experience can take. Nothing checked
+     * it, so a trek written for 2–8 people could be booked for 30 and nobody
+     * found out until the host was asked to run it.
+     *
+     * Returns the sentence to show, or null when the party fits everything on
+     * the trip. Counts every head including infants — the limit is about how
+     * many bodies a homestay or a vehicle holds, not about who pays.
+     */
+    protected function groupSizeClash(Trip $trip, int $party): ?string
+    {
+        $experiences = Experience::whereIn(
+            'id',
+            TripSelectedExperience::where('trip_id', $trip->id)->select('experience_id')
+        )->get();
+
+        foreach ($experiences as $exp) {
+            if ($exp->group_size_min && $party < $exp->group_size_min) {
+                return "{$exp->name} needs at least {$exp->group_size_min} travellers.";
+            }
+            if ($exp->group_size_max && $party > $exp->group_size_max) {
+                return "{$exp->name} takes at most {$exp->group_size_max} travellers."
+                    . " Remove it, or split the group across two trips.";
+            }
+        }
+
+        return null;
     }
 
     protected function updateTripStartDate(Request $request): JsonResponse
@@ -3104,7 +3206,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // guest trips that have no DB row yet.
         $regionId = $request->input('region_id');
         if ($request->filled('trip_id') && $request->trip_id !== 'guest') {
+            // Somebody else's trip id must not steer this list, and must not
+            // confirm that the trip exists either: fall through to the client's
+            // own region_id exactly as an unknown id would.
             $trip = Trip::with('selectedExperiences')->find($request->trip_id);
+            if ($trip && ! $this->userOwnsTrip($trip)) {
+                $trip = null;
+            }
             $expId = $trip?->selectedExperiences->pluck('experience_id')->first();
             if ($expId) {
                 $tripRegionId = Experience::whereKey($expId)->value('region_id');
@@ -3396,7 +3504,31 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["error" => "Trip not found"], 404);
 
-        TripDay::where("id", $request->day_id)->where("trip_id", $trip->id)->delete();
+        $day = TripDay::where("id", $request->day_id)->where("trip_id", $trip->id)->first();
+        if (!$day) return response()->json(["error" => "Day not found"], 404);
+
+        // A day carrying an experience is not the traveller's to delete here.
+        //
+        // The price is worked out from the DAYS; the journey list beside it is
+        // read from the SELECTED experiences. Deleting a day that held one
+        // parted the two: the panel went on listing "Barley, Butter Tea and a
+        // Spiti Kitchen — ₹1,500 per person" while the total fell to zero, and
+        // the trip could then be confirmed owing nothing at all.
+        //
+        // Removing the experience from the journey is the way to drop its days,
+        // and that path rebuilds the timeline afterwards. This button is for
+        // the empty days somebody added.
+        if ($day->experiences()->exists()) {
+            $name = $day->experiences()->with('experience')->first()?->experience?->name;
+
+            return response()->json([
+                "error" => $name
+                    ? "This day is part of \"{$name}\". Remove that experience from your journey to drop its days."
+                    : "This day belongs to an experience. Remove the experience from your journey to drop its days.",
+            ], 422);
+        }
+
+        $day->delete();
 
         $days = $trip->tripDays()->orderBy("sort_order")->get();
         foreach ($days as $i => $day) {
@@ -3678,6 +3810,16 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $email = strtolower(trim($request->email));
 
+        // Whoever this address already belongs to, if anybody. Read before the
+        // rows below need it: `$user` was used three times here and never
+        // defined, so every signup — from the landing page footer, logged in or
+        // not — died on "Undefined variable $user" and nothing was ever stored.
+        //
+        // One address can hold a traveller account and a provider account, so
+        // this takes the traveller's if there is one and otherwise the first;
+        // it is only used to mark the subscriber as a known customer.
+        $user = User::where("email", $email)->orderByRaw("user_role = 'traveller' DESC")->first();
+
         // If this email belongs to registered users, flip their opt-in. Every
         // account on the address, not the first one found — the subscription
         // belongs to the inbox, not to one of its roles.
@@ -3711,7 +3853,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         if ($isNew) {
             try {
                 \Illuminate\Support\Facades\Mail::to($email)
-                    ->send(new NewsletterWelcomeEmail($email, url('/home')));
+                    ->send(new NewsletterWelcomeEmail($email, \App\Support\SiteUrl::portal('/home')));
             } catch (\Throwable $e) {
                 \Log::warning("Newsletter welcome mail failed for {$email}: " . $e->getMessage());
             }
@@ -6193,6 +6335,19 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 && (int) $pricing->service_provider_id === (int) $request->service_provider_id) {
                 $amountDue = app(CostCalculatorService::class)->providerPayable($pricing, $trip, $request->service_type);
             }
+
+            // A partner is just as often pinned on a single DAY — one night in
+            // Kaza, one transfer — and those never reached the trip-level
+            // columns above, so the invoice was raised at zero for a room the
+            // traveller had already been charged for. Day pins are the rate
+            // times the rooms, summed over the days they were pinned on.
+            if ($amountDue <= 0 && $trip) {
+                $amountDue = (float) TripDayService::whereIn('trip_day_id', $trip->tripDays()->select('id'))
+                    ->where('service_provider_id', $request->service_provider_id)
+                    ->where('service_type', $request->service_type)
+                    ->get()
+                    ->sum(fn ($s) => (float) $s->cost * max(1, (int) $s->room_quantity));
+            }
         }
 
         $spPayment = SpPayment::create([
@@ -7552,9 +7707,29 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     protected function deleteRegion(Request $request): JsonResponse
     {
         $region = Region::findOrFail($request->region_id);
-        if ($region->experiences()->count() > 0) {
-            return response()->json(["error" => "Cannot delete region with existing experiences. Deactivate instead."], 422);
+
+        // Experiences are the obvious tie, but not the only one: a trip records
+        // the regions it visits and a partner records the region they work in,
+        // and neither has a foreign key to stop the row vanishing underneath it.
+        // Taking the region away would leave an HRP's dashboard and a traveller's
+        // itinerary pointing at a number with nothing behind it.
+        $blockers = array_filter([
+            'experience'      => $region->experiences()->count(),
+            'trip'            => TripRegion::where('region_id', $region->id)->distinct('trip_id')->count('trip_id'),
+            'service partner' => ServiceProvider::where('region_id', $region->id)->count(),
+        ]);
+
+        if ($blockers) {
+            $parts = [];
+            foreach ($blockers as $what => $n) {
+                $parts[] = $n . ' ' . $what . ($n === 1 ? '' : 's');
+            }
+            return response()->json([
+                "error" => "This region is still used by " . implode(', ', $parts)
+                    . ". Deactivate it instead, or move them to another region first.",
+            ], 422);
         }
+
         $region->delete();
         return response()->json(["success" => "Region deleted"]);
     }
@@ -7873,6 +8048,68 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "short_description.required" => "Please write a short description.",
             "duration_type.required"     => "Please choose a duration type.",
         ]);
+
+        // Nothing goes on sale at nothing.
+        //
+        // Filling only the five required boxes published a live, bookable
+        // listing at ₹0.00 — it appeared on the explore page with no price and
+        // priced at zero inside a trip. The same happened on an edit: clearing
+        // the slab rows on a listing that was already selling set its headline
+        // price to 0 and left it up.
+        //
+        // Drafts are exempt: a draft is a half-finished thing by definition,
+        // and a price is one of the things somebody comes back to add.
+        $validator->after(function ($v) use ($request, $isDraft) {
+            if ($isDraft) {
+                return;
+            }
+
+            // An experiential stay is sold by the room, so its price lives in
+            // the occupancy x meal-plan grid and nowhere else — it has no
+            // per-person figure at all, and asking it for one refused every
+            // stay a host tried to publish.
+            $isStay = $request->input('category') === Experience::CATEGORY_STAY;
+            if ($isStay) {
+                $priced = collect((array) $request->input('room_rates', []))
+                    ->contains(fn ($row) => is_array($row) && (float) ($row['price'] ?? 0) > 0);
+                if (! $priced && $request->filled('id')) {
+                    $priced = ExperienceRoomRate::where('experience_id', $request->input('id'))
+                        ->where('price', '>', 0)->exists();
+                }
+                if (! $priced) {
+                    $v->errors()->add('room_rates',
+                        'This stay has no room rate. Add at least one room and its price per night before publishing it — or save it as a draft for now.');
+                }
+                return;
+            }
+
+            $slabs = 0;
+            foreach ((array) $request->input('price_slabs', []) as $row) {
+                if (is_array($row) && (float) ($row['price_per_person'] ?? 0) > 0) {
+                    $slabs++;
+                }
+            }
+
+            $headline = (float) $request->input('base_cost_per_person', 0);
+            $components = 0;
+            foreach (['cost_accommodation', 'cost_logistics', 'cost_guide',
+                      'cost_activities', 'cost_other'] as $part) {
+                $components += (float) $request->input($part, 0);
+            }
+
+            // An edit that says nothing about pricing leaves the stored price
+            // alone, so what is already there counts. Only a save that would
+            // leave the listing at zero is refused.
+            $stored = $request->filled('id')
+                ? (float) (Experience::whereKey($request->input('id'))->value('base_cost_per_person') ?? 0)
+                : 0.0;
+            $sendsPricing = $request->has('price_slabs') || $request->has('base_cost_per_person');
+
+            if ($slabs === 0 && $headline <= 0 && $components <= 0 && ($sendsPricing || $stored <= 0)) {
+                $v->errors()->add('base_cost_per_person',
+                    'This experience has no price. Add a cost per person, a price slab, or the cost breakdown before publishing it — or save it as a draft for now.');
+            }
+        });
 
         // Field names as the form labels them. Without these a rule that has no
         // hand-written message above reads as "The hlh id field is required",
@@ -8390,6 +8627,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ->orderByDesc('id')
             ->get();
 
+        // The host's own costs are theirs to read back and edit. What HECO adds
+        // on top of them is not: a host cannot set it, and telling them the
+        // number tells them HECO's margin on their own listing.
+        $experiences->each->makeHidden('markup_percent');
+
         return response()->json(['success' => true, 'experiences' => $experiences]);
     }
 
@@ -8796,7 +9038,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     protected function approveExperience(Request $request): JsonResponse
     {
-        $experience = Experience::pending()->findOrFail($request->id);
+        // Rejected counts too — see Experience::scopeAwaitingDecision. A host
+        // who fixes what was wrong has to be able to get a yes afterwards.
+        $experience = Experience::awaitingDecision()->findOrFail($request->id);
 
         // A revision of a live experience: replay the parked payload through
         // the normal save path so slug, headline price, days and price slabs
@@ -9615,6 +9859,39 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
+        // The rate has to belong to the provider being billed, and be for the
+        // service being added.
+        //
+        // Only the ids were checked, so any rate could be hung on any provider:
+        // a Spiti hotel's room went onto an Everest day, and the same room was
+        // then billed to a different provider entirely. `createProviderInvoices`
+        // pays whoever `service_provider_id` names, so that is somebody else's
+        // money. `pinnedRatesValid` has done this check for trip-level pins all
+        // along; it was simply never applied here.
+        if (! $this->pinnedRatesValid([[
+            $request->service_provider_id,
+            $request->sp_pricing_id,
+            $request->service_type,
+        ]])) {
+            return response()->json([
+                "error" => "That rate does not belong to this provider, or is not a live rate for this kind of service.",
+            ], 422);
+        }
+
+        // And the provider has to work where the trip is going. A rate card in
+        // another valley is not a service anybody can turn up for.
+        if ($request->service_provider_id) {
+            $day = TripDay::with('trip.tripRegions')->find($request->day_id);
+            $tripRegions = $day?->trip?->tripRegions->pluck('region_id')->filter()->all() ?? [];
+            $providerRegion = ServiceProvider::whereKey($request->service_provider_id)->value('region_id');
+
+            if ($tripRegions && $providerRegion && ! in_array($providerRegion, $tripRegions, true)) {
+                return response()->json([
+                    "error" => "That provider does not work in this trip's region.",
+                ], 422);
+            }
+        }
+
         $service = TripDayService::create([
             "trip_day_id" => $request->day_id,
             "service_provider_id" => $request->service_provider_id,
@@ -10132,10 +10409,22 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $svc = app(\App\Services\RoomAvailabilityService::class);
 
-        // Default: today + 1 night if no dates supplied.
-        $start = $request->filled('start_date') ? \Carbon\Carbon::parse($request->start_date) : now()->startOfDay();
-        $end = $request->filled('end_date') ? \Carbon\Carbon::parse($request->end_date) : $start->copy();
-        if ($end->lt($start)) $end = $start->copy();
+        // Default: today + 1 night if no dates supplied. A stay is counted in
+        // nights, so the two dates are arrival and departure — check in on the
+        // 10th and out on the 12th and you have slept there twice, not three
+        // times, and the room is free again on the 12th for somebody else.
+        $start = $request->filled('start_date')
+            ? \Carbon\Carbon::parse($request->start_date)->startOfDay()
+            : now()->startOfDay();
+        $end = $request->filled('end_date')
+            ? \Carbon\Carbon::parse($request->end_date)->startOfDay()
+            : $start->copy()->addDay();
+        // Same day in both boxes is the admin asking about one day's rooms, not
+        // a zero-night stay: read it as the one night beginning that day.
+        if ($end->lte($start)) $end = $start->copy()->addDay();
+
+        $nights = (int) $start->diffInDays($end);
+        $lastNight = $end->copy()->subDay();
 
         // Pull each accommodation category. For multi-night, compute MIN
         // available across the range (the binding constraint).
@@ -10147,24 +10436,33 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ->orderBy('id')
             ->get();
 
-        $categories = $rows->map(function (SpPricing $row) use ($svc, $start, $end) {
+        // Same rule as getCategoryProviders: a traveller is quoted the selling
+        // price, never the provider's raw one. This endpoint is 'public' and
+        // feeds the stay picker on the experience page, so shipping the raw rate
+        // both undercut the quote the trip then charged and put the partner's
+        // own pricing on the open web.
+        // HCT is the exception: they are arranging the booking and need the
+        // figure the partner is actually owed, so they get that one alongside.
+        $markup = $sp->effectiveMarkupPercent();
+        $forHct = Auth::check() && Auth::user()->isHct();
+
+        $categories = $rows->map(function (SpPricing $row) use ($svc, $start, $lastNight, $markup, $forHct) {
             $minAvail = (int) $row->total_rooms;
-            foreach (\Carbon\CarbonPeriod::create($start, $end) as $d) {
+            foreach (\Carbon\CarbonPeriod::create($start, $lastNight) as $d) {
                 $minAvail = min($minAvail, $svc->availableForCategory($row->id, $d));
                 if ($minAvail === 0) break;
             }
-            return [
+            return array_filter([
                 'sp_pricing_id'     => $row->id,
                 'room_category'    => $row->room_category ?: $row->category,
                 'total'            => (int) $row->total_rooms,
                 'available'        => $minAvail,
-                'rate'             => (float) $row->price,
+                'rate'             => round((float) $row->price * (1 + $markup / 100), 2),
+                'rate_net'         => $forHct ? (float) $row->price : null,
                 'meal_plan'        => $row->meal_plan,
                 'default_occupancy' => $row->default_occupancy,
-            ];
+            ], fn ($v) => $v !== null);
         })->values();
-
-        $nights = \Carbon\CarbonPeriod::create($start, $end)->count();
 
         return response()->json([
             'sp_id'      => $sp->id,

@@ -54,7 +54,7 @@
 <p style="margin:24px 0; text-align:center;">
     {{-- The listing as a traveller sees it, on the portal rather than the
          admin side: this goes to the member who wrote it. --}}
-    <a href="{{ rtrim(config('app.url'), '/') . '/experience/' . $experience->slug }}"
+    <a href="{{ \App\Support\SiteUrl::portal('/experience/' . $experience->slug) }}"
        style="display:inline-block; background:#79a09f; color:#ffffff; padding:12px 28px; border-radius:6px; text-decoration:none; font-weight:600;">
         See your listing
     </a>

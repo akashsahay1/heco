@@ -559,7 +559,10 @@ function refreshEditServiceRoomPicker() {
             // this row already holds so the option isn't shown as 0 free.
             var effectiveAvail = c.available + (String(c.sp_pricing_id) === String(origPricingId) ? (Number($qty.val()) || 0) : 0);
             var disabled = effectiveAvail === 0 ? ' disabled' : '';
-            var label = c.room_category + ' — ₹' + Number(c.rate).toLocaleString('en-IN') + '/night · ' + effectiveAvail + ' of ' + c.total + ' available';
+            // rate_net is the partner's own price, sent to HCT only; c.rate is the
+            // marked-up figure a traveller would be quoted.
+            var shown = (c.rate_net !== undefined ? c.rate_net : c.rate);
+            var label = c.room_category + ' — ₹' + Number(shown).toLocaleString('en-IN') + '/night · ' + effectiveAvail + ' of ' + c.total + ' available';
             if (c.meal_plan) label += ' (' + c.meal_plan + ')';
             html += '<option value="' + c.sp_pricing_id + '"' + disabled + '>' + label + '</option>';
         });

@@ -76,7 +76,7 @@ class SocialAuthController extends Controller
                 ]);
 
                 try {
-                    Mail::to($user->email)->send(new WelcomeEmail($user->full_name ?: 'Traveller', url('/home')));
+                    Mail::to($user->email)->send(new WelcomeEmail($user->full_name ?: 'Traveller', \App\Support\SiteUrl::portal('/home')));
                 } catch (\Throwable $e) {
                     Log::error('Welcome email failed for social signup [' . $user->id . ']: ' . $e->getMessage());
                 }

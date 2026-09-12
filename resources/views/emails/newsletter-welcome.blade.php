@@ -19,6 +19,6 @@
 </p>
 
 <p style="margin:0 0 14px; line-height:1.6; font-size:13px; color:#7a7a6e;">
-    You're receiving this because you subscribed at <a href="{{ url('/') }}" style="color:#5f8484;">{{ parse_url(url('/'), PHP_URL_HOST) }}</a>. If this wasn't you, simply ignore this message and you'll hear nothing further.
+    You're receiving this because you subscribed at <a href="{{ \App\Support\SiteUrl::portal() }}" style="color:#5f8484;">{{ \App\Support\SiteUrl::portalHost() }}</a>. If this wasn't you, simply ignore this message and you'll hear nothing further.
 </p>
 @endsection

@@ -86,6 +86,21 @@ class Experience extends Model
         ];
     }
 
+    /**
+     * Columns that belong to HECO and the host, not to the public.
+     *
+     * The cost breakdown and the markup are how the quoted price is arrived at —
+     * publishing them hands a reader the host's net rate and HECO's margin. The
+     * risk and review notes are internal working notes. None of it is read by
+     * anything traveller-facing, which reads price_from instead.
+     */
+    public const INTERNAL_COLUMNS = [
+        'cost_accommodation', 'cost_logistics', 'cost_guide', 'cost_activities', 'cost_other',
+        'markup_percent', 'seasonal_price_variation', 'single_supplement',
+        'operational_risks', 'past_issues', 'backup_options', 'emergency_notes',
+        'rejection_reason', 'pending_changes', 'pending_submitted_by', 'submitted_by', 'approved_by',
+    ];
+
     /** Sold by the room, not by the head. */
     public function isStay(): bool
     {
@@ -178,6 +193,24 @@ class Experience extends Model
     {
         return $query->where(function ($q) {
             $q->where('approval_status', 'pending')
+              ->orWhereNotNull('pending_changes');
+        });
+    }
+
+    /**
+     * Anything HCT may still say yes to.
+     *
+     * Wider than `pending` by one status: a listing already turned down. Approve
+     * and reject both scoped to `pending`, so the moment one was rejected it
+     * left that set and nothing could be done with it again — not by HCT, who
+     * had only a red banner and no button, and not by the host, whose edits
+     * saved happily and left the status exactly where it was. A rejection was a
+     * one-way door, which is not what a review is.
+     */
+    public function scopeAwaitingDecision($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereIn('approval_status', ['pending', 'rejected'])
               ->orWhereNotNull('pending_changes');
         });
     }

@@ -70,7 +70,9 @@ class ItineraryService
                                     'start_time' => $expData['start_time'] ?? null,
                                     'end_time' => $expData['end_time'] ?? null,
                                     'cost_per_person' => $costPerPerson,
-                                    'total_cost' => $expData['total_cost'] ?? ($costPerPerson * $adults),
+                                    'total_cost' => $this->bundleTotalForDay(
+                                        $trip, $experience->id, (float) $costPerPerson, $adults
+                                    ),
                                     'notes' => $expData['notes'] ?? null,
                                     'sort_order' => $expIndex,
                                 ]);
@@ -295,6 +297,23 @@ class ItineraryService
         return $days;
     }
 
+    /**
+     * What this day's row should carry for an experience.
+     *
+     * An experience is one bundle, charged once — CostCalculatorService puts the
+     * whole line on the first day it meets and zeroes the rest. This applies the
+     * same rule at write time, so a four-day trek does not read as four times its
+     * price on the admin itinerary in the window before the first calculate().
+     */
+    protected function bundleTotalForDay(Trip $trip, int $experienceId, float $costPerPerson, int $adults): float
+    {
+        $alreadyOnTheTrip = TripDayExperience::where('experience_id', $experienceId)
+            ->whereIn('trip_day_id', $trip->tripDays()->select('id'))
+            ->exists();
+
+        return $alreadyOnTheTrip ? 0.0 : $costPerPerson * $adults;
+    }
+
     public function addExperienceToDay(TripDay $day, Experience $experience, array $data = []): TripDayExperience
     {
         $experience->loadMissing('days');
@@ -308,7 +327,8 @@ class ItineraryService
             'start_time' => $data['start_time'] ?? $experience->start_time,
             'end_time' => $data['end_time'] ?? $experience->end_time,
             'cost_per_person' => $costPerPerson,
-            'total_cost' => $data['total_cost'] ?? ($costPerPerson * $adults),
+            'total_cost' => $data['total_cost']
+                ?? $this->bundleTotalForDay($day->trip, $experience->id, (float) $costPerPerson, $adults),
             'notes' => $data['notes'] ?? null,
             'sort_order' => $maxSort + 1,
         ]);
@@ -369,7 +389,9 @@ class ItineraryService
                     'start_time' => $expDay->start_time ?? null,
                     'end_time' => $expDay->end_time ?? null,
                     'cost_per_person' => $costPerPerson,
-                    'total_cost' => $costPerPerson * $adults,
+                    // Never the first day of this experience — it is already on
+                    // the trip, which is how we knew days were missing.
+                    'total_cost' => 0,
                     'sort_order' => 0,
                 ]);
             }

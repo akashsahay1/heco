@@ -66,12 +66,25 @@
         </div>
     </div>
 @elseif($e && $e->approval_status === 'rejected')
-    <div class="alert alert-danger mb-3">
-        <i class="bi bi-x-circle me-1"></i>
-        <strong>This experience was rejected.</strong>
-        @if($e->rejection_reason)
-            <span class="d-block small mt-1">{{ $e->rejection_reason }}</span>
-        @endif
+    {{-- A rejection is a decision, not a dead end. This banner used to be the
+         whole of it: no button, and the save path leaves the status alone, so
+         a listing turned down once could never be approved however well the
+         host fixed it. Approve is offered here. --}}
+    <div class="alert alert-danger d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div>
+            <i class="bi bi-x-circle me-1"></i>
+            <strong>This experience was rejected.</strong>
+            @if($e->rejection_reason)
+                <span class="d-block small mt-1">{{ $e->rejection_reason }}</span>
+            @else
+                <span class="d-block small text-muted mt-1">No reason was recorded.</span>
+            @endif
+        </div>
+        <div class="text-nowrap">
+            <button type="button" class="btn btn-success" id="btnApproveExp" data-id="{{ $e->id }}">
+                <i class="bi bi-check-lg"></i> Approve
+            </button>
+        </div>
     </div>
 @endif
 

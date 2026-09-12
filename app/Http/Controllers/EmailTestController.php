@@ -45,7 +45,7 @@ class EmailTestController extends Controller
         ];
 
         $emails = [
-            'welcome' => new WelcomeEmail('Test Traveller', url('/login')),
+            'welcome' => new WelcomeEmail('Test Traveller', \App\Support\SiteUrl::portal('/login')),
             'password_reset' => new PasswordResetEmail('Test Traveller', url('/reset-password/sample-token-' . bin2hex(random_bytes(8)))),
             'booking_confirmation' => new BookingConfirmationEmail($sampleTrip),
             'payment_received' => new PaymentReceivedEmail($samplePayment),
