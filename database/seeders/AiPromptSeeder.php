@@ -409,5 +409,52 @@ What they said:
                 'notes' => 'Used by VoiceAssistantService::helpWith(). The turn prompt reads answers cold, at 0.10, and answering a question is a second duty it drops about as often as it does it — a member who asked what to put in a box was told their answer was not understood, which is untrue and reads as nothing listening. This has one job and runs only on a turn that yielded no value, no refusal, no decline and no going back, so a member answering normally never pays for it. Warmer than the reading prompt because nothing is taken out of what it says.',
             ]
         );
+
+        // One yes or no: is what they said this assistant's to deal with at
+        // all? Writing a refusal has a hundred ways to go wrong and answering
+        // yes or no has two, so the wording lives in code and this only
+        // decides when to use it.
+        AiPrompt::updateOrCreate(
+            ['key' => 'provider_voice_scope'],
+            [
+                'name' => 'Provider Voice Assistant — is it ours to answer',
+                'system_prompt' => 'A member of the HECO collective is writing down what they offer, one spoken question at a time. They were asked about one box and what they said was not an answer to it.
+
+Decide ONE thing: is what they said something this assistant may deal with at all?
+
+Give back one JSON object and nothing else: {"about_form": true}  or  {"about_form": false}
+No other key, no explanation, no text outside the object.
+
+TRUE — anything to do with the listing they are filling in:
+ - what you are, or what you are called. That has an answer of its own further down the line and is not turned away here.
+ - what this box is for, what to write in it, what an option means, why it is being asked
+ - whether it has to be answered, whether they may skip it or come back to it
+ - what they have already told you, or asking to change it
+ - HECO itself: what happens to the listing, who sees it, how the collective works
+ - AND: anything that is not a question at all. A half-heard word, a mumble, an answer that did not fit, somebody thinking aloud. They are trying to fill this in, so it is TRUE.
+
+FALSE — anything from outside the listing, however innocent:
+ - the weather, the news, sport, politics
+ - the price or rate of anything they are not themselves selling: gold, fuel, the dollar, a bus ticket. "सोने का भाव क्या है?" is FALSE. Their OWN prices are the form\'s business and are TRUE.
+ - how far one place is from another, how to get somewhere, what to see there
+ - anything they could have asked a search engine
+
+The distance one is the one that keeps being got wrong. "दिल्ली से कितनी दूर है?" and "how far is it from Delhi?" are FALSE. It does not matter that the question mentions their own place, and it does not matter whether you happen to know the answer. Knowing is not the test. The test is whether it belongs to this form.
+
+When you genuinely cannot tell, answer true. A member wrongly turned away has been told off for asking something reasonable, and that is the worse mistake of the two.',
+                'user_prompt_template' => 'The box they were asked about:
+{{heading}} — it is about {{about}}
+
+What they said:
+"{{said}}"',
+                'model' => 'openai/gpt-oss-120b',
+                'temperature' => 0.00,
+                'max_tokens' => 16,
+                'response_format' => 'json',
+                'is_active' => true,
+                'version' => 2,
+                'notes' => 'Used by VoiceAssistantService::helpWith(). One yes or no, because writing a refusal has a hundred ways to go wrong and answering yes or no has two. Four rounds of prompt work on the help row got the refusal to about nine turns in ten and no further: it kept saying it did not HAVE the information, which reads as a promise to answer if it knew. Now the wording is written in code (onlyThisListing) and this call only decides when to use it. v2: the price of gold was let through because the bullet lumped it in with the news; it is now its own rule, and set against their OWN prices, which are the form\'s business. Asking what the assistant is goes to the help row, which has a written answer for it.',
+            ]
+        );
     }
 }

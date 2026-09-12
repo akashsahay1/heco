@@ -106,6 +106,16 @@ class VoiceAssistantService
                     'hi' => ['रहने की जगह', 'गाड़ी', 'गाइड', 'कोई गतिविधि', 'किराये पर सामान', 'कुछ और'],
                     'en' => ['A place to stay', 'A vehicle', 'A guide', 'An activity', 'Something you rent out', 'Something else'],
                 ],
+                // The same six as nouns, for saying inside a sentence. `words`
+                // are written to be chosen between — "Something you rent out"
+                // is a fine thing to offer and a terrible thing to put in the
+                // middle of a line, as "your Something you rent out listing"
+                // showed. Used by listingName() before a member has given
+                // theirs a name.
+                'nouns' => [
+                    'hi' => ['रहने की जगह', 'गाड़ी', 'गाइडिंग', 'गतिविधि', 'किराये के सामान', 'आपकी सेवा'],
+                    'en' => ['a place to stay', 'a vehicle', 'guiding', 'an activity', 'gear you rent out', 'your service'],
+                ],
                 'skippable' => false,
             ],
         ];
@@ -530,6 +540,17 @@ class VoiceAssistantService
                 'words' => [
                     'hi' => ['आसान', 'थोड़ा मुश्किल', 'मुश्किल', 'बहुत मुश्किल'],
                     'en' => ['Easy', 'Moderate', 'Challenging', 'Extreme'],
+                ],
+                // A member says "it is a bit hard", not "moderate", and the
+                // four words on their own are a ladder with no rungs marked:
+                // in English the gloss read "moderate": Moderate, which says
+                // nothing, and "a bit hard" came back as Challenging once in
+                // three. What each one covers is what settles it.
+                'covers' => [
+                    'easy' => 'A gentle outing. Anybody who can walk a little manages it, no fitness needed.',
+                    'moderate' => 'A bit hard. Some hours of walking, or a climb, or a long day. Ordinary fitness is enough. "थोड़ा मुश्किल", "a bit hard", "not too hard" all mean this one.',
+                    'challenging' => 'Genuinely hard. Long days, steep or rough ground, and a traveller who is not fit will struggle.',
+                    'extreme' => 'Very hard indeed. High altitude, or technical ground, and only for people who have done this sort of thing before.',
                 ],
             ],
             'fitness_requirements' => ['label' => 'Fitness requirements', 'ask' => 'how fit a traveller needs to be', 'q' => ['hi' => 'यात्री का शरीर कितना चलने-फिरने लायक होना चाहिए?', 'en' => 'How fit does a traveller need to be for this?'], 'type' => 'string'],
@@ -1004,6 +1025,15 @@ class VoiceAssistantService
         $answer = trim((string) ($data['answer'] ?? ''));
         $answer = mb_strlen($answer) > 400 ? '' : $answer;
 
+        // The reading model has an "answer" of its own, and it pleads ignorance
+        // exactly as the other one did: "I do not have the distance from Delhi
+        // in the information provided." Scrubbing only helpWith's answer left
+        // this one coming through on the turns where that call gave nothing.
+        // Same test, same written line.
+        if ($answer !== '' && $this->pleadsIgnorance($answer)) {
+            $answer = $this->onlyThisListing($form, $known, $language);
+        }
+
         $checked = $this->keepValid($form, $known, (array) ($data['fields'] ?? []), $asked, array_keys($extras));
 
         // What was heard and could not be used. The app said only "I could not
@@ -1208,9 +1238,22 @@ class VoiceAssistantService
         // model offers when it could not use the sentence — which is the exact
         // turn a member needs an answer, not to be told they were not
         // understood. That line was blocking the one call that could help.
-        $help = ($finished === []
-                && $checked['fields'] === [] && $checked['rejected'] === [])
-            ? $this->helpWith($form, $asked, $said, $language, $known)
+        // A value turned away used to stop this call from happening at all, and
+        // the member got the list read out instead. That is exactly right when
+        // they really did say a value that is not on it — "Cat E" is met by
+        // naming the four there are. It is wrong when they asked a question and
+        // the reading model mistook it for an answer, which it does now and
+        // then: "दिल्ली से कितनी दूर है?" came back as "यह इनमें से नहीं है: Cat
+        // A, Cat B..." — telling somebody who asked a question that their
+        // answer is wrong.
+        //
+        // Both are the same shape from here, so neither can be sorted out in
+        // code. helpWith is told a value was turned away and settles it: a
+        // question is turned away kindly, and a wrong value is met with the
+        // list, as before. The written line below is still the fallback if that
+        // call comes back with nothing.
+        $help = ($finished === [] && $checked['fields'] === [])
+            ? $this->helpWith($form, $asked, $said, $language, $known, $refused !== null)
             : null;
 
         // And where an answer was found, the shrug is dropped: a member should
@@ -1535,19 +1578,134 @@ class VoiceAssistantService
      * One extra call, only on those turns. A member who is answering normally
      * never pays for it.
      */
+    /**
+     * Whether what is filled so far could carry an example at all.
+     *
+     * The boxes that decide the shape of a form name a drawer, not a trade:
+     * "Service type: Other" says only that the six named kinds did not fit, and
+     * "Guided Cultural & Outdoor Activities" covers a birdwatch and a rafting
+     * trip alike. An example built on those alone is invented, and a member who
+     * asked because they did not know will take it.
+     */
+    private function tooThinForAnExample(string $form, array $known): bool
+    {
+        // `category` is not the same box on the two forms, which is the trap
+        // here: on a rate card it holds the NAME of the thing — "Pahadi
+        // Laundry", "Innova Crysta" — and that is plenty to build on. On an
+        // experience it is the drawer, and says almost nothing.
+        $drawers = $form === 'rate'
+            ? ['service_type']
+            : ['category', 'duration_type'];
+
+        $told = array_filter(
+            $known,
+            fn ($value, $key) => ! in_array($key, $drawers, true)
+                && $value !== null && $value !== '' && $value !== [],
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        return $told === [];
+    }
+
+    /**
+     * Whether what they said is this assistant's to deal with at all.
+     *
+     * One call, one word back. It costs a fraction of composing an answer, and
+     * on the turns where the answer is a refusal it REPLACES that call rather
+     * than adding to it — a refusal is written here, not asked for.
+     *
+     * Silence, a broken reply, anything unreadable: treated as ours. A member
+     * wrongly turned away has been told off for asking something reasonable,
+     * which is the worse of the two mistakes by a distance.
+     */
+    private function outsideThisListing(string $form, string $field, string $said, array $known): bool
+    {
+        $spec = $this->specFor($form, $field, $known);
+
+        $prompt = app(PromptBuilderService::class)->build('provider_voice_scope', [
+            'heading' => $spec['label'] ?? '(not named)',
+            'about' => $spec['ask'] ?? '',
+            'said' => $said,
+        ]);
+
+        if (! $prompt) {
+            return false;
+        }
+
+        $answer = $this->ai()->chat([
+            ['role' => 'system', 'content' => $prompt['system_prompt']],
+            ['role' => 'user',   'content' => $prompt['user_prompt']],
+        ], [
+            'groq_model' => $prompt['model'] ?: null,
+            'openai_model' => config('openai.model'),
+            'temperature' => $prompt['temperature'],
+            'max_tokens' => $prompt['max_tokens'],
+            'format' => 'json',
+            'reasoning_effort' => 'low',
+        ]);
+
+        $data = json_decode((string) ($answer['content'] ?? ''), true);
+
+        return is_array($data) && ($data['about_form'] ?? true) === false;
+    }
+
     private function helpWith(
         string $form,
         string $field,
         string $said,
         string $language,
         array $known,
+        bool $turnedAway = false,
     ): ?string {
         $spec = $this->specFor($form, $field, $known);
         if ($spec === []) {
             return null;
         }
 
+        // Settled before a word is composed, and settled by a yes or no.
+        //
+        // Writing a refusal has a hundred ways to go wrong and this model found
+        // several: it said it did not HAVE the distance, it half-answered it,
+        // and once it offered to take the answer from the member. Four rounds
+        // of prompt work got that to about nine turns in ten and no further.
+        // Answering yes or no has two ways to go, so that is all it is asked,
+        // and the sentence is written here where it cannot drift.
+        //
+        // A value turned away is put to it as well, and that guard was the
+        // mistake: skipping the question there is skipping it on exactly the
+        // turns where the reading model has ALREADY got it wrong, which is how
+        // "how far is it from Delhi?" came back as "cannot be used for this
+        // box, choose one of these: Cat A...". Telling "Cat E" from a question
+        // is the one thing this call is for, and it does it: "Cat E" comes back
+        // as ours and meets the list, as it should.
+        if ($this->outsideThisListing($form, $field, $said, $known)) {
+            return $this->onlyThisListing($form, $known, $language);
+        }
+
         $choices = $this->choicesFor($form, $field, $known, $language);
+
+        $ask = function (array $prompt): ?string {
+            $answer = $this->ai()->chat([
+                ['role' => 'system', 'content' => $prompt['system_prompt']],
+                ['role' => 'user',   'content' => $prompt['user_prompt']],
+            ], [
+                'groq_model' => $prompt['model'] ?: null,
+                // Ignored by OpenAI, which takes its model from config: the
+                // four prompt rows name a Groq model by its Groq name.
+                'openai_model' => config('openai.model'),
+                'temperature' => $prompt['temperature'],
+                'max_tokens' => $prompt['max_tokens'],
+                'format' => 'json',
+                'reasoning_effort' => 'low',
+            ]);
+
+            $said = trim((string) (json_decode((string) ($answer['content'] ?? ''), true)['answer'] ?? ''));
+
+            // Long enough to have started lecturing is long enough to have
+            // lost them: the question is put again straight after this, and a
+            // member answers what they heard last.
+            return ($said === '' || mb_strlen($said) > 400) ? null : $said;
+        };
 
         $prompt = app(PromptBuilderService::class)->build('provider_voice_help', [
             'reply_in' => $language === 'hi' ? 'Hindi' : 'English',
@@ -1562,34 +1720,84 @@ class VoiceAssistantService
             // stuck is not knowing what the choices are.
             'choices' => $choices ? implode(', ', $choices) : '(free text: anything they like)',
             'meanings' => ($m = $this->meaningsFor($spec, $language)) === null ? '' : "\n\nWhat each covers:\n" . $m,
-            'filled' => $this->filledLabels($form, $known) ?: '(nothing yet)',
+            // What is filled, and — where there is too little of it — a plain
+            // instruction rather than a rule the model has to remember to
+            // apply. Told only in the prompt not to invent a service when all
+            // it knows is "Service type: Other", it invented one anyway, in
+            // Hindi, offering a handicraft workshop to somebody who launders
+            // clothes. A member takes a wrong example; they asked because they
+            // did not know.
+            //
+            // "Too little" is judged on the boxes that say what the thing IS.
+            // A service type or an experience category on its own names a
+            // drawer, not a trade.
+            'filled' => ($f = $this->filledLabels($form, $known))
+                ? $f . ($this->tooThinForAnExample($form, $known)
+                    ? "\n\n(That is all there is, and it is not enough to build an example on."
+                        . ' Say what the box is for and what shape the answer takes, and stop.'
+                        . ' Do not invent what they offer.)'
+                    : '')
+                : '(nothing yet: say what the box is for, and give no example of what they offer)',
             'said' => $said,
+            // Whether what they said was read as an answer to this box and then
+            // turned away for not being on the list. It decides between the two
+            // things this call has to be able to do, and nothing in the
+            // sentence itself tells them apart.
+            'turned_away' => $turnedAway
+                ? 'Yes: it was read as an answer to this box, and it is not one of the values above.'
+                : 'No.',
         ]);
 
         if (! $prompt) {
             return null;
         }
 
-        $answer = $this->ai()->chat([
-            ['role' => 'system', 'content' => $prompt['system_prompt']],
-            ['role' => 'user',   'content' => $prompt['user_prompt']],
-        ], [
-            'groq_model' => $prompt['model'] ?: null,
-            // Ignored by OpenAI, which takes its model from config: the four
-            // prompt rows name a Groq model by its Groq name.
-            'openai_model' => config('openai.model'),
-            'temperature' => $prompt['temperature'],
-            'max_tokens' => $prompt['max_tokens'],
-            'format' => 'json',
-            'reasoning_effort' => 'low',
-        ]);
+        $said = $ask($prompt);
 
-        $said = trim((string) (json_decode((string) ($answer['content'] ?? ''), true)['answer'] ?? ''));
+        // Pleading ignorance is the one answer that must not go out. "I do not
+        // have the distance from Delhi" says it WOULD answer if it knew, so the
+        // member asks again, and again. The prompt forbids it and the model
+        // still does it on questions that sound as though they might be about
+        // the listing, so this asks once more rather than letting it through.
+        // One extra call, and only on the turns that would otherwise be wrong.
+        // Pleading ignorance is the one answer that must not go out: "I do not
+        // have the distance from Delhi" says it WOULD answer if it knew, so the
+        // member asks again with more detail. Four rounds of prompt work got it
+        // down and never to nothing, so it is not left to the model. The
+        // written line says what they are listing and that this is all it does,
+        // which is a fact about the job rather than a shrug.
+        // Only where it actually pleaded ignorance. A call that came back with
+        // nothing is a different thing entirely — the member may have asked a
+        // perfectly good question about the box — and answering that with "ask
+        // only about your listing" would be telling them off for asking.
+        // Nothing here is better than the wrong thing; the caller has its own
+        // fallbacks.
+        //
+        // Whether a value was turned away does not come into it. An answer that
+        // pleads ignorance is proof the sentence was a question, whatever the
+        // reading model made of it: told "Cat E", this call names the four
+        // there are, and that answer does not trip the test.
+        if ($said !== null && $this->pleadsIgnorance($said)) {
+            return $this->onlyThisListing($form, $known, $language);
+        }
 
-        // Long enough to have started lecturing is long enough to have lost
-        // them: the question is put again straight after this, and a member
-        // answers what they heard last.
-        return ($said === '' || mb_strlen($said) > 400) ? null : $said;
+        return $said;
+    }
+
+    /**
+     * Whether an answer turns a question away for the wrong reason.
+     *
+     * Not knowing is never why a question from outside this listing goes
+     * unanswered, and saying so invites the member to try again with more
+     * detail. Both tongues have done it; English the more stubbornly.
+     */
+    private function pleadsIgnorance(string $answer): bool
+    {
+        return (bool) preg_match(
+            '/(?:do(?:n[\x{2019}\']?t| not) (?:have|know)|have no |not available|no information'
+            . '|जानकारी[^।]{0,30}नहीं|मेरे पास|उपलब्ध नहीं)/iu',
+            $answer,
+        );
     }
 
     /**
@@ -1741,6 +1949,18 @@ class VoiceAssistantService
                         array_keys($allowed),
                     )
                     : $allowed);
+
+                // And what each one covers, where the schema says. Sending the
+                // words alone was enough for the box being ASKED about and not
+                // for one answered in passing: "it is a bit hard" came back as
+                // Challenging on the very turn the member was being asked about
+                // something else. A grade needs its meaning wherever it is read.
+                if ($covers = $field['covers'] ?? null) {
+                    $shape .= '. What those mean: ' . implode(' ', array_map(
+                        fn ($value) => "\"{$value}\" = " . ($covers[$value] ?? ''),
+                        array_filter($allowed, fn ($v) => isset($covers[$v])),
+                    ));
+                }
             }
 
             // A box that gathers, with something already in it. Say what it
@@ -2015,6 +2235,91 @@ class VoiceAssistantService
      * the codes, those are used; where there are none, the value stands, since
      * a list value is already the words HCT chose.
      */
+    /**
+     * What this listing is, in the member's own tongue, for saying back to them.
+     *
+     * Their name for it where they have given one — "Pahadi Laundry" means more
+     * to them than "something else" — and otherwise the kind of thing they said
+     * they offer, in the words the question used rather than the code the
+     * column holds.
+     */
+    private function listingName(string $form, array $known, string $language): ?array
+    {
+        // A rate card keeps the name in `category` for most kinds and in
+        // `rental_item` for what somebody rents out.
+        $named = trim((string) ($known['category'] ?? $known['rental_item'] ?? $known['name'] ?? ''));
+
+        // On a rate card `category` holds the name. On an experience it holds
+        // the kind, and the name lives in `name`.
+        if ($form === 'rate' && $named !== '' && ($known['service_type'] ?? null) !== null) {
+            $box = isset($known['category']) ? 'category' : 'rental_item';
+            $spec = $this->specFor($form, $box, $known);
+            if (! isset($spec['list'])) {
+                return ['name', $named];
+            }
+        }
+
+        if ($form !== 'rate' && trim((string) ($known['name'] ?? '')) !== '') {
+            return ['name', trim((string) $known['name'])];
+        }
+
+        $kind = $form === 'rate' ? 'service_type' : 'category';
+        $value = $known[$kind] ?? null;
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        // Not the code underneath, and not the answer-option either: the noun
+        // written for saying inside a sentence.
+        $spec = $this->specFor($form, $kind, $known);
+        if (isset($spec['only'])) {
+            $at = array_search($value, $spec['only'], true);
+            if ($at !== false) {
+                $noun = $spec['nouns'][$language][$at]
+                    ?? $spec['words'][$language][$at]
+                    ?? null;
+
+                return $noun === null ? null : ['kind', $noun];
+            }
+        }
+
+        return ['kind', (string) $value];
+    }
+
+    /**
+     * What a member hears when they ask something this cannot answer.
+     *
+     * Written here rather than left to the model, which spent four rounds of
+     * prompt work still saying "I do not have the distance from Delhi" about
+     * one turn in four. That reads as a promise: knowing more, it would answer.
+     * The line names what they are actually listing, so the boundary is a plain
+     * fact about the job rather than a shrug.
+     */
+    private function onlyThisListing(string $form, array $known, string $language): string
+    {
+        [$sort, $what] = $this->listingName($form, $known, $language) ?? [null, null];
+
+        // A name goes in as a possessive, which is how anybody would say it:
+        // "your Pahadi Laundry listing". A kind cannot — "your Something you
+        // rent out listing" is what that produced — so it is put after the
+        // sentence instead, which stays grammatical whatever the noun is and
+        // whichever tongue it is in.
+        if ($language === 'hi') {
+            return match ($sort) {
+                'name' => "मैं सिर्फ़ आपकी {$what} की लिस्टिंग भरने में मदद कर सकता हूँ। कृपया इससे जुड़े सवाल ही पूछिए।",
+                'kind' => "मैं सिर्फ़ इस लिस्टिंग में मदद कर सकता हूँ, जो {$what} के बारे में है। कृपया इससे जुड़े सवाल ही पूछिए।",
+                default => 'मैं सिर्फ़ यह फ़ॉर्म भरने में मदद कर सकता हूँ। कृपया इससे जुड़े सवाल ही पूछिए।',
+            };
+        }
+
+        return match ($sort) {
+            'name' => "I can only help you fill in your {$what} listing. Please ask only about that.",
+            'kind' => "I can only help with this listing, which is about {$what}. Please ask only about that.",
+            default => 'I can only help you fill in this form. Please ask only about that.',
+        };
+    }
+
     private function spokenValue(string $form, string $field, mixed $value, string $language, array $known = []): string
     {
         $tongue = $language === 'hi' ? 'hi' : 'en';
@@ -2240,13 +2545,21 @@ class VoiceAssistantService
             $theirs = $field['words'][$language ?? 'en'] ?? $field['words']['en'] ?? [];
             $english = $field['words']['en'] ?? [];
 
+            // In English the word and the code are the same word, so the gloss
+            // said nothing at all: "moderate": Moderate. Left to judge "it is a
+            // bit hard" on the bare ladder, it reached one rung too high once
+            // in three. `covers` says what each rung actually means, which is
+            // the difference between a synonym and a definition.
+            $covers = $field['covers'] ?? [];
+
             return implode("\n", array_map(
                 fn ($value, $i) => sprintf(
-                    '"%s": %s',
+                    '"%s": %s%s',
                     $value,
                     ($theirs[$i] ?? $value) . (($english[$i] ?? null) && ($english[$i] !== ($theirs[$i] ?? null))
                         ? ' (' . $english[$i] . ')'
                         : ''),
+                    isset($covers[$value]) ? '. ' . $covers[$value] : '',
                 ),
                 $field['only'],
                 array_keys($field['only']),
