@@ -2117,18 +2117,21 @@ class AjaxController extends Controller
             $userName = $gt["traveller_name"] ?? "Traveller";
             $trip = null;
         } else {
-            $trip = null;
-            if ($request->filled("trip_id") && $request->trip_id !== "guest") {
-                $trip = Trip::where("id", $request->trip_id)->where("user_id", $user->id)->first();
-            }
-            if (!$trip) {
-                $trip = Trip::create([
-                    "trip_id" => Trip::generateTripId(),
-                    "user_id" => $user->id,
-                    "status" => "not_confirmed",
-                    "stage" => "open",
-                    "adults" => 2,
-                ]);
+            // The traveller's open trip, and only a new one when they have
+            // none — which is what `ensureAuthTrip` has always done and what
+            // every other handler here calls.
+            //
+            // This asked for a trip_id and made a brand new trip whenever one
+            // did not arrive, which is most turns: the page sends whatever it
+            // was rendered with, and that is empty until a trip exists. So a
+            // chat turn made a trip, and a lead, and the next turn made
+            // another. The new trip carried the newest updated_at, so it won
+            // the ordering every other handler resolves by, and the journey
+            // the traveller had built stopped being the one they were shown —
+            // the fault the client reported as not being able to see their
+            // journey, still happening after the ordering itself was fixed.
+            $trip = $this->ensureAuthTrip($request);
+            if ($trip->wasRecentlyCreated) {
                 app(LeadService::class)->createOrGetLead($trip);
             }
             AiConversation::create([
