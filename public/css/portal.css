@@ -8019,6 +8019,21 @@
 
 /* SP experience photos — fixed-size previews so a tall or wide upload cannot
    stretch the modal. object-fit keeps them from distorting. */
+/* A stored photo with its "take this down" cross. The cross rides the corner
+   of the picture, so a wrapping row of thumbnails never parts a cross from
+   what it removes. */
+.heco-portal .photo-tile { position: relative; display: inline-block; }
+.heco-portal .photo-drop {
+    position: absolute; top: -6px; right: -6px;
+    width: 20px; height: 20px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid #fff; border-radius: 50%;
+    background: rgba(33, 37, 41, .85); color: #fff;
+    font-size: 14px; line-height: 1; cursor: pointer;
+}
+.heco-portal .photo-drop:hover,
+.heco-portal .photo-drop:focus-visible { background: #b02a37; }
+
 .heco-portal .sp-exp-card-preview {
     width: 160px;
     height: 110px;

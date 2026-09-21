@@ -689,8 +689,15 @@
                         <div class="row g-2">
                             <div class="col-md-6">
                                 <label class="form-label small">Card Image</label>
-                                <div class="mb-2 d-none" id="spCardImageCurrent">
+                                {{-- The cross marks the photo; saving is what removes it. --}}
+                                <div class="mb-2 d-none photo-tile" id="spCardImageCurrent">
                                     <img src="" alt="Current card image" class="rounded sp-exp-card-preview" id="spCardImageThumb">
+                                    <button type="button" class="photo-drop" id="spCardImageDrop"
+                                            title="Remove this photo" aria-label="Remove this photo">&times;</button>
+                                </div>
+                                <div class="mb-2 small text-muted d-none" id="spCardImageDropped">
+                                    This photo goes when you save.
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="spCardImageKeep">Keep it</button>
                                 </div>
                                 <input type="file" class="form-control form-control-sm" name="card_image" accept="image/*">
                                 <small class="text-muted">The photo travellers see first. JPG, PNG or WebP.</small>
@@ -698,6 +705,7 @@
                             <div class="col-md-6">
                                 <label class="form-label small">Gallery Images</label>
                                 <div class="mb-2 d-flex gap-1 flex-wrap d-none" id="spGalleryCurrent"></div>
+                                <div class="mb-2 small text-muted d-none" id="spGalleryDropped"></div>
                                 <input type="file" class="form-control form-control-sm" name="gallery[]" accept="image/*" multiple>
                                 <small class="text-muted">Pick several at once. New photos are added to what is already there.</small>
                             </div>
@@ -739,6 +747,8 @@
 var spExpRows = [];
 var spDayCounter = 0;
 var spSlabCounter = 0;
+// Whether the open listing's card photo is marked to go on the next save.
+var spCardImageDropped = false;
 var spExpDeleteId = null;
 
 var SP_DAY_INCLUSIONS = @json($dayInclusions);
@@ -960,7 +970,11 @@ function spOpenExperience(row) {
     jQuery('#spExpRejected').addClass('d-none');
     jQuery('#spExpLiveEdit').addClass('d-none');
     jQuery('#spCardImageCurrent').addClass('d-none');
-    jQuery('#spGalleryCurrent').addClass('d-none').empty();
+    jQuery('#spGalleryCurrent').addClass('d-none').empty().data('started', 0);
+    // A photo marked for removal on one listing must not carry over to the
+    // next one opened in the same modal.
+    spCardImageDropped = false;
+    jQuery('#spCardImageDropped, #spGalleryDropped').addClass('d-none');
 
     jQuery('#spExpModalTitle').text(row ? 'Edit Experience' : 'Add Experience');
     jQuery('#spExpForm input[name=id]').val(row ? row.id : '');
@@ -1021,8 +1035,15 @@ function spOpenExperience(row) {
         if ((row.gallery || []).length) {
             var gallery = jQuery('#spGalleryCurrent').removeClass('d-none');
             jQuery.each(row.gallery, function(n, img) {
-                gallery.append('<img src="' + spEsc(img) + '" alt="Gallery" class="rounded sp-exp-gallery-thumb">');
+                gallery.append(
+                    '<div class="photo-tile" data-path="' + spEsc(img) + '">' +
+                        '<img src="' + spEsc(img) + '" alt="Gallery" class="rounded sp-exp-gallery-thumb">' +
+                        '<button type="button" class="photo-drop" data-sp-drop-gallery' +
+                        ' title="Remove this photo" aria-label="Remove this photo">&times;</button>' +
+                    '</div>'
+                );
             });
+            gallery.data('started', row.gallery.length);
         }
 
         if (row.approval_status === 'rejected') {
@@ -1123,6 +1144,56 @@ jQuery(function() {
         jQuery(this).closest('.sp-addon').remove();
     });
 
+    // ── Taking a photo down.
+    //
+    // The cross marks it; Save removes it. Nothing goes on the click, so a
+    // mis-aimed cross costs one more click and closing the form unsaved leaves
+    // every photo exactly where it was.
+    jQuery(document).on('click', '#spCardImageDrop', function() {
+        spCardImageDropped = true;
+        jQuery('#spCardImageCurrent').addClass('d-none');
+        jQuery('#spCardImageDropped').removeClass('d-none');
+    });
+    jQuery(document).on('click', '#spCardImageKeep', function() {
+        spCardImageDropped = false;
+        jQuery('#spCardImageCurrent').removeClass('d-none');
+        jQuery('#spCardImageDropped').addClass('d-none');
+    });
+    jQuery(document).on('click', '[data-sp-drop-gallery]', function() {
+        jQuery(this).closest('.photo-tile').remove();
+        var $gallery = jQuery('#spGalleryCurrent');
+        var left = $gallery.find('.photo-tile').length;
+        jQuery('#spGalleryDropped')
+            .toggleClass('d-none', left === $gallery.data('started'))
+            .text(left
+                ? 'Removed photos go when you save. ' + left + ' will be kept.'
+                : 'All current photos will be removed when you save.');
+    });
+
+    /**
+     * Tell the save which photos survive.
+     *
+     * The card image needs a word of its own — a blank file field cannot mean
+     * "take it down", because it is blank on every save that does not touch
+     * photos. The gallery is the other way round: the server keeps whatever
+     * list it is handed, so the list is what is still on screen, and one empty
+     * entry is how "keep none" is said.
+     */
+    function spAppendPhotoChoices(data) {
+        if (spCardImageDropped) {
+            data.set('remove_card_image', '1');
+        }
+
+        var $gallery = jQuery('#spGalleryCurrent');
+        var kept = $gallery.find('.photo-tile').map(function() {
+            return jQuery(this).data('path');
+        }).get();
+
+        if (kept.length === ($gallery.data('started') || 0)) return;   // nothing dropped
+        if (! kept.length) { data.append('gallery[]', ''); return; }
+        kept.forEach(function(path) { data.append('gallery[]', path); });
+    }
+
     /** Rows from a repeater, skipping any the host left blank. */
     function spRepeaterRows(rowSel, requiredKey) {
         var rows = [];
@@ -1148,6 +1219,7 @@ jQuery(function() {
         var data = new FormData(form);
         data.append('save_sp_experience', 1);
         if (asDraft) data.append('save_as_draft', 1);
+        spAppendPhotoChoices(data);
 
         // Drop anything belonging to a section this category does not use. The
         // server leaves untouched whatever it is not sent, so a stay never

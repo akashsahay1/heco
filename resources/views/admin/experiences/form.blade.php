@@ -797,8 +797,16 @@
                         <div class="col-md-6">
                             <label class="form-label">Card Image</label>
                             @if($e && $e->card_image)
-                                <div class="mb-2">
-                                    <img src="{{ $e->card_image }}" class="rounded img-preview-md" alt="Card image" id="currentCardImage">
+                                {{-- Marked for removal here, actually removed on Save: the
+                                     cross is not a delete button, so nothing goes by accident. --}}
+                                <div class="mb-2 photo-tile" id="currentCardImage">
+                                    <img src="{{ $e->card_image }}" class="rounded img-preview-md" alt="Card image">
+                                    <button type="button" class="photo-drop" data-drop-card
+                                            title="Remove this image" aria-label="Remove this image">&times;</button>
+                                </div>
+                                <div class="mb-2 small text-muted d-none" id="cardImageDropped">
+                                    Card image will be removed when you save.
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="cardImageKeep">Keep it</button>
                                 </div>
                             @endif
                             <input type="file" class="form-control" name="card_image" accept="image/*" id="cardImageInput">
@@ -810,11 +818,14 @@
                             @if($e && $e->gallery && count($e->gallery))
                                 <div class="mb-2 d-flex gap-1 flex-wrap" id="currentGallery">
                                     @foreach($e->gallery as $gidx => $img)
-                                        <div class="position-relative">
+                                        <div class="photo-tile" data-path="{{ $img }}">
                                             <img src="{{ $img }}" class="rounded img-thumb-gallery" alt="Gallery">
+                                            <button type="button" class="photo-drop" data-drop-gallery
+                                                    title="Remove this image" aria-label="Remove this image">&times;</button>
                                         </div>
                                     @endforeach
                                 </div>
+                                <div class="mb-2 small text-muted d-none" id="galleryDropped"></div>
                             @endif
                             <input type="file" class="form-control" name="gallery[]" accept="image/*" multiple>
                             <small class="text-muted">Select multiple images for the gallery</small>
@@ -1118,6 +1129,62 @@ jQuery('#cardImageInput').on('change', function() {
     }
 });
 
+// ── Taking a photo down.
+//
+// The cross marks it; Save removes it. Nothing is deleted on the click, so a
+// mis-aimed cross costs a second click on "Keep it" and nothing else — and
+// leaving the page without saving leaves every photo where it was.
+var cardImageDropped = false;
+
+jQuery(document).on('click', '[data-drop-card]', function() {
+    cardImageDropped = true;
+    jQuery('#currentCardImage').addClass('d-none');
+    jQuery('#cardImageDropped').removeClass('d-none');
+});
+
+jQuery(document).on('click', '#cardImageKeep', function() {
+    cardImageDropped = false;
+    jQuery('#currentCardImage').removeClass('d-none');
+    jQuery('#cardImageDropped').addClass('d-none');
+});
+
+jQuery(document).on('click', '[data-drop-gallery]', function() {
+    jQuery(this).closest('.photo-tile').remove();
+    var left = jQuery('#currentGallery .photo-tile').length;
+    jQuery('#galleryDropped')
+        .toggleClass('d-none', left === jQuery('#currentGallery').data('started'))
+        .text(left
+            ? 'Removed photos go when you save. ' + left + ' will be kept.'
+            : 'All current photos will be removed when you save.');
+});
+jQuery('#currentGallery').data('started', jQuery('#currentGallery .photo-tile').length);
+
+/**
+ * Tell the save which photos survive.
+ *
+ * The card image needs a word of its own: a blank field cannot mean "take it
+ * down", because the field is blank on every save that does not touch photos.
+ * The gallery is the other way round — the server keeps whatever list it is
+ * sent, so the list is what is still on screen. Sending one empty entry is how
+ * "keep none" is said; the server drops anything that is not a stored path.
+ */
+function appendPhotoChoices(formData) {
+    if (cardImageDropped) {
+        formData.set('remove_card_image', '1');
+    }
+
+    var $gallery = jQuery('#currentGallery');
+    if (! $gallery.length) return;
+
+    var kept = $gallery.find('.photo-tile').map(function() {
+        return jQuery(this).data('path');
+    }).get();
+
+    if (kept.length === $gallery.data('started')) return;   // nothing was dropped
+    if (! kept.length) { formData.append('gallery[]', ''); return; }
+    kept.forEach(function(path) { formData.append('gallery[]', path); });
+}
+
 // Which button was pressed. A draft is parked half-finished on purpose, so it
 // is held to the name alone — everything else can be filled in later.
 var savingAsDraft = false;
@@ -1195,6 +1262,7 @@ jQuery('#experienceForm').on('submit', function(ev) {
     var form = this;
     var formData = new FormData(form);
     formData.append('save_experience', 1);
+    appendPhotoChoices(formData);
     if (savingAsDraft) {
         formData.set('approval_status', 'draft');
     } else if (draftOrNew) {

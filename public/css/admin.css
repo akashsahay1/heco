@@ -1280,6 +1280,21 @@ body.admin-login-page {
 /* Edit-form gallery thumbnail (60x80, used on experience/regen edit forms). */
 .heco-admin .img-thumb-gallery { width: 80px; height: 60px; object-fit: cover; }
 
+/* A stored photo with its "take this down" cross. The cross sits on the
+   corner of the picture rather than beside it, so a wrapping row of gallery
+   thumbnails never separates a cross from what it removes. */
+.heco-admin .photo-tile { position: relative; display: inline-block; }
+.heco-admin .photo-drop {
+    position: absolute; top: -6px; right: -6px;
+    width: 20px; height: 20px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid #fff; border-radius: 50%;
+    background: rgba(33, 37, 41, .85); color: #fff;
+    font-size: 14px; line-height: 1; cursor: pointer;
+}
+.heco-admin .photo-drop:hover,
+.heco-admin .photo-drop:focus-visible { background: #b02a37; }
+
 /* Preview-image sizing on edit forms + JS-driven previews. */
 .heco-admin .img-preview-md  { max-height: 120px; }
 .heco-admin .img-preview-sm  { max-height: 100px; }
