@@ -93,7 +93,7 @@ class CostCalculatorService
 
         if ($serviceType === 'accommodation') {
             $nights = $this->resolveNights($trip);
-            $occupancy = max((int) ($pricing->default_occupancy ?: 2), 1);
+            $occupancy = $pricing->seatsPerRoom();
             $rooms = max((int) ceil(($adults + $children) / $occupancy), 1);
             return (int) round((float) $pricing->price * $rooms * $nights);
         }
@@ -309,7 +309,7 @@ class CostCalculatorService
         //    experience provides none, so it never double-charges. ────────────────
         if ($trip->accommodation_pricing_id && ($accomPricing = SpPricing::live()->with('serviceProvider')->find($trip->accommodation_pricing_id))) {
             $nights = $this->resolveNights($trip);
-            $occupancy = max((int) ($accomPricing->default_occupancy ?: 2), 1);
+            $occupancy = $accomPricing->seatsPerRoom();
             $rooms = max((int) ceil(($adults + $children) / $occupancy), 1);
             $raw = (int) round((float) $accomPricing->price * $rooms * $nights);
             $accommodationCost += $this->applyMarkup($raw, $accomPricing->serviceProvider);

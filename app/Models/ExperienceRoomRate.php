@@ -44,10 +44,8 @@ class ExperienceRoomRate extends Model
     {
         $word = strtolower(trim((string) $this->occupancy));
 
-        foreach (['single' => 1, 'double' => 2, 'twin' => 2, 'triple' => 3, 'quad' => 4] as $name => $n) {
-            if (str_contains($word, $name)) {
-                return $n;
-            }
+        if ($seats = \App\Support\Occupancy::seats($word)) {
+            return $seats;
         }
 
         if (str_contains($word, 'room') || str_contains($word, 'dorm')) {

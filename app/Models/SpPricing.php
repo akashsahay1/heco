@@ -92,6 +92,24 @@ class SpPricing extends Model
         return $this->belongsTo(ServiceProvider::class);
     }
 
+    /**
+     * How many guests one room at this rate sleeps.
+     *
+     * `default_occupancy` holds the phrase the partner picked, so it cannot be
+     * cast to a number: "per double" casts to 0, and every caller that did so
+     * read a double as a single. That sold a party of four four rooms instead
+     * of two, invoiced the partner for four, and held four at the property.
+     *
+     * "per room" says the whole room goes at that price whoever is in it, and
+     * a rate card records no guest capacity, so that falls to the house
+     * figure HCT keeps in Settings.
+     */
+    public function seatsPerRoom(): int
+    {
+        return \App\Support\Occupancy::seats($this->default_occupancy)
+            ?: max((int) Setting::getValue('default_occupancy_per_room', 2), 1);
+    }
+
     /** Optional extras that sit alongside this rate. */
     public function addons()
     {

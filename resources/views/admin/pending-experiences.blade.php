@@ -90,8 +90,14 @@ jQuery(function() {
                     : '<span class="badge bg-warning text-dark">New submission</span>';
                 html += '<td><strong>' + esc(row.name) + '</strong> ' + kind +
                         '<div class="text-muted small">' + esc(row.short_description || '') + '</div></td>';
+                // Every role they hold, not just the first. provider_type is
+                // the first of the set, so a host who is also an OSP was
+                // labelled OSP on the one screen that exists to review what a
+                // HOST submitted.
+                var roles = (provider.provider_types || [])
+                        .map(function (t) { return String(t).toUpperCase(); }).join(', ');
                 html += '<td class="small">' + esc(provider.name || '-') +
-                        '<div class="text-muted">' + esc((provider.provider_type || '').toUpperCase()) + '</div></td>';
+                        '<div class="text-muted">' + esc(roles) + '</div></td>';
                 html += '<td class="small">' + esc(row.region ? row.region.name : '-') + '</td>';
                 html += '<td class="small">' + durationLabel(row) + '</td>';
                 html += '<td class="small">' + ((row.days || []).length || '-') + '</td>';

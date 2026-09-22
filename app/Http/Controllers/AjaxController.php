@@ -241,7 +241,7 @@ class AjaxController extends Controller
         $transportProviderCost = 0;
         $guideProviderCost = 0;
         if (!empty($guestData['accommodation_pricing_id']) && ($ap = SpPricing::live()->with('serviceProvider')->find($guestData['accommodation_pricing_id']))) {
-            $occ = max((int) ($ap->default_occupancy ?: 2), 1);
+            $occ = $ap->seatsPerRoom();
             $rooms = max((int) ceil($totalPax / $occ), 1);
             $accommodationProviderCost = $markup((int) round((float) $ap->price * $rooms * $nights), $ap->serviceProvider);
             $accommodationCost += $accommodationProviderCost;
@@ -833,7 +833,7 @@ class AjaxController extends Controller
         }
         $adults = max((int) $trip->adults, 1);
         $children = (int) ($trip->children ?: 0);
-        $occupancy = max((int) ($pricing->default_occupancy ?: 2), 1);
+        $occupancy = $pricing->seatsPerRoom();
         $rooms = max((int) ceil(($adults + $children) / $occupancy), 1);
 
         $room = app(\App\Services\RoomAvailabilityService::class);
@@ -1076,9 +1076,22 @@ class AjaxController extends Controller
         // One region, one regional partner - but if a trip somehow spans two,
         // the margin is not paid twice over. It is the trip's margin, so it is
         // split between whoever coordinates the trip.
-        $share = (int) round($amount / max($partners->count(), 1));
+        //
+        // The split has to add back up to the margin. Rounding each share on
+        // its own and handing everybody the same figure paid out more than was
+        // owed: 3,209 between two became 1,605 each, which is 3,210. So the
+        // rupees that do not divide are handed out one apiece, to the first
+        // partners in turn, and the last partner is not left short either.
+        $count = max($partners->count(), 1);
+        $base = intdiv($amount, $count);
+        $spare = $amount - ($base * $count);
+        $shares = [];
+        foreach ($partners->values() as $i => $partner) {
+            $shares[$partner->id] = $base + ($i < $spare ? 1 : 0);
+        }
 
         foreach ($partners as $partner) {
+            $share = $shares[$partner->id];
             $already = SpPayment::where('trip_id', $trip->id)
                 ->where('service_provider_id', $partner->id)
                 ->where('service_type', 'regional_margin')
@@ -4352,6 +4365,18 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // Calculate pricing
             $costCalculator = app(CostCalculatorService::class);
             $costCalculator->calculate($trip);
+        } else {
+            // A guest who never asked the AI for an itinerary still chose
+            // experiences, and the price is worked out from the DAYS. Without
+            // this the trip arrived carrying a paid experience and priced at
+            // nothing: the panel went on showing the per-person figure while
+            // the total read zero, and the trip could be confirmed for zero and
+            // then refused payment as already settled.
+            //
+            // The same rebuild every other path runs after touching the
+            // selected experiences.
+            app(ItineraryService::class)->rebuildFromExperiences($trip);
+            app(CostCalculatorService::class)->calculate($trip);
         }
 
         // Transfer guest chat history to DB
@@ -4444,6 +4469,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 $day->delete();
             });
             app(ItineraryService::class)->parseAndCreateFromAi($trip, $aiItinerary);
+            app(CostCalculatorService::class)->calculate($trip);
+        } else {
+            // No AI itinerary, but experiences were still chosen. See the note
+            // on the same branch in syncGuestTripToDb: the price comes from the
+            // days, so without this the trip is worth nothing.
+            app(ItineraryService::class)->rebuildFromExperiences($trip);
             app(CostCalculatorService::class)->calculate($trip);
         }
 
@@ -8488,9 +8519,17 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 return;
             }
 
+            // A slab counts only if it is kept, and the code that keeps them
+            // wants a party size as well as a price: min_persons >= 1 && price
+            // > 0. Counting on the price alone let a payload with no
+            // min_persons through - the guard saw a priced listing, the saver
+            // threw the row away, and the listing reached HCT's review queue
+            // with a headline price of zero and an answer of "success".
             $slabs = 0;
             foreach ((array) $request->input('price_slabs', []) as $row) {
-                if (is_array($row) && (float) ($row['price_per_person'] ?? 0) > 0) {
+                if (is_array($row)
+                    && (int) ($row['min_persons'] ?? 0) >= 1
+                    && (float) ($row['price_per_person'] ?? 0) > 0) {
                     $slabs++;
                 }
             }
@@ -9126,7 +9165,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // though OSPs authored experiences, which they do not.
         $request->merge([
             'owner_provider_id' => $sp->id,
-            'owner_type'        => $sp->provider_type,
+            // Not $sp->provider_type: that accessor returns the FIRST of the
+            // set a partner holds, so a host who is also an OSP was recorded as
+            // owning their own experience as an OSP. Only a host reaches this
+            // line - resolveExperienceAuthor() answers 403 to everyone else -
+            // so the owner of an experience is a host, always.
+            'owner_type'        => 'hlh',
             'hlh_id'            => $sp->id,
         ]);
 

@@ -81,7 +81,12 @@ class ProviderAccountResource
                 'bank_account_number' => $provider->bank_account_number,
                 'upi' => $provider->upi,
             ],
-            'markup_percent' => $provider->markup_percent,
+            // markup_percent is deliberately absent. It is what HECO adds on
+            // top of this partner's rates before a traveller sees them, and it
+            // is HECO's business, not theirs. It used to ride along here, which
+            // put it in the login response, /auth/me and the profile screens -
+            // every door the app opens with. The listing endpoint has always
+            // hidden it (getSpExperiences makeHidden); this had not.
             'ical_url' => $provider->ical_url,
             'approved_at' => $provider->approved_at,
             'created_at' => $provider->created_at,
