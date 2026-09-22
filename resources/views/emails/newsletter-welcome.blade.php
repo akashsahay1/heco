@@ -5,7 +5,7 @@
 <h2 style="margin:0 0 16px; color:#79a09f; font-size:20px;">Welcome to HECO!</h2>
 
 <p style="margin:0 0 14px; line-height:1.6;">
-    Thanks for joining our newsletter. We'll send you occasional updates on new regions, hand-picked experiences, and stories from the communities we travel with — no spam, no clutter.
+    Thanks for joining our newsletter. We'll send you occasional updates on new regions, hand-picked experiences, and stories from the communities we travel with - no spam, no clutter.
 </p>
 
 <p style="margin:0 0 14px; line-height:1.6;">

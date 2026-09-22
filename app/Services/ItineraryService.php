@@ -129,7 +129,7 @@ class ItineraryService
      * selected experiences. Each experience contributes its full
      * duration_days so the resulting day count always matches what the
      * traveller has actually picked. AI-generated titles/notes (if any)
-     * are layered on top via $aiDays — pass an empty array to skip AI
+     * are layered on top via $aiDays - pass an empty array to skip AI
      * enrichment (fast path used when experiences are added/removed).
      */
     public function rebuildFromExperiences(Trip $trip, array $aiDays = []): bool
@@ -143,7 +143,7 @@ class ItineraryService
         $expModels = $trip->selectedExperiences->pluck('experience')->filter()->values();
 
         if ($expModels->isEmpty()) {
-            // No experiences — clear any existing days so the timeline reflects reality.
+            // No experiences - clear any existing days so the timeline reflects reality.
             $trip->tripDays()->each(function ($day) {
                 $day->experiences()->delete();
                 $day->services()->delete();
@@ -208,9 +208,9 @@ class ItineraryService
             $expDay = $exp?->days?->firstWhere('day_number', $dayOfExp);
 
             $genericTitle = $totalExpDays > 1
-                ? $expName . ' — Day ' . $dayOfExp . ' of ' . $totalExpDays
+                ? $expName . ' - Day ' . $dayOfExp . ' of ' . $totalExpDays
                 : $expName;
-            $editorTitle = $expDay?->title ? ($expName . ' — ' . $expDay->title) : null;
+            $editorTitle = $expDay?->title ? ($expName . ' - ' . $expDay->title) : null;
 
             if ($totalExpDays > 1) {
                 if ($dayOfExp === 1) {
@@ -300,7 +300,7 @@ class ItineraryService
     /**
      * What this day's row should carry for an experience.
      *
-     * An experience is one bundle, charged once — CostCalculatorService puts the
+     * An experience is one bundle, charged once - CostCalculatorService puts the
      * whole line on the first day it meets and zeroes the rest. This applies the
      * same rule at write time, so a four-day trek does not read as four times its
      * price on the admin itinerary in the window before the first calculate().
@@ -389,7 +389,7 @@ class ItineraryService
                     'start_time' => $expDay->start_time ?? null,
                     'end_time' => $expDay->end_time ?? null,
                     'cost_per_person' => $costPerPerson,
-                    // Never the first day of this experience — it is already on
+                    // Never the first day of this experience - it is already on
                     // the trip, which is how we knew days were missing.
                     'total_cost' => 0,
                     'sort_order' => 0,

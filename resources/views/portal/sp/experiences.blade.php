@@ -8,7 +8,7 @@
         <div>
             <h4 class="mb-1"><i class="bi bi-layers"></i> My Experiences</h4>
             <p class="text-muted small mb-0">
-                Build the experiences you run. Each one goes to HECO for review — once approved
+                Build the experiences you run. Each one goes to HECO for review - once approved
                 it becomes visible to travellers and can be added to trips.
             </p>
         </div>
@@ -66,7 +66,7 @@
 
         <div class="alert alert-info small py-2 d-none" id="spExpLiveEdit">
             <i class="bi bi-info-circle"></i>
-            This experience is <strong>live</strong>. Your changes go to HECO for review —
+            This experience is <strong>live</strong>. Your changes go to HECO for review -
             travellers keep seeing the approved version until they are accepted.
         </div>
 
@@ -82,7 +82,7 @@
                 <div id="spSecBasic" class="accordion-collapse collapse show" data-bs-parent="#spExpAccordion">
                     <div class="accordion-body">
                         {{-- The category is chosen first and decides which
-                             sections below apply — "the user should first choose
+                             sections below apply - "the user should first choose
                              the category that best describes their experience,
                              and then be presented with a form specifically
                              designed for that category". --}}
@@ -468,7 +468,7 @@
                 </div>
             </div>
 
-            {{-- Rooms & pricing — only for an experiential stay, which charges
+            {{-- Rooms & pricing - only for an experiential stay, which charges
                  by room and board rather than per head.
 
                  One row per price rather than a room-type × meal-plan grid: ten
@@ -538,7 +538,7 @@
                 </div>
             </div>
 
-            {{-- Add-ons — optional extras hung off the main experience, so a
+            {{-- Add-ons - optional extras hung off the main experience, so a
                  host showcases everything without creating a listing for each.
                  Not offered on Workshops, per the client's field lists. --}}
             <div class="accordion-item"
@@ -551,7 +551,7 @@
                 <div id="spSecAddons" class="accordion-collapse collapse" data-bs-parent="#spExpAccordion">
                     <div class="accordion-body">
                         <p class="text-muted small mb-2">
-                            Optional extras a traveller can add — a guided village walk, a cooking
+                            Optional extras a traveller can add - a guided village walk, a cooking
                             class, birdwatching. Leave the price blank if it is included.
                         </p>
                         <div id="spAddons"></div>
@@ -564,7 +564,7 @@
                                 <div class="row g-2">
                                     <div class="col-md-5">
                                         <input type="text" class="form-control form-control-sm"
-                                               data-key="name" placeholder="Name — e.g. Guided village walk">
+                                               data-key="name" placeholder="Name - e.g. Guided village walk">
                                     </div>
                                     <div class="col-md-3">
                                         <input type="number" step="0.01" min="0" class="form-control form-control-sm"
@@ -718,7 +718,7 @@
 
         <div class="d-flex gap-2 mt-3">
             {{-- "Many users won't have all the information or photos ready in
-                 one session" — so a half-finished listing can be put down and
+                 one session" - so a half-finished listing can be put down and
                  picked up later without going anywhere near HECO's queue. --}}
             <button type="button" class="btn btn-outline-secondary flex-shrink-0" id="spExpDraftBtn">
                 <i class="bi bi-save me-1"></i> Save draft
@@ -784,7 +784,7 @@ function spDurationLabel(row) {
     return 'Single day';
 }
 
-// 0 means no limit. Rejected listings are not counted — an experience can only
+// 0 means no limit. Rejected listings are not counted - an experience can only
 // ever be hidden, never deleted, so counting refusals would lock a host out.
 var SP_EXP_CAP = {{ (int) $experienceCap }};
 
@@ -801,7 +801,7 @@ function spApplyExperienceCap() {
 
     label.text(used + ' of ' + SP_EXP_CAP + ' experiences used');
     if (used >= SP_EXP_CAP) {
-        btn.prop('disabled', true).attr('title', 'Limit reached — contact HECO to list more');
+        btn.prop('disabled', true).attr('title', 'Limit reached - contact HECO to list more');
         label.addClass('text-danger').removeClass('text-muted');
     } else {
         btn.prop('disabled', false).removeAttr('title');
@@ -829,7 +829,7 @@ function spLoadExperiences() {
             tr += '<td class="small">' + spEsc(row.type || '-') + '</td>';
             tr += '<td class="small">' + spEsc(row.region ? row.region.name : '-') + '</td>';
             tr += '<td class="small">' + spDurationLabel(row) + '</td>';
-            // A stay is priced by the room, so it has no per-person figure —
+            // A stay is priced by the room, so it has no per-person figure -
             // reading base_cost_per_person alone printed 0 for every homestay.
             var rowPrice = row.price_from;
             tr += '<td class="small">' + (rowPrice && rowPrice.amount > 0
@@ -941,7 +941,7 @@ function spAddSlabRow(slab) {
 //
 // Sections are hidden, never removed: switching category back must not lose
 // what was already typed, and hidden fields are skipped on submit rather than
-// posted — so the server, which only replaces a section it was actually sent,
+// posted - so the server, which only replaces a section it was actually sent,
 // leaves the rest of the record alone.
 function spApplyCategory() {
     var chosen = jQuery('#spExpCategory').val();
@@ -1026,7 +1026,7 @@ function spOpenExperience(row) {
             );
         });
 
-        // File inputs cannot be pre-filled — show what is already stored so the
+        // File inputs cannot be pre-filled - show what is already stored so the
         // provider knows leaving them empty keeps the existing photos.
         if (row.card_image) {
             jQuery('#spCardImageThumb').attr('src', row.card_image);
@@ -1173,7 +1173,7 @@ jQuery(function() {
     /**
      * Tell the save which photos survive.
      *
-     * The card image needs a word of its own — a blank file field cannot mean
+     * The card image needs a word of its own - a blank file field cannot mean
      * "take it down", because it is blank on every save that does not touch
      * photos. The gallery is the other way round: the server keeps whatever
      * list it is handed, so the list is what is still on screen, and one empty
@@ -1214,7 +1214,7 @@ jQuery(function() {
         var reset = function() { btn.prop('disabled', false).html(label); };
         btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Saving...');
 
-        // FormData, not serializeArray — the photo inputs are files, and
+        // FormData, not serializeArray - the photo inputs are files, and
         // serializeArray silently drops them.
         var data = new FormData(form);
         data.append('save_sp_experience', 1);
@@ -1237,7 +1237,7 @@ jQuery(function() {
             if (!jQuery(this).is(':checked')) data.append(name, 0);
         });
 
-        // Repeaters are not plain inputs, so they are gathered by hand — and
+        // Repeaters are not plain inputs, so they are gathered by hand - and
         // only when their section applies.
         if (!jQuery('#spSecRooms').closest('.accordion-item').hasClass('d-none')) {
             spRepeaterRows('.sp-room-rate', 'price').forEach(function(r, i) {
@@ -1266,7 +1266,7 @@ jQuery(function() {
                 showAlert(
                     asDraft
                         ? 'Saved as a draft. Come back and finish it whenever you like.'
-                        : 'Submitted — HECO will review it shortly.',
+                        : 'Submitted - HECO will review it shortly.',
                     'success',
                 );
                 reset();
@@ -1287,7 +1287,7 @@ jQuery(function() {
     });
 
     // A draft is stored without being reviewed, so it skips the form's own
-    // validation — the whole point is that it is not finished yet.
+    // validation - the whole point is that it is not finished yet.
     jQuery(document).on('click', '#spExpDraftBtn', function() {
         spSubmitExperience(true);
     });

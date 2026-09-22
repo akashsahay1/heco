@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Experience extends Model
 {
     /**
-     * The one category sold by the room rather than by the head — a remote
+     * The one category sold by the room rather than by the head - a remote
      * homestay, a heritage house, a boutique property. Its price lives in
      * experience_room_rates (occupancy × meal plan), not in
      * base_cost_per_person, so it needs its own answer to "from how much?".
@@ -89,7 +89,7 @@ class Experience extends Model
     /**
      * Columns that belong to HECO and the host, not to the public.
      *
-     * The cost breakdown and the markup are how the quoted price is arrived at —
+     * The cost breakdown and the markup are how the quoted price is arrived at -
      * publishing them hands a reader the host's net rate and HECO's margin. The
      * risk and review notes are internal working notes. None of it is read by
      * anything traveller-facing, which reads price_from instead.
@@ -127,7 +127,7 @@ class Experience extends Model
      * The headline price for a card: amount plus the unit it is charged in.
      *
      * A stay quotes the cheapest room it offers, per night. Everything else
-     * quotes per person — base_cost_per_person already holds the cheapest slab
+     * quotes per person - base_cost_per_person already holds the cheapest slab
      * (saveExperience keeps them in lockstep), so no relation is needed.
      *
      * Returns null when there is no price to show, which is what the views
@@ -137,7 +137,7 @@ class Experience extends Model
     {
         if (!$this->isStay()) {
             // Margin included: this is the number on a card a traveller reads.
-            $amount = $this->travellerPricePerPerson();
+            $amount = $this->travellerPriceFrom();
             return $amount > 0
                 ? ['amount' => $amount, 'unit' => 'per person', 'currency' => $this->price_currency ?: 'INR']
                 : null;
@@ -150,9 +150,72 @@ class Experience extends Model
                 ? $this->roomRates->where('price', '>', 0)->min('price')
                 : $this->roomRates()->where('price', '>', 0)->min('price'));
 
+        // Marked up like every other price a traveller reads. This branch used
+        // to hand back the host's own rate untouched, so a stay was the one
+        // listing on the site quoted at cost.
+        $cheapest = $cheapest > 0 ? $cheapest * (1 + $this->effectiveMarkupPercent() / 100) : 0;
+
         return $cheapest > 0
             ? ['amount' => (float) $cheapest, 'unit' => 'per night', 'currency' => $this->price_currency ?: 'INR']
             : null;
+    }
+
+    /**
+     * What a stay costs a party for the whole visit, markup included.
+     *
+     * A stay is sold by the room, so the price depends on how many rooms the
+     * party needs and how many nights they are here, not on a per-person rate.
+     * Each rate in the grid is tried and the cheapest total wins: a party of
+     * three is better off in one triple than in two doubles, and the grid is
+     * where that is decided.
+     *
+     * Returns 0 when the listing is not a stay or has no priced room, which is
+     * what the caller treats as "nothing to charge".
+     */
+    /**
+     * How many rooms a party takes at this stay.
+     *
+     * The same answer the price is built from: whichever rate costs least in
+     * total is the one they are booked into, so the rooms held must be that
+     * rate's rooms and not some other count.
+     */
+    public function roomsNeededFor(int $heads): int
+    {
+        if (! $this->isStay()) {
+            return 0;
+        }
+
+        $rates = ($this->relationLoaded('roomRates') ? $this->roomRates : $this->roomRates()->get())
+            ->where('price', '>', 0);
+
+        if ($rates->isEmpty()) {
+            return 1;
+        }
+
+        $chosen = $rates->sortBy(fn (ExperienceRoomRate $r) => $r->costFor($heads, 1))->first();
+
+        return max((int) ceil(max($heads, 1) / max($chosen->seats(), 1)), 1);
+    }
+
+    public function stayCostFor(int $heads, ?int $nights = null, bool $withMarkup = true): int
+    {
+        if (! $this->isStay()) {
+            return 0;
+        }
+
+        $nights = $nights ?: max((int) $this->duration_nights, (int) $this->duration_days - 1, 1);
+        $rates = $this->relationLoaded('roomRates') ? $this->roomRates : $this->roomRates()->get();
+        $rates = $rates->where('price', '>', 0);
+
+        if ($rates->isEmpty()) {
+            return 0;
+        }
+
+        $best = $rates->map(fn (ExperienceRoomRate $r) => $r->costFor($heads, $nights))->min();
+
+        return (int) round($withMarkup
+            ? $best * (1 + $this->effectiveMarkupPercent() / 100)
+            : $best);
     }
 
     public function hlh()
@@ -202,7 +265,7 @@ class Experience extends Model
      *
      * Wider than `pending` by one status: a listing already turned down. Approve
      * and reject both scoped to `pending`, so the moment one was rejected it
-     * left that set and nothing could be done with it again — not by HCT, who
+     * left that set and nothing could be done with it again - not by HCT, who
      * had only a red banner and no button, and not by the host, whose edits
      * saved happily and left the status exactly where it was. A rejection was a
      * one-way door, which is not what a review is.
@@ -227,7 +290,7 @@ class Experience extends Model
      */
     /**
      * price_from travels with every listing so the eight places that render a
-     * headline price do not each re-derive it — and so a stay does not fall
+     * headline price do not each re-derive it - and so a stay does not fall
      * through to base_cost_per_person, which is 0 for it.
      */
     protected $appends = ['has_pending_changes', 'price_from'];
@@ -238,7 +301,7 @@ class Experience extends Model
     }
 
     /**
-     * Reviewed and live. Anything traveller-facing must go through this —
+     * Reviewed and live. Anything traveller-facing must go through this -
      * `is_active` alone would also match experiences nobody has approved.
      */
     public function scopeLive($query)
@@ -272,11 +335,11 @@ class Experience extends Model
     }
 
     /**
-     * Optional extras a host hangs off the main experience — a village walk, a
+     * Optional extras a host hangs off the main experience - a village walk, a
      * cooking class, birdwatching. The client's reason for them: it "gives
      * travellers much more flexibility while encouraging HLHs to showcase
      * everything they have to offer instead of creating many separate
-     * experiences" — which also keeps them under the listing cap.
+     * experiences" - which also keeps them under the listing cap.
      */
     public function addons()
     {
@@ -284,7 +347,7 @@ class Experience extends Model
     }
 
     /**
-     * The pricing grid for an experiential stay — occupancy × meal plan. Empty
+     * The pricing grid for an experiential stay - occupancy × meal plan. Empty
      * for the other two categories, which price per person instead.
      */
     public function roomRates()
@@ -294,7 +357,7 @@ class Experience extends Model
 
     /**
      * Saved but never submitted. A draft is invisible to travellers and absent
-     * from HCT's review queue — scopePending() only matches pending rows and
+     * from HCT's review queue - scopePending() only matches pending rows and
      * parked revisions, so nothing extra is needed to keep drafts out of it.
      */
     public function isDraft(): bool
@@ -331,6 +394,20 @@ class Experience extends Model
      */
     public function travellerPricePerPerson(int $pax = 1): float
     {
+        $raw = $this->hostPricePerPerson($pax);
+
+        return $raw > 0 ? $raw * (1 + $this->effectiveMarkupPercent() / 100) : 0.0;
+    }
+
+    /**
+     * What the HOST is owed per person, before HECO's margin.
+     *
+     * The same figure the traveller's price is built from, stopped one step
+     * earlier. It is what goes on the host's invoice: they are paid their own
+     * price, and the margin never reaches them.
+     */
+    public function hostPricePerPerson(int $pax = 1): float
+    {
         $raw = $this->slabPricePerPerson($pax);
 
         if ($raw <= 0) {
@@ -340,7 +417,32 @@ class Experience extends Model
                     + $this->cost_activities + $this->cost_other));
         }
 
-        return $raw > 0 ? $raw * (1 + $this->effectiveMarkupPercent() / 100) : 0.0;
+        return max($raw, 0);
+    }
+
+    /**
+     * The least a traveller can pay per person, margin included - the "from"
+     * on a card, and the only per-person figure shown before a party size is
+     * known.
+     *
+     * It is the cheapest slab, which is also what saveExperience stores in
+     * base_cost_per_person: "when slabs are set, the cheapest per-person (the
+     * 'from' price on cards)". The card used to ask for the price of a party of
+     * one instead, and slabs run the other way - fewer travellers cost more
+     * each - so a listing at 2+ ₹14,500 / 4+ ₹12,500 / 6+ ₹11,000 advertised
+     * "from ₹14,500", a figure dearer than every price it actually charges.
+     */
+    public function travellerPriceFrom(): float
+    {
+        $cheapest = (float) ($this->priceSlabs->where('price_per_person', '>', 0)->min('price_per_person') ?: 0);
+
+        if ($cheapest <= 0) {
+            $cheapest = (float) ($this->base_cost_per_person
+                ?: ($this->cost_accommodation + $this->cost_logistics + $this->cost_guide
+                    + $this->cost_activities + $this->cost_other));
+        }
+
+        return $cheapest > 0 ? $cheapest * (1 + $this->effectiveMarkupPercent() / 100) : 0.0;
     }
 
     public function slabPricePerPerson(int $pax): float
@@ -355,7 +457,7 @@ class Experience extends Model
             return (float) $slab->price_per_person;
         }
 
-        // No slab at/below pax — use the smallest configured slab if any, else base.
+        // No slab at/below pax - use the smallest configured slab if any, else base.
         $smallest = $this->priceSlabs->sortBy('min_persons')->first();
         return $smallest ? (float) $smallest->price_per_person : (float) $this->base_cost_per_person;
     }

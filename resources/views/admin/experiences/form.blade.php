@@ -6,7 +6,7 @@
     $e = $experience ?? null;
     $regions = $regions ?? \App\Models\Region::where('is_active', 1)->orderBy('name')->get();
     // The controller sends this as $hlhs; reading $providers meant its list was
-    // ignored and the weaker fallback below rendered instead — which asked
+    // ignored and the weaker fallback below rendered instead - which asked
     // provider_type = 'hlh' and so missed every host that also supplies
     // services. Active hosts only: an experience cannot be given to anyone else.
     $providers = $hlhs
@@ -32,7 +32,7 @@
              travellers until it is approved. Both were true; together they were
              nonsense. --}}
         @if($e->approval_status !== 'approved')
-            <span class="badge bg-warning text-dark">Not published — {{ $e->approval_status }}</span>
+            <span class="badge bg-warning text-dark">Not published - {{ $e->approval_status }}</span>
         @elseif($e->is_active)
             <span class="badge bg-success">Live</span>
         @else
@@ -553,7 +553,7 @@
                                 <span class="input-group-text cost-symbol">{{ isset($e) && $e->price_currency ? \App\Models\Currency::where('code', $e->price_currency)->value('symbol') ?? '₹' : '₹' }}</span>
                                 <input type="number" class="form-control bg-light" id="baseCostPreview" name="base_cost_per_person" value="{{ $e->base_cost_per_person ?? '0.00' }}" step="0.01" min="0" readonly tabindex="-1">
                             </div>
-                            <small class="text-muted">Cheapest group-size slab below (or the sum of components if no slabs are set). Shown as the "from" price on cards.</small>
+                            <small class="text-muted">The host's own price: the cheapest group-size slab below, or the sum of the components if no slabs are set. This is what the host is paid — it is not what the traveller is quoted.</small>
                         </div>
                         <div class="col-md-6">
                             {{-- What HECO adds on top before a traveller is
@@ -568,6 +568,23 @@
                                 <span class="input-group-text">%</span>
                             </div>
                             <small class="text-muted">Added to the price above before the traveller sees it. Leave empty to quote the host's price as it stands. The host is always paid the raw amount.</small>
+                        </div>
+
+                        {{-- The three numbers on this screen used to disagree: the box
+                             above summed the components while the slabs priced the
+                             trip, and the markup appeared in neither — so setting one
+                             changed nothing an admin could see, and it read as a
+                             margin that never applied. This says, in the same terms
+                             the traveller is quoted in, exactly what the save will
+                             produce. Computed the way the server computes it. --}}
+                        <div class="col-md-12">
+                            <div class="border rounded p-2 bg-light" id="travellerPricePanel">
+                                <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
+                                    <strong class="small mb-0">What the traveller pays</strong>
+                                    <span class="small text-muted" id="travellerPriceNote"></span>
+                                </div>
+                                <div class="small mt-1" id="travellerPriceRows"></div>
+                            </div>
                         </div>
                         <div class="col-md-12">
                             <label class="form-label mb-1">Per-Person Price by Group Size</label>
@@ -601,12 +618,13 @@
                                 <span class="input-group-text cost-symbol">₹</span>
                                 <input type="number" class="form-control" name="single_supplement" value="{{ $e->single_supplement ?? '' }}" step="0.01" min="0">
                             </div>
+                            <small class="text-muted">Charged once, for the whole experience, to a traveller left without a room-mate. Only applies where the experience houses people.</small>
                         </div>
                         <div class="col-md-12">
                             <label class="form-label">Seasonal Price Variation</label>
                             <p class="text-muted small mb-2">
                                 Charge more (or less) in certain seasons. Name the period and set how much the
-                                per-person price changes — use a minus for a discount. Leave empty if the price is
+                                per-person price changes - use a minus for a discount. Leave empty if the price is
                                 the same all year.
                             </p>
                             @php
@@ -634,7 +652,7 @@
                                                 <td>
                                                     <input type="text" class="form-control form-control-sm season-label"
                                                         name="seasonal_price_variation[{{ $i }}][label]"
-                                                        value="{{ $row['label'] }}" placeholder="e.g. Peak — Oct to Nov">
+                                                        value="{{ $row['label'] }}" placeholder="e.g. Peak - Oct to Nov">
                                                 </td>
                                                 <td>
                                                     <div class="input-group input-group-sm">
@@ -663,7 +681,7 @@
                                 <tr class="seasonal-row">
                                     <td>
                                         <input type="text" class="form-control form-control-sm season-label"
-                                            name="seasonal_price_variation[__IDX__][label]" placeholder="e.g. Peak — Oct to Nov">
+                                            name="seasonal_price_variation[__IDX__][label]" placeholder="e.g. Peak - Oct to Nov">
                                     </td>
                                     <td>
                                         <div class="input-group input-group-sm">
@@ -853,7 +871,7 @@
         </a>
         <div class="d-flex gap-2">
             {{-- A half-finished listing can be parked instead of lost. Offered
-                 on a new experience and on one already a draft — never on a
+                 on a new experience and on one already a draft - never on a
                  published one, where it would quietly take it off sale. --}}
             @if(!$e || $e->approval_status === 'draft')
             <button type="submit" class="btn btn-outline-secondary btn-lg" id="btnSaveDraft">
@@ -901,7 +919,7 @@
 $(document).on('click', '#btnApproveExp', function() {
     var btn = $(this).prop('disabled', true);
     ajaxPost({ approve_experience: 1, id: btn.data('id') }, function() {
-        showAlert('Approved — it is live now.', 'success');
+        showAlert('Approved - it is live now.', 'success');
         setTimeout(function() { window.location.reload(); }, 600);
     }, function(xhr) {
         // Approving a parked edit replays it through the normal save, so this
@@ -925,7 +943,7 @@ $(document).on('click', '#confirmRejectExp', function() {
     }, function() {
         btn.prop('disabled', false);
         bootstrap.Modal.getInstance($('#rejectExpModal')[0]).hide();
-        showAlert('Rejected — the provider can revise it and send it again.', 'success');
+        showAlert('Rejected - the provider can revise it and send it again.', 'success');
         setTimeout(function() { window.location.reload(); }, 600);
     }, function(xhr) {
         btn.prop('disabled', false);
@@ -960,16 +978,79 @@ jQuery(function() {
         jQuery('#sectionCosting .cost-symbol').text(symbol);
     });
 
-    // Live-recompute Total Cost Per Person from the 5 component fields
-    function recomputeBaseCost() {
-        var sum = 0;
-        jQuery('.cost-component').each(function() {
-            var v = parseFloat(jQuery(this).val()) || 0;
-            sum += v;
+    /**
+     * The same two sums the server makes on save, shown while they are typed.
+     *
+     * The host's price is the cheapest slab when slabs are filled and the sum
+     * of the components when they are not — saveExperience stores exactly
+     * that. The traveller's price is each of those with the markup on top. The
+     * box used to sum the components whichever was in use, so a listing priced
+     * by slabs showed a figure nothing charged.
+     */
+    function slabRows() {
+        var rows = [];
+        jQuery('[name^="price_slabs"][name$="[price_per_person]"]').each(function() {
+            var price = parseFloat(jQuery(this).val());
+            if (!(price > 0)) return;
+            var persons = parseInt(jQuery(this).closest('tr').find('[name$="[min_persons]"]').val(), 10);
+            if (persons >= 1) rows.push({ persons: persons, price: price });
         });
-        jQuery('#baseCostPreview').val(sum.toFixed(2));
+        return rows.sort(function(a, b) { return a.persons - b.persons; });
     }
-    jQuery(document).on('input change', '.cost-component', recomputeBaseCost);
+
+    function componentSum() {
+        var sum = 0;
+        jQuery('.cost-component').each(function() { sum += parseFloat(jQuery(this).val()) || 0; });
+        return sum;
+    }
+
+    function recomputeBaseCost() {
+        var slabs = slabRows();
+        var symbol = jQuery('#sectionCosting .cost-symbol').first().text() || '₹';
+        var markup = parseFloat(jQuery('[name="markup_percent"]').val()) || 0;
+        var withMarkup = function(n) { return n * (1 + markup / 100); };
+        var money = function(n) {
+            return symbol + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+        };
+
+        var cheapest = slabs.length
+            ? Math.min.apply(null, slabs.map(function(r) { return r.price; }))
+            : componentSum();
+        jQuery('#baseCostPreview').val(cheapest.toFixed(2));
+
+        if (!(cheapest > 0)) {
+            jQuery('#travellerPriceNote').text('No price set yet.');
+            jQuery('#travellerPriceRows').empty();
+            return;
+        }
+
+        jQuery('#travellerPriceNote').text(markup > 0
+            ? 'Host’s price plus ' + markup + '% markup.'
+            : 'No markup set — the host’s price is the price.');
+
+        var html = '<div>Shown on cards as <strong>from ' + money(withMarkup(cheapest)) + '</strong> per person.</div>';
+        if (slabs.length) {
+            html += '<div class="mt-1">';
+            slabs.forEach(function(r, i) {
+                var upto = slabs[i + 1] ? (slabs[i + 1].persons - 1) : null;
+                var who = upto === null
+                    ? r.persons + '+ travellers'
+                    : (upto > r.persons ? r.persons + '–' + upto + ' travellers'
+                                        : r.persons + (r.persons === 1 ? ' traveller' : ' travellers'));
+                html += '<div>' + who + ': <strong>' + money(withMarkup(r.price)) + '</strong> each'
+                     + (markup > 0 ? ' <span class="text-muted">(host keeps ' + money(r.price) + ')</span>' : '')
+                     + '</div>';
+            });
+            html += '</div>';
+        } else if (markup > 0) {
+            html += '<div class="mt-1 text-muted">Host keeps ' + money(cheapest) + ' per person.</div>';
+        }
+        jQuery('#travellerPriceRows').html(html);
+    }
+
+    jQuery(document).on('input change',
+        '.cost-component, [name="markup_percent"], [name^="price_slabs"]', recomputeBaseCost);
+    jQuery('#priceCurrency').on('change', recomputeBaseCost);
     recomputeBaseCost();
 
     // Add day button (multi-day only)
@@ -1132,7 +1213,7 @@ jQuery('#cardImageInput').on('change', function() {
 // ── Taking a photo down.
 //
 // The cross marks it; Save removes it. Nothing is deleted on the click, so a
-// mis-aimed cross costs a second click on "Keep it" and nothing else — and
+// mis-aimed cross costs a second click on "Keep it" and nothing else - and
 // leaving the page without saving leaves every photo where it was.
 var cardImageDropped = false;
 
@@ -1164,7 +1245,7 @@ jQuery('#currentGallery').data('started', jQuery('#currentGallery .photo-tile').
  *
  * The card image needs a word of its own: a blank field cannot mean "take it
  * down", because the field is blank on every save that does not touch photos.
- * The gallery is the other way round — the server keeps whatever list it is
+ * The gallery is the other way round - the server keeps whatever list it is
  * sent, so the list is what is still on screen. Sending one empty entry is how
  * "keep none" is said; the server drops anything that is not a stored path.
  */
@@ -1186,9 +1267,9 @@ function appendPhotoChoices(formData) {
 }
 
 // Which button was pressed. A draft is parked half-finished on purpose, so it
-// is held to the name alone — everything else can be filled in later.
+// is held to the name alone - everything else can be filled in later.
 var savingAsDraft = false;
-// True for a new listing and for one still a draft — the only two states the
+// True for a new listing and for one still a draft - the only two states the
 // draft button is offered in, and the only two where pressing Save Experience
 // should change where the listing stands. On anything else the status is left
 // exactly as it is: an edit to a rejected listing must not quietly approve it.
@@ -1197,7 +1278,7 @@ jQuery('#btnSaveDraft').on('click', function() { savingAsDraft = true; });
 jQuery('#btnSave').on('click', function() { savingAsDraft = false; });
 
 // Enter in a text box submits the form without either button being pressed, so
-// the flag above would still hold whatever was last clicked — a failed draft
+// the flag above would still hold whatever was last clicked - a failed draft
 // followed by Enter would have saved another draft. The browser names the
 // button that actually submitted; the flag is only the fallback for browsers
 // that do not.
@@ -1226,7 +1307,7 @@ jQuery('#experienceForm').on('submit', function(ev) {
     var firstInvalid = null;
     var missing = [];
     jQuery(this).find('[required]').each(function() {
-        // A draft insists only on the name — without it nobody can find the
+        // A draft insists only on the name - without it nobody can find the
         // draft again, and that is the whole of what a draft promises.
         if (savingAsDraft && jQuery(this).attr('name') !== 'name') {
             jQuery(this).removeClass('is-invalid');
@@ -1319,7 +1400,7 @@ jQuery('#experienceForm').on('submit', function(ev) {
                 }
             }
             if (!reasons.length) {
-                // No list to show — a server fault rather than a form fault.
+                // No list to show - a server fault rather than a form fault.
                 // Its own message already says what to do, reference and all.
                 title = r.error || r.message || 'Failed to save experience (HTTP ' + xhr.status + ')';
             }

@@ -16,7 +16,7 @@
                 <div class="td-meta">
                     <span><i class="bi bi-hash"></i>{{ $trip->trip_id }}</span>
                     @if($trip->start_date)
-                        <span><i class="bi bi-calendar3"></i>{{ $trip->start_date->format('d M Y') }}@if($trip->end_date) — {{ $trip->end_date->format('d M Y') }}@endif</span>
+                        <span><i class="bi bi-calendar3"></i>{{ $trip->start_date->format('d M Y') }}@if($trip->end_date) - {{ $trip->end_date->format('d M Y') }}@endif</span>
                     @endif
                     <span><i class="bi bi-people"></i>{{ $trip->adults }} Adults{{ $trip->children ? ', ' . $trip->children . ' Children' : '' }}{{ $trip->infants ? ', ' . $trip->infants . ' Infants' : '' }}</span>
                 </div>
@@ -273,6 +273,10 @@ jQuery(function() {
         html += '<div class="td-pr-row"><span>Activities</span><span>' + fmtCurrency(p.activity_cost) + '</span></div>';
         html += '<div class="td-pr-row"><span>Extra Days</span><span>' + fmtCurrency(p.extra_day_cost) + '</span></div>';
         html += '<div class="td-pr-row"><span>Other</span><span>' + fmtCurrency(p.other_cost) + '</span></div>';
+        // Shown only when somebody on the trip has no one to share a room with.
+        if (Number(p.single_supplement) > 0) {
+            html += '<div class="td-pr-row"><span>Single Supplement</span><span>' + fmtCurrency(p.single_supplement) + '</span></div>';
+        }
         html += '<div class="td-pr-row"><span>Subtotal</span><span>' + fmtCurrency(p.subtotal) + '</span></div>';
         html += '<div class="td-pr-row"><span>RP Contribution</span><span>' + fmtCurrency(p.margin_rp_amount) + '</span></div>';
         html += '<div class="td-pr-row"><span>GST</span><span>' + fmtCurrency(p.gst_amount) + '</span></div>';

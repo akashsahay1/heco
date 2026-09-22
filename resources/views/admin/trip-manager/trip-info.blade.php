@@ -129,7 +129,7 @@
                     <div class="card-body">
                         @php
                             // Option sets are sourced from the system_lists table (seeded by
-                            // PreferenceListsSeeder) — the same source the traveller portal uses.
+                            // PreferenceListsSeeder) - the same source the traveller portal uses.
                             // accommodation_comfort / vehicle_comfort / guide_preference also drive
                             // provider filtering, so these must stay populated.
                             $prefOptions = \App\Models\SystemList::whereIn('list_type', [
@@ -217,7 +217,54 @@
             {{-- RIGHT COLUMN --}}
             <div class="col-md-5">
 
-                {{-- 5. Financial Snapshot --}}
+                {{-- 5. Who is on this trip.
+                     Costs and a day-by-day plan were here from the start; the
+                     one thing missing was who to ring when something goes wrong
+                     on the ground. --}}
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <h6 class="mb-0"><i class="bi bi-people-fill"></i> Who Is On This Trip</h6>
+                    </div>
+                    <div class="card-body py-2">
+                        <div class="mb-2">
+                            <div class="small fw-bold text-muted">Regions</div>
+                            @forelse($involved['regions'] as $region)
+                                <span class="badge bg-light text-dark border">{{ $region->name }}</span>
+                            @empty
+                                <span class="small text-muted">No region yet - add an experience.</span>
+                            @endforelse
+                        </div>
+
+                        <div class="mb-2">
+                            <div class="small fw-bold text-muted">Regional partners (HRP)</div>
+                            @forelse($involved['hrps'] as $hrp)
+                                <div class="small">
+                                    <a href="{{ route('hct.providers.show', $hrp->id) }}" target="_blank">{{ $hrp->name }}</a>
+                                    @if($hrp->phone_1)<span class="text-muted">&middot; {{ $hrp->phone_1 }}</span>@endif
+                                </div>
+                            @empty
+                                <div class="small text-muted">No approved HRP in this trip's region.</div>
+                            @endforelse
+                        </div>
+
+                        <div>
+                            <div class="small fw-bold text-muted">Hosts and service partners</div>
+                            @forelse($involved['others'] as $partner)
+                                <div class="small">
+                                    <a href="{{ route('hct.providers.show', $partner->id) }}" target="_blank">{{ $partner->name }}</a>
+                                    <span class="text-muted">
+                                        &middot; {{ strtoupper(implode('/', (array) $partner->provider_types)) }}
+                                        @if($partner->phone_1) &middot; {{ $partner->phone_1 }} @endif
+                                    </span>
+                                </div>
+                            @empty
+                                <div class="small text-muted">Nobody is on this trip yet.</div>
+                            @endforelse
+                        </div>
+                    </div>
+                </div>
+
+                {{-- 6. Financial Snapshot --}}
                 <div class="card mb-3">
                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
                         <h6 class="mb-0"><i class="bi bi-currency-rupee"></i> Financial Snapshot</h6>
@@ -365,7 +412,7 @@
                                             <select class="form-select form-select-sm custom-select" name="service_provider_id" required>
                                                 <option value="">-- Select provider --</option>
                                                 @foreach($providers as $sp)
-                                                    <option value="{{ $sp->id }}">{{ $sp->name }} ({{ strtoupper($sp->provider_type) }}{{ $sp->region ? ' — ' . $sp->region->name : '' }})</option>
+                                                    <option value="{{ $sp->id }}">{{ $sp->name }} ({{ strtoupper($sp->provider_type) }}{{ $sp->region ? ' - ' . $sp->region->name : '' }})</option>
                                                 @endforeach
                                             </select>
                                         </div>

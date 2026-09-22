@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Experience;
 use App\Models\ServiceProvider;
 use App\Models\SpAvailability;
 use App\Models\SpPricing;
@@ -26,6 +27,58 @@ use Illuminate\Support\Collection;
  */
 class RoomAvailabilityService
 {
+    /**
+     * How many of an experiential stay's rooms are free on a date.
+     *
+     * A stay's rooms belong to the listing, not to a price: three rooms sold as
+     * "double" or as "twin" are the same three rooms, so the occupancy x
+     * meal-plan grid is pricing and experiences.total_rooms is inventory.
+     */
+    public function availableForStay(int $experienceId, string|Carbon $date): int
+    {
+        $stay = Experience::find($experienceId);
+        if (! $stay || ! $stay->isStay() || ! $stay->total_rooms) {
+            return 0;
+        }
+        if ($stay->approval_status !== 'approved' || ! $stay->is_active) {
+            return 0;
+        }
+
+        $day = Carbon::parse($date)->startOfDay();
+
+        $booked = (int) SpRoomBooking::where('experience_id', $experienceId)
+            ->whereDate('date', $day)
+            ->active()
+            ->sum('quantity');
+
+        return max(0, ((int) $stay->total_rooms) - $booked);
+    }
+
+    /**
+     * Hold rooms at a stay for one night. Refuses to oversell, and returns the
+     * row it wrote, or null when the night could not be held.
+     */
+    public function bookStay(
+        int $experienceId, int $tripId, string|Carbon $date,
+        int $quantity = 1, string $status = 'held', string $source = 'trip_manager',
+    ): ?SpRoomBooking {
+        $day = Carbon::parse($date)->startOfDay();
+
+        $attrs = ['experience_id' => $experienceId, 'trip_id' => $tripId, 'date' => $day];
+
+        // What this trip already holds here is its own, not somebody else's.
+        $mine = (int) SpRoomBooking::where($attrs)->active()->sum('quantity');
+        if ($quantity > $this->availableForStay($experienceId, $day) + $mine) {
+            return null;
+        }
+
+        return SpRoomBooking::updateOrCreate($attrs, [
+            'quantity' => $quantity,
+            'status'   => $status,
+            'source'   => $source,
+        ]);
+    }
+
     /**
      * Get the available count for a single (room category, date).
      */

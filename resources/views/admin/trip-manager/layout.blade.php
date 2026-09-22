@@ -79,7 +79,7 @@
                         </select>
                     </div>
 
-                    {{-- Room picker — shown only when service_type=accommodation AND a provider is selected.
+                    {{-- Room picker - shown only when service_type=accommodation AND a provider is selected.
                          Populated live from get_room_availability for the day's date. --}}
                     <div class="mb-2 d-none" id="editServiceRoomBlock">
                         <label class="form-label small fw-bold">Room Category</label>
@@ -281,7 +281,7 @@ function loadItinerary() {
                             html += '<div class="text-danger" style="font-size:.72rem">'
                                 + (exp.hlh_id
                                     ? 'This experience is not active. Publish it again, or replace it in this itinerary.'
-                                    : 'This experience is not active — its host was removed. Assign a new HLH, or replace it in this itinerary.')
+                                    : 'This experience is not active - its host was removed. Assign a new HLH, or replace it in this itinerary.')
                                 + '</div>';
                         }
                         html += '</span>';
@@ -487,12 +487,23 @@ $('#addServiceForm').on('submit', function(e) {
     if (!dayId) { showAlert('Select a day first by clicking on it', 'warning'); return; }
     var data = { add_day_service: 1, day_id: dayId };
     $(this).find('[name]').each(function() { data[$(this).attr('name')] = $(this).val(); });
-    ajaxPost(data, function() {
+    ajaxPost(data, function(resp) {
         loadDayServices($('#serviceDayId').val());
         loadItinerary();
         $('#addServiceForm')[0].reset();
         if (window.buildCustomDropdown) $('#addServiceForm select.custom-select').each(function() { buildCustomDropdown(this); });
         $('#addServiceCollapse').collapse('hide');
+        // The service was added either way. This only says when the night was
+        // already covered by the experience, so the cost stacks.
+        if (resp && resp.stacking_warning) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Added - and charged on top',
+                text: resp.stacking_warning,
+                confirmButtonColor: '#79a09f'
+            });
+            return;
+        }
         showAlert('Service added!');
     });
 });
@@ -553,7 +564,7 @@ function refreshEditServiceRoomPicker() {
             $room.html('<option value="">No room categories for this SP</option>');
             return;
         }
-        var html = '<option value="">— no specific category —</option>';
+        var html = '<option value="">- no specific category -</option>';
         cats.forEach(function(c) {
             // When editing the same row, "available" should add back the qty
             // this row already holds so the option isn't shown as 0 free.
@@ -562,7 +573,7 @@ function refreshEditServiceRoomPicker() {
             // rate_net is the partner's own price, sent to HCT only; c.rate is the
             // marked-up figure a traveller would be quoted.
             var shown = (c.rate_net !== undefined ? c.rate_net : c.rate);
-            var label = c.room_category + ' — ₹' + Number(shown).toLocaleString('en-IN') + '/night · ' + effectiveAvail + ' of ' + c.total + ' available';
+            var label = c.room_category + ' - ₹' + Number(shown).toLocaleString('en-IN') + '/night · ' + effectiveAvail + ' of ' + c.total + ' available';
             if (c.meal_plan) label += ' (' + c.meal_plan + ')';
             html += '<option value="' + c.sp_pricing_id + '"' + disabled + '>' + label + '</option>';
         });

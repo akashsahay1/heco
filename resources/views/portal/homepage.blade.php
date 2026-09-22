@@ -165,7 +165,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                          Asia, country on India and region on Tirthan
                                          Valley by name, so a visitor landing here saw
                                          two experiences out of five and no way to tell
-                                         the catalogue was larger — the other three were
+                                         the catalogue was larger - the other three were
                                          filtered out before they ever looked. --}}
                                     <select class="form-select form-select-sm custom-select" id="filterRegion">
                                         <option value="">All Regions</option>
@@ -283,7 +283,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                         </button>
                     </div>
 
-                    {{-- Journey panels — always visible --}}
+                    {{-- Journey panels - always visible --}}
                     <div id="journeyPanels" class="journey-panels">
                         {{-- Left: Selected Experiences List --}}
                         <div class="journey-panel">
@@ -408,7 +408,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                 <div class="detail-card-body" id="pricingSummary">
                                     {{-- Per-experience base price (per person), read-only. Populated by
                                          loadTripPricing from p.experiences. The amounts are NOT added to the
-                                         total — each experience's cost is already split across the component
+                                         total - each experience's cost is already split across the component
                                          rows below (Accommodation/Transport/Guide/Activities). --}}
                                     {{-- Experiences bundle (slab-priced) + provider add-on
                                          lines (hotel / airport↔hotel transport / guide),
@@ -421,6 +421,8 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     <div class="pricing-row" id="prRowActivities"><span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span><span id="prActivities"></span></div>
                                     <div class="pricing-row" id="prRowExtraDays"><span>Extra Days <small class="text-muted price-detail" id="prExtraDaysNote"></small></span><span id="prExtraDays"></span></div>
                                     <div class="pricing-row" id="prRowOther"><span>Other</span><span id="prOther"></span></div>
+                                    {{-- Only appears when somebody has no one to share a room with. --}}
+                                    <div class="pricing-row" id="prRowSingleSupplement"><span>Single Supplement <small class="text-muted price-detail" id="prSingleSupplementNote"></small></span><span id="prSingleSupplement"></span></div>
                                     <div class="pricing-row pricing-subtotal"><span><strong>Trip Cost</strong></span><span id="prTripCost"></span></div>
                                     <div class="pricing-row"><span>GST <small class="text-muted price-detail" id="prGSTNote"></small></span><span id="prGST"></span></div>
                                     <div class="pricing-row total"><span>Final Price</span><span id="prFinal"></span></div>
@@ -721,7 +723,7 @@ jQuery(function() {
     function buildCustomDropdown(sel) {
         var $sel = jQuery(sel);
         if ($sel.closest('.custom-select-wrap').length) {
-            // Already wrapped — just rebuild options
+            // Already wrapped - just rebuild options
             var $wrap = $sel.closest('.custom-select-wrap');
             var $optList = $wrap.find('.custom-select-options');
             var $trigger = $wrap.find('.custom-select-trigger span');
@@ -734,7 +736,7 @@ jQuery(function() {
             $trigger.text(selText);
             return;
         }
-        // First time — wrap the select
+        // First time - wrap the select
         var $wrap = jQuery('<div class="custom-select-wrap"></div>');
         $sel.wrap($wrap);
         $wrap = $sel.parent();
@@ -848,7 +850,7 @@ jQuery(function() {
         var bounds = [];
         // How many pins have already landed on each point. An experience with
         // no coordinates of its own falls back to its region's centre, and
-        // coordinates are optional on the admin form — so every experience in
+        // coordinates are optional on the admin form - so every experience in
         // a region stacked on one identical pin and only the top one could be
         // opened. The rest are fanned around that point below.
         var pinsAtPoint = {};
@@ -1225,7 +1227,7 @@ jQuery(function() {
             ? '<img src="' + exp.card_image + '" alt="' + exp.name + '">'
             : '<div class="exp-placeholder"><i class="bi bi-image"></i></div>';
 
-        // A stay has no duration — it is sold by the night — so its card says
+        // A stay has no duration - it is sold by the night - so its card says
         // how big the house is instead of inventing a length for it.
         var durationText = '';
         if (exp.category === 'Experiential accommodation') {
@@ -1577,7 +1579,7 @@ jQuery(function() {
         }
     });
 
-    // Load journey data on tab show (logged-in users only — guests are gated above).
+    // Load journey data on tab show (logged-in users only - guests are gated above).
     jQuery('button[data-bs-target="#pane-journey"]').on('shown.bs.tab', function() {
         if (!isLoggedIn && !tripId) {
             // Open the guest session journey so the panels populate.
@@ -1618,7 +1620,7 @@ jQuery(function() {
                 }
             }
 
-            // The trip's region may have just changed (experience added/removed) —
+            // The trip's region may have just changed (experience added/removed) -
             // refresh the provider lists so they show the new region's providers.
             if (typeof window.reloadAllProviderCards === 'function') window.reloadAllProviderCards();
 
@@ -1786,7 +1788,7 @@ jQuery(function() {
             }
         });
 
-        // Sync start date — push to Air Datepicker without re-firing onSelect.
+        // Sync start date - push to Air Datepicker without re-firing onSelect.
         if (resp.start_date) {
             jQuery('#tripStartDateInput').val(resp.start_date);
             if (window.tripStartDatepicker) {
@@ -1815,7 +1817,7 @@ jQuery(function() {
                 html += '</div>';
             }
 
-            // Experience group header — show experience name only before its first day
+            // Experience group header - show experience name only before its first day
             if (day.experiences && day.experiences.length) {
                 var firstExp = day.experiences[0].experience;
                 var firstExpName = firstExp ? firstExp.name : '';
@@ -1887,7 +1889,7 @@ jQuery(function() {
             if (dayInclusions.length) {
                 // Inclusions come from each day's ExperienceDay (day-wise). They're
                 // stored capitalised (e.g. "Breakfast"), so normalise to lowercase
-                // before mapping — otherwise every lookup missed and fell back to a
+                // before mapping - otherwise every lookup missed and fell back to a
                 // generic check mark instead of the proper icon.
                 var incIconMap = {
                     breakfast: 'bi-cup-hot', lunch: 'bi-egg-fried', dinner: 'bi-moon-stars',
@@ -1973,9 +1975,9 @@ jQuery(function() {
                 var dayTypeMap = {
                     arrival: { icon: 'bi-airplane', label: 'Arrival & Acclimatization', desc: 'Rest, settle in, and prepare for your adventure' },
                     departure: { icon: 'bi-airplane', label: 'Departure Day', desc: 'Check out and travel back to your starting location' },
-                    rest: { icon: 'bi-moon', label: 'Rest & Relax', desc: 'Take it easy — recharge for the next adventure' },
+                    rest: { icon: 'bi-moon', label: 'Rest & Relax', desc: 'Take it easy - recharge for the next adventure' },
                     travel: { icon: 'bi-signpost-split', label: 'Travel Day', desc: 'Travel between destinations' },
-                    free: { icon: 'bi-compass', label: 'Free Day — Explore Nearby', desc: 'Explore at your own pace, discover local culture' },
+                    free: { icon: 'bi-compass', label: 'Free Day - Explore Nearby', desc: 'Explore at your own pace, discover local culture' },
                     activity: { icon: 'bi-lightning', label: 'Activity Day', desc: 'Planned activities for the day' },
                 };
                 var dt = dayTypeMap[day.day_type] || dayTypeMap['travel'];
@@ -2009,7 +2011,7 @@ jQuery(function() {
     }
 
     function loadPricing() {
-        // Pricing breakdown should always show a number — including ₹0 — so the
+        // Pricing breakdown should always show a number - including ₹0 - so the
         // traveller can see the full cost composition. fmtCurrency hides zeros
         // globally as '--', so we wrap it here to force a numeric output.
         function fmtPriceRow(v) {
@@ -2039,7 +2041,7 @@ jQuery(function() {
                 if (!isFinite(mul)) mul = 1;
                 if (base > 0 && mul >= 0) {
                     var price = Math.round(base * mul);
-                    $opt.text(name + ' — ' + fmtPriceRow(price));
+                    $opt.text(name + ' - ' + fmtPriceRow(price));
                 } else {
                     $opt.text(name);
                 }
@@ -2049,7 +2051,7 @@ jQuery(function() {
         ajaxPost({ get_trip_pricing: 1, trip_id: tripId }, function(resp) {
             var p = resp.pricing || resp;
 
-            // Experiences bundle — one "Experiences" total (the slab-priced bundle),
+            // Experiences bundle - one "Experiences" total (the slab-priced bundle),
             // with each experience listed beneath at its per-person slab price. This
             // IS a line in the trip cost (not folded into provider rows).
             var exps = p.experiences || [];
@@ -2068,7 +2070,7 @@ jQuery(function() {
             }
 
             // Provider add-on lines (hotel / airport↔hotel transport / guide) and any
-            // day-level activity/other costs — each already marked up server-side. A row
+            // day-level activity/other costs - each already marked up server-side. A row
             // with a zero amount is hidden to keep the summary clean.
             function setRow(rowId, valId, amount) {
                 var v = Number(amount) || 0;
@@ -2081,16 +2083,21 @@ jQuery(function() {
             setRow('prRowActivities', 'prActivities', p.activity_cost);
             setRow('prRowExtraDays', 'prExtraDays', p.extra_day_cost);
             setRow('prRowOther', 'prOther', p.other_cost);
+            setRow('prRowSingleSupplement', 'prSingleSupplement', p.single_supplement);
+            jQuery('#prSingleSupplementNote').text(
+                Number(p.single_supplement_people) > 0
+                    ? '(' + p.single_supplement_people + ' travelling without a room-mate)' : ''
+            );
             jQuery('#prTripCost').text(fmtPriceRow(p.total_cost));
             jQuery('#prGST').text(fmtPriceRow(p.gst_amount));
             jQuery('#prFinal').text(fmtPriceRow(p.final_price));
 
-            // RP is informational only — the share of the price supporting the
+            // RP is informational only - the share of the price supporting the
             // regenerative project (NOT an extra charge). HRP/HCT are never shown.
             setRow('prRowRP', 'prRP', p.margin_rp_amount);
             jQuery('#prRPNote').text(fmtPct(p.margin_rp_percent));
 
-            // Detail captions — pricing is per-person by group size (no multipliers).
+            // Detail captions - pricing is per-person by group size (no multipliers).
             var paxLabel = (p.adults || 1) + (p.children > 0 ? ' adults +' + p.children + ' kids @ 50%' : ' adults');
             jQuery('#prActivitiesNote').text(' (' + paxLabel + ')');
             jQuery('#prExtraDaysNote').text(parseFloat(p.extra_day_cost) > 0 ? ' (' + paxLabel + ')' : '');
@@ -2111,7 +2118,7 @@ jQuery(function() {
         });
     }
 
-    // Remove experience — styled modal confirmation
+    // Remove experience - styled modal confirmation
     var pendingRemoveExpId = null;
     var pendingRemoveExpName = '';
     jQuery(document).on('click', '.btn-remove-exp', function() {
@@ -2200,7 +2207,7 @@ jQuery(function() {
         jQuery(this).addClass('active');
     });
 
-    // Insert Day — show popup for description, then send to AI
+    // Insert Day - show popup for description, then send to AI
     var pendingInsertAfterDay = null;
     jQuery(document).on('click', '.btn-insert-day', function() {
         if (!tripId) return;
@@ -2251,7 +2258,7 @@ jQuery(function() {
         });
     });
 
-    // Remove Day — styled modal confirmation
+    // Remove Day - styled modal confirmation
     var pendingRemoveDayId = null;
     var pendingRemoveDayLabel = '';
     jQuery(document).on('click', '.btn-remove-day', function() {
@@ -2285,7 +2292,7 @@ jQuery(function() {
         });
     });
 
-    // Trip name — save directly via AJAX (no synthetic AI chat message)
+    // Trip name - save directly via AJAX (no synthetic AI chat message)
     var tripNameTimer = null;
     jQuery('#tripName').on('input', function() {
         var val = jQuery(this).val();
@@ -2299,7 +2306,7 @@ jQuery(function() {
         }, 1200);
     });
 
-    // Group details — save directly via AJAX
+    // Group details - save directly via AJAX
     var groupTimer = null;
     jQuery('.group-input').on('change', function() {
         clearTimeout(groupTimer);
@@ -2315,7 +2322,7 @@ jQuery(function() {
         }, 600);
     });
 
-    // Preferences — save directly, refresh pricing
+    // Preferences - save directly, refresh pricing
     jQuery('.pref-input').on('change', function() {
         var payload = {
             update_travel_preferences: 1,
@@ -2346,7 +2353,7 @@ jQuery(function() {
 
     // Render the provider master/detail for one service into its container.
     // The backend returns one row per pricing entry, and a single provider may
-    // list several room types under the same category — so we group rows by
+    // list several room types under the same category - so we group rows by
     // provider: the top list shows each provider once, and clicking one reveals
     // that provider's room pricing in the section below.
     function loadProviderCards(serviceKey, category, preselectPricingId) {
@@ -2354,11 +2361,11 @@ jQuery(function() {
         var $box = jQuery(cfg.cards);
         if (!$box.length) return;
         if (!category) { $box.addClass('d-none').empty(); return; }
-        // Trip is single-region — scope providers to the trip's region so a
+        // Trip is single-region - scope providers to the trip's region so a
         // Tirthan trip doesn't list Spiti/Ladakh providers. The server resolves
         // the region authoritatively from trip_id; region_id is a guest fallback.
         ajaxPost({ get_category_providers: 1, service_type: cfg.service, category: category, region_id: tripRegionId || '', trip_id: window.tripId || '' }, function(resp) {
-            // Guide is exclusive — if the experience already provides a guide, show a
+            // Guide is exclusive - if the experience already provides a guide, show a
             // notice instead of provider options (backend rejects an added guide too).
             if (resp && resp.guide_included) {
                 $box.html('<div class="provider-cards-empty"><i class="bi bi-info-circle"></i> Guide is already included in this experience.</div>').removeClass('d-none');
@@ -2377,7 +2384,7 @@ jQuery(function() {
                 byProv[id].rooms.push(p);
             });
             // Which provider owns the saved pick? When nothing is pinned no
-            // provider is active — the "None / package estimate" choice is.
+            // provider is active - the "None / package estimate" choice is.
             var hasPick = !!preselectPricingId;
             var selProvId = '';
             list.forEach(function(p) { if (String(p.pricing_id) === String(preselectPricingId)) selProvId = String(p.provider_id); });
@@ -2421,7 +2428,7 @@ jQuery(function() {
         var prov = byProv[String(provId)];
         var $detail = $box.find('.provider-detail');
         if (!prov) {
-            // No provider chosen — show the package-estimate state and keep
+            // No provider chosen - show the package-estimate state and keep
             // the "None" option flagged as active.
             $detail.html('<div class="provider-detail-none"><i class="bi bi-info-circle"></i> No provider selected · using package estimate</div>');
             $box.find('.provider-item').removeClass('active');
@@ -2473,7 +2480,7 @@ jQuery(function() {
         renderProviderDetail($box, jQuery(this).data('provider-id'));
     });
 
-    // Clicking a room row is the actual selection — it saves the pricing pick.
+    // Clicking a room row is the actual selection - it saves the pricing pick.
     jQuery(document).on('click', '.provider-room', function() {
         var $card = jQuery(this);
         var $box = $card.closest('.provider-cards');
@@ -2487,8 +2494,14 @@ jQuery(function() {
         payload[cfg.catKey]   = jQuery(cfg.pref).val();
         payload[cfg.provKey]  = $card.data('provider-id') || '';
         payload[cfg.priceKey] = $card.data('pricing-id') || '';
-        ajaxPost(payload, function() {
+        ajaxPost(payload, function(resp) {
             if (typeof loadPricing === 'function') loadPricing();
+            // Their experience may already house them; this stay is extra, and
+            // the price will show it. Said before they wonder why it went up.
+            if (resp && resp.stacking_warning && typeof showAlert === 'function') {
+                showAlert(resp.stacking_warning, 'warning');
+                return;
+            }
             if (typeof showAlert === 'function') showAlert(cfg.label + ' provider updated.', 'success');
         });
     });
@@ -2506,7 +2519,7 @@ jQuery(function() {
     window.reloadAllProviderCards = reloadAllProviderCards;
     reloadAllProviderCards();
 
-    // Start Date — Air Datepicker on a readonly text input.
+    // Start Date - Air Datepicker on a readonly text input.
     // Stored on window so the AI sync handlers (further down) can call
     // .selectDate() without re-querying.
     window.tripStartDatepicker = new AirDatepicker('#tripStartDateDisplay', {
@@ -2652,7 +2665,7 @@ jQuery(function() {
         });
     }
 
-    // Sync both chat containers — copy from whichever has more messages
+    // Sync both chat containers - copy from whichever has more messages
     function syncChats() {
         var mainMsgs = jQuery('#collapseChatMessages .chat-msg');
         var journeyMsgs = jQuery('#journeyChatMessages .chat-msg');
@@ -2912,7 +2925,7 @@ jQuery(function() {
         if (!panel.hasClass('expanded')) {
             outer.css('height', outer.outerHeight() + 'px');
             panel.addClass('expanded');
-            // Now expanded — the button minimizes, so show the minus icon.
+            // Now expanded - the button minimizes, so show the minus icon.
             jQuery('#chatCollapseBtn').attr('title', 'Minimize chat')
                 .find('i').removeClass('bi-plus-lg').addClass('bi-dash-lg');
             jQuery('#collapseChatMessages').each(function() {
@@ -2923,7 +2936,7 @@ jQuery(function() {
 
     // Toggle expand/collapse on button click (Discover tab). The icon mirrors
     // the action: minus while expanded (click minimizes), plus while minimized
-    // (click expands) — so the button always tells the user what it will do.
+    // (click expands) - so the button always tells the user what it will do.
     jQuery('#chatCollapseBtn').on('click', function(e) {
         e.stopPropagation();
         var btn = jQuery(this);
@@ -2952,7 +2965,7 @@ jQuery(function() {
         if (!panel.hasClass('expanded')) {
             outer.css('height', outer.outerHeight() + 'px');
             panel.addClass('expanded');
-            // Now expanded — the button minimizes, so show the minus icon.
+            // Now expanded - the button minimizes, so show the minus icon.
             jQuery('#journeyChatCollapseBtn').attr('title', 'Minimize chat')
                 .find('i').removeClass('bi-plus-lg').addClass('bi-dash-lg');
             jQuery('#journeyChatMessages').each(function() {
@@ -2963,7 +2976,7 @@ jQuery(function() {
 
     // Toggle expand/collapse on button click (Journey tab). The icon mirrors
     // the action: minus while expanded (click minimizes), plus while minimized
-    // (click expands) — so the button always tells the user what it will do.
+    // (click expands) - so the button always tells the user what it will do.
     jQuery('#journeyChatCollapseBtn').on('click', function(e) {
         e.stopPropagation();
         var btn = jQuery(this);
@@ -2995,7 +3008,7 @@ jQuery(document).on('click', '#btnPayNow', function() {
     btn.prop('disabled', true).html('<i class="bi bi-hourglass-split me-1"></i> Processing...');
 
     // The payable amount is computed entirely on the server. We request an order
-    // for this trip and embed the server-returned figure into Razorpay — the
+    // for this trip and embed the server-returned figure into Razorpay - the
     // frontend never sends or calculates the amount itself.
     ajaxPost({ create_razorpay_order: 1, trip_id: window.tripId }, function(resp) {
             var amountInr = (parseFloat(resp.amount) || 0) / 100; // paise → INR, for logging/messaging only

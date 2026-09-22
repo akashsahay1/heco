@@ -9,7 +9,7 @@ class SpRoomBooking extends Model
     protected $table = 'sp_room_bookings';
 
     protected $fillable = [
-        'sp_pricing_id', 'trip_id', 'trip_day_service_id',
+        'sp_pricing_id', 'experience_id', 'trip_id', 'trip_day_service_id',
         'date', 'quantity', 'status', 'source', 'notes',
     ];
 

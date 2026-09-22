@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Experience;
 use App\Models\Trip;
 use App\Models\Setting;
 use App\Models\SpPricing;
@@ -11,7 +12,7 @@ use Carbon\Carbon;
 class CostCalculatorService
 {
     /**
-     * Preference-option multipliers were REMOVED (client req 3.2 — the experience
+     * Preference-option multipliers were REMOVED (client req 3.2 - the experience
      * is now priced by per-person slabs, and provider services by rate × quantity
      * with an admin markup). Kept as an empty map so any legacy caller
      * (HomepageController, guest estimator) degrades to "no multiplier" instead of
@@ -37,7 +38,7 @@ class CostCalculatorService
     }
 
     /**
-     * RAW transport cost from a chosen provider row (no markup — this is what the
+     * RAW transport cost from a chosen provider row (no markup - this is what the
      * provider is owed), by pricing unit:
      *   "per km"     → rate × distance_km   (req 3.1; distance admin-set on the row)
      *   "per day"    → rate × trip days
@@ -78,7 +79,7 @@ class CostCalculatorService
     }
 
     /**
-     * RAW amount owed to a provider for one pinned service on this trip (no markup —
+     * RAW amount owed to a provider for one pinned service on this trip (no markup -
      * this feeds SpPayment invoices, which pay the provider their contracted rate):
      *   accommodation → price × rooms × nights (rooms = ceil(pax / occupancy))
      *   guide         → price × guide-days
@@ -106,6 +107,96 @@ class CostCalculatorService
         return (int) round((float) $pricing->price);
     }
 
+    /**
+     * How a party of travellers breaks down for pricing.
+     *
+     * Three different questions get three different answers, and they used to
+     * be answered with one number:
+     *
+     *  - Who is billed? Adults in full, children and infants at whatever
+     *    fraction the settings say. That is people_factor.
+     *
+     *  - Which slab applies? The slabs exist to make a larger PAYING group
+     *    cheaper each, so only travellers who are billed count towards it. The
+     *    raw headcount was used instead, and an infant - billed nothing by
+     *    default - pushed a party into the next bracket: on a listing at
+     *    2+ ₹14,500 / 4+ ₹12,500, three adults paid ₹43,500 and the same three
+     *    with a baby paid ₹37,500. Bringing a baby made the trip cheaper.
+     *
+     *  - Who can share a room? The same set again, for the same reason: a
+     *    traveller billed nothing neither pays for a bed nor helps anybody pay
+     *    for one. An adult travelling with a baby is still alone in the room as
+     *    far as the bill is concerned.
+     *
+     * Capacity - how many bodies a homestay or a vehicle holds - is a fourth
+     * question and is NOT this: an infant does take up space, and the group-size
+     * limits on an experience count them. That check lives with the limits.
+     */
+    public function partyBreakdown(int $adults, int $children, int $infants): array
+    {
+        $adults   = max($adults, 1);
+        $children = max($children, 0);
+        $infants  = max($infants, 0);
+
+        $childFactor  = (float) Setting::getValue('child_price_percent', 50) / 100;
+        $infantFactor = (float) Setting::getValue('infant_price_percent', 0) / 100;
+
+        $billed = $adults
+            + ($childFactor > 0 ? $children : 0)
+            + ($infantFactor > 0 ? $infants : 0);
+
+        // Rooms are sold by the room and trips by the head, and the per-person
+        // price assumes two travellers split one. Whoever is left over has a
+        // room to themselves and no one to halve it with - that is the single
+        // supplement. Occupancy is a setting because it is an assumption, not a
+        // fact: somewhere that sleeps three would answer differently.
+        $occupancy = max((int) Setting::getValue('default_occupancy_per_room', 2), 1);
+        $alone = ($occupancy > 1 && $billed % $occupancy === 1) ? 1 : 0;
+
+        return [
+            'people_factor' => $adults + ($childFactor * $children) + ($infantFactor * $infants),
+            'group_size'    => max($billed, 1),
+            'billed_heads'  => $billed,
+            'rooms_alone'   => $alone,
+        ];
+    }
+
+    /**
+     * How many nights a stay is charged for on this trip.
+     *
+     * The listing's own duration decides it, the way every other experience is
+     * charged for its own length rather than for the whole trip. A stay with no
+     * duration set falls to the trip's own nights, and to one night if even
+     * that is unknown, so a room is never billed as zero nights.
+     */
+    protected function stayNights(Experience $stay, Trip $trip): int
+    {
+        $own = max((int) $stay->duration_nights, (int) $stay->duration_days - 1);
+
+        return $own > 0 ? $own : max($this->resolveNights($trip), 1);
+    }
+
+    /**
+     * What the host of one experience is owed for it on this trip.
+     *
+     * The traveller's line without HECO's margin, worked out the same way it is
+     * charged: a stay by the room, everything else per person by group size.
+     * The spec puts one entry per HLH and makes them responsible for paying any
+     * OSPs inside their own experience, so this is the whole of what they get.
+     */
+    public function hostPayableForExperience(Experience $exp, Trip $trip): int
+    {
+        $party = $this->partyBreakdown(
+            (int) $trip->adults, (int) ($trip->children ?: 0), (int) ($trip->infants ?: 0),
+        );
+
+        if ($exp->isStay()) {
+            return $exp->stayCostFor($party['billed_heads'], $this->stayNights($exp, $trip), false);
+        }
+
+        return (int) round($exp->hostPricePerPerson($party['group_size']) * $party['people_factor']);
+    }
+
     public function calculate(Trip $trip): array
     {
         $trip->load([
@@ -113,22 +204,20 @@ class CostCalculatorService
             'tripDays.experiences.experience.priceSlabs',
         ]);
 
-        // Pax-type factors (#42): a child/infant bills at a configurable fraction of
-        // an adult. peopleFactor is the "billable head" count used to multiply
-        // per-person prices; groupSize is the raw headcount used to pick the slab.
         $adults   = max($trip->adults, 1);
         $children = $trip->children ?: 0;
         $infants  = $trip->infants ?: 0;
-        $childFactor  = (float) Setting::getValue('child_price_percent', 50) / 100;
-        $infantFactor = (float) Setting::getValue('infant_price_percent', 0) / 100;
-        $peopleFactor = $adults + ($childFactor * $children) + ($infantFactor * $infants);
-        $groupSize    = max($adults + $children + $infants, 1);
 
-        // Extra day costs — different rates for rest and activity days.
+        $party        = $this->partyBreakdown($adults, $children, $infants);
+        $peopleFactor = $party['people_factor'];
+        $groupSize    = $party['group_size'];
+        $singleSupplement = 0;
+
+        // Extra day costs - different rates for rest and activity days.
         $restDayCostPerPerson     = (float) Setting::getValue('rest_day_cost_per_person', 2000);
         $activityDayCostPerPerson = (float) Setting::getValue('activity_day_cost_per_person', 5000);
 
-        $experienceCost    = 0; // slab-priced experience bundle(s) — the "Experiences" line
+        $experienceCost    = 0; // slab-priced experience bundle(s) - the "Experiences" line
         $accommodationCost = 0; // provider hotel (marked up) + day-level accommodation
         $transportCost     = 0; // provider transport (marked up, per-km) + day-level transport
         $guideCost         = 0; // provider guide (marked up)
@@ -148,7 +237,7 @@ class CostCalculatorService
             }
 
             // Day-level SP-matched services are provider add-ons that STACK on top of
-            // the experience bundle. cost=0 rows are bundled-cost placeholders — skip.
+            // the experience bundle. cost=0 rows are bundled-cost placeholders - skip.
             // Each is shown at its marked-up price (raw provider price stays hidden).
             foreach ($day->services as $service) {
                 $cost = (float) $service->cost;
@@ -178,14 +267,44 @@ class CostCalculatorService
                 // provider hotel/transport/guide are separate stacked lines below.
                 // Margin included, and the fallbacks for an experience with no
                 // slabs live in the model with it.
-                $perPerson = $exp->travellerPricePerPerson($groupSize);
-                $line = (int) round($perPerson * $peopleFactor);
+                // An experiential stay is the exception: it is sold by the room,
+                // and its price lives in the occupancy x meal-plan grid rather
+                // than in base_cost_per_person, which is 0 for it. Asking it for
+                // a per-person price returned that 0, so a stay went into a trip
+                // free: nothing charged, nothing owed, and the trip confirmed
+                // and the lead won as though it had been paid for.
+                if ($exp->isStay()) {
+                    $line = $exp->stayCostFor($party['billed_heads'], $this->stayNights($exp, $trip));
+                } else {
+                    $perPerson = $exp->travellerPricePerPerson($groupSize);
+                    $line = (int) round($perPerson * $peopleFactor);
+                }
+
                 $experienceCost += $line;
                 $dayExp->update(['total_cost' => $line]);
+
+                // The per-person price above is a shared room's half. A traveller
+                // left without anyone to share with still costs the host a whole
+                // room, and that difference is the host's single supplement -
+                // marked up like everything else the traveller is quoted.
+                //
+                // Only where the experience houses people. A hotel HCT pins onto
+                // the trip is already charged by the room, so adding this to it
+                // would bill the same empty bed twice.
+                // Never on a stay: there the room is the product, and a lone
+                // traveller has already been charged for a whole one above.
+                if ($party['rooms_alone'] && ! $exp->isStay()
+                    && $exp->includes_accommodation && $exp->single_supplement > 0) {
+                    $singleSupplement += (int) round(
+                        (float) $exp->single_supplement
+                        * (1 + $exp->effectiveMarkupPercent() / 100)
+                        * $party['rooms_alone']
+                    );
+                }
             }
         }
 
-        // ── Trip-level provider pins — separate marked-up lines (they STACK on the
+        // ── Trip-level provider pins - separate marked-up lines (they STACK on the
         //    experience bundle). Guide is exclusive: it can only be pinned when the
         //    experience provides none, so it never double-charges. ────────────────
         if ($trip->accommodation_pricing_id && ($accomPricing = SpPricing::live()->with('serviceProvider')->find($trip->accommodation_pricing_id))) {
@@ -205,16 +324,16 @@ class CostCalculatorService
             $transportCost += $this->applyMarkup($raw, $vehiclePricing->serviceProvider);
         }
 
-        $totalCost = $experienceCost + $accommodationCost + $transportCost + $guideCost
-            + $activityCost + $otherCost + $extraDayCost;
+        $totalCost = $experienceCost + $singleSupplement + $accommodationCost + $transportCost
+            + $guideCost + $activityCost + $otherCost + $extraDayCost;
 
-        // Margins RP/HRP/HCT are computed for INTERNAL payout/reporting ONLY — they are
+        // Margins RP/HRP/HCT are computed for INTERNAL payout/reporting ONLY - they are
         // NOT added to what the traveller pays (req 3.3). The per-provider markup baked
         // into the lines above is the platform's margin. Downstream: RP is surfaced to
         // the traveller as an info line ("goes to the regenerative project"); HRP and
         // HCT stay hidden from the traveller and are used for internal splits.
         //
-        // Cast to float first — DB DECIMALs come back as strings ("0.00"), which are
+        // Cast to float first - DB DECIMALs come back as strings ("0.00"), which are
         // truthy, so `?:` would skip the configured default.
         $rpPercent  = (float) $trip->margin_rp_percent      ?: (float) Setting::getValue('default_rp_margin_percent', 5);
         $hrpPercent = (float) $trip->margin_hrp_percent     ?: (float) Setting::getValue('default_hrp_margin_percent', 10);
@@ -255,6 +374,11 @@ class CostCalculatorService
         $data['gst_percent'] = $gstPercent;
         $data['adults']      = $adults;
         $data['children']    = $children;
+        // Shown as its own line when it applies, so a traveller on their own is
+        // not left wondering why the per-person price looks higher than the card
+        // said. Zero the rest of the time, and the panel leaves it out.
+        $data['single_supplement']        = (int) $singleSupplement;
+        $data['single_supplement_people'] = (int) $party['rooms_alone'];
         // Provider-only line totals (already marked up). The experience bundle is its
         // own line; provider hotel/transport/guide stack as separate lines.
         $data['accommodation_provider_cost'] = (int) $accommodationCost;

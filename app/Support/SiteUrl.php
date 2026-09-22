@@ -10,7 +10,7 @@ namespace App\Support;
  * browser and wrong everywhere else: a mail sent from a console command, a
  * queued job, or a developer's machine carries that host into somebody's inbox,
  * and hecoportal.test is a dead link for every reader but its author. Mail is
- * read somewhere else, later — so it asks here instead.
+ * read somewhere else, later - so it asks here instead.
  *
  * The portal base is APP_URL, not PORTAL_DOMAIN, on purpose: APP_URL is set on
  * every environment including the live one, whereas PORTAL_DOMAIN has a

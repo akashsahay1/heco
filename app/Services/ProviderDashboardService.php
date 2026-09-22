@@ -10,6 +10,7 @@ use App\Models\SpPayment;
 use App\Models\SpPaymentEntry;
 use App\Models\TripDayService;
 use App\Models\TripRegion;
+use App\Models\TripSelectedExperience;
 use Carbon\CarbonImmutable;
 
 /**
@@ -121,6 +122,18 @@ class ProviderDashboardService
             ->where('trip_day_services.service_provider_id', $provider->id)
             ->join('trip_days', 'trip_days.id', '=', 'trip_day_services.trip_day_id')
             ->pluck('trip_days.trip_id');
+
+        // Trips that booked an experience of theirs. A host is never pinned as
+        // a day service - their experience is the trip - so this set was
+        // missing and a host with a booked trek was shown no bookings at all.
+        $tripIds = $tripIds->merge(
+            TripSelectedExperience::whereIn(
+                'experience_id',
+                Experience::where('owner_provider_id', $provider->id)
+                    ->orWhere('hlh_id', $provider->id)
+                    ->select('id'),
+            )->pluck('trip_id'),
+        );
 
         if ($provider->hasType('hrp') && $provider->region_id) {
             $tripIds = $tripIds->merge(

@@ -174,11 +174,12 @@ class AjaxController extends Controller
         $adults = max((int) ($guestData['adults'] ?: 1), 1);
         $children = (int) ($guestData['children'] ?? 0);
         $infants = (int) ($guestData['infants'] ?? 0);
-        // Same pax-type factors as CostCalculatorService so guest == login (#42).
-        $childFactor  = (float) Setting::getValue('child_price_percent', 50) / 100;
-        $infantFactor = (float) Setting::getValue('infant_price_percent', 0) / 100;
-        $peopleFactor = $adults + ($childFactor * $children) + ($infantFactor * $infants);
-        $groupSize    = max($adults + $children + $infants, 1);
+        // The one place the party maths lives, so a guest is quoted exactly what
+        // they will be quoted a moment later as a signed-in traveller.
+        $party        = app(CostCalculatorService::class)->partyBreakdown($adults, $children, $infants);
+        $peopleFactor = $party['people_factor'];
+        $groupSize    = $party['group_size'];
+        $singleSupplement = 0;
         $defaultMarkup = (float) Setting::getValue('default_provider_markup_percent', 0);
 
         $experienceCost = 0;
@@ -197,9 +198,19 @@ class AjaxController extends Controller
             // live in the model beside it.
             $perPerson = $exp->travellerPricePerPerson($groupSize);
             $experienceCost += (int) round($perPerson * $peopleFactor);
+
+            // Same rule as the signed-in calculator: a traveller with nobody to
+            // share a room with costs the host a whole one.
+            if ($party['rooms_alone'] && $exp->includes_accommodation && $exp->single_supplement > 0) {
+                $singleSupplement += (int) round(
+                    (float) $exp->single_supplement
+                    * (1 + $exp->effectiveMarkupPercent() / 100)
+                    * $party['rooms_alone']
+                );
+            }
         }
 
-        // Extra days (days in the itinerary with no experience) — rest vs activity.
+        // Extra days (days in the itinerary with no experience) - rest vs activity.
         $restDayCostPerPerson = (float) Setting::getValue('rest_day_cost_per_person', 2000);
         $activityDayCostPerPerson = (float) Setting::getValue('activity_day_cost_per_person', 5000);
         $extraDayCost = 0;
@@ -218,7 +229,7 @@ class AjaxController extends Controller
 
         // Provider pins stack as separate marked-up lines (hotel / anchor→hotel /
         // guide). Markup is per provider (raw price never shown). Guide is exclusive
-        // — only present when the experience provides none.
+        // - only present when the experience provides none.
         $numDays = ($itinerary && isset($itinerary['days'])) ? count($itinerary['days']) : 1;
         $nights = max($numDays - 1, 1);
         $totalPax = $adults + $children;
@@ -255,9 +266,9 @@ class AjaxController extends Controller
             $guideCost += $guideProviderCost;
         }
 
-        $totalCost = $experienceCost + $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
+        $totalCost = $experienceCost + $singleSupplement + $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
 
-        // RP/HRP/HCT computed for internal reporting only — NOT added to the total (req 3.3).
+        // RP/HRP/HCT computed for internal reporting only - NOT added to the total (req 3.3).
         $rpPercent = (float) Setting::getValue('default_rp_margin_percent', 5);
         $hrpPercent = (float) Setting::getValue('default_hrp_margin_percent', 10);
         $hctPercent = (float) Setting::getValue('default_hct_commission_percent', 15);
@@ -278,6 +289,8 @@ class AjaxController extends Controller
             'activity_cost' => $activityCost,
             'other_cost' => $otherCost,
             'extra_day_cost' => $extraDayCost,
+            'single_supplement' => (int) $singleSupplement,
+            'single_supplement_people' => (int) $party['rooms_alone'],
             'total_cost' => $totalCost,
             'accommodation_provider_cost'   => $accommodationProviderCost,
             'transport_provider_cost'       => $transportProviderCost,
@@ -429,7 +442,7 @@ class AjaxController extends Controller
     /**
      * Call AI for the portal: OpenAI first, then the older chain behind it.
      *
-     * The portal alone — the traveller's chat and the itinerary builder. The
+     * The portal alone - the traveller's chat and the itinerary builder. The
      * provider app's voice assistant has its own path in VoiceAssistantService,
      * is not reached from here, and does not reach here. They share an HTTP
      * client and a key the way two rooms share the mains: the prompts, the
@@ -483,7 +496,7 @@ class AjaxController extends Controller
             if ($fastTimeout) $groqOpts['timeout'] = $fastTimeout;
             $response = $groq->chat($messages, $groqOpts);
             if ($response) return $response;
-            // Skip retries — daily rate limits (TPD) won't reset in seconds
+            // Skip retries - daily rate limits (TPD) won't reset in seconds
         }
 
         $ollama = app(OllamaService::class);
@@ -517,7 +530,7 @@ class AjaxController extends Controller
      *
      * Both the admin domain (hecoadmin.test/ajax -> adminIndex) and the PUBLIC
      * portal domain (hecoportal.test/ajax -> portalIndex) route through the same
-     * index() method, so route middleware alone cannot protect admin actions —
+     * index() method, so route middleware alone cannot protect admin actions -
      * every key is otherwise reachable unauthenticated from the public portal.
      * This map gates each dispatched key by the minimum trust level required.
      *
@@ -688,7 +701,7 @@ class AjaxController extends Controller
         'get_sp_dashboard' => 'sp',
         // A regional partner overseeing the providers in their region.
         'get_hrp_region_providers' => 'sp',
-        // SP EXPERIENCES (HLH hosts author their own — see saveSpExperience)
+        // SP EXPERIENCES (HLH hosts author their own - see saveSpExperience)
         'get_sp_experiences' => 'sp',
         'save_sp_experience' => 'sp',
         'toggle_sp_experience' => 'sp',
@@ -742,7 +755,7 @@ class AjaxController extends Controller
 
     /**
      * Itinerary/price mutation keys that must be rejected once a trip is locked
-     * (paid or closed) — otherwise the total can drift after money is received.
+     * (paid or closed) - otherwise the total can drift after money is received.
      */
     private const LOCK_EDIT_KEYS = [
         // Admin / trip-manager edits.
@@ -751,7 +764,7 @@ class AjaxController extends Controller
         'add_trip_day', 'remove_trip_day', 'reorder_trip_days',
         'add_day_service', 'edit_day_service', 'remove_day_service',
         'change_day_service_provider',
-        // Traveller portal-builder edits — these mutate the same trip's
+        // Traveller portal-builder edits - these mutate the same trip's
         // itinerary / pax / dates (the price basis), so a paid or closed trip
         // must reject them too. (Guests carry no trip_id and own no locked
         // trip, so the guard resolves to null and lets them through.)
@@ -809,14 +822,14 @@ class AjaxController extends Controller
      * a trip-level pin (Comfort & Partners) previously reserved nothing (#12).
      * book() is idempotent per date and refuses to overbook, so this is safe.
      */
-    private function bookTripLevelAccommodation(Trip $trip): void
+    private function bookTripLevelAccommodation(Trip $trip): array
     {
         if (!$trip->accommodation_pricing_id || !$trip->start_date || !$trip->end_date) {
-            return;
+            return [];
         }
         $pricing = SpPricing::find($trip->accommodation_pricing_id);
         if (!$pricing || $pricing->service_type !== 'accommodation') {
-            return;
+            return [];
         }
         $adults = max((int) $trip->adults, 1);
         $children = (int) ($trip->children ?: 0);
@@ -826,20 +839,30 @@ class AjaxController extends Controller
         $room = app(\App\Services\RoomAvailabilityService::class);
         $start = \Carbon\Carbon::parse($trip->start_date)->startOfDay();
         $end   = \Carbon\Carbon::parse($trip->end_date)->startOfDay();
+        // A night that could not be held used to leave a line in the log and
+        // nothing else: the trip was confirmed, the traveller charged and the
+        // provider invoiced against a property with no room free, and nobody
+        // found out until somebody arrived. The nights are handed back to the
+        // caller so HCT is told at the moment they press Confirm.
+        $unheld = [];
         for ($d = $start->copy(); $d->lt($end); $d->addDay()) {
             $booked = $room->book($pricing->id, $trip->id, null, $d->copy(), $rooms, 'confirmed', 'trip_preference');
             if (!$booked) {
+                $unheld[] = ($pricing->serviceProvider->name ?? 'the hotel')
+                    . ' on ' . $d->format('j M Y');
                 \Log::warning('Trip-level accommodation could not be booked (availability)', [
                     'trip_id' => $trip->id, 'sp_pricing_id' => $pricing->id, 'date' => $d->toDateString(),
                 ]);
             }
         }
+
+        return $unheld;
     }
 
     /**
      * Create provider invoices (SpPayment) for a trip's pinned providers, with
      * the amount auto-computed as rate × quantity. One invoice per (trip,
-     * provider, service_type) — safe to call again (dedupe). Used on confirm so
+     * provider, service_type) - safe to call again (dedupe). Used on confirm so
      * providers are actually billed (#13), instead of relying on manual entry.
      */
     private function createProviderInvoices(Trip $trip): void
@@ -879,7 +902,7 @@ class AjaxController extends Controller
             ]);
         }
 
-        // Day-level assigned providers (trip-manager) — sum each provider's booked
+        // Day-level assigned providers (trip-manager) - sum each provider's booked
         // day-service cost per service_type and invoice it too, so nothing that was
         // pinned to specific days is left unbilled. Deduped against the pins above.
         $dayServices = TripDayService::whereHas('tripDay', fn($q) => $q->where('trip_id', $trip->id))
@@ -912,6 +935,168 @@ class AjaxController extends Controller
                 'notes'               => 'Auto-generated on trip confirmation (day services).',
             ]);
         }
+
+        $this->invoiceExperienceHosts($trip);
+        $this->invoiceRegionalPartner($trip);
+    }
+
+    /**
+     * Hold a room at every experiential stay on the trip, for each of its
+     * nights.
+     *
+     * A stay's rooms belong to the listing rather than to a partner's rate
+     * card, so nothing in sp_room_bookings could point at them and none were
+     * ever held: the same three rooms could be sold to any number of
+     * travellers, each trip confirmed and each host invoiced, and the clash
+     * turned up only when two parties arrived for one room.
+     *
+     * Returns a sentence per night that could not be held.
+     */
+    private function bookStayRooms(Trip $trip): array
+    {
+        if (! $trip->start_date) {
+            return [];
+        }
+
+        $svc = app(\App\Services\RoomAvailabilityService::class);
+        $calc = app(CostCalculatorService::class);
+        $party = $calc->partyBreakdown(
+            (int) $trip->adults, (int) ($trip->children ?: 0), (int) ($trip->infants ?: 0),
+        );
+
+        $stays = Experience::whereIn(
+            'id',
+            TripSelectedExperience::where('trip_id', $trip->id)->select('experience_id'),
+        )->where('category', Experience::CATEGORY_STAY)->with('roomRates')->get();
+
+        $unheld = [];
+        foreach ($stays as $stay) {
+            $rooms = $stay->roomsNeededFor($party['billed_heads']);
+            $nights = max((int) $stay->duration_nights, (int) $stay->duration_days - 1, 1);
+            $from = \Carbon\Carbon::parse($trip->start_date)->startOfDay();
+
+            for ($i = 0; $i < $nights; $i++) {
+                $night = $from->copy()->addDays($i);
+                if (! $svc->bookStay($stay->id, $trip->id, $night, $rooms, 'confirmed', 'trip_confirm')) {
+                    $unheld[] = $stay->name . ' on ' . $night->format('j M Y');
+                }
+            }
+        }
+
+        return $unheld;
+    }
+
+    /**
+     * Owe each host for the experiences of theirs the trip carries.
+     *
+     * The loops above find only partners PINNED to the trip: a hotel, a
+     * vehicle, a guide. An experience's host is not pinned to anything, so
+     * nobody was ever billed for the thing the trip is actually built around.
+     * An Everest trek charged the traveller ₹1,50,000 and recorded ₹0 owed to
+     * the host who runs it.
+     *
+     * One entry per host, as the spec asks: "Only one payment entry is
+     * generated for the corresponding HLH", who is then "responsible for paying
+     * any OSPs involved in the experience". At their own price, never the
+     * marked-up one the traveller paid.
+     */
+    private function invoiceExperienceHosts(Trip $trip): void
+    {
+        $calc = app(CostCalculatorService::class);
+
+        $experiences = Experience::whereIn(
+            'id',
+            TripSelectedExperience::where('trip_id', $trip->id)->select('experience_id'),
+        )->with('priceSlabs', 'roomRates')->get();
+
+        $owed = [];
+        foreach ($experiences as $exp) {
+            $hostId = (int) ($exp->owner_provider_id ?: $exp->hlh_id);
+            if (! $hostId) {
+                continue;
+            }
+            $owed[$hostId] = ($owed[$hostId] ?? 0) + $calc->hostPayableForExperience($exp, $trip);
+        }
+
+        foreach ($owed as $hostId => $amount) {
+            if ($amount <= 0) {
+                continue;
+            }
+            $already = SpPayment::where('trip_id', $trip->id)
+                ->where('service_provider_id', $hostId)
+                ->where('service_type', 'experience')
+                ->exists();
+            if ($already) {
+                continue;
+            }
+
+            SpPayment::create([
+                'trip_id'             => $trip->id,
+                'service_provider_id' => $hostId,
+                'service_type'        => 'experience',
+                'amount_due'          => $amount,
+                'amount_paid'         => 0,
+                'balance'             => $amount,
+                'notes'               => 'Experience host, auto-generated on trip confirmation.',
+            ]);
+        }
+    }
+
+    /**
+     * Owe the regional partner their margin.
+     *
+     * The spec asks for it plainly: "The HRP margin for the trip is also
+     * generated as a separate payment entry and appears in the same trip
+     * block." It was computed on every trip, stored on it, and shown to HCT
+     * with an editable percentage - and then owed to nobody. A partner whose
+     * share is calculated but never recorded as payable is a number on a
+     * screen, not an obligation.
+     *
+     * The HRP is not pinned to anything, so the loops above cannot find them:
+     * they are found the way they are found everywhere else, by the region the
+     * trip visits.
+     */
+    private function invoiceRegionalPartner(Trip $trip): void
+    {
+        $amount = (int) round((float) $trip->margin_hrp_amount);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $regionIds = TripRegion::where('trip_id', $trip->id)->pluck('region_id')->filter();
+        if ($regionIds->isEmpty()) {
+            return;
+        }
+
+        $partners = ServiceProvider::whereIn('region_id', $regionIds)
+            ->where('status', 'approved')
+            ->get()
+            ->filter(fn (ServiceProvider $sp) => $sp->hasType('hrp'));
+
+        // One region, one regional partner - but if a trip somehow spans two,
+        // the margin is not paid twice over. It is the trip's margin, so it is
+        // split between whoever coordinates the trip.
+        $share = (int) round($amount / max($partners->count(), 1));
+
+        foreach ($partners as $partner) {
+            $already = SpPayment::where('trip_id', $trip->id)
+                ->where('service_provider_id', $partner->id)
+                ->where('service_type', 'regional_margin')
+                ->exists();
+            if ($already) {
+                continue;
+            }
+
+            SpPayment::create([
+                'trip_id'             => $trip->id,
+                'service_provider_id' => $partner->id,
+                'service_type'        => 'regional_margin',
+                'amount_due'          => $share,
+                'amount_paid'         => 0,
+                'balance'             => $share,
+                'notes'               => 'Regional partner margin, auto-generated on trip confirmation.',
+            ]);
+        }
     }
 
     /**
@@ -940,7 +1125,7 @@ class AjaxController extends Controller
     }
 
     /**
-     * Write an audit-log row for an admin mutation. Best-effort — never breaks
+     * Write an audit-log row for an admin mutation. Best-effort - never breaks
      * the calling action. Records who did what to which model, plus details (#26).
      */
     private function logActivity(string $action, ?string $modelType = null, $modelId = null, array $details = []): void
@@ -983,12 +1168,12 @@ class AjaxController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            // Central authorization gate — see ACTION_LEVELS. Protects admin
+            // Central authorization gate - see ACTION_LEVELS. Protects admin
             // actions reachable via the public portal /ajax (shared dispatcher).
             if ($denied = $this->authorizeAction($request)) {
                 return $denied;
             }
-            // Closed/paid trip lock — no itinerary/price edits after payment.
+            // Closed/paid trip lock - no itinerary/price edits after payment.
             if ($locked = $this->guardLockedTrip($request)) {
                 return $locked;
             }
@@ -1524,15 +1709,15 @@ class AjaxController extends Controller
             \Log::error("AjaxController error [{$reference}]: " . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
 
             // A schema the code has outgrown is worth naming. It is the one
-            // failure here an admin can act on — the site was deployed without
-            // its database update — and saying so gives away nothing, unlike
+            // failure here an admin can act on - the site was deployed without
+            // its database update - and saying so gives away nothing, unlike
             // the driver's own message below.
             $outgrown = $e instanceof \Illuminate\Database\QueryException
                 && in_array($e->getCode(), ['42S22', '42S02'], true);
 
             // Otherwise the message only travels when debugging. A driver
-            // exception carries the whole failing statement — table, columns,
-            // values, and the host, port and database name — and this handed
+            // exception carries the whole failing statement - table, columns,
+            // values, and the host, port and database name - and this handed
             // it to whoever made the request, on the live site as much as
             // here. Anything a member is meant to act on is a 422 raised above.
             return response()->json(array_filter([
@@ -1616,7 +1801,7 @@ class AjaxController extends Controller
         $guestTrip = session('guest_trip');
         $guestChat = session('guest_chat');
 
-        // Portal-side roles first — this door belongs to travellers and
+        // Portal-side roles first - this door belongs to travellers and
         // providers, so when an address is held by both a traveller and an HCT
         // login it is the traveller's account that opens here. An HCT-only
         // address still gets in (and is redirected to the admin domain below),
@@ -2073,7 +2258,7 @@ class AjaxController extends Controller
             return response()->json(['error' => 'You can only review experiences from your completed trips.'], 422);
         }
 
-        // One review per user per experience — update the existing one rather than 500 on the unique index.
+        // One review per user per experience - update the existing one rather than 500 on the unique index.
         $review = Review::updateOrCreate(
             ['user_id' => Auth::id(), 'experience_id' => $request->experience_id],
             ['rating' => $request->rating, 'title' => $request->title, 'body' => $request->body]
@@ -2114,7 +2299,7 @@ class AjaxController extends Controller
         $user = Auth::user();
         $isGuest = !$user;
 
-        // Build conversation history. Keep only the last few turns — Groq's free tier
+        // Build conversation history. Keep only the last few turns - Groq's free tier
         // is capped at 6000 tokens/minute and chat history is the biggest variable cost.
         if ($isGuest) {
             $guestChat = session("guest_chat", []);
@@ -2152,7 +2337,7 @@ class AjaxController extends Controller
             $trip = null;
         } else {
             // The traveller's open trip, and only a new one when they have
-            // none — which is what `ensureAuthTrip` has always done and what
+            // none - which is what `ensureAuthTrip` has always done and what
             // every other handler here calls.
             //
             // This asked for a trip_id and made a brand new trip whenever one
@@ -2161,7 +2346,7 @@ class AjaxController extends Controller
             // chat turn made a trip, and a lead, and the next turn made
             // another. The new trip carried the newest updated_at, so it won
             // the ordering every other handler resolves by, and the journey
-            // the traveller had built stopped being the one they were shown —
+            // the traveller had built stopped being the one they were shown -
             // the fault the client reported as not being able to see their
             // journey, still happening after the ordering itself was fixed.
             $trip = $this->ensureAuthTrip($request);
@@ -2256,7 +2441,7 @@ class AjaxController extends Controller
             }
 
             if ($activeRegionId) {
-                // (B) Region is in scope — send that region's LIVE experiences.
+                // (B) Region is in scope - send that region's LIVE experiences.
                 //
                 // `is_active` alone was letting an unapproved listing through,
                 // and the assistant sold it: "Great Himalayan National Park,
@@ -2275,7 +2460,7 @@ class AjaxController extends Controller
                 ->with('region:id,name,continent,country')
                     ->get()->map($expMap)->toJson();
             } else {
-                // (C) No region in scope — empty experiences list, and a region list
+                // (C) No region in scope - empty experiences list, and a region list
                 // so the AI can present options instead of inventing names.
                 $experiencesJson = '[]';
                 // Only the places that actually have something in them, and how
@@ -2309,7 +2494,7 @@ class AjaxController extends Controller
         // Inject stay options grounded to real SP room inventory + bookings.
         // Resolve dates from (priority order):
         //   1. trip.start_date / end_date (already saved on the trip)
-        //   2. dates the user just typed in this message (regex-extracted) —
+        //   2. dates the user just typed in this message (regex-extracted) -
         //      so first-turn "from 15-09 to 17-09" still gets real rooms.
         // If still no dates, leave stay_options empty and the prompt rule
         // will instruct the AI to ask for dates instead of inventing.
@@ -2327,7 +2512,7 @@ class AjaxController extends Controller
             try {
                 $stayOptions = app(\App\Services\RoomAvailabilityService::class)
                     ->stayOptionsForRegion($activeRegionId, $startDate, $endDate ?: $startDate)
-                    ->take(20) // keep the list bounded — AI doesn't need 100 rooms
+                    ->take(20) // keep the list bounded - AI doesn't need 100 rooms
                     ->values()
                     ->toArray();
                 $tripContextArr['stay_options_for_dates'] = $stayOptions;
@@ -2375,7 +2560,7 @@ TRIP DETAILS: When traveller provides details, summarize & confirm first. After 
             }
         }
 
-        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only).\n2. Destination: ask Continent then Country then Region step by step. The ONLY valid regions are in CURRENT_TRIP_CONTEXT.available_regions (when that field is present). Each one carries an `experiences` count, and a traveller cannot choose what they cannot see, so SAY THE COUNT every time you offer a place: \"**Asia** (4 experiences)\", \"**Tirthan Valley**, India — 2 experiences\". For a continent or a country, add up the regions inside it. Only places with something in them are in that list at all, so if it is empty there is nothing on offer anywhere yet and you say so plainly rather than inventing somewhere. NEVER name a region or country not in that list. NEVER mention Nepal, Tibet, Bhutan, Pakistan, or any country that's not represented in available_regions.\n3. Experience type & difficulty preference.\n4. Travel date, then group size, then starting city. ONE QUESTION PER REPLY, always. Never two in a breath, never a list of things to fill in. Ask, wait for the answer, write it down, ask the next.\n5. ABSOLUTE RULE on experience names + IDs:\n   • You may ONLY name an experience that appears (by exact name) in AVAILABLE EXPERIENCES. That governs what you SAY, not what you UNDERSTAND. A traveller will refer to one loosely, and should be understood: \"the village walk\" and \"that morning one\" both mean \"Morning Walk Through the Village\", and \"the half day trek\" means \"Probe · half a day in India\". Match what they said to the catalogue, then use the exact name back. Only where nothing in the list plausibly fits do you say you cannot find it, and then you name what there IS rather than leaving them guessing.\n   • You may ONLY put an id in RECOMMEND_IDS or ADD_TO_TRIP that appears (by exact id) in AVAILABLE EXPERIENCES.\n   • If AVAILABLE EXPERIENCES is `[]` (empty), you have NO catalog yet. In that case your response must NOT contain ANY of: trek names, peak names, route names, sample itineraries, mountain names, fictional experience names, or RECOMMEND_IDS. Even if the traveller asks for specific trek suggestions, you must respond with: 'I'd love to suggest specific treks — first, let's pick a region so I show you only experiences we actually run.' Then present 3-5 region NAMES from CURRENT_TRIP_CONTEXT.available_regions (group by continent if helpful), ask the traveller to pick one, and emit [SET_FILTERS:{\"region_id\":N}] with the chosen region's id. Do NOT proceed to recommend treks/experiences until the next turn (when AVAILABLE EXPERIENCES will be populated).\n   • Famous Himalayan names you must NEVER mention unless they're literally in AVAILABLE EXPERIENCES by exact name: Annapurna, Everest, Manaslu, Markha, Pin Parvati, Hampta Pass, Roopkund, Kuari Pass, Kilimanjaro, Poon Hill, Tilicho.\n6. ABSOLUTE RULE on accommodation / stay suggestions:\n   • Recommend stays/rooms ONLY from CURRENT_TRIP_CONTEXT.stay_options_for_dates (this is the live inventory for the active region + trip dates).\n   • Never invent hotel names, room types, or per-night rates. Never say 'we have a charming guesthouse' unless it appears by exact name in stay_options_for_dates.\n   • If stay_options_for_dates is empty: either dates aren't set yet (ask the traveller for start/end date) OR the active region has no rooms available for those dates (say so and offer alternatives from available_regions). Never fabricate stays.\n   • When stay_options_for_dates has entries, list rooms as: '**[sp_name]** — [room_category] (₹[rate_per_night]/night [meal_plan]) · [rooms_available] left'.\n\nIf filters already selected (see CURRENT FILTERS), skip the region question. Only ask MISSING details. Single region per trip — all selections must come from the same region (active_region_id).\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] — include only chosen keys. Hidden from user." . $filterContext;
+        $conversationFlowInstruction = "\n\nCONVERSATION FLOW (ask step by step, show options as bold lists):\n1. Name (guests only).\n2. Destination: ask Continent then Country then Region step by step. The ONLY valid regions are in CURRENT_TRIP_CONTEXT.available_regions (when that field is present). Each one carries an `experiences` count, and a traveller cannot choose what they cannot see, so SAY THE COUNT every time you offer a place: \"**Asia** (4 experiences)\", \"**Tirthan Valley**, India - 2 experiences\". For a continent or a country, add up the regions inside it. Only places with something in them are in that list at all, so if it is empty there is nothing on offer anywhere yet and you say so plainly rather than inventing somewhere. NEVER name a region or country not in that list. NEVER mention Nepal, Tibet, Bhutan, Pakistan, or any country that's not represented in available_regions.\n3. Experience type & difficulty preference.\n4. Travel date, then group size, then starting city. ONE QUESTION PER REPLY, always. Never two in a breath, never a list of things to fill in. Ask, wait for the answer, write it down, ask the next.\n5. ABSOLUTE RULE on experience names + IDs:\n   • You may ONLY name an experience that appears (by exact name) in AVAILABLE EXPERIENCES. That governs what you SAY, not what you UNDERSTAND. A traveller will refer to one loosely, and should be understood: \"the village walk\" and \"that morning one\" both mean \"Morning Walk Through the Village\", and \"the half day trek\" means \"Probe · half a day in India\". Match what they said to the catalogue, then use the exact name back. Only where nothing in the list plausibly fits do you say you cannot find it, and then you name what there IS rather than leaving them guessing.\n   • You may ONLY put an id in RECOMMEND_IDS or ADD_TO_TRIP that appears (by exact id) in AVAILABLE EXPERIENCES.\n   • If AVAILABLE EXPERIENCES is `[]` (empty), you have NO catalog yet. In that case your response must NOT contain ANY of: trek names, peak names, route names, sample itineraries, mountain names, fictional experience names, or RECOMMEND_IDS. Even if the traveller asks for specific trek suggestions, you must respond with: 'I'd love to suggest specific treks - first, let's pick a region so I show you only experiences we actually run.' Then present 3-5 region NAMES from CURRENT_TRIP_CONTEXT.available_regions (group by continent if helpful), ask the traveller to pick one, and emit [SET_FILTERS:{\"region_id\":N}] with the chosen region's id. Do NOT proceed to recommend treks/experiences until the next turn (when AVAILABLE EXPERIENCES will be populated).\n   • Famous Himalayan names you must NEVER mention unless they're literally in AVAILABLE EXPERIENCES by exact name: Annapurna, Everest, Manaslu, Markha, Pin Parvati, Hampta Pass, Roopkund, Kuari Pass, Kilimanjaro, Poon Hill, Tilicho.\n6. ABSOLUTE RULE on accommodation / stay suggestions:\n   • Recommend stays/rooms ONLY from CURRENT_TRIP_CONTEXT.stay_options_for_dates (this is the live inventory for the active region + trip dates).\n   • Never invent hotel names, room types, or per-night rates. Never say 'we have a charming guesthouse' unless it appears by exact name in stay_options_for_dates.\n   • If stay_options_for_dates is empty: either dates aren't set yet (ask the traveller for start/end date) OR the active region has no rooms available for those dates (say so and offer alternatives from available_regions). Never fabricate stays.\n   • When stay_options_for_dates has entries, list rooms as: '**[sp_name]** - [room_category] (₹[rate_per_night]/night [meal_plan]) · [rooms_available] left'.\n\nIf filters already selected (see CURRENT FILTERS), skip the region question. Only ask MISSING details. Single region per trip - all selections must come from the same region (active_region_id).\n\nSET_FILTERS: When traveller picks continent/country/region, append: [SET_FILTERS:{\"continent\":\"X\",\"country\":\"Y\",\"region_id\":N}] - include only chosen keys. Hidden from user." . $filterContext;
 
         // Last of all, and that is the whole point. Set in the middle of the stack
         // this was buried: the conversation flow that follows opens "1. Name
@@ -2415,7 +2600,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             \Log::warning('AI chat: all providers failed', ['is_guest' => $isGuest, 'trip_id' => $trip?->id]);
         }
 
-        $responseText = $aiResponse["content"] ?? "Our AI assistant is busy right now (rate limit). Please wait about a minute and try again — or use the controls on the right to update your trip directly.";
+        $responseText = $aiResponse["content"] ?? "Our AI assistant is busy right now (rate limit). Please wait about a minute and try again - or use the controls on the right to update your trip directly.";
 
         // Parse SET_FILTERS tag.
         //
@@ -2585,7 +2770,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // try to match experience names from the catalog and add them automatically
         if (empty($addedExperienceIds) && preg_match('/(?:added|adding|I\'ve added|I have added|added .* to your trip|adding .* to your)/i', $responseText)) {
             $fallbackIds = [];
-            // Candidate catalogue to name-match against — active experiences, scoped
+            // Candidate catalogue to name-match against - active experiences, scoped
             // to the trip's region when known (mirrors the single-region constraint).
             // Previously this loop referenced an undefined $experiences, throwing a
             // 500 whenever the AI said "added" without an [ADD_TO_TRIP] tag (#23).
@@ -2938,7 +3123,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     /**
      * Keep trip_regions equal to the regions the trip's chosen experiences sit
      * in. Every writer of that table derives it from exactly that, so a removal
-     * has to prune it too — an HRP is shown the trips touching their region, and
+     * has to prune it too - an HRP is shown the trips touching their region, and
      * a row left behind hands them one that no longer goes anywhere near them.
      */
     protected function syncTripRegions(Trip $trip): void
@@ -3102,7 +3287,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * found out until the host was asked to run it.
      *
      * Returns the sentence to show, or null when the party fits everything on
-     * the trip. Counts every head including infants — the limit is about how
+     * the trip. Counts every head including infants - the limit is about how
      * many bodies a homestay or a vehicle holds, not about who pays.
      */
     protected function groupSizeClash(Trip $trip, int $party): ?string
@@ -3165,7 +3350,66 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $trip->update(['end_date' => null]);
         }
 
-        return response()->json(["success" => true]);
+        // The days moved, so the rooms have to move with them. Nothing did this
+        // before: a trip shifted from April to May still held its suite in
+        // April - blocking the host on a night nobody was coming, and holding
+        // nothing at all for the night they actually arrived.
+        $couldNotHold = $this->rebookRoomsForTrip($trip);
+
+        return response()->json(array_filter([
+            "success" => true,
+            // Said plainly rather than logged, because the traveller is billed
+            // for these nights either way.
+            "rooms_warning" => $couldNotHold
+                ? 'Your dates moved, but ' . implode('; ', $couldNotHold)
+                    . '. HECO will confirm those nights with the property.'
+                : null,
+        ], fn ($v) => $v !== null));
+    }
+
+    /**
+     * Move a trip's held rooms onto the days the itinerary now sits on.
+     *
+     * Returns a sentence per night that could not be held, so the caller can
+     * say so instead of leaving it in a log nobody reads.
+     */
+    protected function rebookRoomsForTrip(Trip $trip): array
+    {
+        $svc = app(\App\Services\RoomAvailabilityService::class);
+        $problems = [];
+
+        $services = TripDayService::with('tripDay')
+            ->whereIn('trip_day_id', $trip->tripDays()->select('id'))
+            ->where('service_type', 'accommodation')
+            ->whereNotNull('sp_pricing_id')
+            ->get();
+
+        foreach ($services as $service) {
+            $svc->releaseForTripDayService($service->id);
+        }
+
+        foreach ($services as $service) {
+            $date = $service->tripDay?->date;
+            if (! $date) continue;
+
+            $qty = (int) ($service->room_quantity ?: 1);
+            $held = $svc->book(
+                spPricingId: (int) $service->sp_pricing_id,
+                tripId: $trip->id,
+                tripDayServiceId: $service->id,
+                date: $date,
+                quantity: $qty,
+                status: $trip->status === 'confirmed' ? 'confirmed' : 'held',
+                source: 'trip_manager',
+            );
+
+            if (! $held) {
+                $category = SpPricing::whereKey($service->sp_pricing_id)->value('room_category') ?: 'the room';
+                $problems[] = "{$category} is no longer free on " . $date->format('j M Y');
+            }
+        }
+
+        return $problems;
     }
 
     /**
@@ -3199,8 +3443,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // region. Without this, a Tirthan trip would also list Spiti/Ladakh
         // providers, which can never actually serve it.
         //
-        // The region is resolved SERVER-SIDE from the trip's own experiences —
-        // not the client-sent region_id — because the client value can go stale
+        // The region is resolved SERVER-SIDE from the trip's own experiences -
+        // not the client-sent region_id - because the client value can go stale
         // (e.g. the traveller switches the trip to another region without the
         // provider cards reloading). The client region_id is only a fallback for
         // guest trips that have no DB row yet.
@@ -3247,7 +3491,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ];
         })->values();
 
-        // Guide is exclusive — tell the UI to show a notice and hide the guide
+        // Guide is exclusive - tell the UI to show a notice and hide the guide
         // provider list when the trip's experience already provides a guide.
         // Works for both a saved trip and a guest's session experiences.
         $guideIncluded = false;
@@ -3289,7 +3533,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
         if (!Auth::check()) {
             $gt = $this->guestTrip();
-            // Guide is exclusive — block pinning a guide when the guest's experience
+            // Guide is exclusive - block pinning a guide when the guest's experience
             // already provides one (the UI shows a notice; this is the safety net).
             if ($request->filled('guide_pricing_id')) {
                 $gExpIds = $gt['experience_ids'] ?? [];
@@ -3335,7 +3579,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         // Validate every pinned rate belongs to its named provider and is an
-        // approved, active row of the right service type — otherwise a traveller
+        // approved, active row of the right service type - otherwise a traveller
         // could pin an arbitrary/unapproved pricing id to any provider (#18).
         $valid = $this->pinnedRatesValid([
             [$data['accommodation_provider_id'] ?? null, $data['accommodation_pricing_id'] ?? null, 'accommodation'],
@@ -3356,12 +3600,58 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         $trip->update($data);
-        return response()->json(["success" => true]);
+
+        return response()->json(array_filter([
+            "success" => true,
+            "stacking_warning" => $request->filled('accommodation_pricing_id')
+                ? $this->accommodationAlreadyIncluded($trip)
+                : null,
+        ], fn ($v) => $v !== null));
+    }
+
+    /**
+     * What is already housing people, so a hotel pinned on top can say so.
+     *
+     * A guide is exclusive and simply refused, because an experience that
+     * provides one cannot want another. Accommodation is not like that: a
+     * fourteen-day trek sleeps in tents in the middle and wants a hotel at each
+     * end, and those are different nights. Refusing the pin would block a real
+     * need; saying nothing charged the same bed twice - ₹67,600 of it on one
+     * Everest trip - with nothing on screen to notice.
+     *
+     * So it warns. Returns the sentence to show, or null when nothing on the
+     * trip houses anybody. Pass a day to ask about that night alone.
+     */
+    protected function accommodationAlreadyIncluded(Trip $trip, ?int $dayId = null): ?string
+    {
+        $query = Experience::where('includes_accommodation', true);
+
+        if ($dayId) {
+            $query->whereIn('id', TripDayExperience::where('trip_day_id', $dayId)->select('experience_id'));
+        } else {
+            $query->whereIn('id', TripSelectedExperience::where('trip_id', $trip->id)->select('experience_id'));
+        }
+
+        $housed = $query->get(['name', 'cost_accommodation']);
+        if ($housed->isEmpty()) {
+            return null;
+        }
+
+        $names = $housed->pluck('name')->implode(' and ');
+        $perHead = (float) $housed->sum('cost_accommodation');
+
+        $where = $dayId ? 'This day is part of' : 'This trip includes';
+        $cost = $perHead > 0
+            ? ' - ₹' . number_format($perHead) . ' a head of it is already in the price'
+            : '';
+
+        return "{$where} {$names}, which already houses your travellers{$cost}. "
+             . "Anything booked here is charged on top of that.";
     }
 
     /**
      * True when any experience selected on the trip already bundles a guide
-     * (cost_guide > 0) — used to block adding a duplicate guide provider.
+     * (cost_guide > 0) - used to block adding a duplicate guide provider.
      */
     private function tripHasIncludedGuide(Trip $trip): bool
     {
@@ -3512,7 +3802,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // The price is worked out from the DAYS; the journey list beside it is
         // read from the SELECTED experiences. Deleting a day that held one
         // parted the two: the panel went on listing "Barley, Butter Tea and a
-        // Spiti Kitchen — ₹1,500 per person" while the total fell to zero, and
+        // Spiti Kitchen - ₹1,500 per person" while the total fell to zero, and
         // the trip could then be confirmed owing nothing at all.
         //
         // Removing the experience from the journey is the way to drop its days,
@@ -3571,7 +3861,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $pricing['balance_due'] = max(0, ($pricing['final_price'] ?? 0) - $totalPaid);
 
         // Per-experience base price (per person) for the pricing summary. Display
-        // only — NOT summed into the total, since CostCalculatorService already
+        // only - NOT summed into the total, since CostCalculatorService already
         // distributes each experience's cost across the component lines.
         $pricing['experiences'] = $this->pricingExperienceLines(
             $trip->selectedExperiences()->orderBy('sort_order')->pluck('experience_id')->all(),
@@ -3583,7 +3873,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     /**
      * Strip the internal HRP margin + HCT commission from a traveller-facing
-     * pricing payload (req 3.3 — only RP is shown to the traveller, as an
+     * pricing payload (req 3.3 - only RP is shown to the traveller, as an
      * informational contribution). HRP/HCT stay server-side for payout/reporting.
      */
     private function hideInternalMargins(array $pricing): array
@@ -3671,7 +3961,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         // Only attach the trip (and read its payment status) when it belongs to
-        // the caller — otherwise a user could reference someone else's trip and
+        // the caller - otherwise a user could reference someone else's trip and
         // learn whether it has a payment. HCT staff may reference any trip.
         $tripId = null;
         $hasPayment = false;
@@ -3703,7 +3993,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * The page has always posted `contact_form`, and nothing here has ever
      * known that key: every message got "Unknown action" and the visitor got
-     * "Failed to send message. Please try again." — however many times they
+     * "Failed to send message. Please try again." - however many times they
      * tried. A public site with a contact form that cannot be contacted
      * through.
      *
@@ -3767,7 +4057,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         // Written down before it is sent. `sendMail` defers the SMTP round trip
         // to after the response, so a mail server that is down fails where
-        // nobody is looking — and this is the only copy of what they said.
+        // nobody is looking - and this is the only copy of what they said.
         Log::info('Contact form message', [
             'name' => $name,
             'email' => $request->input('email'),
@@ -3789,13 +4079,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         ActivityLog::create([
             'user_id' => Auth::id(),
             'action' => 'contact_form',
-            'details' => $topics[$request->input('subject')] . ' — ' . $request->input('email'),
+            'details' => $topics[$request->input('subject')] . ' - ' . $request->input('email'),
             'ip_address' => $request->ip(),
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => "Thank you — we have your message and will come back to you.",
+            'message' => "Thank you - we have your message and will come back to you.",
         ]);
     }
 
@@ -3812,8 +4102,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         // Whoever this address already belongs to, if anybody. Read before the
         // rows below need it: `$user` was used three times here and never
-        // defined, so every signup — from the landing page footer, logged in or
-        // not — died on "Undefined variable $user" and nothing was ever stored.
+        // defined, so every signup - from the landing page footer, logged in or
+        // not - died on "Undefined variable $user" and nothing was ever stored.
         //
         // One address can hold a traveller account and a provider account, so
         // this takes the traveller's if there is one and otherwise the first;
@@ -3821,7 +4111,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $user = User::where("email", $email)->orderByRaw("user_role = 'traveller' DESC")->first();
 
         // If this email belongs to registered users, flip their opt-in. Every
-        // account on the address, not the first one found — the subscription
+        // account on the address, not the first one found - the subscription
         // belongs to the inbox, not to one of its roles.
         User::where("email", $email)->update(["newsletter_optin" => true]);
 
@@ -3895,7 +4185,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // and SP coordination, so route the user through HCT instead.
         if ($trip->status !== 'not_confirmed') {
             return response()->json([
-                "error" => "This trip can no longer be reopened. Confirmed trips must be modified by our team — please use Request Support.",
+                "error" => "This trip can no longer be reopened. Confirmed trips must be modified by our team - please use Request Support.",
             ], 422);
         }
         $trip->update(["stage" => "open"]);
@@ -3916,7 +4206,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         if (!$hasItinerary) {
             return response()->json(["error" => "Add at least one experience to your trip before confirming."], 422);
         }
-        // Re-verify any pinned provider rates are still valid at confirm time — a
+        // Re-verify any pinned provider rates are still valid at confirm time - a
         // pricing row may have been unapproved or deactivated since it was pinned,
         // which would otherwise create an orphan booking on confirm (#16).
         $ratesValid = $this->pinnedRatesValid([
@@ -3927,17 +4217,29 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         if (!$ratesValid) {
             return response()->json(["error" => "A selected provider rate is no longer available. Please review your Comfort & Partners selections before confirming."], 422);
         }
-        // Confirm the trip but keep the stage open — closing the stage is an
+        // Confirm the trip but keep the stage open - closing the stage is an
         // explicit HCT action (matches the C2 guard against silent downgrades).
         $trip->update(["status" => "confirmed"]);
         // Promote any held SP room bookings → confirmed.
         app(\App\Services\RoomAvailabilityService::class)->confirmForTrip($trip->id);
         // Reserve room inventory for a trip-level accommodation pin (#12).
-        $this->bookTripLevelAccommodation($trip);
+        $unheld = array_merge(
+            $this->bookTripLevelAccommodation($trip),
+            $this->bookStayRooms($trip),
+        );
         // Bill each pinned provider (amount auto-computed as rate × qty) so the
         // provider actually gets an invoice on confirm (#13).
         $this->createProviderInvoices($trip);
-        return response()->json(["success" => true, "status" => "confirmed"]);
+
+        return response()->json(array_filter([
+            "success" => true,
+            "status" => "confirmed",
+            // Said, not logged: the traveller is billed for these nights either way.
+            "rooms_warning" => $unheld
+                ? 'Your trip is confirmed, but we could not hold a room for: '
+                    . implode('; ', $unheld) . '. HECO will be in touch about those nights.'
+                : null,
+        ], fn ($v) => $v !== null));
     }
 
     protected function eraseTrip(Request $request): JsonResponse
@@ -3948,11 +4250,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             return response()->json(["error" => "Trip not found"], 404);
         }
         // Only draft (unpaid) trips can be erased by the traveller. Once a payment
-        // has been received the trip is a real booking — cancellation must go
+        // has been received the trip is a real booking - cancellation must go
         // through HCT (refund, SP coordination, etc.) per MVP rules.
         if ($trip->status !== 'not_confirmed') {
             return response()->json([
-                "error" => "This trip can no longer be erased. Confirmed trips must be cancelled by our team — please use Request Support.",
+                "error" => "This trip can no longer be erased. Confirmed trips must be cancelled by our team - please use Request Support.",
             ], 422);
         }
         $trip->update(["status" => "cancelled", "stage" => "closed"]);
@@ -4306,7 +4608,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "pickup_preference" => $pickupPref ?: 'Not specified',
         ]);
 
-        $dayMappingInstruction = "\n\nDAY-TO-EXPERIENCE MAPPING (follow this EXACTLY — do NOT add, remove, or reorder days):\n" . json_encode($dayMapping) . "\n\nYou MUST create exactly " . $totalDays . " days. Rules:\n- Activity days: MUST include the experience_id from the mapping. For multi-day experiences, write unique title/notes per day.\n- Include 'day_type' field in each day's JSON output (activity).";
+        $dayMappingInstruction = "\n\nDAY-TO-EXPERIENCE MAPPING (follow this EXACTLY - do NOT add, remove, or reorder days):\n" . json_encode($dayMapping) . "\n\nYou MUST create exactly " . $totalDays . " days. Rules:\n- Activity days: MUST include the experience_id from the mapping. For multi-day experiences, write unique title/notes per day.\n- Include 'day_type' field in each day's JSON output (activity).";
 
         $messages = [];
         if ($promptData) {
@@ -4396,13 +4698,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // Pull the matching ExperienceDay (Day N of the experience).
             $expDay = $exp?->days?->firstWhere('day_number', $dayOfExp);
 
-            // Title — prefer the editor's day title, then generic.
+            // Title - prefer the editor's day title, then generic.
             $genericTitle = $totalExpDays > 1
-                ? $expName . " — Day " . $dayOfExp . " of " . $totalExpDays
+                ? $expName . " - Day " . $dayOfExp . " of " . $totalExpDays
                 : $expName;
-            $editorTitle = $expDay?->title ? ($expName . ' — ' . $expDay->title) : null;
+            $editorTitle = $expDay?->title ? ($expName . ' - ' . $expDay->title) : null;
 
-            // Description — prefer the editor's per-day short description,
+            // Description - prefer the editor's per-day short description,
             // then phase phrasing built from experience.short_description.
             if ($totalExpDays > 1) {
                 if ($dayOfExp === 1) {
@@ -4421,11 +4723,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
             $editorDescription = $expDay?->short_description ?: null;
 
-            // Times — prefer the editor's per-day times, else 09:00–17:00.
+            // Times - prefer the editor's per-day times, else 09:00–17:00.
             $startTime = $expDay?->start_time ?: "09:00";
             $endTime   = $expDay?->end_time   ?: "17:00";
 
-            // Services — first from the day's inclusions list (these are
+            // Services - first from the day's inclusions list (these are
             // bundled into the experience price → cost 0, is_included true).
             $services = [];
             $coveredTypes = [];
@@ -4588,7 +4890,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $validator = Validator::make($request->all(), [
             "full_name" => "required|string|max:255",
-            // Unique among staff logins only — the same person may already be
+            // Unique among staff logins only - the same person may already be
             // a traveller or a provider on this address.
             "email" => ["required", "email", User::uniqueEmailRule(User::HCT_ROLES)],
             "password" => "required|min:8",
@@ -4625,7 +4927,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "email" => ["sometimes", "required", "email", User::uniqueEmailRule([$targetRole], $user->id)],
             "user_role" => "sometimes|required|in:administrator,collaborator",
             // nullable, because the form posts the password box on every save
-            // and leaving it empty means "keep the current one" — without this
+            // and leaving it empty means "keep the current one" - without this
             // an ordinary name or email change fails the length rule on a blank
             // field. The save below only writes it when it is filled.
             "password" => "sometimes|nullable|min:8",
@@ -4730,7 +5032,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // voice assistant is pointed at OpenAI, VoiceAssistantService takes the
         // model from config and the stored name is not read at all. The column
         // then showed a model that was not running, which sent somebody to edit
-        // it — reasonably — and that edit would have broken the Groq path the
+        // it - reasonably - and that edit would have broken the Groq path the
         // day anyone switched back.
         //
         // So the list carries both: what is actually being used, and what is
@@ -4960,7 +5262,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 return response()->json(['error' => 'No provider found'], 404);
             }
 
-            // Same rule as everywhere else — a hidden member still keeps their
+            // Same rule as everywhere else - a hidden member still keeps their
             // rate card. And a reason, not a bare "Unauthorized": a pending
             // applicant tapping Rates was told nothing, while every other tab
             // explained itself.
@@ -4970,7 +5272,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
             // A rate card is a supplier's. SpController already turns a host or
             // a regional partner away from the page, but the app talks to this
-            // endpoint directly — so a regional partner, who sells nothing at
+            // endpoint directly - so a regional partner, who sells nothing at
             // all, could still keep one.
             if (!$sp->suppliesServices()) {
                 return response()->json([
@@ -4990,7 +5292,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         if ($providerId instanceof JsonResponse) return $providerId;
 
         // Add-ons come along: they are the rate's own extras, and without them
-        // the app could show a rate but never re-edit what hung off it — the
+        // the app could show a rate but never re-edit what hung off it - the
         // editor reopened with an empty extras section and the next save wiped
         // them. The pending copy below is drawn from this same collection, so
         // it arrives loaded too.
@@ -5000,12 +5302,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ->get();
 
         // One row per rate. A change awaiting review is a state of the rate it
-        // would replace, not a second rate — returned flat, a provider who had
+        // would replace, not a second rate - returned flat, a provider who had
         // edited one price saw it listed three times, at three prices, with no
         // way to tell which one travellers were being sold.
         // Only a change still under review is one. A rejected staged row was
         // being attached here too, so the app told the provider their change
-        // was "with HECO for review" when HCT had already refused it — and the
+        // was "with HECO for review" when HCT had already refused it - and the
         // reason, which lives on the staged row, was nowhere they could read.
         $revisions = $rows
             ->filter(fn ($row) => $row->pending_for_id !== null && $row->approval_status === 'pending')
@@ -5051,7 +5353,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // Rates are deliberately NOT capped. The ten-listing limit belongs to
         // experiences alone: a host offering more than ten experiences is a
         // catalogue HCT wants to look at, whereas a supplier legitimately
-        // carries a long rate card — a taxi operator with several vehicles and
+        // carries a long rate card - a taxi operator with several vehicles and
         // both plains and hill rates passes ten without doing anything unusual.
 
         // Per-service-type validation. The dynamic modal in the UI only shows
@@ -5066,14 +5368,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $baseRules = [
             "provider_id"  => "required|exists:service_providers,id",
             "service_type" => "required|in:accommodation,transport,guide,activity,meal,rental,other",
-            // decimal(10,2) — eight digits before the point.
+            // decimal(10,2) - eight digits before the point.
             "price"        => "required|numeric|min:0|max:99999999.99",
             "category"     => "nullable|string|max:100",
             "description"  => "nullable|string|max:255",
             "notes"        => "nullable|string|max:5000",
             // These are written for every service type, whatever the form
             // showed, so a bound declared only under `transport` was no bound
-            // at all — the same field on a guide row went straight to the
+            // at all - the same field on a guide row went straight to the
             // driver. A type that cares states its own stricter rule below and
             // that one wins; this is only the floor.
             "unit"              => "nullable|string|max:50",
@@ -5091,7 +5393,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // A range nobody can book. There was no cross-field rule, so a
             // minimum of 50 with a maximum of 5 went live.
             "max_group"         => "nullable|integer|min:1|max:2000|gte:min_group",
-            // Optional extras hung off the rate — same shape as an
+            // Optional extras hung off the rate - same shape as an
             // experience's add-ons (see saveExperience). Stated here rather
             // than under one service type because applyRateAddons runs for
             // every type. `addons.*` is declared so a list of bare strings is
@@ -5132,7 +5434,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ],
             'transport' => [
                 // A per-km taxi states the plains rate instead of a flat price,
-                // and that rate becomes the row's price below — so the trip
+                // and that rate becomes the row's price below - so the trip
                 // cost calculation keeps working off a single field.
                 // Every one of these is a decimal(10,2). Stating a type without
                 // a ceiling was no bound at all: a figure too big for the
@@ -5141,7 +5443,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 // of range. A per-type list replaces the floor set in
                 // $baseRules outright, so each rule here has to carry its own.
                 "price"             => "required_without:price_per_km_plains|nullable|numeric|min:0|max:99999999.99",
-                // A taxi priced per kilometre needs no unit picker — the rate
+                // A taxi priced per kilometre needs no unit picker - the rate
                 // itself says what the unit is.
                 "unit"              => "required_without:price_per_km_plains|nullable|string|max:50",
                 "vehicle_type"      => "required|string|max:100",
@@ -5209,7 +5511,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // Only what the save actually carries.
         //
         // These were written unconditionally while the per-type fields below go
-        // through has() — one save, two contracts, and the older half lost data.
+        // through has() - one save, two contracts, and the older half lost data.
         // A form that shows a subset of the fields (the portal's bulk tier
         // editor does exactly that) blanked the description, the notes, the
         // vehicle's make and year; approving the edit then wrote those blanks
@@ -5259,7 +5561,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $data["vehicle_make_model"]      = $request->input("vehicle_make_model") ?: null;
             $data["vehicle_registration_no"] = $request->input("vehicle_registration_no") ?: null;
             $data["vehicle_year"]            = $request->filled("vehicle_year") ? (int) $request->vehicle_year : null;
-            // Only overwrite a stated answer — a form that omits the toggles
+            // Only overwrite a stated answer - a form that omits the toggles
             // (e.g. the bulk rows) must not silently clear what was set before.
             foreach (['driver_included', 'fuel_tolls_extra'] as $flag) {
                 if ($request->has($flag)) {
@@ -5288,7 +5590,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $existing = SpPricing::findOrFail($request->id);
             if ($isAdmin || $existing->approval_status !== 'approved') {
                 // Only a LIVE rate needs protecting from an edit. A row that is
-                // still pending, or was rejected, is edited where it stands —
+                // still pending, or was rejected, is edited where it stands -
                 // forking it made a second queue entry for one rate at two
                 // prices, and left the original stranded. A rejected row goes
                 // back into the queue, which is what fixing a rejection means.
@@ -5304,7 +5606,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 // Replacing the staged edit is one act: the old one only goes
                 // when the new one is safely written. Deleted first and created
                 // second, a save that then failed left the provider with
-                // neither — their staged change gone and a bare 500 to show
+                // neither - their staged change gone and a bare 500 to show
                 // for it.
                 $row = DB::transaction(function () use ($request, $existing, $data, $user) {
                     // Drop any prior pending edit for this row so the SP doesn't
@@ -5314,8 +5616,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                         ->delete();
                     // The pending row replaces the live one wholesale once
                     // approved, so it starts as a copy of it. Without this, any
-                    // field the submitting form did not show — the hill rate, the
-                    // vehicle photos — would be silently dropped on approval.
+                    // field the submitting form did not show - the hill rate, the
+                    // vehicle photos - would be silently dropped on approval.
                     $row = SpPricing::create(array_merge(
                         $this->copyableAttributes($existing),
                         $data,
@@ -5328,7 +5630,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                         ],
                     ));
                     // The pending row is a whole copy of the live one, extras
-                    // included — otherwise approving an edit that never mentioned
+                    // included - otherwise approving an edit that never mentioned
                     // add-ons would wipe them off the live rate.
                     if (! $request->has('addons')) {
                         $this->replaceRateAddons($row, $existing);
@@ -5404,7 +5706,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * twice and the trip manager is offered one room as though it were two.
      *
      * What counts as "the same" is per service type. A hotel may have any
-     * number of accommodation rows — that is the point of the grid — as long as
+     * number of accommodation rows - that is the point of the grid - as long as
      * each is a different tier / room / occupancy / board. Two taxis are two
      * taxis when their registrations differ.
      */
@@ -5419,7 +5721,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             default => ['category', 'unit'],
         };
 
-        // Nothing to compare on — a row with no identifying values yet cannot
+        // Nothing to compare on - a row with no identifying values yet cannot
         // be called a repeat of anything.
         if (! array_filter(array_map(fn ($f) => $data[$f] ?? null, $identity), 'filled')) {
             return null;
@@ -5436,8 +5738,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         // Editing a rate is not duplicating it. Nor is the pending copy this
-        // save is about to replace, nor — when the row being saved is itself a
-        // staged edit — the live rate it stands for. A provider fixing a
+        // save is about to replace, nor - when the row being saved is itself a
+        // staged edit - the live rate it stands for. A provider fixing a
         // rejected edit was being told to go and edit the very thing they had
         // open.
         if ($request->filled('id')) {
@@ -5463,7 +5765,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // enum, and half of them would take "an".
         return response()->json([
             'error' => "You already have this {$data['service_type']} rate"
-                . ($described ? " — {$described}" : '')
+                . ($described ? " - {$described}" : '')
                 . '. Edit that one instead of adding it again.',
         ], 422);
     }
@@ -5487,7 +5789,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
             // One name, one extra. Two "Extra bed" rows are indistinguishable to
             // anyone reading them, and the approval screen matches an edit's
-            // add-ons against the live ones BY NAME — so a repeat made the
+            // add-ons against the live ones BY NAME - so a repeat made the
             // added/changed/removed marks meaningless. The first wins, as a
             // repeated price slab already does.
             $key = mb_strtolower($name);
@@ -5511,7 +5813,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * Make one rate's add-ons read exactly like another's.
      *
      * The extras are child rows, so neither `update()` nor copyableAttributes
-     * can carry them — they have to be re-created on the far side.
+     * can carry them - they have to be re-created on the far side.
      */
     protected function replaceRateAddons(SpPricing $target, SpPricing $source): void
     {
@@ -5540,7 +5842,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 'is_active',
             ])
             // getAttributes() hands back what is stored, so a JSON column
-            // arrives as its encoded text — and writing that text back through
+            // arrives as its encoded text - and writing that text back through
             // a column the model casts to `array` encoded it a second time.
             // The photos, the vehicle photos and a guide's languages came out
             // of an approval as a string containing a quoted list, so the app
@@ -5555,8 +5857,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * The per-service fields from the client's data-collection document.
      *
      * A field is written only when the request mentions it, so a form that
-     * never showed a section — the bulk-add rows, or the app's shorter
-     * editor — leaves what was already stored alone instead of blanking it.
+     * never showed a section - the bulk-add rows, or the app's shorter
+     * editor - leaves what was already stored alone instead of blanking it.
      */
     protected function applyServiceTypeFields(Request $request, string $serviceType, array &$data): void
     {
@@ -5730,8 +6032,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 // The pending row is already a complete copy of the live one
                 // with the member's changes on top (see copyableAttributes in
                 // saveSpPricing), so everything on it is meant to land. Naming
-                // the columns by hand dropped twenty-four of them — the per-km
-                // rates, the vehicle, the languages, the deposit, the photos —
+                // the columns by hand dropped twenty-four of them - the per-km
+                // rates, the vehicle, the languages, the deposit, the photos -
                 // and then deleted the pending row, so a rate the provider had
                 // been told was approved silently kept its old numbers with no
                 // copy of what they actually submitted.
@@ -5740,7 +6042,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                     'approved_by' => Auth::id(),
                 ]);
                 // The extras land too. They are child rows, so the column copy
-                // above cannot carry them — approving an edit left the live
+                // above cannot carry them - approving an edit left the live
                 // rate holding its old add-ons and then deleted the submitted
                 // ones along with the pending row, which is the same silent
                 // loss the column list used to cause. The pending row always
@@ -5805,8 +6107,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     /**
      * HCT admin: reject a pending pricing row with a reason.
      *
-     * Only the pending row is touched. The live rate it was staged against —
-     * its columns and its add-ons alike — is left exactly as travellers are
+     * Only the pending row is touched. The live rate it was staged against -
+     * its columns and its add-ons alike - is left exactly as travellers are
      * being sold it, which is the whole point of staging the edit separately.
      */
     protected function rejectPricing(Request $request): JsonResponse
@@ -5843,7 +6145,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         // Say what actually happened. The scope kept another provider's rows
         // safe, but nothing checked whether anything was hit, so deleting a
-        // stranger's rate — or an id that never existed — answered "success"
+        // stranger's rate - or an id that never existed - answered "success"
         // and the app struck the row off its list for a delete that did not
         // occur. Saving against a row you do not own already answers 403.
         $rows = SpPricing::whereIn("id", $ids)
@@ -5912,7 +6214,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ->map(fn($m) => ["role" => $m->role, "content" => $m->content])
             ->toArray();
 
-        // Slim trip summary — avoid $trip->toJson() with deep relations (was ~20k chars per call).
+        // Slim trip summary - avoid $trip->toJson() with deep relations (was ~20k chars per call).
         $trip->load([
             'selectedExperiences:id,trip_id,experience_id,sort_order',
             'selectedExperiences.experience:id,name,type,region_id,duration_type,duration_days,difficulty_level,base_cost_per_person',
@@ -6050,7 +6352,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * It creates the same three rows that path creates, in the same order and
      * through the same service, so a lead filed here is indistinguishable
-     * afterwards from one the traveller raised themselves — the trip manager,
+     * afterwards from one the traveller raised themselves - the trip manager,
      * the reminders and the won/lost flow all work on it unchanged.
      */
     protected function createLead(Request $request): JsonResponse
@@ -6077,8 +6379,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // for somebody must not give them a second account, or their trips end
         // up split across two travellers who cannot see each other.
         // Three rows that only mean anything together. A failure part way
-        // through — which is how a stray traveller and a trip with no lead
-        // against them were left behind while this was being built — leaves
+        // through - which is how a stray traveller and a trip with no lead
+        // against them were left behind while this was being built - leaves
         // rows nobody will ever look at and nothing to find them by.
         return DB::transaction(function () use ($data) {
         // validate() hands back only the keys that were actually sent, so every
@@ -6096,7 +6398,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 'email' => $email,
                 // They did not choose this and are never told it. Signing in
                 // is done through the emailed reset code like any other
-                // traveller who has forgotten theirs — an account with no
+                // traveller who has forgotten theirs - an account with no
                 // password at all could not be signed into by any route.
                 'password' => Str::random(32),
                 'auth_type' => 'email',
@@ -6107,7 +6409,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $traveller->update(['mobile' => $data['mobile']]);
         }
 
-        // A trip has no region of its own — it takes one from the experiences
+        // A trip has no region of its own - it takes one from the experiences
         // that go into it, which have not been chosen yet. What the enquiry was
         // about is worth keeping all the same, so it names the trip: it is the
         // only thing distinguishing one fresh enquiry from another in the list.
@@ -6163,7 +6465,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $query = Trip::with(["user", "regions"]);
 
-        // Status filter — blank / "all" means no filter.
+        // Status filter - blank / "all" means no filter.
         $status = $request->get("status", "");
         if (!empty($status) && $status !== "all") {
             $allowed = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
@@ -6217,7 +6519,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         // Guard: don't allow downgrading a trip that has already progressed
-        // (confirmed / running / completed) back to 'not_confirmed' — that would
+        // (confirmed / running / completed) back to 'not_confirmed' - that would
         // re-open a locked trip and orphan any payments against it. Cancelling a
         // progressed trip is still allowed.
         $progressed = ['confirmed', 'running', 'completed'];
@@ -6243,13 +6545,29 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // - confirmed → flip held bookings to confirmed (rooms reserved hard)
         // - cancelled → release all active bookings (rooms freed)
         $room = app(\App\Services\RoomAvailabilityService::class);
+        $unheld = [];
         if ($newStatus === 'confirmed') {
             $room->confirmForTrip($trip->id);
+            // The same two things the traveller's own Confirm has always done.
+            // HCT confirming from the Trips page did neither, so a trip could be
+            // confirmed with no rooms reserved at the property and no invoice
+            // raised against any of its providers.
+            $unheld = array_merge(
+                $this->bookTripLevelAccommodation($trip),
+                $this->bookStayRooms($trip),
+            );
+            $this->createProviderInvoices($trip);
         } elseif ($newStatus === 'cancelled') {
             $room->releaseForTrip($trip->id);
         }
 
-        return response()->json(["success" => true]);
+        return response()->json(array_filter([
+            "success" => true,
+            "rooms_warning" => $unheld
+                ? 'Confirmed, but these nights could not be reserved: ' . implode('; ', $unheld)
+                    . '. Settle them with the property.'
+                : null,
+        ], fn ($v) => $v !== null));
     }
 
     protected function getCalendarTrips(Request $request): JsonResponse
@@ -6336,17 +6654,22 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 $amountDue = app(CostCalculatorService::class)->providerPayable($pricing, $trip, $request->service_type);
             }
 
-            // A partner is just as often pinned on a single DAY — one night in
-            // Kaza, one transfer — and those never reached the trip-level
+            // A partner is just as often pinned on a single DAY - one night in
+            // Kaza, one transfer - and those never reached the trip-level
             // columns above, so the invoice was raised at zero for a room the
-            // traveller had already been charged for. Day pins are the rate
-            // times the rooms, summed over the days they were pinned on.
+            // traveller had already been charged for.
+            //
+            // The sum of the day costs, and nothing else: cost is the figure HCT
+            // typed for that day's service, already covering however many rooms
+            // it is for, and it is exactly what the calculator bills the
+            // traveller. room_quantity is inventory - how many rooms to hold at
+            // the property - and multiplying by it invoiced a partner twice for
+            // a two-room night.
             if ($amountDue <= 0 && $trip) {
                 $amountDue = (float) TripDayService::whereIn('trip_day_id', $trip->tripDays()->select('id'))
                     ->where('service_provider_id', $request->service_provider_id)
                     ->where('service_type', $request->service_type)
-                    ->get()
-                    ->sum(fn ($s) => (float) $s->cost * max(1, (int) $s->room_quantity));
+                    ->sum('cost');
             }
         }
 
@@ -6494,13 +6817,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $query = ServiceProvider::with(["region", "lastUpdatedBy:id,full_name,email"]);
 
-        // Blank means every provider — removal deletes the row, so there is no
+        // Blank means every provider - removal deletes the row, so there is no
         // archived state left to hide.
         $status = $request->get("status", "");
         if (!empty($status) && $status !== "all") {
             $query->where("status", $status);
         }
-        // Any role the provider holds, not just the primary one — an HLH that
+        // Any role the provider holds, not just the primary one - an HLH that
         // also runs a taxi has to appear under OSP too.
         if ($request->filled("provider_type")) {
             $query->ofType($request->provider_type);
@@ -6523,7 +6846,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * By default the provider is created already approved and a login + set-
      * password email is issued via finalizeApproval(), so they can sign in.
      * Capability sub-lists / bank details can be filled afterwards on the edit
-     * page — this keeps the quick-add form focused.
+     * page - this keeps the quick-add form focused.
      */
     protected function addProvider(Request $request): JsonResponse
     {
@@ -6531,7 +6854,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             return response()->json(["error" => "Unauthorized"], 403);
         }
 
-        // A member may hold any of the three roles, or several — an HLH who also
+        // A member may hold any of the three roles, or several - an HLH who also
         // runs a taxi, a regional partner who hosts. `provider_type` is still
         // accepted so an older caller keeps working, but it is one value where
         // the answer is a set.
@@ -6602,7 +6925,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     protected function editProvider(Request $request): JsonResponse
     {
-        // Hard gate — status (and every other admin-controlled field) can only be
+        // Hard gate - status (and every other admin-controlled field) can only be
         // changed by an HCT user, even if the request comes through portal /ajax.
         if (!Auth::user()?->isHct()) {
             return response()->json(["error" => "Unauthorized"], 403);
@@ -6612,7 +6935,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $wasApproved = $previousStatus === 'approved';
 
         // The status drives who can sign in and who gets sold, so it is the one
-        // field here that cannot be taken on trust — an unknown value used to
+        // field here that cannot be taken on trust - an unknown value used to
         // reach the enum column and come back as a 500.
         if ($request->has('status')) {
             $validator = Validator::make($request->all(), [
@@ -6629,7 +6952,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "business_type", "registration_number", "year_established",
             "region_id",
             "other_languages",
-            // What they offer, per role held — the answers screen 8 of the
+            // What they offer, per role held - the answers screen 8 of the
             // application asks for. HCT could read these on the application
             // and then never see them again once it was approved.
             "experience_categories", "service_categories", "other_services",
@@ -6659,7 +6982,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 ? null
                 : filter_var($answer, FILTER_VALIDATE_BOOLEAN);
         }
-        // Per-provider admin markup (req 3.3) — HCT-only (this whole method is gated).
+        // Per-provider admin markup (req 3.3) - HCT-only (this whole method is gated).
         // Clamp to 0–100%. Blank means "no markup" (0).
         if ($request->has('markup_percent')) {
             $data['markup_percent'] = max(0, min(100, (float) $request->input('markup_percent', 0)));
@@ -6707,7 +7030,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * A ban is the one status that shuts the door: the account is deactivated,
      * so neither the app nor the portal will authenticate it, and every API
-     * token it holds stops working. Any other status hands the login back —
+     * token it holds stops working. Any other status hands the login back -
      * that is what un-banning is, and it has to be symmetrical or an admin
      * could ban someone and never let them back in.
      *
@@ -6715,7 +7038,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * punishment: the provider keeps their login and their data, they are just
      * not offered to travellers while it lasts.
      *
-     * An HCT login is never touched — staff sign in to the admin with it, and
+     * An HCT login is never touched - staff sign in to the admin with it, and
      * a provider record must not be able to lock the admin out.
      *
      * Only the transition acts. Reading the new status alone would reactivate
@@ -6736,7 +7059,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $user->update(['status' => $provider->isBanned() ? 'inactive' : 'active']);
         if ($provider->isBanned()) {
             // Every way in closes at once. The status alone only stops the next
-            // sign-in — an app already holding a token, or a browser already
+            // sign-in - an app already holding a token, or a browser already
             // holding a session, would carry on working until either expired.
             \App\Models\ApiToken::where('user_id', $user->id)->delete();
             if (config('session.driver') === 'database') {
@@ -6745,7 +7068,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                     ->delete();
             }
         }
-        // Audit trail only. There is no "un-banned" state to record — the ban
+        // Audit trail only. There is no "un-banned" state to record - the ban
         // coming off just means the login goes back to active, so that is what
         // this says.
         $this->logActivity(
@@ -6756,15 +7079,15 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     }
 
     /**
-     * Side-effects of approving an SP — runs from approveProvider AND from
+     * Side-effects of approving an SP - runs from approveProvider AND from
      * editProvider when status flips to approved.
      *
-     * 1. Ensures the SP has a linked User account — reusing their existing
+     * 1. Ensures the SP has a linked User account - reusing their existing
      *    provider account for this address, or creating one.
      * 2. Generates a password-reset token and emails the SP a set-password
      *    link via SpApplicationApprovedEmail.
      *
-     * Idempotent — if the SP already has user_id, skips creation. If the
+     * Idempotent - if the SP already has user_id, skips creation. If the
      * mail send fails, logs it and continues (non-fatal).
      */
     protected function finalizeApproval(ServiceProvider $provider): void
@@ -6774,7 +7097,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // The role is checked, not just the link. Matching on email alone used
         // to find the applicant's *traveller* account and overwrite its
         // user_role, costing them their traveller identity to gain a provider
-        // one — and rows linked that way before emails were unique per role are
+        // one - and rows linked that way before emails were unique per role are
         // still in the table. A traveller account found here is therefore left
         // exactly as it is and a provider account is used in its place.
         $user = $provider->user_id ? User::find($provider->user_id) : null;
@@ -6802,21 +7125,21 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // provider_type onto the user and repair the two when they drifted,
         // which was the cost of storing one fact in two tables.
 
-        // Every type they signed up as, not just the first — a member who joined
+        // Every type they signed up as, not just the first - a member who joined
         // as both should not be welcomed as only one of them.
         $providerLabel = $provider->typeSentence();
         $contactName = $provider->contact_person ?: $provider->name;
         try {
             if ($user->password_set_at) {
                 // The provider already verified their email and set a password
-                // during signup (OTP flow) — just tell them they're live.
+                // during signup (OTP flow) - just tell them they're live.
                 $this->sendMail(
                     $user->email,
                     new SpApplicationApprovedEmail($contactName, $providerLabel, null, $provider->types()),
                     'sp_approved:' . $provider->id
                 );
             } else {
-                // Never completed signup (e.g. an admin-added provider) — include
+                // Never completed signup (e.g. an admin-added provider) - include
                 // a link so they can set a password and get in.
                 $token = Password::createToken($user);
                 $setPasswordUrl = route('password.reset', [
@@ -6842,7 +7165,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * Shared by the portal's profile form, which posts everything at once, and
      * the app's photo-only endpoint. Says nothing about the photo when the
-     * request says nothing — a save of other fields must not wipe it.
+     * request says nothing - a save of other fields must not wipe it.
      *
      * Returns an error response, or null when there is nothing wrong.
      */
@@ -6855,7 +7178,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $validator = Validator::make(['photo' => $request->file('photo')], [
                 // 10 MB, as everywhere else a provider sends a photo. Bounding
                 // it more tightly than that would start refusing pictures that
-                // used to upload — the point here is to keep out what is not an
+                // used to upload - the point here is to keep out what is not an
                 // image, not to make members shrink the ones that are.
                 'photo' => 'image|mimes:jpg,jpeg,png,webp|max:10240',
             ], [
@@ -6885,7 +7208,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * Change just the profile picture.
      *
      * Its own action because the app's profile endpoint is a PUT, and PHP does
-     * not parse a multipart body on PUT — and because changing a picture should
+     * not parse a multipart body on PUT - and because changing a picture should
      * not mean re-posting the whole profile.
      */
     protected function updateSpPhoto(Request $request): JsonResponse
@@ -6915,7 +7238,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * File one more verification document after the application went in.
      *
      * A member who was asked for a permit, or who only had their ID to hand at
-     * signup, had no way to send it — the app's Documents screen could add a
+     * signup, had no way to send it - the app's Documents screen could add a
      * row to itself and nothing else.
      *
      * Arrives as `documents[]` with `document_labels[]`, exactly as on the
@@ -6937,7 +7260,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
-        // Same storage as a document filed at signup — same folder, same
+        // Same storage as a document filed at signup - same folder, same
         // naming, same rules. A document is a document whenever it turns up.
         $stored = app(AuthService::class)->storeDocuments(
             array_values((array) $request->file('documents', [])),
@@ -6987,7 +7310,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "guide_types.*" => "string|max:100",
             "activity_types" => "nullable|array",
             "activity_types.*" => "string|max:100",
-            // HRP competences — see the add_hrp_competences migration.
+            // HRP competences - see the add_hrp_competences migration.
             "education_level" => "nullable|string|max:100",
             "education_notes" => "nullable|string|max:1000",
             "english_level" => "nullable|string|max:100",
@@ -7020,7 +7343,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 "computer_skill_level", "causes_note", "community_note",
             ]);
             // Only when the save carries it. Written unconditionally, a save
-            // that never mentioned work experience emptied it — and the app
+            // that never mentioned work experience emptied it - and the app
             // cannot send the field at all, so a regional partner changing
             // their phone number erased the history HCT approved them on.
             if ($request->has('work_experience')) {
@@ -7054,7 +7377,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     /**
      * Trip context an assigned provider legitimately needs to prepare: group
      * size, where the guests are coming from, and the pickup/drop points.
-     * Deliberately no traveller identity — the portal keeps that from SPs.
+     * Deliberately no traveller identity - the portal keeps that from SPs.
      */
     protected function spTripContext(Trip $trip): array
     {
@@ -7115,7 +7438,47 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $tripsById[$trip->id]['_services'][$label] = true;
         }
 
-        // 2) HRP-managed regions (if this provider is an HRP). Match on region_id —
+        // 1b) Trips that booked an experience of theirs.
+        //
+        // A host is not pinned to anything - their experience IS the trip - so
+        // the day-service query above could never find them. They were invoiced
+        // for a trek and shown no trip to go with it.
+        $hosted = Trip::whereIn(
+            'id',
+            TripSelectedExperience::whereIn(
+                'experience_id',
+                Experience::where('owner_provider_id', $provider->id)
+                    ->orWhere('hlh_id', $provider->id)
+                    ->select('id'),
+            )->select('trip_id'),
+        )->with('tripRegions.region', 'selectedExperiences.experience')->get();
+
+        foreach ($hosted as $trip) {
+            if (! isset($tripsById[$trip->id])) {
+                $tripsById[$trip->id] = [
+                    'id' => $trip->id,
+                    'trip_id' => $trip->trip_id,
+                    'trip_name' => $trip->trip_name,
+                    'start_date' => $trip->start_date,
+                    'end_date' => $trip->end_date,
+                    'status' => $trip->status,
+                ] + $this->spTripContext($trip) + [
+                    '_days' => [],
+                    '_services' => [],
+                ];
+            }
+            // Name the experiences of theirs the trip carries, so the row says
+            // why they are on it.
+            foreach ($trip->selectedExperiences as $sel) {
+                $exp = $sel->experience;
+                if (! $exp) continue;
+                if ((int) ($exp->owner_provider_id ?: $exp->hlh_id) === (int) $provider->id) {
+                    $tripsById[$trip->id]['_services'][$exp->name] = true;
+                }
+            }
+        }
+
+        // 2) HRP-managed regions (if this provider is an HRP). Match on region_id -
         // the provider's region_id is populated at application, whereas hrp_id was
         // never written anywhere, so the old hrp_id match was always empty (#37).
         // hasType, not provider_type: the latter is only the first of the set, so
@@ -7224,7 +7587,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $query = ServiceProvider::with("region");
 
-        // Status filter — blank / "all" means no filter; defaults to "pending"
+        // Status filter - blank / "all" means no filter; defaults to "pending"
         // because this screen is the SP application inbox.
         $status = $request->get("status", "");
         if (!empty($status) && $status !== "all") {
@@ -7283,13 +7646,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * traveller footprint has to be counted as well.
      *
      * Returns:
-     *   keep_login — the account outlives this provider (traveller history or
+     *   keep_login - the account outlives this provider (traveller history or
      *                HCT staff). It must not be deactivated or deleted; it only
      *                loses its provider role.
-     *   deletable  — the user row may be physically deleted: provider-only, and
+     *   deletable  - the user row may be physically deleted: provider-only, and
      *                nothing anywhere still points at it. Every reference
      *                checked below is a RESTRICT foreign key, so deleting under
-     *                one fails at the database — they are checked up front
+     *                one fails at the database - they are checked up front
      *                rather than discovered as a 500.
      *
      * @return array{keep_login: bool, deletable: bool, reason: ?string}
@@ -7346,7 +7709,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     }
 
     /**
-     * "2 trips, 1 payment" — for the toast that explains why an account was
+     * "2 trips, 1 payment" - for the toast that explains why an account was
      * kept. Keys are singular labels, values their counts.
      */
     protected function describeCounts(array $counts): string
@@ -7361,7 +7724,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     /**
      * Strip the provider role off an account that is being kept, so the portal
      * stops offering provider screens while the traveller side keeps working.
-     * Scoped to the provider role — an HCT login is never rewritten.
+     * Scoped to the provider role - an HCT login is never rewritten.
      */
     protected function demoteProviderUserToTraveller(int $userId): void
     {
@@ -7371,18 +7734,18 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     }
 
     /**
-     * Delete a provider — the shared body of the single-row and bulk paths;
+     * Delete a provider - the shared body of the single-row and bulk paths;
      * both callers check for HCT admin first.
      *
      * Removal is a real delete, not a status flag. A row kept under a 'removed'
      * status still owns its email, and `unique:service_providers,email` counts
-     * it — so a member who was taken off the platform could never apply again,
+     * it - so a member who was taken off the platform could never apply again,
      * and was told "an application with this email already exists" instead.
      * Nothing is archived here: once the row is gone the address is free and a
      * fresh application behaves like any other.
      *
      * Blocked if any sp_payments rows reference this provider (financial
-     * history) — those must be archived by the admin first.
+     * history) - those must be archived by the admin first.
      *
      * Cascades automatically via DB FKs:
      *   - sp_pricing            → cascadeOnDelete
@@ -7392,7 +7755,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *   - trip_day_services     → sp_pricing_id set NULL via sp_pricing FK
      *
      * The linked user row is deleted only when it belongs to this provider and
-     * nothing else — see providerUserDisposition(). A login that is also a
+     * nothing else - see providerUserDisposition(). A login that is also a
      * traveller's survives, minus its provider role.
      *
      * Returns a blocker rather than throwing, so a bulk caller can skip this
@@ -7407,14 +7770,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             'user' => 'none', 'reason' => null, 'detached_experiences' => 0, 'deleted_experiences' => 0,
         ];
 
-        // Only sp_payments hard-blocks — financial history must be archived
+        // Only sp_payments hard-blocks - financial history must be archived
         // separately. Experiences are auto-detached: hlh_id set to NULL (now
         // nullable as of 2026_05_16_140000) and the experience deactivated so
         // it stops appearing in active listings.
         $paymentCount = \App\Models\SpPayment::where('service_provider_id', $provider->id)->count();
         if ($paymentCount > 0) {
             return $fail(
-                "Cannot delete — provider has {$paymentCount} payment record(s). Archive those first.",
+                "Cannot delete - provider has {$paymentCount} payment record(s). Archive those first.",
                 ['sp_payments' => $paymentCount]
             );
         }
@@ -7423,7 +7786,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $providerId = $provider->id;
         $disposition = $this->providerUserDisposition($userId);
         // An experience belongs to the host who runs it. When the host goes,
-        // the listing goes with them — it is their homestay, their kitchen, and
+        // the listing goes with them - it is their homestay, their kitchen, and
         // nobody else can deliver it. Detaching them was leaving hostless rows
         // behind that HCT then had to find and tidy by hand.
         //
@@ -7462,7 +7825,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 return;
             }
             // service_providers.user_id is nullOnDelete, so the link is already
-            // gone. Hand the account back to the traveller side — it keeps its
+            // gone. Hand the account back to the traveller side - it keeps its
             // trips and can sign in to the portal, it just stops being a
             // provider. Its email is free for a fresh application either way,
             // because uniqueness is per role.
@@ -7509,9 +7872,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $message = 'Provider deleted.';
         if ($result['user'] === 'kept') {
-            $message .= ' Login kept — ' . $result['reason'] . '.';
+            $message .= ' Login kept - ' . $result['reason'] . '.';
         } elseif ($result['user'] === 'orphaned') {
-            $message .= ' Login kept (deactivated) — ' . $result['reason'] . '.';
+            $message .= ' Login kept (deactivated) - ' . $result['reason'] . '.';
         }
         return response()->json([
             'success' => true,
@@ -7543,7 +7906,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $name = $provider->name;
             $result = $this->hardDeleteProvider($provider);
             if (!$result['ok']) {
-                $blocked[] = $name . ' — ' . $result['error'];
+                $blocked[] = $name . ' - ' . $result['error'];
                 continue;
             }
             if (in_array($result['user'], ['kept', 'orphaned'], true)) {
@@ -7648,7 +8011,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "is_active" => $request->boolean("is_active", true),
         ];
 
-        // Anchor points (map markers) — accept a JSON string or an array; the
+        // Anchor points (map markers) - accept a JSON string or an array; the
         // model casts to array. Only overwrite when the field is present (#25).
         if ($request->has("anchor_points")) {
             $anchors = $request->input("anchor_points");
@@ -7659,7 +8022,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $data["anchor_points"] = is_array($anchors) ? array_values($anchors) : null;
         }
 
-        // sort_order — allow reordering on UPDATE too (was create-only, #25).
+        // sort_order - allow reordering on UPDATE too (was create-only, #25).
         if ($request->filled("sort_order")) {
             $data["sort_order"] = (int) $request->sort_order;
         }
@@ -7668,7 +8031,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $region = $isNew ? new Region() : Region::findOrFail($request->region_id);
         $oldImage = $region->image;
 
-        // Image upload — stored year/month-wise + resized (ImageUploadService, #25).
+        // Image upload - stored year/month-wise + resized (ImageUploadService, #25).
         if ($request->hasFile("image")) {
             $path = \App\Services\ImageUploadService::storeUploadedImage($request->file("image"), 'regions', 1200);
             if (!$path) {
@@ -7848,7 +8211,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         //   "1" / "0"                    → live or switched off
         //   draft|pending|approved|...   → where it stands in review
         //
-        // They stay separate columns because they answer different questions —
+        // They stay separate columns because they answer different questions -
         // an approved listing switched off for the season is not "pending".
         if ($request->filled("status")) {
             $status = (string) $request->status;
@@ -7879,7 +8242,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * A slug nobody else is using, built from the name.
      *
      * Two hosts may perfectly well both run a "Village Walk", and the slug is
-     * only a URL key — but the column is unique, so the second one to file it
+     * only a URL key - but the column is unique, so the second one to file it
      * hit the constraint and the provider was shown a raw SQL error and told
      * "Server error". The name stays exactly as they typed it; the key counts
      * itself up.
@@ -7907,7 +8270,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             return $err;
         }
 
-        // A draft is a half-finished listing kept for later — the client's
+        // A draft is a half-finished listing kept for later - the client's
         // reason being that "many users won't have all the information or
         // photos ready in one session". Demanding a full field set in order to
         // store one defeats the point, so a draft insists only on the name:
@@ -7921,8 +8284,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $validator = Validator::make($request->all(), [
             "id"                => "nullable|integer|exists:experiences,id",
-            // Where the listing stands. Admin-only — the provider path strips
-            // it further down — but it reaches $data unread otherwise, and a
+            // Where the listing stands. Admin-only - the provider path strips
+            // it further down - but it reaches $data unread otherwise, and a
             // typo would be written to the column as-is.
             "approval_status"   => "nullable|in:draft,pending,approved,rejected",
             "name"              => "required|string|max:255",
@@ -7931,25 +8294,25 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // above says a draft insists only on the name; this rule did not,
             // so an admin parking a half-finished listing was refused for a
             // host they had not chosen yet. The column is nullable, and a
-            // draft is never live — nothing reads it until it is published.
+            // draft is never live - nothing reads it until it is published.
             // The provider app files through saveSpExperience(), which stamps
             // the host from the signed-in provider and is untouched by this.
             "hlh_id"            => $unlessDraft("required|integer|exists:service_providers,id"),
             "type"              => $unlessDraft("required|string|max:100"),
-            // Which of the three structural categories this is — it decides
+            // Which of the three structural categories this is - it decides
             // which fields the form even shows. Nullable so rows created before
             // categories existed can still be saved by HCT.
             "category"          => "nullable|string|max:120",
             "short_description" => $unlessDraft("required|string|max:500"),
             // A stay has no duration. It is sold by the night, and both forms
-            // that offer one — the app's and the portal's — leave the whole
+            // that offer one - the app's and the portal's - leave the whole
             // section out for this category. Demanding it here meant a stay
             // could be filled in completely and still be refused for a field
             // nobody was shown, which no member could act on.
             "duration_type"     => $request->input('category') === Experience::CATEGORY_STAY
                 ? "nullable|in:less_than_day,single_day,multi_day"
                 : $unlessDraft("required|in:less_than_day,single_day,multi_day"),
-            // Capacity of an experiential stay — the client's "no of rooms, no
+            // Capacity of an experiential stay - the client's "no of rooms, no
             // guests". Distinct from group_size_max, which is the largest party
             // this experience will take rather than what the place sleeps.
             "total_rooms"       => "nullable|integer|min:1|max:500",
@@ -8001,7 +8364,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "best_seasons.*"      => "string|max:30",
             // Months are month numbers, not names: the admin form's checkboxes
             // post 1–12 as form strings and the app sends them as integers, so
-            // the rule has to accept both — `integer` reads a numeric string
+            // the rule has to accept both - `integer` reads a numeric string
             // the same way it reads a number.
             "available_months"    => "nullable|array|max:12",
             "available_months.*"  => "integer|between:1,12",
@@ -8042,7 +8405,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // Says what to do, not just what is wrong: with no active host on
             // the platform the dropdown is empty, and this is the only thing
             // that tells the admin one has to be added and activated first.
-            "hlh_id.required"            => "No provider selected. An experience must belong to an active provider — add and activate one first.",
+            "hlh_id.required"            => "No provider selected. An experience must belong to an active provider - add and activate one first.",
             "hlh_id.exists"              => "The selected provider no longer exists.",
             "type.required"              => "Please choose an experience type.",
             "short_description.required" => "Please write a short description.",
@@ -8052,7 +8415,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // Nothing goes on sale at nothing.
         //
         // Filling only the five required boxes published a live, bookable
-        // listing at ₹0.00 — it appeared on the explore page with no price and
+        // listing at ₹0.00 - it appeared on the explore page with no price and
         // priced at zero inside a trip. The same happened on an edit: clearing
         // the slab rows on a listing that was already selling set its headline
         // price to 0 and left it up.
@@ -8065,7 +8428,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
 
             // An experiential stay is sold by the room, so its price lives in
-            // the occupancy x meal-plan grid and nowhere else — it has no
+            // the occupancy x meal-plan grid and nowhere else - it has no
             // per-person figure at all, and asking it for one refused every
             // stay a host tried to publish.
             $isStay = $request->input('category') === Experience::CATEGORY_STAY;
@@ -8078,7 +8441,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 }
                 if (! $priced) {
                     $v->errors()->add('room_rates',
-                        'This stay has no room rate. Add at least one room and its price per night before publishing it — or save it as a draft for now.');
+                        'This stay has no room rate. Add at least one room and its price per night before publishing it - or save it as a draft for now.');
                 }
                 return;
             }
@@ -8107,7 +8470,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
             if ($slabs === 0 && $headline <= 0 && $components <= 0 && ($sendsPricing || $stored <= 0)) {
                 $v->errors()->add('base_cost_per_person',
-                    'This experience has no price. Add a cost per person, a price slab, or the cost breakdown before publishing it — or save it as a draft for now.');
+                    'This experience has no price. Add a cost per person, a price slab, or the cost breakdown before publishing it - or save it as a draft for now.');
             }
         });
 
@@ -8147,7 +8510,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $reasons = array_values(array_unique($validator->errors()->all()));
 
             // `error` stays the first reason, the shape every existing caller
-            // already reads — the provider app among them. The heading and the
+            // already reads - the provider app among them. The heading and the
             // full list are additions, so a caller that ignores them behaves
             // exactly as it did.
             return response()->json([
@@ -8181,7 +8544,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             unset($data["card_image"]);
         }
 
-        // Handle JSON fields (gallery handled separately below — it's both an
+        // Handle JSON fields (gallery handled separately below - it's both an
         // existing-paths JSON string AND new multipart uploads).
         foreach (["best_seasons", "available_months", "restricted_months", "unavailable_months", "osp_services", "seasonal_price_variation"] as $jsonField) {
             if (isset($data[$jsonField]) && is_string($data[$jsonField])) {
@@ -8204,6 +8567,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }, $data["seasonal_price_variation"]))) ?: null;
         }
 
+        // An empty box is "no margin", not a number. A browser never posts the
+        // empty string - ConvertEmptyStringsToNull gets there first - but an
+        // API client posting "" reached the decimal cast and 500'd on it.
+        if (array_key_exists("markup_percent", $data) && trim((string) $data["markup_percent"]) === "") {
+            $data["markup_percent"] = null;
+        }
+
         if (!empty($data["slug"])) {
             $data["slug"] = $this->uniqueExperienceSlug($data["slug"], $request->input('id'));
         } elseif (!empty($data["name"])) {
@@ -8214,7 +8584,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // a {min_persons => price_per_person} map (deduped, sorted, only valid rows).
         $slabs = [];
         foreach ((array) $request->input('price_slabs', []) as $row) {
-            // A blank entry is how a form says "this list is empty" — it has no
+            // A blank entry is how a form says "this list is empty" - it has no
             // fields to read, and reaching into it as an array was a 500.
             if (! is_array($row)) continue;
             $mp = (int) ($row['min_persons'] ?? 0);
@@ -8228,8 +8598,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // otherwise the component breakdown, for listings priced that way.
         //
         // Only recomputed when this save actually carries pricing. A save that
-        // says nothing about it — the app's, when the provider only fixed a
-        // typo, or a category whose form has no costing section — used to fall
+        // says nothing about it - the app's, when the provider only fixed a
+        // typo, or a category whose form has no costing section - used to fall
         // to the sum of five absent components and write 0, so a live listing
         // lost its "from" price to a wording change.
         $existingSlabs = $request->filled('id')
@@ -8244,7 +8614,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         if (!empty($slabs)) {
             $data["base_cost_per_person"] = min($slabs);
         } elseif ($request->has('price_slabs') && $existingSlabs) {
-            // The slabs were sent and cleared out — the price goes with them.
+            // The slabs were sent and cleared out - the price goes with them.
             $data["base_cost_per_person"] = 0;
         } elseif ($existingSlabs) {
             $data["base_cost_per_person"] = min(array_map('floatval', $existingSlabs));
@@ -8263,7 +8633,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // columns take that happily. The money ones do not: they were built
         // `decimal(10,2) default 0`, which in MySQL is NOT NULL, so an admin
         // who opened Costing and left one box empty got
-        // "Column 'cost_accommodation' cannot be null" and a 500 — for a box
+        // "Column 'cost_accommodation' cannot be null" and a 500 - for a box
         // they had never touched, on a form of eighty-five fields where
         // leaving most alone is the normal case. This is what the client was
         // hitting; it is not the missing column it looked like from outside.
@@ -8281,7 +8651,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         //
         // The day cards, slabs, rooms and add-ons are replaced by deleting the
         // lot and writing them back one row at a time. Without a transaction a
-        // failure part-way — one over-long title is enough — left the itinerary
+        // failure part-way - one over-long title is enough - left the itinerary
         // half-deleted while the provider was told the save had failed, and on
         // a create it left a stranded listing counting against their allowance.
         DB::beginTransaction();
@@ -8297,7 +8667,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // The gallery is the photos to keep plus any newly uploaded ones.
         //
         // Which photos to keep comes from the caller when they say so, and that
-        // is the only way to remove one — this read the stored column instead,
+        // is the only way to remove one - this read the stored column instead,
         // so a gallery could only ever grow. Sending nothing still leaves the
         // stored set alone, since most saves do not touch photos at all.
         $storedGallery = $experience->gallery ?? [];
@@ -8317,7 +8687,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $experience->update(["gallery" => array_values(array_merge($keptGallery, $newPaths))]);
         }
 
-        // Day-wise itinerary. Replaced ONLY when the caller sent it — these used
+        // Day-wise itinerary. Replaced ONLY when the caller sent it - these used
         // to be deleted and rebuilt unconditionally, so any save that omitted
         // them wiped the itinerary. That is no longer a rare edge: per-category
         // forms omit whole sections by design (an experiential stay has no
@@ -8333,7 +8703,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                     'start_time' => $dayData['start_time'] ?? null,
                     'end_time' => $dayData['end_time'] ?? null,
                     // Always a list. The column is cast to array and every
-                    // reader — the admin table, the detail page, the app —
+                    // reader - the admin table, the detail page, the app -
                     // iterates it, so a string stored here takes those screens
                     // down rather than showing one odd row.
                     'inclusions' => $this->normaliseInclusions($dayData['inclusions'] ?? []),
@@ -8342,7 +8712,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
         }
 
-        // Per-person price slabs (req 3.2) — same rule, same reason.
+        // Per-person price slabs (req 3.2) - same rule, same reason.
         if ($request->has('price_slabs')) {
             $experience->priceSlabs()->delete();
             foreach ($slabs as $mp => $pp) {
@@ -8385,7 +8755,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 if (! is_array($addon)) continue;
                 $name = trim((string) ($addon['name'] ?? ''));
                 if ($name === '') continue; // blank repeater rows are not add-ons
-                // One name, one extra — the same rule the rate card keeps.
+                // One name, one extra - the same rule the rate card keeps.
                 $key = mb_strtolower($name);
                 if (isset($seenAddons[$key])) continue;
                 $seenAddons[$key] = true;
@@ -8419,21 +8789,21 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $experience = Experience::findOrFail($request->id);
 
         // Taking one down needs no permission; putting one back up does. An
-        // experience is hosted — it is somebody's homestay, somebody's kitchen —
+        // experience is hosted - it is somebody's homestay, somebody's kitchen -
         // and one with no host is a listing a traveller can book from nobody.
         //
         // That state is reachable: deleting a provider empties hlh_id on every
         // experience it hosted and switches them off in the same breath. Off is
         // where they should stay until HCT gives them a new host, and this
         // toggle was the one door that let them back on with the column still
-        // empty. The form cannot produce it — its dropdown lists approved HLHs
-        // and hlh_id is required — so this is the only place to hold the line.
+        // empty. The form cannot produce it - its dropdown lists approved HLHs
+        // and hlh_id is required - so this is the only place to hold the line.
         if (! $experience->is_active) {
             $hlh = $experience->hlh_id ? ServiceProvider::find($experience->hlh_id) : null;
 
             if (! $hlh) {
                 return response()->json([
-                    "error" => "This experience has no host. Assign it to an HLH — edit it and choose one — before publishing it.",
+                    "error" => "This experience has no host. Assign it to an HLH - edit it and choose one - before publishing it.",
                 ], 422);
             }
             if ($hlh->status !== "approved") {
@@ -8460,7 +8830,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * duplicate or a test row stayed on the list forever, only greyed out.
      *
      * A listing any trip has picked up is refused rather than deleted. Those
-     * two tables carry no cascade — pulling the row out from under them would
+     * two tables carry no cascade - pulling the row out from under them would
      * either fail at the driver or leave a trip pointing at nothing, and the
      * itinerary is somebody's holiday. Everything else about a listing (its
      * days, price slabs, room rates, add-ons and reviews) cascades away with
@@ -8493,7 +8863,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     // SP-AUTHORED EXPERIENCES
     //
     // An experience hangs off the host that runs it, so only a provider acting
-    // as an HLH (homestay/lodge host) authors them — alongside HCT, who keeps
+    // as an HLH (homestay/lodge host) authors them - alongside HCT, who keeps
     // full control from the admin side. Ownership lives on
     // experiences.owner_provider_id, so a host can only ever see and touch
     // their own rows. A provider that is only an HRP or only an OSP is
@@ -8542,14 +8912,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     /**
      * Refuse a NEW listing once the cap is reached. Editing an existing row is
-     * never blocked, and HCT is never capped — the cap exists to protect them.
+     * never blocked, and HCT is never capped - the cap exists to protect them.
      *
      * Rejected listings are deliberately not counted by the callers. An
      * experience cannot be deleted at all (it may sit inside a booked trip, so
      * it is only ever hidden), which would otherwise let ten refusals lock a
      * provider out for good. Leaving rejections uncounted still bounds what
      * reaches HCT, because a rejected row only returns to the queue by being
-     * edited and resubmitted — at which point it is pending, and counts again.
+     * edited and resubmitted - at which point it is pending, and counts again.
      */
     protected function listingCapError(string $key, int $current, string $noun): ?JsonResponse
     {
@@ -8568,12 +8938,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * The client's brief: "HRPs should have a dashboard listing all HLHs and
      * OSPs within their region so they can oversee local development." It is
-     * READ-ONLY on purpose — no document gives an HRP approval powers, and MVP
+     * READ-ONLY on purpose - no document gives an HRP approval powers, and MVP
      * doc 8.2.1 keeps their MVP role to coordination rather than decisions.
      *
      * Scoped to the partner's own region, and to approved providers only: a
      * pending applicant has not been vetted by HCT yet and is not yet theirs to
-     * oversee. Bank details and documents are deliberately not returned — an
+     * oversee. Bank details and documents are deliberately not returned - an
      * HRP coordinates these providers, they do not administer them.
      */
     protected function getHrpRegionProviders(Request $request): JsonResponse
@@ -8708,7 +9078,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         // Ownership is never taken from the client. Only a host reaches this
-        // line — resolveExperienceAuthor() above answers 403 to anyone else —
+        // line - resolveExperienceAuthor() above answers 403 to anyone else -
         // so the host is always this provider. The branch that used to let a
         // non-host name the host it runs at could not be reached, and read as
         // though OSPs authored experiences, which they do not.
@@ -8718,7 +9088,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             'hlh_id'            => $sp->id,
         ]);
 
-        // Fields only HCT controls — a provider must not be able to reorder the
+        // Fields only HCT controls - a provider must not be able to reorder the
         // catalogue, publish itself, or stamp its own approval.
         foreach ([
             'sort_order', 'approval_status', 'approved_at', 'approved_by', 'rejection_reason',
@@ -8743,7 +9113,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // Complete the revision from the listing it revises, then park it.
             //
             // A save that mentions only what changed used to be parked as-is,
-            // and the payload was not validated until HCT pressed Approve —
+            // and the payload was not validated until HCT pressed Approve -
             // which then failed, forever. The provider had been told their
             // change was queued, HCT could only reject it, and the listing sat
             // in the queue with no way out. Filling the gaps from the live row
@@ -8770,14 +9140,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ]);
         }
 
-        // Nothing live to protect — a new experience, or one still pending, a
+        // Nothing live to protect - a new experience, or one still pending, a
         // draft, or rejected.
         //
         // "Save as draft" keeps it out of HCT's queue entirely: the client's
         // reason is that "many users won't have all the information or photos
         // ready in one session", so a half-finished listing must be storable
         // without asking anyone to review it. A draft is never submitted, so it
-        // carries no submitted_at/by — those record an actual submission.
+        // carries no submitted_at/by - those record an actual submission.
         //
         // Note this branch is only reached when nothing is live. Editing an
         // APPROVED listing always parks as a revision above, which is right: a
@@ -8839,7 +9209,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * Only an array counts. `$request->has('gallery')` will not do: has() looks
      * at the file bag too, and a browser posts an empty `gallery[]` file part
-     * whenever the form has a file input and nothing was chosen — so every
+     * whenever the form has a file input and nothing was chosen - so every
      * ordinary save looked like "keep none of them" and emptied the column.
      * Files are how photos are ADDED; this list is only about what stays.
      */
@@ -8852,7 +9222,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         // Only paths this site actually stores, and only under /uploads. The
         // keep-list is whatever the caller sends back, so an absolute URL was
-        // written into the column verbatim — binding a listing's photos to one
+        // written into the column verbatim - binding a listing's photos to one
         // build's host, and letting any address at all be presented as the
         // member's own photo.
         return array_values(array_filter(
@@ -8868,7 +9238,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * Only the file bag is handed to the validator. `gallery` names both the
      * paths a save keeps and the files it adds, and Request::all() merges the
-     * two — so a rule on `gallery.*` would judge a kept path as though it were
+     * two - so a rule on `gallery.*` would judge a kept path as though it were
      * an upload. Feeding it the files alone keeps the two apart.
      *
      * Until this ran, a photo that was not an image was dropped without a word:
@@ -8913,11 +9283,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
             $request->request->set('card_image', $stored);
             // Drop the upload itself: Request::all() merges the file bag over
-            // the input bag, so leaving it here would put an UploadedFile —
-            // not the path — into the JSON payload.
+            // the input bag, so leaving it here would put an UploadedFile -
+            // not the path - into the JSON payload.
             $request->files->remove('card_image');
         } elseif ($request->boolean('remove_card_image')) {
-            // Parked like any other change — the live listing keeps its photo
+            // Parked like any other change - the live listing keeps its photo
             // until HCT accepts the revision.
             $request->request->set('card_image', null);
         }
@@ -8943,7 +9313,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     /**
      * The submitted experience fields, as stored in `pending_changes` and
      * replayed through saveExperience() on approval. Ownership and review
-     * columns are excluded — those are decided at replay time, not by whatever
+     * columns are excluded - those are decided at replay time, not by whatever
      * was posted.
      */
     /**
@@ -8975,7 +9345,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         // Read the POST bag directly rather than $request->except(): all()
         // merges in uploaded files, and Request memoises that conversion, so a
-        // file would survive here even after being removed — and an
+        // file would survive here even after being removed - and an
         // UploadedFile cannot be stored in a JSON column.
         $payload = $request->request->all();
 
@@ -9000,7 +9370,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         [$experience, $ownErr] = $this->resolveOwnExperience((int) $request->id, $sp);
         if ($ownErr) return $ownErr;
 
-        // Visibility is the provider's to control only once HCT has approved —
+        // Visibility is the provider's to control only once HCT has approved -
         // otherwise this would be a way to publish unreviewed content.
         if ($experience->approval_status !== 'approved') {
             return response()->json([
@@ -9038,7 +9408,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     protected function approveExperience(Request $request): JsonResponse
     {
-        // Rejected counts too — see Experience::scopeAwaitingDecision. A host
+        // Rejected counts too - see Experience::scopeAwaitingDecision. A host
         // who fixes what was wrong has to be able to get a yes afterwards.
         $experience = Experience::awaitingDecision()->findOrFail($request->id);
 
@@ -9136,7 +9506,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $experience = Experience::pending()->findOrFail($request->id);
 
-        // Discarding a revision leaves the approved version exactly as it was —
+        // Discarding a revision leaves the approved version exactly as it was -
         // it never stopped selling, so there is nothing to restore.
         if ($experience->hasPendingChanges()) {
             $experience->update([
@@ -9169,8 +9539,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         // A listing that has been live may already sit inside booked
         // itineraries, so it is deactivated rather than pulled out from under a
-        // trip. One that never was — a draft, or a listing still waiting on
-        // review — is in nobody's itinerary and is removed outright.
+        // trip. One that never was - a draft, or a listing still waiting on
+        // review - is in nobody's itinerary and is removed outright.
         //
         // Deactivating was the only path before, and an unapproved listing is
         // already inactive: the host pressed Delete, was told it worked, and
@@ -9226,7 +9596,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
-        // Photos, judged on the file bag alone — see validateExperiencePhotos
+        // Photos, judged on the file bag alone - see validateExperiencePhotos
         // for why `gallery` cannot be validated off Request::all().
         $photos = Validator::make([
             "main_image" => $request->file("main_image"),
@@ -9428,7 +9798,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
         $trip->update($data);
 
-        // Only recalculate when there's an itinerary — otherwise CostCalculatorService
+        // Only recalculate when there's an itinerary - otherwise CostCalculatorService
         // would persist an all-zero breakdown and wipe the trip's cost columns
         // (same hazard recalculateTripCost() guards against).
         if ($trip->tripDays()->exists() || $trip->selectedExperiences()->exists()) {
@@ -9485,7 +9855,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
 
             // Payment amount is server-authoritative: always charge the full
-            // outstanding balance, computed here from the canonical pricing —
+            // outstanding balance, computed here from the canonical pricing -
             // never a client-supplied figure. This stops a tampered request
             // (e.g. amount=1 POSTed directly to /ajax) from "confirming" a trip
             // on a token payment. Any `amount` in the request is ignored.
@@ -9762,7 +10132,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         ));
 
         // Component placeholder rows (accommodation / transport / guide / other) are
-        // created at cost=0 — the bundled cost is captured ONCE by the Experience
+        // created at cost=0 - the bundled cost is captured ONCE by the Experience
         // breakdown in CostCalculatorService (single source of truth). Storing the
         // component cost here as well would double-count it (calculator adds cost>0
         // day-services on top of the exp components). A pinned provider later sets
@@ -9892,6 +10262,21 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
         }
 
+        // And the rooms have to exist on the night they are wanted.
+        //
+        // The booking call has always refused to overbook, but nothing read its
+        // answer: the service row was written, the traveller billed, and HCT
+        // told it worked, while no room was held and the host was never even
+        // emailed. Three trips took the same two-suite property this way.
+        if ($err = $this->roomsUnavailableError(
+            (int) $request->sp_pricing_id,
+            (string) $request->service_type,
+            (int) $request->day_id,
+            (int) ($request->room_quantity ?: 1),
+        )) {
+            return $err;
+        }
+
         $service = TripDayService::create([
             "trip_day_id" => $request->day_id,
             "service_provider_id" => $request->service_provider_id,
@@ -9910,7 +10295,19 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // allocate held rooms in sp_room_bookings for the day's date.
         $this->allocateRoomsForTripService($service);
 
-        return response()->json(["success" => true, "service" => $service]);
+        return response()->json(array_filter([
+            "success" => true,
+            "service" => $service,
+            // A hotel on a night the experience already covers is sometimes
+            // right and sometimes a bed paid for twice. Only HCT can tell which,
+            // so they are told rather than stopped.
+            "stacking_warning" => $request->service_type === 'accommodation'
+                ? $this->accommodationAlreadyIncluded(
+                    TripDay::with('trip')->find($request->day_id)?->trip ?? new Trip(),
+                    (int) $request->day_id,
+                  )
+                : null,
+        ], fn ($v) => $v !== null));
     }
 
     protected function editDayService(Request $request): JsonResponse
@@ -9930,6 +10327,19 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $service = TripDayService::findOrFail($request->service_id);
         $oldPricingId = $service->sp_pricing_id;
         $oldQty = $service->room_quantity;
+
+        // Asked before anything is written, so a change the property cannot
+        // honour leaves the row exactly as it was. What this row already holds
+        // is not counted against it - only what the change asks for on top.
+        if ($err = $this->roomsUnavailableError(
+            (int) ($request->sp_pricing_id ?: $oldPricingId),
+            (string) ($request->service_type ?: $service->service_type),
+            (int) $service->trip_day_id,
+            (int) ($request->room_quantity ?: $oldQty ?: 1),
+            $service->id,
+        )) {
+            return $err;
+        }
 
         $service->update($request->only([
             "service_provider_id", "sp_pricing_id", "room_quantity",
@@ -9962,6 +10372,54 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * date with the requested quantity. Held = trip not yet confirmed;
      * promoted to confirmed when trip status flips.
      */
+    /**
+     * Refuse a room pin the property cannot actually honour.
+     *
+     * Returns the response to send, or null when the night is fine. Only asks
+     * about a pin tied to a real room category - everything else is a service
+     * with no inventory behind it.
+     *
+     * $ignoreServiceId lets an edit ask "besides what this row already holds",
+     * so changing a description on a fully-booked night is not refused by the
+     * row's own booking.
+     */
+    protected function roomsUnavailableError(
+        int $pricingId, string $serviceType, int $dayId, int $wanted, ?int $ignoreServiceId = null,
+    ): ?JsonResponse {
+        if ($serviceType !== 'accommodation' || ! $pricingId) {
+            return null;
+        }
+
+        $day = TripDay::find($dayId);
+        if (! $day || ! $day->date) {
+            return null;   // no date to check against; the booking is made later
+        }
+
+        $svc = app(\App\Services\RoomAvailabilityService::class);
+        $free = $svc->availableForCategory($pricingId, $day->date);
+
+        if ($ignoreServiceId) {
+            $free += (int) SpRoomBooking::where('sp_pricing_id', $pricingId)
+                ->where('trip_day_service_id', $ignoreServiceId)
+                ->whereDate('date', $day->date)
+                ->active()
+                ->sum('quantity');
+        }
+
+        if ($wanted <= $free) {
+            return null;
+        }
+
+        $when = $day->date->format('j M Y');
+        $category = SpPricing::whereKey($pricingId)->value('room_category') ?: 'That room';
+
+        return response()->json([
+            "error" => $free > 0
+                ? "{$category} has only {$free} left on {$when}, and {$wanted} were asked for."
+                : "{$category} is fully booked on {$when}. Pick another category or another night.",
+        ], 422);
+    }
+
     protected function allocateRoomsForTripService(TripDayService $service): void
     {
         if ($service->service_type !== 'accommodation' || !$service->sp_pricing_id) return;
@@ -9988,7 +10446,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $date = $service->tripDay->date;
         $trip = $service->tripDay->trip;
 
-        // Validate the target is a real, approved provider before assigning it —
+        // Validate the target is a real, approved provider before assigning it -
         // otherwise a day service could be pinned to an unapproved/non-existent
         // provider with untracked cost (NEW-B).
         if ($newSpId) {
@@ -10030,7 +10488,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         $service->update($updateData);
-        // Reflect the provider's cost in the trip total immediately (NEW-C) —
+        // Reflect the provider's cost in the trip total immediately (NEW-C) -
         // otherwise the day-level assign leaves a stale final_price.
         if ($trip) {
             app(CostCalculatorService::class)->calculate($trip);
@@ -10077,7 +10535,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             || $trip->selectedExperiences()->exists();
         if (!$hasItinerary) {
             return response()->json([
-                "error" => "This trip has no itinerary yet — add experiences or days before recalculating, otherwise the existing costs would be wiped.",
+                "error" => "This trip has no itinerary yet - add experiences or days before recalculating, otherwise the existing costs would be wiped.",
             ], 422);
         }
 
@@ -10100,7 +10558,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             array_values((array) $request->file('documents', [])),
         );
 
-        // Only the web has a session — the mobile API is stateless and signs
+        // Only the web has a session - the mobile API is stateless and signs
         // in afterwards with the password the applicant just chose.
         if ($result['user'] && $request->hasSession()) {
             Auth::login($result['user']);
@@ -10136,7 +10594,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * Asked of the schema rather than kept as a list here, because a list here
      * would be right on the day it was written and wrong after the next
-     * migration — and being wrong would mean either a 500 nobody expected or a
+     * migration - and being wrong would mean either a 500 nobody expected or a
      * value quietly dropped. Cached for the request; the schema does not
      * change under a running one.
      */
@@ -10161,14 +10619,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // An SMTP round trip is seconds of wall clock, and on Windows PHP
         // charges that to max_execution_time. A signup that also had documents
         // to receive, store and resize was spending its whole 30s budget and
-        // dying mid-request — leaving the uploaded files on disk with no
+        // dying mid-request - leaving the uploaded files on disk with no
         // application to belong to.
         //
         // defer() and not queue(): the mail still goes out from this same
         // process, so nothing depends on a worker being up, but the caller has
         // already had its answer by the time we start talking to the mail
         // server. Laravel skips deferred work when the response failed, which
-        // is what we want — no "application received" for one that wasn't.
+        // is what we want - no "application received" for one that wasn't.
         defer(function () use ($to, $mailable, $tag) {
             try {
                 Mail::to($to)->send($mailable);
@@ -10187,7 +10645,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     protected function getSettings(Request $request): JsonResponse
     {
-        // Use ?: not the second arg of get() — `?group=` (empty string after
+        // Use ?: not the second arg of get() - `?group=` (empty string after
         // ConvertEmptyStringsToNull middleware) would otherwise filter to "" and
         // return [] instead of the default 'general' group.
         $group = $request->input("group") ?: "general";
@@ -10203,7 +10661,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
         // Whitelist: only keys that already exist as Setting rows may be updated,
         // so arbitrary/injection keys are rejected. Each key keeps its own group.
-        // No hardcoded list — the DB is the single source of truth; a genuinely
+        // No hardcoded list - the DB is the single source of truth; a genuinely
         // new setting must be seeded first before it becomes editable here.
         $existing = Setting::whereIn("key", array_keys($settings))->get()->keyBy("key");
         $rejected = array_values(array_diff(array_keys($settings), $existing->keys()->all()));
@@ -10377,11 +10835,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *   - Trip Manager edit-service modal (admin picking room category)
      *
      * Auth: HCT can query any SP; an SP can query their own; travellers
-     * (logged in or guest) can query any approved SP (read-only — no
+     * (logged in or guest) can query any approved SP (read-only - no
      * inventory write).
      *
      * Input:  service_provider_id, start_date (YYYY-MM-DD),
-     *         end_date (optional — defaults to start_date)
+     *         end_date (optional - defaults to start_date)
      * Output: { sp_name, currency, dates: [...], categories: [
      *            { sp_pricing_id, room_category, total, available,
      *              rate, meal_plan, default_occupancy } ] }
@@ -10402,7 +10860,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $sp = ServiceProvider::findOrFail($request->service_provider_id);
 
-        // Approved-only — don't leak pending/rejected SP inventory.
+        // Approved-only - don't leak pending/rejected SP inventory.
         if ($sp->status !== 'approved') {
             return response()->json(['error' => 'Provider not approved'], 403);
         }
@@ -10410,7 +10868,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $svc = app(\App\Services\RoomAvailabilityService::class);
 
         // Default: today + 1 night if no dates supplied. A stay is counted in
-        // nights, so the two dates are arrival and departure — check in on the
+        // nights, so the two dates are arrival and departure - check in on the
         // 10th and out on the 12th and you have slept there twice, not three
         // times, and the room is free again on the 12th for somebody else.
         $start = $request->filled('start_date')
@@ -10497,7 +10955,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 return [$found[0], $found[1] ?? null];
             }
         }
-        // Fall back to "DD Month" / "Month DD" forms — best effort, single date.
+        // Fall back to "DD Month" / "Month DD" forms - best effort, single date.
         if (preg_match('/(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s*(\d{2,4})?/i', $msg, $m)) {
             try {
                 $year = $m[3] ?? null;

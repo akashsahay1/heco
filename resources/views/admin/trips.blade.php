@@ -163,7 +163,19 @@ jQuery(function() {
             confirmButtonText: 'Yes, change it'
         }).then(function(result) {
             if (!result.isConfirmed) { location.reload(); return; }
-            ajaxPost({ update_trip_status: 1, trip_id: tripId, status: newStatus }, function() {
+            ajaxPost({ update_trip_status: 1, trip_id: tripId, status: newStatus }, function(resp) {
+                // A confirm can succeed while the hotel had nothing free. That
+                // used to go to the log alone; it needs saying, and it needs to
+                // stay on screen long enough to be acted on.
+                if (resp && resp.rooms_warning) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Rooms not reserved',
+                        text: resp.rooms_warning,
+                        confirmButtonColor: '#79a09f'
+                    }).then(function() { location.reload(); });
+                    return;
+                }
                 showAlert('Trip status updated.', 'success');
                 location.reload();
             }, function(xhr) {
