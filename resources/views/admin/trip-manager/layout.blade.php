@@ -209,7 +209,14 @@ $('#addSpPaymentForm').on('submit', function(e) {
     $(this).find('[name]').each(function() {
         data[$(this).attr('name')] = $(this).val();
     });
-    ajaxPost(data, function() {
+    ajaxPost(data, function(resp) {
+        // The server sends a message when it re-stated a payable this provider
+        // already had instead of adding one. That is not what HCT just asked
+        // for, so it waits to be read: the toast would be wiped by the reload.
+        if (resp && resp.message) {
+            Swal.fire({ text: resp.message, icon: 'info' }).then(function() { location.reload(); });
+            return;
+        }
         showAlert('SP payment created!');
         location.reload();
     }, function(xhr) {

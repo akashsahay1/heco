@@ -6673,6 +6673,48 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
         }
 
+        // One payable per provider per service type per trip.
+        //
+        // Confirming a trip already raises these automatically, and the three
+        // automatic paths all check before writing. This one did not, so HCT
+        // typing an amount for a provider who was already invoiced added a
+        // SECOND payable beside the first: the payments page listed both, and
+        // nothing stopped either being paid.
+        //
+        // HCT has no other way to correct an amount - there is no edit key for
+        // a payable - so a repeat is taken as the correction it almost always
+        // is, and the existing payable is re-stated rather than duplicated.
+        $existing = SpPayment::where("trip_id", $request->trip_id)
+            ->where("service_provider_id", $request->service_provider_id)
+            ->where("service_type", $request->service_type)
+            ->first();
+
+        if ($existing) {
+            $paid = (float) $existing->amount_paid;
+            if ($amountDue < $paid) {
+                return response()->json([
+                    "error" => "This provider has already been paid Rs "
+                        . number_format($paid, 2) . " for " . $request->service_type
+                        . " on this trip, so what they are owed cannot be set below that.",
+                ], 422);
+            }
+
+            $existing->update([
+                "amount_due" => $amountDue,
+                "balance" => $amountDue - $paid,
+                "notes" => $request->notes ?: $existing->notes,
+            ]);
+
+            return response()->json([
+                "success" => true,
+                "id" => $existing->id,
+                "amount_due" => $amountDue,
+                "message" => "This provider was already invoiced for "
+                    . $request->service_type . " on this trip, so that payable was"
+                    . " updated to Rs " . number_format($amountDue, 2) . ".",
+            ]);
+        }
+
         $spPayment = SpPayment::create([
             "trip_id" => $request->trip_id,
             "service_provider_id" => $request->service_provider_id,
