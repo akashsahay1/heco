@@ -157,9 +157,12 @@
                             </tr>
                         </tbody>
                     </table>
-                    <div class="alert alert-info small mt-2 mb-0">
-                        <i class="bi bi-info-circle"></i> To update bank details, please contact HCT administration.
-                    </div>
+                    {{-- These are the provider's own to change: update_sp_profile
+                         accepts all five fields, and the mobile app sends them
+                         the same way. This card is the read-only view of them. --}}
+                    <a href="{{ route('sp.profile.edit') }}" class="btn btn-sm btn-outline-secondary mt-2">
+                        <i class="bi bi-pencil-square"></i> Update bank details
+                    </a>
                 </div>
             </div>
 

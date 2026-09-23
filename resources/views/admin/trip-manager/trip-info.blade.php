@@ -273,11 +273,30 @@
                     <div class="card-body p-0">
                         <table class="table table-sm table-borderless mb-0">
                             <tbody>
+                                {{-- Every line the total is made of, in the order
+                                     the calculator builds them. The experience
+                                     bundle and the extra days were missing, and
+                                     they are usually the largest parts: a trip
+                                     showed five zeroes above a total of
+                                     ₹40,000 and nobody, including the AI asked
+                                     to review it, could see where the money was. --}}
+                                <tr><td class="ps-3 small text-muted">Experiences</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->experience_cost ?? 0, 2) }}</td></tr>
+                                @if (($trip->single_supplement ?? 0) > 0)
+                                    <tr><td class="ps-3 small text-muted">Single Supplement</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->single_supplement, 2) }}</td></tr>
+                                @endif
                                 <tr><td class="ps-3 small text-muted">Transport Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->transport_cost ?? 0, 2) }}</td></tr>
                                 <tr><td class="ps-3 small text-muted">Accommodation Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->accommodation_cost ?? 0, 2) }}</td></tr>
                                 <tr><td class="ps-3 small text-muted">Guide Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->guide_cost ?? 0, 2) }}</td></tr>
                                 <tr><td class="ps-3 small text-muted">Activity Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->activity_cost ?? 0, 2) }}</td></tr>
                                 <tr><td class="ps-3 small text-muted">Other Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->other_cost ?? 0, 2) }}</td></tr>
+                                <tr>
+                                    <td class="ps-3 small text-muted">Extra Days
+                                        @if (($trip->extra_day_cost ?? 0) > 0)
+                                            <i class="bi bi-info-circle" title="Days with no experience on them, charged at the rest or activity day rate from Settings."></i>
+                                        @endif
+                                    </td>
+                                    <td class="text-end pe-3 small">&#8377;{{ number_format($trip->extra_day_cost ?? 0, 2) }}</td>
+                                </tr>
                                 <tr class="border-top"><td class="ps-3 small fw-bold">Total Cost</td><td class="text-end pe-3 small fw-bold">&#8377;{{ number_format($trip->total_cost ?? 0, 2) }}</td></tr>
                             </tbody>
                         </table>

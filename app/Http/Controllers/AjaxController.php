@@ -3345,9 +3345,34 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         $trip = $this->ensureAuthTrip($request);
+        $couldNotHold = $this->moveTripToDate($trip, $date);
+
+        return response()->json(array_filter([
+            "success" => true,
+            // Said plainly rather than logged, because the traveller is billed
+            // for these nights either way.
+            "rooms_warning" => $couldNotHold
+                ? 'Your dates moved, but ' . implode('; ', $couldNotHold)
+                    . '. HECO will confirm those nights with the property.'
+                : null,
+        ], fn ($v) => $v !== null));
+    }
+
+    /**
+     * Put a trip on a new start date, and take its itinerary with it.
+     *
+     * A trip's date is not one field. Every day carries its own, the end date
+     * is the start plus the itinerary's length, and the rooms are held against
+     * particular nights. Writing only the trip's own start_date - which is all
+     * the Trip Manager's date box used to do - left a trip that said November
+     * while every one of its days still sat in July, and its rooms with them.
+     *
+     * Returns a sentence per night that could not be held on the new dates.
+     */
+    protected function moveTripToDate(Trip $trip, ?string $date): array
+    {
         $trip->update(["start_date" => $date]);
 
-        // Update existing trip day dates
         foreach ($trip->tripDays()->orderBy('day_number')->get() as $day) {
             $day->update([
                 "date" => $date ? \Carbon\Carbon::parse($date)->addDays($day->day_number - 1) : null,
@@ -3367,17 +3392,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // before: a trip shifted from April to May still held its suite in
         // April - blocking the host on a night nobody was coming, and holding
         // nothing at all for the night they actually arrived.
-        $couldNotHold = $this->rebookRoomsForTrip($trip);
-
-        return response()->json(array_filter([
-            "success" => true,
-            // Said plainly rather than logged, because the traveller is billed
-            // for these nights either way.
-            "rooms_warning" => $couldNotHold
-                ? 'Your dates moved, but ' . implode('; ', $couldNotHold)
-                    . '. HECO will confirm those nights with the property.'
-                : null,
-        ], fn ($v) => $v !== null));
+        return $this->rebookRoomsForTrip($trip);
     }
 
     /**
@@ -6542,11 +6557,40 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     protected function updateTripStatus(Request $request): JsonResponse
     {
         $trip = Trip::findOrFail($request->trip_id);
-        $newStatus = $request->status;
 
+        [$error, $unheld] = $this->applyTripStatus($trip, (string) $request->status);
+        if ($error) {
+            return response()->json(["error" => $error], 422);
+        }
+
+        return response()->json(array_filter([
+            "success" => true,
+            "rooms_warning" => $unheld
+                ? 'Confirmed, but these nights could not be reserved: ' . implode('; ', $unheld)
+                    . '. Settle them with the property.'
+                : null,
+        ], fn ($v) => $v !== null));
+    }
+
+    /**
+     * Move a trip to a status, and do everything that status means.
+     *
+     * Confirming is not a word written onto a row: it reserves the rooms, bills
+     * the partners and closes the lead. There are three doors to it - the
+     * traveller's own Confirm, the Trips page dropdown, and the Status field in
+     * the Trip Manager - and each one used to do a different amount of the job.
+     * The Trip Manager's did the least: it wrote "confirmed" and nothing else,
+     * so a trip could be confirmed with no room held anywhere, no partner owed
+     * anything on paper, and its lead still sitting in follow-up.
+     *
+     * @return array{0: ?string, 1: array<int,string>} an error to show, and the
+     *         nights that could not be reserved
+     */
+    private function applyTripStatus(Trip $trip, string $newStatus): array
+    {
         $allowed = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
         if (!in_array($newStatus, $allowed, true)) {
-            return response()->json(["error" => "Invalid trip status."], 422);
+            return ["Invalid trip status.", []];
         }
 
         // Guard: don't allow downgrading a trip that has already progressed
@@ -6555,9 +6599,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // progressed trip is still allowed.
         $progressed = ['confirmed', 'running', 'completed'];
         if ($newStatus === 'not_confirmed' && in_array($trip->status, $progressed, true)) {
-            return response()->json([
-                "error" => "Can't move a '{$trip->status}' trip back to 'not confirmed'. Cancel it instead if it shouldn't proceed.",
-            ], 422);
+            return [
+                "Can't move a '{$trip->status}' trip back to 'not confirmed'. Cancel it instead if it shouldn't proceed.",
+                [],
+            ];
         }
 
         $trip->update(["status" => $newStatus]);
@@ -6590,15 +6635,20 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $this->createProviderInvoices($trip);
         } elseif ($newStatus === 'cancelled') {
             $room->releaseForTrip($trip->id);
+
+            // A cancelled trip is nobody's to ring about. The lead used to sit
+            // in follow-up afterwards, so HCT's call list kept a note telling
+            // them to chase a trip that had been called off.
+            //
+            // A lead already won is left alone: the trip happened and was
+            // cancelled later, which is a different thing from a sale that was
+            // never made, and quietly rewriting it would lose that.
+            if ($trip->lead && $trip->lead->stage === 'follow_up') {
+                app(\App\Services\LeadService::class)->markLost($trip->lead);
+            }
         }
 
-        return response()->json(array_filter([
-            "success" => true,
-            "rooms_warning" => $unheld
-                ? 'Confirmed, but these nights could not be reserved: ' . implode('; ', $unheld)
-                    . '. Settle them with the property.'
-                : null,
-        ], fn ($v) => $v !== null));
+        return [null, $unheld];
     }
 
     protected function getCalendarTrips(Request $request): JsonResponse
@@ -9882,7 +9932,32 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 $data[$dateKey] = null;
             }
         }
+
+        // The status and the start date are not fields to be written down. Each
+        // one means a piece of work, and this screen used to skip both: a trip
+        // could be marked confirmed here with no room reserved, nobody invoiced
+        // and its lead still open, and its dates could be moved while every day
+        // of the itinerary stayed where it was.
+        $newStatus = $data['status'] ?? null;
+        $newStart = array_key_exists('start_date', $data) ? $data['start_date'] : null;
+        $moved = array_key_exists('start_date', $data)
+            && substr((string) $trip->start_date, 0, 10) !== substr((string) $newStart, 0, 10);
+        unset($data['status'], $data['start_date'], $data['end_date']);
+
         $trip->update($data);
+
+        $unheld = [];
+        if ($moved) {
+            $unheld = $this->moveTripToDate($trip, $newStart);
+        }
+
+        if ($newStatus !== null && $newStatus !== $trip->status) {
+            [$error, $statusUnheld] = $this->applyTripStatus($trip, (string) $newStatus);
+            if ($error) {
+                return response()->json(["error" => $error], 422);
+            }
+            $unheld = array_merge($unheld, $statusUnheld);
+        }
 
         // Only recalculate when there's an itinerary - otherwise CostCalculatorService
         // would persist an all-zero breakdown and wipe the trip's cost columns
@@ -9892,7 +9967,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         $this->logActivity('trip_updated', 'Trip', $trip->id, ['fields' => array_keys($data)]);
-        return response()->json(["success" => true]);
+
+        return response()->json(array_filter([
+            "success" => true,
+            "rooms_warning" => $unheld
+                ? 'Saved, but these nights could not be reserved: ' . implode('; ', $unheld)
+                    . '. Settle them with the property.'
+                : null,
+        ], fn ($v) => $v !== null));
     }
 
     protected function addTravellerPayment(Request $request): JsonResponse
