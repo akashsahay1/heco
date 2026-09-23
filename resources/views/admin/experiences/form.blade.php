@@ -1100,8 +1100,14 @@ function toggleDurationFields() {
     }
 
     // Day-wise: show for all types; repeater add/remove only for multi_day
+    //
+    // toggleClass, not toggle(): the button is markup-hidden with d-none, and
+    // Bootstrap writes that as display:none !important, which beats the inline
+    // style jQuery's toggle() sets. So picking Multi-Day tried to show the
+    // button and CSS kept it hidden - there was no way to add a second day at
+    // all, on any experience.
     var isMulti = durationType === 'multi_day';
-    jQuery('#btnAddDay').toggle(isMulti);
+    jQuery('#btnAddDay').toggleClass('d-none', !isMulti);
 
     // Rebuild day cards when type changes
     var container = jQuery('#experienceDaysContainer');
@@ -1165,14 +1171,24 @@ function addDayCard(data, removable) {
 
     card += '</div></div></div>';
     container.append(card);
+    reindexDayCards();
 }
 
 function reindexDayCards() {
-    jQuery('#experienceDaysContainer .day-card-item').each(function(idx) {
+    var cards = jQuery('#experienceDaysContainer .day-card-item');
+    cards.each(function(idx) {
         var dayNum = idx + 1;
         jQuery(this).find('.day-number-badge').text('Day ' + dayNum);
         jQuery(this).find('.day-number-input').val(dayNum);
     });
+
+    // The last day cannot be removed. An experience with no days at all is not
+    // a thing anybody means to make, and until the Add Day button was fixed
+    // there was no way back from it short of reloading the page.
+    var only = cards.length < 2;
+    cards.find('.btn-remove-day')
+        .prop('disabled', only)
+        .attr('title', only ? 'An experience needs at least one day' : 'Remove');
 }
 
 function escAttr(str) {
