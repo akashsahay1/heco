@@ -7,6 +7,73 @@
         <i class="bi bi-luggage"></i> Trips
         <span class="badge bg-secondary ms-2" title="Total in current view">{{ number_format($trips->total()) }}</span>
     </h5>
+    {{-- The only way to start a trip from this side. Filing a lead does not
+         open one: a lead is an enquiry, and a trip is a journey somebody has
+         agreed to plan. --}}
+    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newTripModal">
+        <i class="bi bi-plus-lg"></i> New Trip
+    </button>
+</div>
+
+{{-- New Trip --}}
+<div class="modal fade" id="newTripModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title"><i class="bi bi-plus-lg"></i> New Trip</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger py-2 small d-none" id="newTripError"></div>
+
+                <label class="form-label small fw-bold">Traveller</label>
+                <select class="form-select form-select-sm custom-select mb-1" id="newTripTraveller">
+                    <option value="">-- Somebody new --</option>
+                    @foreach ($travellers ?? [] as $t)
+                        <option value="{{ $t->id }}">{{ $t->full_name }} ({{ $t->email }})</option>
+                    @endforeach
+                </select>
+                <div class="form-text mb-3">Pick somebody already on file, or leave this and give a name and email below.</div>
+
+                <div id="newTripPersonFields">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Name</label>
+                            <input type="text" class="form-control form-control-sm" id="newTripName">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Email</label>
+                            <input type="email" class="form-control form-control-sm" id="newTripEmail">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Adults</label>
+                        <input type="number" class="form-control form-control-sm" id="newTripAdults" value="2" min="1">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Children</label>
+                        <input type="number" class="form-control form-control-sm" id="newTripChildren" value="0" min="0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Start Date</label>
+                        <input type="text" class="form-control form-control-sm" id="newTripStartDisplay" readonly autocomplete="off">
+                        <input type="hidden" id="newTripStart">
+                    </div>
+                </div>
+                <div class="form-text mt-2">
+                    The trip opens empty. Add its days and experiences in the Trip Manager;
+                    it takes its region and its price from what you put on it.
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="saveNewTripBtn">Create Trip</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 {{-- Server-side filter card (Travelers-style). Date pickers use Air
@@ -183,6 +250,47 @@ jQuery(function() {
                 showAlert(msg, 'danger');
                 location.reload();
             });
+        });
+    });
+
+    // ── New Trip
+    if (window.buildCustomDropdown) {
+        buildCustomDropdown(jQuery('#newTripTraveller')[0]);
+    }
+
+    // Picking somebody already on file leaves nothing to type.
+    jQuery('#newTripTraveller').on('change', function() {
+        jQuery('#newTripPersonFields').toggleClass('d-none', !!jQuery(this).val());
+    });
+
+    if (window.AirDatepicker) {
+        new AirDatepicker('#newTripStartDisplay', {
+            autoClose: true,
+            dateFormat: 'dd-MM-yyyy',
+            onSelect: function(d) {
+                jQuery('#newTripStart').val(d.date ? d.date.toISOString().slice(0, 10) : '');
+            }
+        });
+    }
+
+    jQuery('#saveNewTripBtn').on('click', function() {
+        var $btn = jQuery(this).prop('disabled', true);
+        jQuery('#newTripError').addClass('d-none').text('');
+
+        ajaxPost({
+            create_trip_for_traveller: 1,
+            traveller_id: jQuery('#newTripTraveller').val(),
+            full_name: jQuery('#newTripName').val(),
+            email: jQuery('#newTripEmail').val(),
+            adults: jQuery('#newTripAdults').val(),
+            children: jQuery('#newTripChildren').val(),
+            start_date: jQuery('#newTripStart').val()
+        }, function(resp) {
+            window.location = '/trip-manager/' + resp.trip_row_id;
+        }, function(xhr) {
+            $btn.prop('disabled', false);
+            var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not create the trip') : 'Could not create the trip';
+            jQuery('#newTripError').removeClass('d-none').text(msg);
         });
     });
 });

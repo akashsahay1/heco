@@ -146,7 +146,14 @@ class HctController extends Controller
             ->paginate(config('pagination.admin_per_page', 20))
             ->withQueryString();
 
-        return view('admin.trips', compact('trips', 'status', 'dateFrom', 'dateTo', 'search'));
+        // For the New Trip box: somebody already on file can be picked rather
+        // than typed again, which is what stops a second account being opened
+        // for a traveller who already has one.
+        $travellers = \App\Models\User::where('user_role', 'traveller')
+            ->orderBy('full_name')
+            ->get(['id', 'full_name', 'email']);
+
+        return view('admin.trips', compact('trips', 'status', 'dateFrom', 'dateTo', 'search', 'travellers'));
     }
 
     public function calendar()
@@ -330,9 +337,15 @@ class HctController extends Controller
         // ofType, not provider_type: a host that also supplies services would
         // otherwise be missing from the host list.
         $hlhs = ServiceProvider::ofType("hlh")->where("status", "approved")->orderBy("name")->get();
-        $rps = RegenerativeProject::where("is_active", true)->get();
+        // Named as the view reads it. It was sent as $rps, which the view never
+        // looks for, so its own fallback query rendered instead.
+        $regenerativeProjects = RegenerativeProject::where("is_active", true)->orderBy("name")->get();
         $serviceTypes = SystemList::ofType("service_type")->orderBy("sort_order")->pluck("name");
-        return view("admin.experiences.form", compact("regions", "hlhs", "rps", "serviceTypes"));
+        // The types are maintained in the Control Panel. The form used to carry
+        // its own hardcoded list, which held two names the Control Panel does
+        // not and missed two that it does.
+        $experienceTypes = SystemList::ofType("experience_type")->pluck("name");
+        return view("admin.experiences.form", compact("regions", "hlhs", "regenerativeProjects", "serviceTypes", "experienceTypes"));
     }
 
     public function editExperience(int $id)
@@ -340,9 +353,16 @@ class HctController extends Controller
         $experience = Experience::with('days')->findOrFail($id);
         $regions = Region::where("is_active", true)->orderBy("name")->get();
         $hlhs = ServiceProvider::ofType("hlh")->where("status", "approved")->orderBy("name")->get();
-        $rps = RegenerativeProject::where("is_active", true)->get();
+        // Retired projects are not offered for a new link, but one this
+        // experience is already linked to has to stay on the list. It was
+        // dropped, so the box read "None" and the next save of any other field
+        // cut the link without saying so.
+        $regenerativeProjects = RegenerativeProject::where("is_active", true)
+            ->when($experience->regenerative_project_id, fn ($q) => $q->orWhere("id", $experience->regenerative_project_id))
+            ->orderBy("name")->get();
         $serviceTypes = SystemList::ofType("service_type")->orderBy("sort_order")->pluck("name");
-        return view("admin.experiences.form", compact("experience", "regions", "hlhs", "rps", "serviceTypes"));
+        $experienceTypes = SystemList::ofType("experience_type")->pluck("name");
+        return view("admin.experiences.form", compact("experience", "regions", "hlhs", "regenerativeProjects", "serviceTypes", "experienceTypes"));
     }
 
     public function regenerativeProjects()

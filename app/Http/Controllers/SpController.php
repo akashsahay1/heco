@@ -48,7 +48,7 @@ class SpController extends Controller
 
         if (!$provider) {
             return redirect()->route("sp.application")
-                ->with("status", "Complete your service provider application to continue.");
+                ->with("error", "Complete your service provider application to continue.");
         }
 
         // Approved providers see the "You're approved!" celebration with a link
@@ -62,7 +62,7 @@ class SpController extends Controller
         $user = auth()->user();
         $provider = ServiceProvider::where("user_id", $user->id)->with(["region", "pricing", "lastUpdatedBy"])->first();
         if (!$provider) {
-            return redirect()->route("sp.application")->with("status", "Complete your service provider application to access the dashboard.");
+            return redirect()->route("sp.application")->with("error", "Complete your service provider application to access the dashboard.");
         }
         return view("portal.sp.dashboard", compact("provider"));
     }
@@ -102,8 +102,11 @@ class SpController extends Controller
         $provider = ServiceProvider::where("user_id", $user->id)->firstOrFail();
 
         if (!$provider->isHost()) {
+            // "error", not "status": the portal layout shows success and error and
+            // nothing else, so every one of these reasons was flashed into a key
+            // no page reads. A partner sent back here was told nothing at all.
             return redirect()->route("sp.dashboard")->with(
-                "status",
+                "error",
                 "Experiences are managed by homestay/lodge hosts."
             );
         }
@@ -151,7 +154,7 @@ class SpController extends Controller
 
         if (!$provider->suppliesServices()) {
             return redirect()->route("sp.dashboard")->with(
-                "status",
+                "error",
                 "Rates and services are managed by providers offering services."
             );
         }

@@ -108,6 +108,55 @@ class Experience extends Model
     }
 
     /**
+     * Whether this runs across the dates a trip is travelling.
+     *
+     * The months an experience runs are on the listing and nothing read them.
+     * A Spiti kitchen that runs May to October went onto a trip travelling in
+     * November without a word, and it was the AI review - not the system -
+     * that noticed. A traveller would have found out on the day.
+     *
+     * @return string|null what is wrong, in a sentence, or null if nothing is
+     */
+    public function seasonClash(?\Carbon\Carbon $start, ?\Carbon\Carbon $end = null): ?string
+    {
+        if (! $start) {
+            return null;
+        }
+
+        // Every month the trip touches, from its first day to its last.
+        $months = [];
+        $cursor = $start->copy()->startOfMonth();
+        $last = ($end ?: $start)->copy()->startOfMonth();
+        while ($cursor->lte($last) && count($months) < 24) {
+            $months[] = (int) $cursor->month;
+            $cursor->addMonth();
+        }
+
+        $asInts = fn ($v) => collect((array) $v)->map(fn ($m) => (int) $m)->filter()->all();
+        $unavailable = $asInts($this->unavailable_months);
+        $available = $asInts($this->available_months);
+        $name = fn (int $m) => \Carbon\Carbon::create(null, $m, 1)->format('F');
+
+        foreach ($months as $m) {
+            if (in_array($m, $unavailable, true)) {
+                return "{$this->name} does not run in {$name($m)}.";
+            }
+        }
+
+        // An empty list means nobody said, which is not the same as "never".
+        if ($available) {
+            $outside = array_values(array_diff($months, $available));
+            if ($outside) {
+                $runs = implode(', ', array_map($name, $available));
+                $asked = implode(' and ', array_map($name, $outside));
+                return "{$this->name} runs in {$runs}. This trip travels in {$asked}.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Carry the cheapest room rate on a list query so price_from can answer
      * without fetching rates one card at a time.
      *

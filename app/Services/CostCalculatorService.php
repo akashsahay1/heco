@@ -24,6 +24,20 @@ class CostCalculatorService
     }
 
     /**
+     * How many nights a trip is, for anybody outside this class who has to agree
+     * with it.
+     *
+     * The room booking used to answer this question its own way - and answered
+     * "none at all" whenever the trip had no end date, while this class billed
+     * the traveller and invoiced the hotel for the same nights. Two answers to
+     * one question is how a trip gets charged for a room nobody reserved.
+     */
+    public function nightsFor(Trip $trip): int
+    {
+        return $this->resolveNights($trip);
+    }
+
+    /**
      * Number of nights to bill provider-driven accommodation for. Prefers the
      * trip's start/end span; falls back to (day count - 1) for trips that don't
      * yet have dates set. Always at least 1 so a chosen provider is charged.
@@ -287,9 +301,18 @@ class CostCalculatorService
         $chargedExperienceIds = [];
 
         foreach ($trip->tripDays as $day) {
-            // Extra days (days without experiences).
+            // An extra day is a day with nothing on it. The rate from Settings
+            // stands in for what a day still costs when nothing is planned.
+            //
+            // It used to mean "no experience on it", which charged the rate on
+            // top of a day that had a hotel and a car pinned to it and was
+            // billing both at their own prices already. On a four-day trip with
+            // rooms on three nights that added Rs 30,000 of empty days to
+            // Rs 11,970 of real ones, and nothing on the screen said where it
+            // had come from.
             $hasExperiences = $day->experiences->isNotEmpty();
-            if (!$hasExperiences && $day->day_type) {
+            $hasServices = $day->services->contains(fn ($s) => (float) $s->cost > 0);
+            if (! $hasExperiences && ! $hasServices && $day->day_type) {
                 $costPerPerson = in_array($day->day_type, ['activity', 'free']) ? $activityDayCostPerPerson : $restDayCostPerPerson;
                 $extraDayCost += $costPerPerson * $peopleFactor;
             }
@@ -375,9 +398,21 @@ class CostCalculatorService
         //
         // Cast to float first - DB DECIMALs come back as strings ("0.00"), which are
         // truthy, so `?:` would skip the configured default.
-        $rpPercent  = (float) $trip->margin_rp_percent      ?: (float) Setting::getValue('default_rp_margin_percent', 5);
-        $hrpPercent = (float) $trip->margin_hrp_percent     ?: (float) Setting::getValue('default_hrp_margin_percent', 10);
-        $hctPercent = (float) $trip->commission_hct_percent ?: (float) Setting::getValue('default_hct_commission_percent', 15);
+        // A margin HCT deliberately set to nothing must stay nothing. Written
+        // with `?:`, a stored 0.00 is falsy and the Settings default came back
+        // in its place - and updateTripInfo then saved that default over the
+        // zero, so the boxes could not be set to nothing at all and a regional
+        // partner was invoiced a margin that had been taken off the trip.
+        // The test is whether a figure was entered, not whether it is above nil.
+        $rpPercent  = $trip->margin_rp_percent === null
+            ? (float) Setting::getValue('default_rp_margin_percent', 5)
+            : (float) $trip->margin_rp_percent;
+        $hrpPercent = $trip->margin_hrp_percent === null
+            ? (float) Setting::getValue('default_hrp_margin_percent', 10)
+            : (float) $trip->margin_hrp_percent;
+        $hctPercent = $trip->commission_hct_percent === null
+            ? (float) Setting::getValue('default_hct_commission_percent', 15)
+            : (float) $trip->commission_hct_percent;
         $rpAmount   = round($totalCost * $rpPercent / 100, 2);
         $hrpAmount  = round($totalCost * $hrpPercent / 100, 2);
         $hctAmount  = round($totalCost * $hctPercent / 100, 2);

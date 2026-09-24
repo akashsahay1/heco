@@ -8,6 +8,7 @@ use App\Models\ServiceProvider;
 use App\Models\Setting;
 use App\Models\SpPayment;
 use App\Models\SpPaymentEntry;
+use App\Models\TripDayExperience;
 use App\Models\TripDayService;
 use App\Models\TripRegion;
 use App\Models\TripSelectedExperience;
@@ -126,14 +127,25 @@ class ProviderDashboardService
         // Trips that booked an experience of theirs. A host is never pinned as
         // a day service - their experience is the trip - so this set was
         // missing and a host with a booked trek was shown no bookings at all.
-        $tripIds = $tripIds->merge(
-            TripSelectedExperience::whereIn(
-                'experience_id',
-                Experience::where('owner_provider_id', $provider->id)
-                    ->orWhere('hlh_id', $provider->id)
-                    ->select('id'),
-            )->pluck('trip_id'),
-        );
+        //
+        // An experience reaches a trip by two doors: the traveller picks it
+        // (trip_selected_experiences) or HCT places it on a day in the Trip
+        // Manager (trip_day_experiences). This counted the first only, so a
+        // host whose trek was put on the trip by HCT was invoiced, saw the
+        // payout, saw the trip on their bookings list, and read 0 bookings
+        // next to it. Both doors, the same way the bookings list itself asks.
+        $mine = Experience::where('owner_provider_id', $provider->id)
+            ->orWhere('hlh_id', $provider->id)
+            ->select('id');
+
+        $tripIds = $tripIds
+            ->merge(TripSelectedExperience::whereIn('experience_id', $mine)->pluck('trip_id'))
+            ->merge(
+                TripDayExperience::query()
+                    ->whereIn('trip_day_experiences.experience_id', $mine)
+                    ->join('trip_days', 'trip_days.id', '=', 'trip_day_experiences.trip_day_id')
+                    ->pluck('trip_days.trip_id'),
+            );
 
         if ($provider->hasType('hrp') && $provider->region_id) {
             $tripIds = $tripIds->merge(

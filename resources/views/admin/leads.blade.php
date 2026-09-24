@@ -70,12 +70,23 @@
                             };
                         @endphp
                         <tr>
-                            <td>{{ $l->user ? ($l->user->full_name ?: $l->user->email) : '-' }}</td>
+                            {{-- A lead carries its own name and email now. An
+                                 older one was filed by creating an account, so
+                                 its details live there; travellerName() reads
+                                 whichever is held. --}}
+                            <td>
+                                {{ $l->travellerName() }}
+                                @if ($l->travellerEmail())
+                                    <div class="small text-muted">{{ $l->travellerEmail() }}</div>
+                                @endif
+                            </td>
                             <td>
                                 @if($l->trip)
                                     <a href="{{ url('/trip-manager/'.$l->trip_id) }}" target="_blank">{{ $l->trip->trip_id }}</a>
                                 @else
-                                    -
+                                    {{-- Filing an enquiry does not open a trip. One
+                                         appears here when the traveller builds it. --}}
+                                    <span class="small text-muted">No trip yet</span>
                                 @endif
                             </td>
                             <td><span class="badge bg-{{ $stageClass }}">{{ str_replace('_', ' ', $l->stage) }}</span></td>
@@ -121,18 +132,19 @@
             <div class="modal-body">
                 <div class="alert alert-danger d-none" id="addLeadError"></div>
 
-                <div class="row g-2 mb-3">
-                    <div class="col-md-12">
-                        <label class="form-label small text-muted mb-1">Traveller already on file</label>
-                        <select class="form-select form-select-sm custom-select" id="leadTraveller">
-                            <option value="">Someone new</option>
-                            @foreach($travellers as $t)
-                                <option value="{{ $t->id }}">{{ $t->full_name }} — {{ $t->email }}</option>
-                            @endforeach
-                        </select>
-                        <small class="text-muted d-block mt-1">Pick them here, or leave it and fill in the three boxes below.</small>
-                    </div>
-                </div>
+                {{-- No traveller picker any more. A lead is an enquiry, keyed
+                     by the email it came in on: no account is opened for it and
+                     none has to exist. If that address already belongs to a
+                     traveller, the handler ties the two together by itself.
+                     Offering a picker beside the boxes only raised the question
+                     of which one won. --}}
+                <p class="small text-muted mb-3">
+                    <i class="bi bi-info-circle"></i>
+                    This files an enquiry so somebody can be rung back. It does not
+                    open an account or a trip. The email is what matters: when that
+                    person signs up with it, builds a journey and pays, this enquiry
+                    is marked Won by itself.
+                </p>
 
                 <div class="row g-2 mb-3" id="newTravellerFields">
                     <div class="col-md-4">
@@ -322,13 +334,6 @@ jQuery(function() {
         onSelect: function(o) { jQuery('#leadEnd').val(o.date ? isoFromDate(o.date) : ''); }
     });
 
-    // Picking somebody already on file leaves nothing to type about them, and
-    // a half-filled set of new-traveller boxes beside a chosen name is only a
-    // question about which one wins.
-    jQuery(document).on('change', '#leadTraveller', function() {
-        jQuery('#newTravellerFields').toggleClass('d-none', jQuery(this).val() !== '');
-    });
-
     jQuery(document).on('click', '#addLeadBtn', function() {
         jQuery('#addLeadError').addClass('d-none').text('');
         new bootstrap.Modal(document.getElementById('addLeadModal')).show();
@@ -339,7 +344,6 @@ jQuery(function() {
 
         ajaxPost({
             create_lead: 1,
-            traveller_id: jQuery('#leadTraveller').val(),
             full_name: jQuery('#leadName').val(),
             email: jQuery('#leadEmail').val(),
             mobile: jQuery('#leadMobile').val(),
@@ -352,7 +356,7 @@ jQuery(function() {
             assigned_hct_id: jQuery('#leadAssigned').val(),
             notes: jQuery('#newLeadNotes').val()
         }, function(resp) {
-            showAlert('Lead filed for ' + resp.traveller + ' (trip ' + resp.trip_id + ').', 'success');
+            showAlert('Enquiry filed for ' + resp.traveller + '.', 'success');
             location.reload();
         }, function(xhr) {
             // Shown inside the form rather than as a banner: what is wrong is

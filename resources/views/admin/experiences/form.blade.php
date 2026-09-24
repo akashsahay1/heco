@@ -11,7 +11,23 @@
     // services. Active hosts only: an experience cannot be given to anyone else.
     $providers = $hlhs
         ?? \App\Models\ServiceProvider::ofType('hlh')->where('status', 'approved')->orderBy('name')->get();
-    $regenerativeProjects = $regenerativeProjects ?? \App\Models\RegenerativeProject::where('is_active', 1)->orderBy('name')->get();
+    // Active projects, plus whichever one this experience is already linked to
+    // even if it has since been retired. Dropping it made the box read "None",
+    // and the next save of any other field wrote that "None" through.
+    $regenerativeProjects = $regenerativeProjects ?? \App\Models\RegenerativeProject::where('is_active', 1)
+        ->when($e && $e->regenerative_project_id, fn ($q) => $q->orWhere('id', $e->regenerative_project_id))
+        ->orderBy('name')->get();
+
+    // The Experience Types the Control Panel maintains, not a list written into
+    // this form. The hardcoded one offered "Homestay", which is not a type, and
+    // could not show "Spiritual" or "Photography", which are - so an
+    // administrator editing one of those could not save without silently
+    // changing its type. The experience's own value is kept on the list too,
+    // for the same reason the project above is.
+    $experienceTypes = collect($experienceTypes ?? \App\Models\SystemList::ofType('experience_type')->pluck('name'));
+    if ($e && $e->type && ! $experienceTypes->contains(fn ($t) => strcasecmp($t, $e->type) === 0)) {
+        $experienceTypes = $experienceTypes->push($e->type);
+    }
 
     $months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     $bestSeasons = $e && $e->best_seasons ? $e->best_seasons : [];
@@ -131,7 +147,7 @@
                             <label class="form-label">Type <span class="text-danger">*</span></label>
                             <select class="form-select custom-select" name="type" required>
                                 <option value="">Select Type</option>
-                                @foreach(['Trek','Cultural Immersion','Wildlife','Adventure','Nature','Wellness','Culinary','Homestay','Volunteering'] as $t)
+                                @foreach($experienceTypes as $t)
                                     <option value="{{ $t }}" {{ $e && strcasecmp($e->type, $t) === 0 ? 'selected' : '' }}>{{ $t }}</option>
                                 @endforeach
                             </select>

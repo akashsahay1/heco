@@ -61,7 +61,7 @@
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h6 class="mb-0"><i class="bi bi-calendar3"></i> Itinerary Timeline</h6>
                 <div class="d-flex gap-1">
-                    <button class="btn btn-sm btn-outline-primary" id="btnAiRecalc"><i class="bi bi-robot"></i> Ask AI to Recalculate</button>
+                    <button class="btn btn-sm btn-outline-primary" id="btnAiRecalc"><i class="bi bi-robot"></i> Ask AI to Review</button>
                 </div>
             </div>
             <div id="itineraryTimeline">

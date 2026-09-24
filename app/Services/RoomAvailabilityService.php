@@ -46,6 +46,18 @@ class RoomAvailabilityService
 
         $day = Carbon::parse($date)->startOfDay();
 
+        // A night the host has closed off is closed, however many rooms stand
+        // empty. Its two siblings have always asked this - availableForCategory
+        // and categoriesForDate both do - and this one did not, so a host could
+        // block a date on their calendar and still have that night confirmed at
+        // their stay and be invoiced for it. That is the same two-parties-for-one-
+        // room failure the room work exists to stop, reached through the calendar
+        // rather than through inventory.
+        $host = (int) ($stay->owner_provider_id ?: $stay->hlh_id);
+        if ($host && $this->spIsBlockedOnDate($host, $day)) {
+            return 0;
+        }
+
         $booked = (int) SpRoomBooking::where('experience_id', $experienceId)
             ->whereDate('date', $day)
             ->active()

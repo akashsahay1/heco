@@ -2535,9 +2535,16 @@ jQuery(function() {
             var iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
             if (jQuery('#tripStartDateInput').val() === iso) return;
             jQuery('#tripStartDateInput').val(iso);
-            ajaxPost({ update_trip_start_date: 1, trip_id: window.tripId, start_date: iso }, function() {
+            ajaxPost({ update_trip_start_date: 1, trip_id: window.tripId, start_date: iso }, function(resp) {
                 if (typeof loadTimeline === 'function') loadTimeline();
                 if (typeof showAlert === 'function') showAlert('Trip start date updated.', 'success');
+                // Something already on the journey may not run in the new month,
+                // or a room may not be free on the new nights. The date still
+                // changes - it is theirs to pick - but they are told.
+                if (typeof showAlert === 'function') {
+                    if (resp && resp.season_warning) showAlert(resp.season_warning, 'warning');
+                    if (resp && resp.rooms_warning) showAlert(resp.rooms_warning, 'warning');
+                }
             });
         }
     });

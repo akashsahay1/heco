@@ -57,6 +57,27 @@ class Trip extends Model
                 }
             }
         });
+
+        // The three shares of the total start at whatever the Settings say, on
+        // every creation path, and HCT can change any of them per trip afterwards.
+        //
+        // The columns are NOT NULL with a default of 0.00, so "nobody has said"
+        // and "somebody said nothing" look identical once a row exists - which is
+        // why CostCalculatorService could never apply the configured figure and
+        // every new trip came out at 0% for all three. Deciding it here, before
+        // the row exists, is the one moment the difference is still knowable.
+        static::creating(function (Trip $trip) {
+            $defaults = [
+                'margin_rp_percent'      => 'default_rp_margin_percent',
+                'margin_hrp_percent'     => 'default_hrp_margin_percent',
+                'commission_hct_percent' => 'default_hct_commission_percent',
+            ];
+            foreach ($defaults as $column => $settingKey) {
+                if ($trip->{$column} === null) {
+                    $trip->{$column} = (float) Setting::getValue($settingKey, 0);
+                }
+            }
+        });
     }
 
     public static function generateTripId(): string
@@ -125,6 +146,36 @@ class Trip extends Model
     public function selectedExperiences()
     {
         return $this->hasMany(TripSelectedExperience::class);
+    }
+
+    /**
+     * Every experience on this trip, by whichever door it arrived through.
+     *
+     * There are two, and they write to different tables. A traveller picking
+     * one on the site writes trip_selected_experiences; HCT dropping one onto a
+     * day in the Trip Manager writes trip_day_experiences. Neither table alone
+     * is the answer to "what is on this trip".
+     *
+     * Reading only the traveller's table was the same fault three times over.
+     * The calculator charged the traveller from the days, so a trip built in
+     * the admin panel was billed correctly - while invoiceExperienceHosts()
+     * owed its host nothing, bookStayRooms() held no rooms for a stay, and the
+     * host could not see the trip they were hosting. The money came in and the
+     * person doing the work was, on paper, owed none of it.
+     *
+     * Every one of those asks here now.
+     */
+    public function experienceIds(): \Illuminate\Support\Collection
+    {
+        $onJourney = TripSelectedExperience::where('trip_id', $this->id)
+            ->pluck('experience_id');
+
+        $onDays = TripDayExperience::query()
+            ->join('trip_days', 'trip_days.id', '=', 'trip_day_experiences.trip_day_id')
+            ->where('trip_days.trip_id', $this->id)
+            ->pluck('trip_day_experiences.experience_id');
+
+        return $onJourney->merge($onDays)->unique()->values();
     }
 
     public function lead()

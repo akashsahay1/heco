@@ -192,8 +192,33 @@ class AjaxController extends Controller
         // Charge each SELECTED experience once (matches the logged-in dedup). Each is a
         // slab-priced bundle: per-person price by group size × billable heads.
         $expIds = array_values(array_unique($guestData['experience_ids'] ?? []));
-        $experiences = !empty($expIds) ? Experience::whereIn('id', $expIds)->with('priceSlabs')->get() : collect();
+        $experiences = !empty($expIds)
+            ? Experience::whereIn('id', $expIds)->with(['priceSlabs', 'roomRates'])->get()
+            : collect();
+
+        // How many nights a stay falls back to when it does not carry its own.
+        // Read before the loop because the itinerary is the only thing a guest
+        // has instead of dates. Same rule as CostCalculatorService::stayNights.
+        $guestItinerary = $guestData['ai_itinerary'] ?? null;
+        $guestNights = ($guestItinerary && isset($guestItinerary['days']))
+            ? max(count($guestItinerary['days']) - 1, 1)
+            : 1;
+
         foreach ($experiences as $exp) {
+            // A stay is charged by the room, not per person. This asked for a
+            // per-person price, which a stay does not have, so a homestay came
+            // out at nothing: a guest was quoted Rs 0 for it and the same trip
+            // became Rs 3,300 the moment they signed in. The signed-in
+            // calculator has always used stayCostFor; so does this now.
+            if ($exp->isStay()) {
+                $nights = max((int) $exp->duration_nights, (int) $exp->duration_days - 1);
+                $experienceCost += $exp->stayCostFor(
+                    $party['billed_heads'],
+                    $nights > 0 ? $nights : $guestNights,
+                );
+                continue;
+            }
+
             // Margin included; the fallbacks for an experience with no slabs
             // live in the model beside it.
             $perPerson = $exp->travellerPricePerPerson($groupSize);
@@ -214,7 +239,7 @@ class AjaxController extends Controller
         $restDayCostPerPerson = (float) Setting::getValue('rest_day_cost_per_person', 2000);
         $activityDayCostPerPerson = (float) Setting::getValue('activity_day_cost_per_person', 5000);
         $extraDayCost = 0;
-        $itinerary = $guestData['ai_itinerary'] ?? null;
+        $itinerary = $guestItinerary;
         if ($itinerary && isset($itinerary['days'])) {
             foreach ($itinerary['days'] as $day) {
                 $hasExp = !empty($day['experiences'] ?? []);
@@ -622,6 +647,7 @@ class AjaxController extends Controller
         'update_lead' => 'hct',
         'get_lead_history' => 'hct',
         'create_lead' => 'hct',
+        'create_trip_for_traveller' => 'hct',
         'get_upcoming_trips' => 'hct',
         'get_trips_by_date_range' => 'hct',
         'update_trip_status' => 'hct',
@@ -678,6 +704,7 @@ class AjaxController extends Controller
         'remove_experience_from_day' => 'hct',
         'reorder_trip_days' => 'hct',
         'add_trip_day' => 'hct',
+        'update_trip_day' => 'hct',
         'remove_trip_day' => 'hct',
         'get_day_services' => 'hct',
         'add_day_service' => 'hct',
@@ -824,12 +851,22 @@ class AjaxController extends Controller
      */
     private function bookTripLevelAccommodation(Trip $trip): array
     {
-        if (!$trip->accommodation_pricing_id || !$trip->start_date || !$trip->end_date) {
+        if (!$trip->accommodation_pricing_id) {
             return [];
         }
         $pricing = SpPricing::find($trip->accommodation_pricing_id);
         if (!$pricing || $pricing->service_type !== 'accommodation') {
             return [];
+        }
+        $hotel = $pricing->serviceProvider->name ?? 'the hotel';
+
+        // Without a start date there is no night to hold, and that has to be
+        // said rather than returned as "nothing to do". The traveller is billed
+        // for this hotel and the hotel is invoiced for it on the same confirm,
+        // so silence here means money moved both ways against a property that
+        // was never asked to keep a room.
+        if (!$trip->start_date) {
+            return ["no room could be held at {$hotel} because the trip has no start date"];
         }
         $adults = max((int) $trip->adults, 1);
         $children = (int) ($trip->children ?: 0);
@@ -838,7 +875,13 @@ class AjaxController extends Controller
 
         $room = app(\App\Services\RoomAvailabilityService::class);
         $start = \Carbon\Carbon::parse($trip->start_date)->startOfDay();
-        $end   = \Carbon\Carbon::parse($trip->end_date)->startOfDay();
+        // The same count the calculator bills, asked of the calculator. An
+        // end date is used when there is one; an itinerary with no end date
+        // falls back to its days, exactly as the billing does. Requiring an
+        // end date here is what made the two disagree.
+        $end = $trip->end_date
+            ? \Carbon\Carbon::parse($trip->end_date)->startOfDay()
+            : $start->copy()->addDays(app(CostCalculatorService::class)->nightsFor($trip));
         // A night that could not be held used to leave a line in the log and
         // nothing else: the trip was confirmed, the traveller charged and the
         // provider invoiced against a property with no room free, and nobody
@@ -848,8 +891,7 @@ class AjaxController extends Controller
         for ($d = $start->copy(); $d->lt($end); $d->addDay()) {
             $booked = $room->book($pricing->id, $trip->id, null, $d->copy(), $rooms, 'confirmed', 'trip_preference');
             if (!$booked) {
-                $unheld[] = ($pricing->serviceProvider->name ?? 'the hotel')
-                    . ' on ' . $d->format('j M Y');
+                $unheld[] = $hotel . ' on ' . $d->format('j M Y');
                 \Log::warning('Trip-level accommodation could not be booked (availability)', [
                     'trip_id' => $trip->id, 'sp_pricing_id' => $pricing->id, 'date' => $d->toDateString(),
                 ]);
@@ -964,10 +1006,12 @@ class AjaxController extends Controller
             (int) $trip->adults, (int) ($trip->children ?: 0), (int) ($trip->infants ?: 0),
         );
 
-        $stays = Experience::whereIn(
-            'id',
-            TripSelectedExperience::where('trip_id', $trip->id)->select('experience_id'),
-        )->where('category', Experience::CATEGORY_STAY)->with('roomRates')->get();
+        // Every experience on the trip, whichever door it came through. Reading
+        // only the traveller's table held no rooms for a stay HCT had dropped
+        // onto a day: the traveller was charged for it and the property never
+        // heard of the booking.
+        $stays = Experience::whereIn('id', $trip->experienceIds())
+            ->where('category', Experience::CATEGORY_STAY)->with('roomRates')->get();
 
         $unheld = [];
         foreach ($stays as $stay) {
@@ -1004,10 +1048,11 @@ class AjaxController extends Controller
     {
         $calc = app(CostCalculatorService::class);
 
-        $experiences = Experience::whereIn(
-            'id',
-            TripSelectedExperience::where('trip_id', $trip->id)->select('experience_id'),
-        )->with('priceSlabs', 'roomRates')->get();
+        // Same again: a trip built in the Trip Manager has no rows in the
+        // traveller's table, so its host used to be owed nothing while the
+        // traveller was billed in full.
+        $experiences = Experience::whereIn('id', $trip->experienceIds())
+            ->with('priceSlabs', 'roomRates')->get();
 
         $owed = [];
         foreach ($experiences as $exp) {
@@ -1167,7 +1212,13 @@ class AjaxController extends Controller
         foreach (self::LOCK_EDIT_KEYS as $key) {
             if ($request->has($key)) {
                 $trip = $this->resolveTripFromRequest($request);
-                if ($trip && $this->tripIsLocked($trip)) {
+                // Only about a trip the caller is entitled to. This answered for
+                // any id at all, so "locked" and "no such trip" came back
+                // differently for somebody else's trip - which told a stranger
+                // both that it exists and that it has been paid for. Somebody
+                // else's trip falls through to the handler, which refuses it the
+                // same way an id that does not exist is refused.
+                if ($trip && $this->userOwnsTrip($trip) && $this->tripIsLocked($trip)) {
                     return response()->json([
                         'error' => 'This trip is locked (paid or closed) and can no longer be edited.',
                     ], 423);
@@ -1433,6 +1484,9 @@ class AjaxController extends Controller
             if ($request->has('create_lead')) {
                 return $this->createLead($request);
             }
+            if ($request->has('create_trip_for_traveller')) {
+                return $this->createTripForTraveller($request);
+            }
             if ($request->has('get_upcoming_trips')) {
                 return $this->getUpcomingTrips($request);
             }
@@ -1596,6 +1650,9 @@ class AjaxController extends Controller
             }
             if ($request->has('reorder_trip_days')) {
                 return $this->reorderTripDays($request);
+            }
+            if ($request->has('update_trip_day')) {
+                return $this->updateTripDay($request);
             }
             if ($request->has('add_trip_day')) {
                 return $this->addTripDay($request);
@@ -2870,6 +2927,24 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
         }
 
+        // The assistant just changed the journey, so everything that follows
+        // from the journey has to change with it. Adding or removing on the site
+        // rebuilds the timeline, re-derives the regions and re-prices the trip;
+        // through the chat none of the three happened. A trip could come out of
+        // a conversation with an experience on it, no region against it (so no
+        // regional partner invoiced) and the price of the itinerary it used to
+        // have. Same three steps, same order, one place.
+        if ($trip && (! empty($addedExperienceIds) || ! empty($removedExperienceIds))) {
+            app(ItineraryService::class)->rebuildFromExperiences($trip);
+            $this->syncTripRegions($trip);
+            $trip->refresh();
+            // Guarded like every other caller: calculate() persists, so on a trip
+            // with nothing left on it it would write the cost columns to zero.
+            if ($trip->tripDays()->exists() || $trip->selectedExperiences()->exists()) {
+                app(CostCalculatorService::class)->calculate($trip);
+            }
+        }
+
         $tripUpdated = !empty($addedExperienceIds) || !empty($removedExperienceIds) || $detailsUpdated;
         $updatedDetails = $detailsUpdated ? ($extractedDetails ?? []) : [];
 
@@ -3035,6 +3110,16 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 }
             }
 
+            // The months rule applies here too. It was added to the signed-in
+            // branch only, and this one returns before reaching it - so a guest
+            // could put a summer walk on a December journey, and it was carried
+            // into their account at sign-in without ever being looked at.
+            $guestStart = ! empty($gt["start_date"]) ? \Carbon\Carbon::parse($gt["start_date"]) : null;
+            $guestEnd = ! empty($gt["end_date"]) ? \Carbon\Carbon::parse($gt["end_date"]) : null;
+            if ($clash = $experience->seasonClash($guestStart, $guestEnd)) {
+                return response()->json(["error" => $clash . ' Try different dates.'], 422);
+            }
+
             if (!in_array($experience->id, $ids)) {
                 $ids[] = $experience->id;
             }
@@ -3054,6 +3139,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             if ($existingRegionId && $existingRegionId != $experience->region_id) {
                 return response()->json(["error" => "You can only add experiences from one region at a time."], 422);
             }
+        }
+
+        // The months a listing runs are on it and nothing read them, so a walk
+        // that runs in summer could be put on a trip travelling in December.
+        if ($clash = $experience->seasonClash($trip->start_date, $trip->end_date)) {
+            return response()->json(["error" => $clash . ' Try different dates.'], 422);
         }
 
         // The same limit read the other way round: a party already set on the
@@ -3139,14 +3230,33 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * has to prune it too - an HRP is shown the trips touching their region, and
      * a row left behind hands them one that no longer goes anywhere near them.
      */
+    /**
+     * The regions a trip touches, taken from wherever its experiences are.
+     *
+     * An experience reaches a trip by two doors and they write to different
+     * tables. A traveller picking one on the site writes trip_selected_experiences;
+     * HCT dropping one onto a day in the Trip Manager writes trip_day_experiences.
+     * Reading only the first meant a trip built entirely in the admin panel
+     * never got a region - so "Who Is On This Trip" said "No region yet" above
+     * an experience that plainly had one, and invoiceRegionalPartner() returned
+     * early on an empty region list. The HRP margin was charged to the traveller
+     * and invoiced to nobody, which is fault B6 coming back through the other door.
+     */
     protected function syncTripRegions(Trip $trip): void
     {
-        $wanted = TripSelectedExperience::where('trip_id', $trip->id)
+        $onJourney = TripSelectedExperience::where('trip_id', $trip->id)
             ->join('experiences', 'experiences.id', '=', 'trip_selected_experiences.experience_id')
             ->whereNotNull('experiences.region_id')
-            ->pluck('experiences.region_id')
-            ->unique()
-            ->all();
+            ->pluck('experiences.region_id');
+
+        $onDays = TripDayExperience::query()
+            ->join('trip_days', 'trip_days.id', '=', 'trip_day_experiences.trip_day_id')
+            ->join('experiences', 'experiences.id', '=', 'trip_day_experiences.experience_id')
+            ->where('trip_days.trip_id', $trip->id)
+            ->whereNotNull('experiences.region_id')
+            ->pluck('experiences.region_id');
+
+        $wanted = $onJourney->merge($onDays)->unique()->values()->all();
 
         TripRegion::where('trip_id', $trip->id)
             ->when($wanted, fn ($q) => $q->whereNotIn('region_id', $wanted))
@@ -3346,6 +3456,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $trip = $this->ensureAuthTrip($request);
         $couldNotHold = $this->moveTripToDate($trip, $date);
+        $outOfSeason = $this->seasonClashesFor($trip);
 
         return response()->json(array_filter([
             "success" => true,
@@ -3354,6 +3465,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "rooms_warning" => $couldNotHold
                 ? 'Your dates moved, but ' . implode('; ', $couldNotHold)
                     . '. HECO will confirm those nights with the property.'
+                : null,
+            // Separate, because this is not about a room: it is about something
+            // on the journey that does not run when the trip now travels.
+            "season_warning" => $outOfSeason
+                ? 'Your dates moved. ' . implode(' ', $outOfSeason)
                 : null,
         ], fn ($v) => $v !== null));
     }
@@ -3393,6 +3509,29 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // April - blocking the host on a night nobody was coming, and holding
         // nothing at all for the night they actually arrived.
         return $this->rebookRoomsForTrip($trip);
+    }
+
+    /**
+     * What the experiences already on a trip say about the dates it now has.
+     *
+     * The months rule was asked on the way in - when an experience was added -
+     * and never again. So a June trip carrying a listing that shuts for the
+     * winter could be walked to December and say nothing. Nothing is refused
+     * here: the dates are the traveller's to choose, and an itinerary is
+     * rearranged afterwards. It is reported, which is what was missing.
+     *
+     * Returns one sentence per experience that does not run in the new window.
+     */
+    protected function seasonClashesFor(Trip $trip): array
+    {
+        $trip->refresh();
+        $clashes = [];
+        foreach (Experience::whereIn('id', $trip->experienceIds())->get() as $exp) {
+            if ($clash = $exp->seasonClash($trip->start_date, $trip->end_date)) {
+                $clashes[] = $clash;
+            }
+        }
+        return $clashes;
     }
 
     /**
@@ -3476,20 +3615,26 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // (e.g. the traveller switches the trip to another region without the
         // provider cards reloading). The client region_id is only a fallback for
         // guest trips that have no DB row yet.
-        $regionId = $request->input('region_id');
+        //
+        // Resolved once, and only when it is the caller's own. Somebody else's
+        // trip id must not steer this list and must not be confirmed to exist
+        // either: it falls through exactly as an id that does not exist would.
+        $trip = null;
         if ($request->filled('trip_id') && $request->trip_id !== 'guest') {
-            // Somebody else's trip id must not steer this list, and must not
-            // confirm that the trip exists either: fall through to the client's
-            // own region_id exactly as an unknown id would.
-            $trip = Trip::with('selectedExperiences')->find($request->trip_id);
+            $trip = Trip::find($request->trip_id);
             if ($trip && ! $this->userOwnsTrip($trip)) {
                 $trip = null;
             }
-            $expId = $trip?->selectedExperiences->pluck('experience_id')->first();
-            if ($expId) {
-                $tripRegionId = Experience::whereKey($expId)->value('region_id');
-                if ($tripRegionId) $regionId = $tripRegionId;
-            }
+        }
+
+        $regionId = $request->input('region_id');
+        // Both doors, not just the traveller's. An itinerary HCT built in the
+        // Trip Manager has its experiences on trip_day_experiences, so this read
+        // nothing and fell back to whatever region the client sent.
+        $expId = $trip?->experienceIds()->first();
+        if ($expId) {
+            $tripRegionId = Experience::whereKey($expId)->value('region_id');
+            if ($tripRegionId) $regionId = $tripRegionId;
         }
 
         $rows = SpPricing::live()
@@ -3522,11 +3667,15 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // Guide is exclusive - tell the UI to show a notice and hide the guide
         // provider list when the trip's experience already provides a guide.
         // Works for both a saved trip and a guest's session experiences.
+        //
+        // Asked of $trip, which is null unless it is the caller's own. This used
+        // to look the id up again with no such check, so the answer changed
+        // depending on what was on somebody else's journey - which told a
+        // stranger both that it exists and one fact about it.
         $guideIncluded = false;
         if ($request->service_type === 'guide') {
             if ($request->filled('trip_id') && $request->trip_id !== 'guest') {
-                $t = Trip::find($request->trip_id);
-                $guideIncluded = $t ? $this->tripHasIncludedGuide($t) : false;
+                $guideIncluded = $trip ? $this->tripHasIncludedGuide($trip) : false;
             } else {
                 $gExpIds = $this->guestTrip()['experience_ids'] ?? [];
                 $guideIncluded = !empty($gExpIds)
@@ -4245,6 +4394,17 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         if (!$ratesValid) {
             return response()->json(["error" => "A selected provider rate is no longer available. Please review your Comfort & Partners selections before confirming."], 422);
         }
+        // And it cannot be confirmed for nothing while it lists a journey. The
+        // same guard applyTripStatus() makes for the two admin doors; this door
+        // is the traveller's own Confirm and needed it just as much. The price
+        // comes from the days, the list beside it from the chosen experiences,
+        // and a trip whose days have been parted from its experiences reads
+        // Rs 75,000 on the panel and totals zero.
+        if ($trip->experienceIds()->isNotEmpty() && (float) $trip->final_price <= 0) {
+            return response()->json([
+                "error" => "Your trip lists experiences but has no price yet. Open it again so the days rebuild, then confirm.",
+            ], 422);
+        }
         // Confirm the trip but keep the stage open - closing the stage is an
         // explicit HCT action (matches the C2 guard against silent downgrades).
         $trip->update(["status" => "confirmed"]);
@@ -4304,116 +4464,185 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             return response()->json(["success" => true]);
         }
 
-        // Guest trip details to transfer
-        $guestDetails = [
-            "trip_name" => $gt['trip_name'] ?? "My Trip",
-            "adults" => $gt['adults'] ?? 1,
-            "children" => $gt['children'] ?? 0,
-            "infants" => $gt['infants'] ?? 0,
-            "start_location" => $gt['start_location'] ?? null,
-            "end_location" => $gt['end_location'] ?? null,
-            "start_date" => $gt['start_date'] ?: null,
-            "end_date" => $gt['end_date'] ?: null,
-            "anchor_point" => $gt['anchor_point'] ?? null,
-            "pickup_preference" => $gt['pickup_preference'] ?? null,
-            "accommodation_comfort" => $gt['accommodation_comfort'] ?? null,
-            "vehicle_comfort" => $gt['vehicle_comfort'] ?? null,
-            "guide_preference" => $gt['guide_preference'] ?? null,
-            "travel_pace" => $gt['travel_pace'] ?? null,
-            "budget_sensitivity" => $gt['budget_sensitivity'] ?? null,
-        ];
+        [$tripId, $notes] = $this->mergeGuestTripInto($user, $gt, session('guest_chat', []));
 
-        // Find or create a trip for the logged-in user
-        $trip = Trip::where("user_id", $user->id)
-            ->whereIn("status", ["not_confirmed"])
-            ->orderBy("updated_at", "desc")
-            ->first();
+        session()->forget(['guest_trip', 'guest_chat']);
 
-        if (!$trip) {
-            $trip = Trip::create(array_merge($guestDetails, [
-                "trip_id" => Trip::generateTripId(),
-                "user_id" => $user->id,
-                "status" => "not_confirmed",
-                "stage" => "open",
-            ]));
-        } else {
-            // Update existing trip with guest details
-            $trip->update($guestDetails);
+        // Said, not swallowed. Something the guest chose may not have come
+        // across, and they are about to look at the trip and wonder why. The
+        // page reloads straight after this call, so it is flashed as well as
+        // returned - a toast raised here would go with the old page.
+        if ($notes) {
+            session()->flash('error', implode(' ', $notes));
         }
 
-        // Transfer selected experiences (preserving guest order)
-        foreach ($gt['experience_ids'] as $index => $expId) {
-            $experience = Experience::find($expId);
-            if (!$experience) continue;
+        return response()->json(array_filter([
+            "success" => true,
+            "trip_id" => $tripId,
+            "notice"  => $notes ? implode(' ', $notes) : null,
+        ], fn ($v) => $v !== null));
+    }
 
-            TripSelectedExperience::firstOrCreate([
-                "trip_id" => $trip->id,
-                "experience_id" => $experience->id,
-            ], [
-                "sort_order" => $index,
-            ]);
 
-            if ($experience->region_id) {
-                TripRegion::firstOrCreate([
-                    "trip_id" => $trip->id,
-                    "region_id" => $experience->region_id,
-                ]);
+    /**
+     * Bring what somebody built as a guest onto their account.
+     *
+     * Both doors come here: /ajax sync_guest_journey after a sign-in on the
+     * page, and syncGuestTripToDb from the login and signup handlers. They were
+     * two copies of the same forty lines and they drifted.
+     *
+     * Three things this is careful about, none of which the copies were:
+     *
+     *   - It never stamps a trip with a detail the guest did not set. The
+     *     session fills in "My Trip" and 1 adult when nobody has said
+     *     otherwise, and those defaults were written straight over an open trip
+     *     the traveller already had - renaming it and resetting its group size
+     *     and every comfort preference on it.
+     *   - It keeps the one-region rule. A guest browsing Spiti whose account
+     *     already holds an open Tirthan trip used to end with both regions on
+     *     one trip, which nothing else in the system allows. The experiences
+     *     from the other region are left out, and named in what comes back.
+     *   - It does not throw away days HCT built. The AI branch cleared every
+     *     day of the trip before writing the guest's itinerary, so an itinerary
+     *     put together in the Trip Manager could be wiped by a stray guest
+     *     session in the same browser.
+     *
+     * Returns [trip id or null, sentences worth telling them].
+     */
+    protected function mergeGuestTripInto($user, array $gt, array $chatHistory = []): array
+    {
+        if (empty($gt['experience_ids'] ?? [])) {
+            return [null, []];
+        }
+
+        // Only what the guest actually chose. Anything they left alone is not
+        // theirs to write over a trip that already exists.
+        $chosen = [];
+        foreach ([
+            'trip_name', 'adults', 'children', 'infants', 'start_location', 'end_location',
+            'start_date', 'end_date', 'anchor_point', 'pickup_preference',
+            'accommodation_comfort', 'vehicle_comfort', 'guide_preference',
+            'travel_pace', 'budget_sensitivity',
+        ] as $field) {
+            $value = $gt[$field] ?? null;
+            if ($value !== null && $value !== '' && $value !== 0) {
+                $chosen[$field] = $value;
             }
         }
 
-        // Transfer AI itinerary if exists
-        $aiItinerary = $gt['ai_itinerary'] ?? null;
-        if ($aiItinerary && isset($aiItinerary['days'])) {
-            $trip->update(["ai_raw_response" => $gt['ai_raw_response'] ?? null]);
+        // An open trip of theirs to merge into - but never one HCT has laid out by
+        // hand. Every way of writing an itinerary clears the days first, so
+        // merging into such a trip destroys that work whichever branch is taken.
+        // A guest journey arriving on top of it gets a trip of its own instead:
+        // nothing is overwritten, nothing is left on a journey without being
+        // priced, and HCT's trip is exactly as they left it.
+        $trip = Trip::where('user_id', $user->id)
+            ->where('status', 'not_confirmed')
+            ->whereDoesntHave('tripDays', fn ($q) => $q->where('added_by', 'hct'))
+            ->orderBy('updated_at', 'desc')
+            ->first();
 
-            // Clear existing days
-            $trip->tripDays()->each(function ($day) {
-                $day->experiences()->delete();
-                $day->services()->delete();
-                $day->delete();
-            });
-
-            // Persist AI itinerary to DB
-            $itineraryService = app(ItineraryService::class);
-            $itineraryService->parseAndCreateFromAi($trip, $aiItinerary);
-
-            // Calculate pricing
-            $costCalculator = app(CostCalculatorService::class);
-            $costCalculator->calculate($trip);
-        } else {
-            // A guest who never asked the AI for an itinerary still chose
-            // experiences, and the price is worked out from the DAYS. Without
-            // this the trip arrived carrying a paid experience and priced at
-            // nothing: the panel went on showing the per-person figure while
-            // the total read zero, and the trip could be confirmed for zero and
-            // then refused payment as already settled.
+        if (! $trip) {
+            // A new trip has nothing to protect, so the defaults belong here.
+            $trip = Trip::create(array_merge([
+                'trip_name' => 'My Trip',
+                'adults'    => 1,
+                'children'  => 0,
+                'infants'   => 0,
+            ], $chosen, [
+                'trip_id' => Trip::generateTripId(),
+                'user_id' => $user->id,
+                'status'  => 'not_confirmed',
+                'stage'   => 'open',
+            ]));
+        } elseif ($chosen) {
+            // A trip already on the account keeps its own details. Only the boxes
+            // it has not filled take what the session was carrying.
             //
-            // The same rebuild every other path runs after touching the
-            // selected experiences.
+            // Overwriting wholesale was the fault: somebody with a real journey
+            // on their account - named, 7 travellers, origin set, comfort chosen
+            // - had all of it restated by a browse in the same browser, because
+            // an anonymous session always carries SOMETHING for those fields.
+            // The journey on the account is the real record; the session is not
+            // entitled to rewrite it. Its experiences still come across, which
+            // is the part that was actually being carried over.
+            $blanks = [];
+            foreach ($chosen as $field => $value) {
+                $held = $trip->{$field};
+                if ($held === null || $held === '' || $held === 0) {
+                    $blanks[$field] = $value;
+                }
+            }
+            if ($blanks) {
+                $trip->update($blanks);
+            }
+        }
+
+        // Where this trip already goes. The first guest experience sets it when
+        // the trip goes nowhere yet, exactly as adding one on the site does.
+        $regionId = Experience::whereIn('id', $trip->experienceIds())
+            ->whereNotNull('region_id')
+            ->value('region_id');
+
+        $notes = [];
+        $left = [];
+        foreach ($gt['experience_ids'] as $index => $expId) {
+            $experience = Experience::find($expId);
+            if (! $experience) continue;
+
+            if ($experience->region_id) {
+                if (! $regionId) {
+                    $regionId = $experience->region_id;
+                } elseif ($experience->region_id != $regionId) {
+                    $left[] = $experience->name;
+                    continue;
+                }
+            }
+
+            TripSelectedExperience::firstOrCreate([
+                'trip_id'       => $trip->id,
+                'experience_id' => $experience->id,
+            ], ['sort_order' => $index]);
+        }
+
+        if ($left) {
+            $notes[] = 'One trip travels one valley, so ' . implode(' and ', $left)
+                . ' could not join this one. Start a new trip for those.';
+        }
+
+        $this->syncTripRegions($trip);
+
+        // The guest's own itinerary, if the assistant made them one.
+        $aiItinerary = $gt['ai_itinerary'] ?? null;
+
+        if ($aiItinerary && isset($aiItinerary['days'])) {
+            $trip->update(['ai_raw_response' => $gt['ai_raw_response'] ?? null]);
+            app(ItineraryService::class)->parseAndCreateFromAi($trip, $aiItinerary);
+        } else {
+            // The price is worked out from the days, so a trip that arrived with
+            // a paid experience and no days was worth nothing - shown per person
+            // and totalling zero, and confirmable at zero.
             app(ItineraryService::class)->rebuildFromExperiences($trip);
+        }
+
+        $trip->refresh();
+        if ($trip->tripDays()->exists() || $trip->selectedExperiences()->exists()) {
             app(CostCalculatorService::class)->calculate($trip);
         }
 
-        // Transfer guest chat history to DB
-        $guestChat = session('guest_chat', []);
-        if (!empty($guestChat)) {
-            foreach ($guestChat as $msg) {
-                AiConversation::create([
-                    "trip_id" => $trip->id,
-                    "user_id" => $user->id,
-                    "role" => $msg['role'] ?? 'user',
-                    "content" => $msg['content'] ?? '',
-                    "context_type" => "traveller_chat",
-                ]);
-            }
+        foreach ($chatHistory as $msg) {
+            AiConversation::create([
+                'trip_id'      => $trip->id,
+                'user_id'      => $user->id,
+                'role'         => $msg['role'] ?? 'user',
+                'content'      => $msg['content'] ?? '',
+                'context_type' => 'traveller_chat',
+            ]);
         }
 
         app(LeadService::class)->createOrGetLead($trip);
 
-        // Clear guest session
-        session()->forget(['guest_trip', 'guest_chat']);
-
-        return response()->json(["success" => true, "trip_id" => $trip->id]);
+        return [$trip->id, $notes];
     }
 
     /**
@@ -4422,94 +4651,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      */
     protected function syncGuestTripToDb($user, array $gt, array $chatHistory = []): ?int
     {
-        if (empty($gt['experience_ids'] ?? [])) return null;
-
-        $guestDetails = [
-            "trip_name" => $gt['trip_name'] ?? "My Trip",
-            "adults" => $gt['adults'] ?? 1,
-            "children" => $gt['children'] ?? 0,
-            "infants" => $gt['infants'] ?? 0,
-            "start_location" => $gt['start_location'] ?? null,
-            "end_location" => $gt['end_location'] ?? null,
-            "start_date" => $gt['start_date'] ?: null,
-            "end_date" => $gt['end_date'] ?: null,
-            "anchor_point" => $gt['anchor_point'] ?? null,
-            "pickup_preference" => $gt['pickup_preference'] ?? null,
-            "accommodation_comfort" => $gt['accommodation_comfort'] ?? null,
-            "vehicle_comfort" => $gt['vehicle_comfort'] ?? null,
-            "guide_preference" => $gt['guide_preference'] ?? null,
-            "travel_pace" => $gt['travel_pace'] ?? null,
-            "budget_sensitivity" => $gt['budget_sensitivity'] ?? null,
-        ];
-
-        $trip = Trip::where("user_id", $user->id)
-            ->whereIn("status", ["not_confirmed"])
-            ->orderBy("updated_at", "desc")
-            ->first();
-
-        if (!$trip) {
-            $trip = Trip::create(array_merge($guestDetails, [
-                "trip_id" => Trip::generateTripId(),
-                "user_id" => $user->id,
-                "status" => "not_confirmed",
-                "stage" => "open",
-            ]));
-        } else {
-            $trip->update($guestDetails);
-        }
-
-        // Transfer selected experiences
-        foreach ($gt['experience_ids'] as $index => $expId) {
-            $experience = Experience::find($expId);
-            if (!$experience) continue;
-            TripSelectedExperience::firstOrCreate([
-                "trip_id" => $trip->id,
-                "experience_id" => $experience->id,
-            ], ["sort_order" => $index]);
-            if ($experience->region_id) {
-                TripRegion::firstOrCreate([
-                    "trip_id" => $trip->id,
-                    "region_id" => $experience->region_id,
-                ]);
-            }
-        }
-
-        // Transfer AI itinerary if exists
-        $aiItinerary = $gt['ai_itinerary'] ?? null;
-        if ($aiItinerary && isset($aiItinerary['days'])) {
-            $trip->update(["ai_raw_response" => $gt['ai_raw_response'] ?? null]);
-            $trip->tripDays()->each(function ($day) {
-                $day->experiences()->delete();
-                $day->services()->delete();
-                $day->delete();
-            });
-            app(ItineraryService::class)->parseAndCreateFromAi($trip, $aiItinerary);
-            app(CostCalculatorService::class)->calculate($trip);
-        } else {
-            // No AI itinerary, but experiences were still chosen. See the note
-            // on the same branch in syncGuestTripToDb: the price comes from the
-            // days, so without this the trip is worth nothing.
-            app(ItineraryService::class)->rebuildFromExperiences($trip);
-            app(CostCalculatorService::class)->calculate($trip);
-        }
-
-        // Transfer chat history
-        if (!empty($chatHistory)) {
-            foreach ($chatHistory as $msg) {
-                AiConversation::create([
-                    "trip_id" => $trip->id,
-                    "user_id" => $user->id,
-                    "role" => $msg['role'] ?? 'user',
-                    "content" => $msg['content'] ?? '',
-                    "context_type" => "traveller_chat",
-                ]);
-            }
-        }
-
-        app(LeadService::class)->createOrGetLead($trip);
-
-        return $trip->id;
+        [$tripId] = $this->mergeGuestTripInto($user, $gt, $chatHistory);
+        return $tripId;
     }
+
 
     protected function generateItinerary(Request $request): JsonResponse
     {
@@ -5015,6 +5160,20 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     protected function saveSystemListItem(Request $request): JsonResponse
     {
+        // There was no validate() here at all, so an empty name reached the
+        // column as null and came back to the person as a 500 error page
+        // instead of a sentence telling them which box to fill.
+        $request->validate([
+            'id' => 'nullable|exists:system_lists,id',
+            'list_type' => 'required_without:id|nullable|string|max:60',
+            'name' => 'required|string|max:150',
+            'sort_order' => 'nullable|integer|min:0|max:9999',
+            'description' => 'nullable|string|max:1000',
+        ], [
+            'name.required' => 'Give the item a name.',
+            'list_type.required_without' => 'Say which list this belongs to.',
+        ]);
+
         $data = $request->only(["list_type", "name", "sort_order", "description"]);
         if ($request->has("is_active")) {
             $data["is_active"] = $request->boolean("is_active");
@@ -6388,25 +6547,23 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     }
 
     /**
-     * File an enquiry that did not come through the portal.
+     * File an enquiry.
      *
-     * HECO is told about most trips by WhatsApp or over the phone, and until
-     * now there was no way to put one into the system: a lead is only ever
-     * born from a trip, and a trip is only ever born from a traveller sitting
-     * at the portal building one. So an enquiry that arrived any other way
-     * could not be worked on at all.
+     * A lead is remembered data and nothing more: somebody asked about a trip,
+     * and somebody at HECO has to ring them back. It opens no account and no
+     * trip. Filing one used to open both, which put a journey on the books for
+     * a conversation that might come to nothing, and gave HCT a trip to manage
+     * before the traveller had agreed to anything.
      *
-     * It creates the same three rows that path creates, in the same order and
-     * through the same service, so a lead filed here is indistinguishable
-     * afterwards from one the traveller raised themselves - the trip manager,
-     * the reminders and the won/lost flow all work on it unchanged.
+     * The trip arrives later and by the traveller's own hand: they sign up with
+     * the email on the lead, build a journey, and pay for it. The lead is won at
+     * that payment, matched by email - see LeadService::winLeadsFor().
      */
     protected function createLead(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'traveller_id' => 'nullable|exists:users,id',
-            'full_name' => 'required_without:traveller_id|nullable|string|max:150',
-            'email' => 'required_without:traveller_id|nullable|email|max:150',
+            'full_name' => 'required|string|max:150',
+            'email' => 'required|email|max:150',
             'mobile' => 'nullable|string|max:30',
             'region_id' => 'nullable|exists:regions,id',
             'adults' => 'nullable|integer|min:1|max:60',
@@ -6415,87 +6572,161 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'assigned_hct_id' => 'nullable|exists:users,id',
             'interaction_mode' => 'nullable|in:call,whatsapp,email',
+            'enquiry_date' => 'nullable|date',
             'notes' => 'nullable|string|max:2000',
         ], [
-            'full_name.required_without' => 'Give the traveller a name, or pick one already on file.',
-            'email.required_without' => 'Give the traveller an email, or pick one already on file.',
+            'full_name.required' => 'Give the enquiry a name.',
+            'email.required' => 'Give an email. It is what the enquiry is later matched to a traveller by.',
         ]);
 
-        // An email already on file is the same person. Filing a second enquiry
-        // for somebody must not give them a second account, or their trips end
-        // up split across two travellers who cannot see each other.
-        // Three rows that only mean anything together. A failure part way
-        // through - which is how a stray traveller and a trip with no lead
-        // against them were left behind while this was being built - leaves
-        // rows nobody will ever look at and nothing to find them by.
-        return DB::transaction(function () use ($data) {
-        // validate() hands back only the keys that were actually sent, so every
-        // optional one has to be reached for as though it were absent.
-        $chosen = $data['traveller_id'] ?? null;
-        $email = $data['email'] ?? null;
+        $email = strtolower(trim($data['email']));
 
-        $traveller = $chosen
-            ? User::where('id', $chosen)->where('user_role', 'traveller')->first()
-            : User::where('email', $email)->where('user_role', 'traveller')->first();
+        // The same person asking twice is one person still waiting for a call,
+        // not two. An enquiry already open for this address is updated rather
+        // than duplicated; one already won or lost is left alone as a record,
+        // and a fresh lead is filed beside it.
+        $lead = Lead::where('email', $email)->where('stage', 'follow_up')->first();
 
-        if (! $traveller) {
-            $traveller = User::create([
-                'full_name' => $data['full_name'] ?? null,
-                'email' => $email,
-                // They did not choose this and are never told it. Signing in
-                // is done through the emailed reset code like any other
-                // traveller who has forgotten theirs - an account with no
-                // password at all could not be signed into by any route.
-                'password' => Str::random(32),
-                'auth_type' => 'email',
-                'user_role' => 'traveller',
-                'mobile' => $data['mobile'] ?? null,
-            ]);
-        } elseif (! empty($data['mobile']) && ! $traveller->mobile) {
-            $traveller->update(['mobile' => $data['mobile']]);
-        }
-
-        // A trip has no region of its own - it takes one from the experiences
-        // that go into it, which have not been chosen yet. What the enquiry was
-        // about is worth keeping all the same, so it names the trip: it is the
-        // only thing distinguishing one fresh enquiry from another in the list.
-        $region = empty($data['region_id']) ? null : Region::find($data['region_id']);
-
-        $trip = Trip::create([
-            'trip_id' => Trip::generateTripId(),
-            'user_id' => $traveller->id,
-            'trip_name' => $region ? $region->name . ' enquiry' : 'Enquiry',
-            'status' => 'not_confirmed',
-            'stage' => 'open',
-            'adults' => $data['adults'] ?? 2,
-            'children' => $data['children'] ?? 0,
+        $fields = [
+            'full_name' => $data['full_name'],
+            'email' => $email,
+            'mobile' => $data['mobile'] ?? null,
+            'region_id' => $data['region_id'] ?? null,
+            'adults' => $data['adults'] ?? null,
+            'children' => $data['children'] ?? null,
             'start_date' => $data['start_date'] ?? null,
             'end_date' => $data['end_date'] ?? null,
-        ]);
-
-        $lead = app(LeadService::class)->createOrGetLead($trip);
-
-        $lead->update(array_filter([
             'assigned_hct_id' => $data['assigned_hct_id'] ?? null,
             'interaction_mode' => $data['interaction_mode'] ?? null,
             'notes' => $data['notes'] ?? null,
-            // The enquiry reached HECO before it reached the system, and the
-            // date it was filed is not the date it came in. Only the first
-            // interaction is dated now; the enquiry keeps the date given.
-            'last_interaction_date' => empty($data['interaction_mode']) ? null : now(),
-        ], fn ($v) => $v !== null));
+        ];
+
+        if ($lead) {
+            // Do not blank what is already held with boxes left empty this time.
+            $lead->update(array_filter($fields, fn ($v) => $v !== null && $v !== ''));
+        } else {
+            $lead = Lead::create($fields + [
+                'stage' => 'follow_up',
+                // The enquiry reached HECO before it reached the system, so the
+                // date it came in is worth asking for rather than assuming.
+                'enquiry_date' => $data['enquiry_date'] ?? now(),
+            ]);
+        }
+
+        // Only a conversation dates itself. Filing the enquiry is not one.
+        if (! empty($data['interaction_mode'])) {
+            $lead->update(['last_interaction_date' => now()]);
+        }
+
+        // If this person already has a traveller account, say so on the lead so
+        // HCT can see the enquiry has somewhere to land. It is not required:
+        // the match is by email and works whether the account exists yet or not.
+        $existing = User::where('email', $email)->where('user_role', 'traveller')->first();
+        if ($existing && ! $lead->user_id) {
+            $lead->update(['user_id' => $existing->id]);
+        }
 
         $this->logActivity('lead_created', 'Lead', $lead->id, [
-            'traveller' => $traveller->email,
-            'trip' => $trip->trip_id,
+            'email' => $email,
             'by_hand' => true,
         ]);
 
+        return response()->json([
+            'success' => true,
+            'lead_id' => $lead->id,
+            'traveller' => $lead->full_name,
+            'has_account' => (bool) $lead->user_id,
+        ]);
+    }
+
+    /**
+     * Start a trip from the admin side.
+     *
+     * Filing a lead does not open a trip: a lead is an enquiry, and a trip is a
+     * journey somebody has agreed to plan. This is the one place on this side
+     * where a journey begins, and it opens an empty one - no days, no
+     * experiences, no region - because a trip takes all three from what is put
+     * on it in the Trip Manager.
+     *
+     * The traveller is picked from those on file wherever possible. Opening a
+     * second account for somebody who already has one would split their trips
+     * across two people who cannot see each other.
+     */
+    protected function createTripForTraveller(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'traveller_id' => 'nullable|exists:users,id',
+            'full_name' => 'required_without:traveller_id|nullable|string|max:150',
+            'email' => 'required_without:traveller_id|nullable|email|max:150',
+            'adults' => 'nullable|integer|min:1|max:60',
+            'children' => 'nullable|integer|min:0|max:60',
+            'start_date' => 'nullable|date',
+        ], [
+            'full_name.required_without' => 'Give a name, or pick somebody already on file.',
+            'email.required_without' => 'Give an email, or pick somebody already on file.',
+        ]);
+
+        return DB::transaction(function () use ($data) {
+            $traveller = ! empty($data['traveller_id'])
+                ? User::where('id', $data['traveller_id'])->where('user_role', 'traveller')->first()
+                : null;
+
+            if (! $traveller && ! empty($data['email'])) {
+                $email = strtolower(trim($data['email']));
+                $traveller = User::where('email', $email)->where('user_role', 'traveller')->first();
+
+                if (! $traveller) {
+                    $traveller = User::create([
+                        'full_name' => $data['full_name'] ?? null,
+                        'email' => $email,
+                        // They did not choose this and are never told it.
+                        // Signing in is done through the emailed reset code,
+                        // like any traveller who has forgotten theirs.
+                        'password' => Str::random(32),
+                        'auth_type' => 'email',
+                        'user_role' => 'traveller',
+                    ]);
+                }
+            }
+
+            if (! $traveller) {
+                return response()->json(['error' => 'Pick a traveller, or give a name and email.'], 422);
+            }
+
+            $trip = Trip::create([
+                'trip_id' => Trip::generateTripId(),
+                'user_id' => $traveller->id,
+                'trip_name' => $traveller->full_name . "'s trip",
+                'status' => 'not_confirmed',
+                'stage' => 'open',
+                'adults' => $data['adults'] ?? 2,
+                'children' => $data['children'] ?? 0,
+                'start_date' => $data['start_date'] ?? null,
+            ]);
+
+            // If this person has an enquiry still waiting for a call, the trip
+            // is the answer to it. Tie the two together so the leads page stops
+            // showing a loose note with no journey against it. The enquiry is
+            // not won here: it is won when they pay.
+            $lead = Lead::where('stage', 'follow_up')
+                ->whereNull('trip_id')
+                ->whereRaw('LOWER(email) = ?', [strtolower($traveller->email)])
+                ->first();
+            if ($lead) {
+                $lead->update(['trip_id' => $trip->id, 'user_id' => $traveller->id]);
+            }
+
+            $this->logActivity('trip_created', 'Trip', $trip->id, [
+                'traveller' => $traveller->email,
+                'from_lead' => $lead?->id,
+                'by_hand' => true,
+            ]);
+
             return response()->json([
                 'success' => true,
-                'lead_id' => $lead->id,
+                'trip_row_id' => $trip->id,
                 'trip_id' => $trip->trip_id,
-                'traveller' => $traveller->full_name,
+                'linked_lead' => $lead?->id,
             ]);
         });
     }
@@ -6597,12 +6828,41 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // (confirmed / running / completed) back to 'not_confirmed' - that would
         // re-open a locked trip and orphan any payments against it. Cancelling a
         // progressed trip is still allowed.
-        $progressed = ['confirmed', 'running', 'completed'];
+        // 'cancelled' belongs here too. Without it a paid trip could be walked
+        // back to not_confirmed through cancelled, which is exactly what the
+        // guard below exists to prevent: it re-opened a locked trip and left
+        // its traveller payments hanging against it.
+        $progressed = ['confirmed', 'running', 'completed', 'cancelled'];
         if ($newStatus === 'not_confirmed' && in_array($trip->status, $progressed, true)) {
             return [
                 "Can't move a '{$trip->status}' trip back to 'not confirmed'. Cancel it instead if it shouldn't proceed.",
                 [],
             ];
+        }
+
+        // A trip that carries a journey cannot be confirmed for nothing.
+        //
+        // The price is worked out from the DAYS; the journey list beside it is
+        // read from the SELECTED experiences. Part a trip's days from its
+        // experiences - delete the last day in the Trip Manager, say - and the
+        // panel goes on offering "Everest Base Camp Trek at Rs 75,000 per
+        // person" while the total falls to zero. Confirming then billed the
+        // traveller nothing, invoiced every partner nothing, and the trip could
+        // not be paid for afterwards because there was nothing left owing.
+        //
+        // Said rather than silently repriced: whoever is confirming can see the
+        // journey on the screen, and only they know whether the days or the
+        // journey is the mistake.
+        if ($newStatus === 'confirmed') {
+            $carriesAJourney = $trip->experienceIds()->isNotEmpty();
+            if ($carriesAJourney && (float) $trip->final_price <= 0) {
+                return [
+                    'This trip lists experiences but prices at nothing, so confirming it '
+                    . 'would bill nobody. Rebuild its days, or use Ask AI to Recalculate, '
+                    . 'and confirm it once it carries a price.',
+                    [],
+                ];
+            }
         }
 
         $trip->update(["status" => $newStatus]);
@@ -6649,6 +6909,45 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         return [null, $unheld];
+    }
+
+    /**
+     * What a payment does to the trip it was made against.
+     *
+     * A payment confirms a trip, and confirming a trip is not the word: it
+     * makes the rooms firm at the property, invoices every partner at their own
+     * price, and closes the enquiry. That work lives in applyTripStatus(), so a
+     * payment goes through it rather than setting the word by itself.
+     *
+     * It used to set the word by itself, in LeadService, which was survivable
+     * while HCT pressing Confirmed was the usual route. It stopped being
+     * survivable when a payment became the usual route: a paid trip left every
+     * host uninvoiced and its rooms merely held, which is to say still sellable
+     * to somebody else.
+     *
+     * @return array the nights that could not be reserved, if any
+     */
+    private function applyPaymentToTrip(Trip $trip): array
+    {
+        $leads = app(LeadService::class);
+        $unheld = [];
+
+        if ($leads->paymentShouldConfirm($trip)) {
+            [$error, $unheld] = $this->applyTripStatus($trip, 'confirmed');
+            // A refusal here is not a reason to lose the payment: the money
+            // arrived and is recorded. Say what happened and carry on.
+            if ($error) {
+                $unheld = array_merge($unheld, [$error]);
+            }
+            $trip->refresh();
+        }
+
+        // The stage lock and the lead, whether or not this payment confirmed
+        // anything: a second instalment confirms nothing and still closes the
+        // trip when it completes the price.
+        $leads->checkPaymentAndTransition($trip);
+
+        return $unheld;
     }
 
     protected function getCalendarTrips(Request $request): JsonResponse
@@ -6823,6 +7122,34 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $spPayment = SpPayment::findOrFail($request->sp_payment_id);
 
+        // Nothing stopped a partner being paid more than they were owed. A
+        // payable settled in full took another instalment happily and the
+        // balance went below nothing - and because nextPayout() sums balances
+        // across a partner's trips, a negative one quietly cancelled out what
+        // another trip genuinely owed them. A double-clicked Pay button did it
+        // on its own.
+        $alreadyPaid = (float) $spPayment->entries()->sum('amount');
+        $due = (float) $spPayment->amount_due;
+        $left = round($due - $alreadyPaid, 2);
+
+        // Only when the payable carries a figure. An invoice still standing at
+        // nothing has nothing to overpay against, and that happens honestly: HCT
+        // raises one for a partner who is not pinned on the trip, so there is
+        // nothing to compute from, and then enters what was actually agreed.
+        // Guarding it regardless locked HCT out of recording a real payment.
+        if ($due > 0) {
+            if ($left <= 0) {
+                return response()->json([
+                    'error' => 'This one is settled in full. There is nothing left to pay on it.',
+                ], 422);
+            }
+            if ((float) $request->amount - $left > 0.01) {
+                return response()->json([
+                    'error' => 'Only Rs ' . number_format($left, 2) . ' is left to pay on this one.',
+                ], 422);
+            }
+        }
+
         SpPaymentEntry::create([
             "sp_payment_id" => $spPayment->id,
             "amount" => $request->amount,
@@ -6832,26 +7159,62 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "recorded_by" => Auth::id(),
         ]);
 
-        $totalPaid = $spPayment->entries()->sum("amount");
-        $spPayment->update([
-            "amount_paid" => $totalPaid,
-            "balance" => $spPayment->amount_due - $totalPaid,
-        ]);
+        $this->restateSpPayable($spPayment);
 
         return response()->json(["success" => true]);
     }
 
+    /**
+     * Add up what a partner has actually been paid, and what is left.
+     *
+     * One place, because two handlers were doing the same arithmetic and
+     * neither put a floor under the balance.
+     */
+    private function restateSpPayable(SpPayment $spPayment): void
+    {
+        $totalPaid = (float) $spPayment->entries()->sum('amount');
+        $spPayment->update([
+            'amount_paid' => $totalPaid,
+            'balance' => max(0, round((float) $spPayment->amount_due - $totalPaid, 2)),
+        ]);
+    }
+
     protected function editSpPaymentEntry(Request $request): JsonResponse
     {
-        $entry = SpPaymentEntry::findOrFail($request->entry_id);
-        $entry->update($request->only(["amount", "payment_date", "mode", "notes"]));
-
-        $spPayment = $entry->spPayment;
-        $totalPaid = $spPayment->entries()->sum("amount");
-        $spPayment->update([
-            "amount_paid" => $totalPaid,
-            "balance" => $spPayment->amount_due - $totalPaid,
+        // There was no validation here at all. A minus amount was accepted, so
+        // one instalment could be edited to less than nothing and a partner
+        // shown as owed more than the payable was ever worth; and a word where
+        // a figure belongs answered with a 500 rather than a sentence.
+        $data = $request->validate([
+            'entry_id' => 'required|exists:sp_payment_entries,id',
+            'amount' => 'required|numeric|min:0.01',
+            'payment_date' => 'nullable|date',
+            'mode' => 'nullable|string|max:60',
+            'notes' => 'nullable|string|max:1000',
+        ], [
+            'amount.min' => 'A payment has to be more than nothing.',
+            'amount.numeric' => 'Put a figure in the amount.',
         ]);
+
+        $entry = SpPaymentEntry::findOrFail($data['entry_id']);
+        $spPayment = $entry->spPayment;
+
+        // What the others come to, so this one can be checked against what is
+        // left without counting itself twice.
+        $others = (float) $spPayment->entries()->where('id', '!=', $entry->id)->sum('amount');
+        $due = (float) $spPayment->amount_due;
+        $room = round($due - $others, 2);
+        // Only when the payable carries a figure. One standing at nothing has
+        // nothing to be measured against, the same as when an entry is added.
+        if ($due > 0 && (float) $data['amount'] - $room > 0.01) {
+            return response()->json([
+                'error' => 'That would pay more than is owed. At most Rs '
+                    . number_format($room, 2) . ' can go on this one.',
+            ], 422);
+        }
+
+        $entry->update($request->only(["amount", "payment_date", "mode", "notes"]));
+        $this->restateSpPayable($spPayment);
 
         return response()->json(["success" => true]);
     }
@@ -7566,15 +7929,23 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // A host is not pinned to anything - their experience IS the trip - so
         // the day-service query above could never find them. They were invoiced
         // for a trek and shown no trip to go with it.
-        $hosted = Trip::whereIn(
-            'id',
-            TripSelectedExperience::whereIn(
-                'experience_id',
-                Experience::where('owner_provider_id', $provider->id)
-                    ->orWhere('hlh_id', $provider->id)
-                    ->select('id'),
-            )->select('trip_id'),
-        )->with('tripRegions.region', 'selectedExperiences.experience')->get();
+        // Their experiences reach a trip by two doors, and they write to
+        // different tables: the traveller picking one on the site, and HCT
+        // dropping one onto a day in the Trip Manager. Looking only at the
+        // first meant a host could be invoiced for a trip built in the admin
+        // panel and shown no trip to go with the invoice.
+        $theirs = Experience::where('owner_provider_id', $provider->id)
+            ->orWhere('hlh_id', $provider->id)
+            ->pluck('id');
+
+        $hosted = Trip::where(function ($q) use ($theirs) {
+            $q->whereIn('id', TripSelectedExperience::whereIn('experience_id', $theirs)
+                    ->select('trip_id'))
+              ->orWhereIn('id', TripDayExperience::query()
+                    ->join('trip_days', 'trip_days.id', '=', 'trip_day_experiences.trip_day_id')
+                    ->whereIn('trip_day_experiences.experience_id', $theirs)
+                    ->select('trip_days.trip_id'));
+        })->with('tripRegions.region', 'selectedExperiences.experience')->get();
 
         foreach ($hosted as $trip) {
             if (! isset($tripsById[$trip->id])) {
@@ -7592,9 +7963,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
             // Name the experiences of theirs the trip carries, so the row says
             // why they are on it.
-            foreach ($trip->selectedExperiences as $sel) {
-                $exp = $sel->experience;
-                if (! $exp) continue;
+            //
+            // Through experienceIds(), not the traveller's table alone. The
+            // query above was taught to find a trip built in the admin panel;
+            // this loop was not, so the host saw their own trip listed with a
+            // dash where the reason should be.
+            foreach (Experience::whereIn('id', $trip->experienceIds())->get() as $exp) {
                 if ((int) ($exp->owner_provider_id ?: $exp->hlh_id) === (int) $provider->id) {
                     $tripsById[$trip->id]['_services'][$exp->name] = true;
                 }
@@ -9947,8 +10321,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $trip->update($data);
 
         $unheld = [];
+        $outOfSeason = [];
         if ($moved) {
             $unheld = $this->moveTripToDate($trip, $newStart);
+            $outOfSeason = $this->seasonClashesFor($trip);
         }
 
         if ($newStatus !== null && $newStatus !== $trip->status) {
@@ -9973,6 +10349,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "rooms_warning" => $unheld
                 ? 'Saved, but these nights could not be reserved: ' . implode('; ', $unheld)
                     . '. Settle them with the property.'
+                : null,
+            // The dates moved. What sits on the itinerary was checked against the
+            // old ones, so say which of it does not run in the new window.
+            "season_warning" => $outOfSeason
+                ? 'Check the journey: ' . implode(' ', $outOfSeason)
                 : null,
         ], fn ($v) => $v !== null));
     }
@@ -10002,12 +10383,19 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "payment_status" => "paid",
         ]);
 
-        app(LeadService::class)->checkPaymentAndTransition($trip);
+        $unheld = $this->applyPaymentToTrip($trip);
 
         $this->logActivity('traveller_payment_added', 'TravellerPayment', $payment->id, [
             'trip_id' => $trip->id, 'amount' => (float) $request->amount, 'mode' => $request->mode,
         ]);
-        return response()->json(["success" => true]);
+        return response()->json(array_filter([
+            "success" => true,
+            // A confirm can succeed while the hotel had nothing free. It needs
+            // saying here for the same reason it does on the Trips page.
+            "rooms_warning" => $unheld
+                ? 'Paid and confirmed, but these nights could not be reserved: ' . implode('; ', $unheld)
+                : null,
+        ]));
     }
 
     protected function createRazorpayOrder(Request $request): JsonResponse
@@ -10138,7 +10526,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 'payment_status'      => 'paid',
             ]);
 
-            app(LeadService::class)->checkPaymentAndTransition($payment->trip);
+            $this->applyPaymentToTrip($payment->trip);
 
             $trip = $payment->trip()->with('user')->first();
             if ($trip && $trip->user && $trip->user->email) {
@@ -10289,6 +10677,36 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $day = TripDay::findOrFail($request->day_id);
         $experience = Experience::findOrFail($request->experience_id);
+        $trip = $day->trip;
+
+        // Two mismatches the traveller's side has always refused, or should
+        // have, and this side let through in silence. A Nepal trek went onto a
+        // Himachal trip and a Spiti kitchen that runs May to October went onto
+        // a trip travelling in November - both found by the AI review rather
+        // than by the system, and both would have been found by the traveller
+        // on the day.
+        if ($trip && $experience->region_id) {
+            $existing = $trip->experienceIds();
+            $otherRegion = $existing->isEmpty() ? null : Experience::whereIn('id', $existing)
+                ->whereNotNull('region_id')
+                ->where('region_id', '!=', $experience->region_id)
+                ->first();
+            if ($otherRegion) {
+                return response()->json([
+                    'error' => 'This trip is already in ' . ($otherRegion->region?->name ?: 'another region')
+                        . ', and ' . $experience->name . ' is in '
+                        . ($experience->region?->name ?: 'a different one')
+                        . '. A trip runs in one region at a time.',
+                ], 422);
+            }
+        }
+
+        if ($trip && ($clash = $experience->seasonClash($trip->start_date, $trip->end_date))) {
+            return response()->json([
+                'error' => $clash . ' Change the dates, pick something else, or ask the host to '
+                    . 'update the months it runs.',
+            ], 422);
+        }
 
         // The TripDayExperience charges only the activity portion. Other components
         // (accommodation / transport / guide / other) become separate TripDayService
@@ -10324,6 +10742,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ]);
         }
 
+        // The trip takes its region from what is on it. Without this the
+        // regional partner cannot be found and their margin is charged to the
+        // traveller but invoiced to nobody.
+        $this->syncTripRegions($day->trip);
+
         // Persist a fresh total so the trip's price reflects the new experience
         // immediately (mutation endpoints otherwise leave a stale final_price).
         app(CostCalculatorService::class)->calculate($day->trip);
@@ -10333,7 +10756,18 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     protected function removeExperienceFromDay(Request $request): JsonResponse
     {
+        // Read the trip before the row goes, or there is nothing left to
+        // resync the regions against.
+        $dayExp = TripDayExperience::find($request->day_experience_id);
+        $trip = $dayExp?->tripDay?->trip;
+
         TripDayExperience::destroy($request->day_experience_id);
+
+        if ($trip) {
+            $this->syncTripRegions($trip);
+            app(CostCalculatorService::class)->calculate($trip);
+        }
+
         return response()->json(["success" => true]);
     }
 
@@ -10346,6 +10780,22 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         return response()->json(["success" => true]);
     }
 
+    /**
+     * Add a day to a trip from the Trip Manager.
+     *
+     * It used to write three columns and leave two that matter:
+     *
+     *   date       left null, and a room can only be held against a night. A
+     *              hotel pinned to a dateless day was charged to the traveller
+     *              and invoiced to the property with not one room reserved and
+     *              no warning - the confirm reported success.
+     *   day_type   left to the column default, which is 'activity', charged at
+     *              activity_day_cost_per_person. The traveller's own Add Day
+     *              defaults to 'rest', at less than half. The same empty day
+     *              cost one thing built on the site and another built here.
+     *
+     * Both are set now, the way the traveller's side has always set them.
+     */
     protected function addTripDay(Request $request): JsonResponse
     {
         $trip = Trip::findOrFail($request->trip_id);
@@ -10355,20 +10805,124 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "trip_id" => $trip->id,
             "day_number" => $maxDay + 1,
             "sort_order" => $maxDay,
+            "day_type" => $request->input('day_type', 'rest'),
+            "added_by" => Auth::id() ? 'hct' : 'system',
         ]);
 
-        return response()->json(["success" => true, "day" => $day]);
+        $this->redateTripDays($trip);
+
+        return response()->json(["success" => true, "day" => $day->fresh()]);
     }
 
+    /**
+     * Put every day on its own date, and the trip's end on the last of them.
+     *
+     * A day with no date cannot hold a room, so this runs after anything that
+     * adds or removes one.
+     */
+    private function redateTripDays(Trip $trip): void
+    {
+        if (! $trip->start_date) {
+            return;
+        }
+        $days = $trip->tripDays()->reorder()->orderBy('day_number')->get();
+        foreach ($days as $d) {
+            $d->update(['date' => $trip->start_date->copy()->addDays($d->day_number - 1)]);
+        }
+        if ($days->isNotEmpty()) {
+            $trip->update(['end_date' => $trip->start_date->copy()->addDays($days->count() - 1)]);
+        }
+    }
+
+    /**
+     * What kind of day this is: a rest day, or one with something on.
+     *
+     * There was no way to say. HCT could add days and never mark one an
+     * arrival or a departure, so every empty day was charged at the dearer
+     * rate whatever it was for.
+     */
+    protected function updateTripDay(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'day_id' => 'required|exists:trip_days,id',
+            'day_type' => 'required|in:rest,activity,free,travel',
+        ]);
+
+        $day = TripDay::findOrFail($data['day_id']);
+        $day->update(['day_type' => $data['day_type']]);
+
+        if ($day->trip) {
+            app(CostCalculatorService::class)->calculate($day->trip);
+        }
+
+        return response()->json(['success' => true, 'day' => $day->fresh()]);
+    }
+
+    /**
+     * Take a day off a trip, and everything that hung off it with it.
+     *
+     * Deleting the row and renumbering was all this did. Everything the day
+     * carried was left behind: the rooms it held stayed held on a night nobody
+     * was coming, the regions it was the only reason for stayed on the trip,
+     * the remaining days kept the dates of a longer itinerary, and the price
+     * still counted a day that no longer exists. Adding a day already does all
+     * four; removing one has to as well, or the two doors disagree.
+     */
     protected function removeTripDay(Request $request): JsonResponse
     {
         $day = TripDay::findOrFail($request->day_id);
+        $trip = $day->trip;
         $tripId = $day->trip_id;
+
+        // A day that carries an experience is not this button's to delete.
+        //
+        // This is where a trip's cost could become nothing. The price is worked
+        // out from the DAYS; the journey list beside it is read from the SELECTED
+        // experiences. Deleting the days of an experience left the experience on
+        // the journey with nothing to price it from, so the panel went on
+        // offering "Everest Base Camp Trek at Rs 75,000 per person" while the
+        // total read zero. The traveller's own Remove Day has refused this all
+        // along; this door, the Trip Manager's, did not.
+        //
+        // Taking the experience off the journey is the way to drop its days, and
+        // that path rebuilds and re-prices the trip afterwards.
+        if ($day->experiences()->exists()) {
+            $name = $day->experiences()->with('experience')->first()?->experience?->name;
+
+            return response()->json([
+                "error" => $name
+                    ? "This day belongs to \"{$name}\". Remove that experience from the journey to drop its days."
+                    : "This day belongs to an experience. Remove the experience from the journey to drop its days.",
+            ], 422);
+        }
+
+        // Free the nights this day was holding before the row that names them
+        // goes. Once the day is deleted there is nothing left to look them up by.
+        $rooms = app(\App\Services\RoomAvailabilityService::class);
+        foreach (TripDayService::where('trip_day_id', $day->id)->pluck('id') as $serviceId) {
+            $rooms->releaseForTripDayService((int) $serviceId);
+        }
+
         $day->delete();
 
         $days = TripDay::where("trip_id", $tripId)->orderBy("sort_order")->get();
         foreach ($days as $i => $d) {
             $d->update(["day_number" => $i + 1, "sort_order" => $i]);
+        }
+
+        if ($trip) {
+            $trip->refresh();
+            // The itinerary is a day shorter, so the dates and the end date move.
+            $this->redateTripDays($trip);
+            // A region is on a trip because something on the trip goes there.
+            $this->syncTripRegions($trip);
+            // And the total has to stop counting the day that is gone. Guarded
+            // the same way everywhere else does: an empty trip would otherwise
+            // have its cost columns written to zero.
+            $trip->refresh();
+            if ($trip->tripDays()->exists() || $trip->selectedExperiences()->exists()) {
+                app(CostCalculatorService::class)->calculate($trip);
+            }
         }
 
         return response()->json(["success" => true]);

@@ -264,48 +264,99 @@
                     </div>
                 </div>
 
-                {{-- 6. Financial Snapshot --}}
+                {{-- 6. Financial Snapshot
+
+                     Two questions were being answered in one running list, which
+                     read as though the second was added to the first. It is not:
+                     the three margins are shares OUT OF the total, not additions
+                     TO it, and the calculator says so plainly - "What the
+                     traveller actually pays: trip cost + GST. No margins on top."
+
+                     So the block is two headed halves now. The old "Subtotal"
+                     line went with the change: it was a word-for-word copy of
+                     Total Cost sitting under the margins, which is exactly what
+                     made the arithmetic look wrong.
+
+                     Lines that are zero are left out. Five zeroes in a row said
+                     nothing except "something is broken" to everybody who read
+                     them, when the real answer is that nothing has been pinned to
+                     a day yet - which is now written where the zeroes used to be. --}}
+                @php
+                    $pinned = [
+                        'Transport'     => (float) ($trip->transport_cost ?? 0),
+                        'Accommodation' => (float) ($trip->accommodation_cost ?? 0),
+                        'Guide'         => (float) ($trip->guide_cost ?? 0),
+                        'Activity'      => (float) ($trip->activity_cost ?? 0),
+                        'Other'         => (float) ($trip->other_cost ?? 0),
+                    ];
+                    // Counted by what is pinned, not by what it costs. Summing
+                    // the money missed a provider pinned at no charge and, worse,
+                    // told HCT nothing was pinned when something was - so they
+                    // pinned it twice.
+                    $pinnedCount = \App\Models\TripDayService::whereIn(
+                        'trip_day_id', \App\Models\TripDay::where('trip_id', $trip->id)->select('id')
+                    )->whereNotNull('service_provider_id')->count();
+                    $nothingPinned = $pinnedCount === 0;
+                    $partnerShare  = (float) ($trip->margin_rp_amount ?? 0)
+                                   + (float) ($trip->margin_hrp_amount ?? 0)
+                                   + (float) ($trip->commission_hct_amount ?? 0);
+                    $toSuppliers   = (float) ($trip->total_cost ?? 0) - $partnerShare;
+                @endphp
                 <div class="card mb-3">
                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
                         <h6 class="mb-0"><i class="bi bi-currency-rupee"></i> Financial Snapshot</h6>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="btnRecalc"><i class="bi bi-calculator"></i> Recalculate</button>
                     </div>
                     <div class="card-body p-0">
+
+                        <div class="px-3 pt-2 pb-1">
+                            <span class="badge bg-success bg-opacity-25 text-success-emphasis">WHAT THE TRAVELLER PAYS</span>
+                        </div>
                         <table class="table table-sm table-borderless mb-0">
                             <tbody>
-                                {{-- Every line the total is made of, in the order
-                                     the calculator builds them. The experience
-                                     bundle and the extra days were missing, and
-                                     they are usually the largest parts: a trip
-                                     showed five zeroes above a total of
-                                     ₹40,000 and nobody, including the AI asked
-                                     to review it, could see where the money was. --}}
                                 <tr><td class="ps-3 small text-muted">Experiences</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->experience_cost ?? 0, 2) }}</td></tr>
-                                {{-- Not a column on the trip: the calculator works
-                                     it out and puts it in the total without
-                                     storing it, so the controller asks for it. --}}
+                                {{-- Not a column on the trip: the calculator works it out
+                                     and puts it in the total without storing it, so the
+                                     controller asks for it. --}}
                                 @if (($singleSupplement ?? 0) > 0)
                                     <tr><td class="ps-3 small text-muted">Single Supplement
                                         <i class="bi bi-info-circle" title="Charged where an experience houses people and somebody has no room-mate."></i>
                                     </td><td class="text-end pe-3 small">&#8377;{{ number_format($singleSupplement, 2) }}</td></tr>
                                 @endif
-                                <tr><td class="ps-3 small text-muted">Transport Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->transport_cost ?? 0, 2) }}</td></tr>
-                                <tr><td class="ps-3 small text-muted">Accommodation Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->accommodation_cost ?? 0, 2) }}</td></tr>
-                                <tr><td class="ps-3 small text-muted">Guide Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->guide_cost ?? 0, 2) }}</td></tr>
-                                <tr><td class="ps-3 small text-muted">Activity Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->activity_cost ?? 0, 2) }}</td></tr>
-                                <tr><td class="ps-3 small text-muted">Other Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->other_cost ?? 0, 2) }}</td></tr>
-                                <tr>
-                                    <td class="ps-3 small text-muted">Extra Days
-                                        @if (($trip->extra_day_cost ?? 0) > 0)
+                                @foreach ($pinned as $label => $amount)
+                                    @if ($amount > 0)
+                                        <tr><td class="ps-3 small text-muted">{{ $label }}</td><td class="text-end pe-3 small">&#8377;{{ number_format($amount, 2) }}</td></tr>
+                                    @endif
+                                @endforeach
+                                @if (($trip->extra_day_cost ?? 0) > 0)
+                                    <tr>
+                                        <td class="ps-3 small text-muted">Extra Days
                                             <i class="bi bi-info-circle" title="Days with no experience on them, charged at the rest or activity day rate from Settings."></i>
-                                        @endif
-                                    </td>
-                                    <td class="text-end pe-3 small">&#8377;{{ number_format($trip->extra_day_cost ?? 0, 2) }}</td>
-                                </tr>
+                                        </td>
+                                        <td class="text-end pe-3 small">&#8377;{{ number_format($trip->extra_day_cost, 2) }}</td>
+                                    </tr>
+                                @endif
                                 <tr class="border-top"><td class="ps-3 small fw-bold">Total Cost</td><td class="text-end pe-3 small fw-bold">&#8377;{{ number_format($trip->total_cost ?? 0, 2) }}</td></tr>
+                                <tr><td class="ps-3 small text-muted">GST</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->gst_amount ?? 0, 2) }}</td></tr>
+                                <tr class="border-top bg-success bg-opacity-10">
+                                    <td class="ps-3 fw-bold">Final Price</td>
+                                    <td class="text-end pe-3 fw-bold text-success fs-6">&#8377;{{ number_format($trip->final_price ?? 0, 2) }}</td>
+                                </tr>
                             </tbody>
                         </table>
+                        @if ($nothingPinned)
+                            <p class="px-3 pt-1 mb-2 small text-muted">
+                                <i class="bi bi-info-circle"></i>
+                                No hotel, vehicle or guide is pinned to any day yet. Pin one on
+                                the Trip Itinerary tab and it appears here as its own line.
+                            </p>
+                        @endif
+
                         <hr class="my-1">
+                        <div class="px-3 pt-1 pb-1">
+                            <span class="badge bg-secondary bg-opacity-25 text-body-secondary">WHO THE TOTAL GOES TO</span>
+                            <div class="small text-muted mt-1">Shares of the total above, not charges on top of it.</div>
+                        </div>
                         <table class="table table-sm table-borderless mb-0">
                             <tbody>
                                 <tr>
@@ -329,16 +380,19 @@
                                     </td>
                                     <td class="text-end pe-3 small">&#8377;{{ number_format($trip->commission_hct_amount ?? 0, 2) }}</td>
                                 </tr>
-                            </tbody>
-                        </table>
-                        <hr class="my-1">
-                        <table class="table table-sm table-borderless mb-0">
-                            <tbody>
-                                <tr><td class="ps-3 small fw-bold">Subtotal</td><td class="text-end pe-3 small fw-bold">&#8377;{{ number_format($trip->subtotal ?? 0, 2) }}</td></tr>
-                                <tr><td class="ps-3 small text-muted">GST</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->gst_amount ?? 0, 2) }}</td></tr>
-                                <tr class="border-top bg-success bg-opacity-10">
-                                    <td class="ps-3 fw-bold">Final Price</td>
-                                    <td class="text-end pe-3 fw-bold text-success fs-6">&#8377;{{ number_format($trip->final_price ?? 0, 2) }}</td>
+                                {{-- Named "Hosts and providers" at first, which was
+                                     wrong: total_cost already carries HECO's own
+                                     markup, so what is left after the three
+                                     margins is the suppliers' share PLUS that
+                                     markup. It would never have matched the
+                                     invoices on the same page, and somebody would
+                                     have reconciled against it. --}}
+                                <tr class="border-top">
+                                    <td class="ps-3 small text-muted">Left after these
+                                        <i class="bi bi-info-circle" title="What remains of the total once the three shares above are taken. Not the same as what partners are invoiced: the invoices are on the Payments to Service Providers card below."></i>
+                                    </td>
+                                    <td></td>
+                                    <td class="text-end pe-3 small">&#8377;{{ number_format($toSuppliers, 2) }}</td>
                                 </tr>
                             </tbody>
                         </table>

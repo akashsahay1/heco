@@ -135,13 +135,64 @@ $(function() {
     tmInitDatepicker('addPaymentDateDisplay', 'addPaymentDateInput');
 });
 
+/**
+ * A day's date, as somebody reads it.
+ *
+ * trip_days.date is cast to a date, so it reaches this screen as
+ * "2025-10-18T00:00:00.000000Z" and that whole string was printed beside the
+ * day number. Only the date part is taken, so no timezone can walk it onto the
+ * day before.
+ */
+/**
+ * What a kind of day is called, in the words the pickers use.
+ *
+ * day_type is stored as one word - rest, travel, free - and those words were
+ * printed onto the screen as they are.
+ */
+function tmDayTypeLabel(type) {
+    var labels = {
+        rest: 'Rest & Relax', travel: 'Travel Day', free: 'Explore Nearby',
+        activity: 'Activity Day', arrival: 'Arrival Day', departure: 'Departure Day'
+    };
+    return labels[type] || type;
+}
+
+function tmDayDate(raw) {
+    var iso = String(raw).slice(0, 10);
+    var parts = iso.split('-');
+    if (parts.length !== 3) return raw;
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var m = parseInt(parts[1], 10) - 1;
+    if (!months[m]) return raw;
+    return parseInt(parts[2], 10) + ' ' + months[m] + ' ' + parts[0];
+}
+
 $('#tripInfoForm').on('submit', function(e) {
     e.preventDefault();
     var data = { update_trip_info: 1, trip_id: tripId };
     $(this).find('[name]').each(function() {
         data[$(this).attr('name')] = $(this).val();
     });
-    ajaxPost(data, function() { showAlert('Trip info updated!'); });
+    ajaxPost(data, function(resp) {
+        showAlert('Trip info updated!');
+        // Moving the dates can leave a night unreserved or carry an experience
+        // into a month it does not run in. Both used to be returned and thrown
+        // away here, so the save looked clean either way.
+        var notes = [];
+        if (resp && resp.rooms_warning) notes.push(resp.rooms_warning);
+        if (resp && resp.season_warning) notes.push(resp.season_warning);
+        if (notes.length && window.Swal) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Saved, with something to look at',
+                text: notes.join(' '),
+                confirmButtonColor: '#79a09f'
+            });
+        } else if (notes.length) {
+            showAlert(notes.join(' '), 'warning');
+        }
+    });
 });
 
 $('#btnSaveNotes').on('click', function() {
@@ -225,6 +276,19 @@ $('#addSpPaymentForm').on('submit', function(e) {
     });
 });
 
+// Changing a day's type changes the price, so the panel is re-read.
+$(document).on('change', '.day-type-pick', function() {
+    var $sel = $(this).prop('disabled', true);
+    ajaxPost({ update_trip_day: 1, day_id: $sel.data('id'), day_type: $sel.val() }, function() {
+        showAlert('Day updated.');
+        location.reload();
+    }, function(xhr) {
+        $sel.prop('disabled', false);
+        var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not change the day') : 'Could not change the day';
+        showAlert(msg, 'danger');
+    });
+});
+
 $('#btnRecalc').on('click', function() {
     var $btn = $(this);
     $btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Calculating...');
@@ -259,13 +323,23 @@ function loadItinerary() {
                 html += '<div class="d-flex align-items-center gap-2">';
                 if (isLocked) html += '<i class="bi bi-lock-fill text-success" title="Locked by experience"></i>';
                 html += '<strong class="small">Day ' + day.day_number;
-                if (day.date) html += ' <span class="text-muted fw-normal">(' + day.date + ')</span>';
+                if (day.date) html += ' <span class="text-muted fw-normal">(' + tmDayDate(day.date) + ')</span>';
                 html += '</strong>';
                 if (day.title) html += '<span class="text-muted small ms-1">- ' + day.title + '</span>';
-                if (day.day_type && day.day_type !== 'activity') html += '<span class="badge bg-secondary ms-2 badge-xs">' + day.day_type + '</span>';
                 if (day.added_by === 'traveller') html += '<span class="badge bg-info text-white ms-2 badge-xs">Added by Traveller</span>';
                 html += '</div>';
-                html += '<div class="d-flex gap-1">';
+                html += '<div class="d-flex gap-1 align-items-center">';
+                // What a day with nothing on it is charged at comes from its
+                // type, and until now there was no way to say. Every empty day
+                // was billed at the activity rate whether it was a trek day or
+                // the morning somebody flew home.
+                if (!isLocked) {
+                    html += '<select class="form-select form-select-sm day-type-pick" data-id="' + day.id + '" style="width:auto" title="What kind of day this is. It sets what an empty day is charged.">';
+                    [['rest', 'Rest / travel day'], ['activity', 'Activity day'], ['free', 'Free day']].forEach(function(o) {
+                        html += '<option value="' + o[0] + '"' + ((day.day_type || 'rest') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+                    });
+                    html += '</select>';
+                }
                 html += '<button class="btn btn-sm btn-outline-secondary btn-move-day-up" data-id="' + day.id + '" title="Move up"><i class="bi bi-arrow-up"></i></button>';
                 html += '<button class="btn btn-sm btn-outline-secondary btn-move-day-down" data-id="' + day.id + '" title="Move down"><i class="bi bi-arrow-down"></i></button>';
                 if (!isLocked) html += '<button class="btn btn-sm btn-outline-danger btn-remove-day" data-id="' + day.id + '"><i class="bi bi-trash"></i></button>';
@@ -314,9 +388,18 @@ function loadItinerary() {
                     var dtMap = { arrival: 'bi-airplane', departure: 'bi-airplane', rest: 'bi-moon', travel: 'bi-signpost-split', free: 'bi-compass', activity: 'bi-lightning' };
                     var dtIcon = dtMap[day.day_type] || 'bi-calendar';
                     if (day.day_type && day.day_type !== 'activity') {
-                        html += '<div class="small text-center mb-1"><i class="bi ' + dtIcon + ' text-success me-1"></i><strong>' + (day.title || day.day_type) + '</strong></div>';
+                        // The label, not the stored word. This printed day_type
+                        // straight out, so a day added from this side - which
+                        // sets no title - read "rest" on screen while the
+                        // dropdown beside it called the same thing "Rest /
+                        // travel day". The traveller's own Add Day writes a
+                        // title and so looked right; the two doors disagreed.
+                        html += '<div class="small text-center mb-1"><i class="bi ' + dtIcon + ' text-success me-1"></i><strong>' + (day.title || tmDayTypeLabel(day.day_type)) + '</strong></div>';
                     } else {
-                        html += '<p class="text-muted small text-center mb-0">Empty day - click to add services</p>';
+                        html += day.title
+                            ? '<p class="text-muted small text-center mb-0">Nothing is on this day yet. "'
+                                + day.title + '" is its name, not an experience on it. Click to add services.</p>'
+                            : '<p class="text-muted small text-center mb-0">Empty day - click to add services</p>';
                     }
                 }
 
@@ -680,14 +763,29 @@ jQuery('#btnAiRecalc').on('click', function() {
         if (result.isConfirmed && result.value) {
             btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Processing...');
             ajaxPost({ request_ai_recalculation: 1, trip_id: tripId, instruction: result.value }, function(resp) {
-                showAlert('AI recalculation complete!');
+                showAlert('The review is ready.');
                 if (resp.response) {
-                    jQuery('#aiResponse').html('<div class="alert alert-info small mt-2"><strong>AI Response:</strong><br>' + resp.response + '</div>');
+                    // Written by a machine and read by a person. It used to be
+                    // dropped into the page as it came, so an admin read "##"
+                    // and "**" as themselves and the whole thing as one block.
+                    // Escaped, so nothing in it can be taken for markup, then
+                    // broken into paragraphs the way it was written.
+                    var text = jQuery('<div>').text(resp.response).html();
+                    var paras = text.split(/\n\s*\n/).map(function(p) {
+                        return '<p class="mb-2">' + p.replace(/\n/g, '<br>') + '</p>';
+                    }).join('');
+                    jQuery('#aiResponse').html(
+                        '<div class="alert alert-info small mt-2">'
+                        + '<strong>What to check before confirming</strong>'
+                        + '<div class="text-muted mb-2" style="font-size:0.85em">'
+                        + 'This is only an opinion. Nothing on the trip has been changed.'
+                        + '</div>' + paras + '</div>'
+                    );
                 }
-                btn.prop('disabled', false).html('<i class="bi bi-robot"></i> Ask AI to Recalculate');
+                btn.prop('disabled', false).html('<i class="bi bi-robot"></i> Ask AI to Review');
                 loadItinerary();
             }, function() {
-                btn.prop('disabled', false).html('<i class="bi bi-robot"></i> Ask AI to Recalculate');
+                btn.prop('disabled', false).html('<i class="bi bi-robot"></i> Ask AI to Review');
             });
         }
     });
