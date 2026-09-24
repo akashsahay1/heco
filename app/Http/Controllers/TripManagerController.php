@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Trip;
 use App\Models\Region;
 use App\Models\ServiceProvider;
+use App\Services\CostCalculatorService;
 
 class TripManagerController extends Controller
 {
@@ -31,7 +32,13 @@ class TripManagerController extends Controller
         $providers = ServiceProvider::where("status", "approved")->with("region")->get();
         $involved = $this->whoIsOnThisTrip($trip);
 
-        return view("admin.trip-manager.layout", compact("trip", "regions", "providers", "involved"));
+        // Part of the total, but never stored on the trip, so the panel has to
+        // ask for it. Without this its Financial Snapshot silently came up
+        // short on every trip where somebody had a room to themselves.
+        $singleSupplement = app(CostCalculatorService::class)->singleSupplementFor($trip);
+
+        return view("admin.trip-manager.layout",
+            compact("trip", "regions", "providers", "involved", "singleSupplement"));
     }
 
     /**

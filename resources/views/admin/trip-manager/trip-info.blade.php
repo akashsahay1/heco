@@ -281,8 +281,13 @@
                                      ₹40,000 and nobody, including the AI asked
                                      to review it, could see where the money was. --}}
                                 <tr><td class="ps-3 small text-muted">Experiences</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->experience_cost ?? 0, 2) }}</td></tr>
-                                @if (($trip->single_supplement ?? 0) > 0)
-                                    <tr><td class="ps-3 small text-muted">Single Supplement</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->single_supplement, 2) }}</td></tr>
+                                {{-- Not a column on the trip: the calculator works
+                                     it out and puts it in the total without
+                                     storing it, so the controller asks for it. --}}
+                                @if (($singleSupplement ?? 0) > 0)
+                                    <tr><td class="ps-3 small text-muted">Single Supplement
+                                        <i class="bi bi-info-circle" title="Charged where an experience houses people and somebody has no room-mate."></i>
+                                    </td><td class="text-end pe-3 small">&#8377;{{ number_format($singleSupplement, 2) }}</td></tr>
                                 @endif
                                 <tr><td class="ps-3 small text-muted">Transport Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->transport_cost ?? 0, 2) }}</td></tr>
                                 <tr><td class="ps-3 small text-muted">Accommodation Cost</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->accommodation_cost ?? 0, 2) }}</td></tr>

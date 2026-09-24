@@ -197,6 +197,61 @@ class CostCalculatorService
         return (int) round($exp->hostPricePerPerson($party['group_size']) * $party['people_factor']);
     }
 
+    /**
+     * What a trip's lone travellers are charged for having a room to themselves.
+     *
+     * It lives here rather than inline in calculate() because two screens need
+     * it and only one of them recalculates. The figure is part of the total but
+     * is not stored on the trip, so the Trip Manager panel had no way to show
+     * the line and its Financial Snapshot did not add up on any trip where
+     * somebody travelled alone.
+     *
+     * Each experience is counted once however many days it spans.
+     */
+    public function singleSupplementFor(Trip $trip): int
+    {
+        $party = $this->partyBreakdown(
+            max($trip->adults, 1),
+            $trip->children ?: 0,
+            $trip->infants ?: 0,
+        );
+
+        if (! $party['rooms_alone']) {
+            return 0;
+        }
+
+        $total = 0;
+        $counted = [];
+
+        foreach ($trip->tripDays as $day) {
+            foreach ($day->experiences as $dayExp) {
+                if (in_array($dayExp->experience_id, $counted, true)) {
+                    continue;
+                }
+                $counted[] = $dayExp->experience_id;
+                $exp = $dayExp->experience;
+
+                // Only where the experience houses people. A hotel HCT pins onto
+                // the trip is already charged by the room, so adding this to it
+                // would bill the same empty bed twice. Never on a stay: there the
+                // room is the product, and a lone traveller has already been
+                // charged for a whole one.
+                if (! $exp || $exp->isStay()
+                    || ! $exp->includes_accommodation || $exp->single_supplement <= 0) {
+                    continue;
+                }
+
+                $total += (int) round(
+                    (float) $exp->single_supplement
+                    * (1 + $exp->effectiveMarkupPercent() / 100)
+                    * $party['rooms_alone']
+                );
+            }
+        }
+
+        return $total;
+    }
+
     public function calculate(Trip $trip): array
     {
         $trip->load([
@@ -211,7 +266,10 @@ class CostCalculatorService
         $party        = $this->partyBreakdown($adults, $children, $infants);
         $peopleFactor = $party['people_factor'];
         $groupSize    = $party['group_size'];
-        $singleSupplement = 0;
+        // The per-person price of an experience is a shared room's half. A
+        // traveller left without anyone to share with still costs the host a
+        // whole room, and that difference is the supplement.
+        $singleSupplement = $this->singleSupplementFor($trip);
 
         // Extra day costs - different rates for rest and activity days.
         $restDayCostPerPerson     = (float) Setting::getValue('rest_day_cost_per_person', 2000);
@@ -283,24 +341,6 @@ class CostCalculatorService
                 $experienceCost += $line;
                 $dayExp->update(['total_cost' => $line]);
 
-                // The per-person price above is a shared room's half. A traveller
-                // left without anyone to share with still costs the host a whole
-                // room, and that difference is the host's single supplement -
-                // marked up like everything else the traveller is quoted.
-                //
-                // Only where the experience houses people. A hotel HCT pins onto
-                // the trip is already charged by the room, so adding this to it
-                // would bill the same empty bed twice.
-                // Never on a stay: there the room is the product, and a lone
-                // traveller has already been charged for a whole one above.
-                if ($party['rooms_alone'] && ! $exp->isStay()
-                    && $exp->includes_accommodation && $exp->single_supplement > 0) {
-                    $singleSupplement += (int) round(
-                        (float) $exp->single_supplement
-                        * (1 + $exp->effectiveMarkupPercent() / 100)
-                        * $party['rooms_alone']
-                    );
-                }
             }
         }
 
