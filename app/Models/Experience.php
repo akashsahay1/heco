@@ -281,10 +281,29 @@ class Experience extends Model
         return $this->belongsTo(ServiceProvider::class, 'owner_provider_id');
     }
 
-    /** Experiences a given provider owns. */
+    /**
+     * The experiences a host may see and work on.
+     *
+     * A listing carries two providers: hlh_id is who delivers it, and
+     * owner_provider_id is who wrote it. A host filing their own fills both; HCT
+     * creating one from the admin side fills only hlh_id. Reading the second
+     * alone meant a host could not see, let alone edit, the trek they actually
+     * run, because somebody at HECO had typed it in for them. Four of the six
+     * listings on this database were invisible to their own host.
+     *
+     * The rest of the code already answers "whose is this" with
+     * `owner_provider_id ?: hlh_id`: invoicing does, and so does the list of
+     * trips a host is shown. This is that same answer, in the two places that
+     * were still asking a narrower question.
+     */
     public function scopeOwnedBy($query, int $providerId)
     {
-        return $query->where('owner_provider_id', $providerId);
+        return $query->where(function ($q) use ($providerId) {
+            $q->where('owner_provider_id', $providerId)
+              ->orWhere(function ($q2) use ($providerId) {
+                  $q2->whereNull('owner_provider_id')->where('hlh_id', $providerId);
+              });
+        });
     }
 
     public function submitter()

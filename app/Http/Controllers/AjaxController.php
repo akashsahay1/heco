@@ -9394,8 +9394,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     /** The caller's own experience by id, or an error response. */
     protected function resolveOwnExperience(int $id, ServiceProvider $sp): array
     {
+        // Whose it is, asked the way the rest of the system asks it: the author
+        // if there is one, otherwise the host who delivers it. Asking only for
+        // the author locked a host out of the listing HCT had typed in for them.
+        // Widening it is safe because a host's edit to a live listing is parked
+        // for review rather than applied, so HECO still approves every change.
         $experience = Experience::find($id);
-        if (!$experience || (int) $experience->owner_provider_id !== (int) $sp->id) {
+        $owner = (int) ($experience?->owner_provider_id ?: $experience?->hlh_id);
+        if (!$experience || $owner !== (int) $sp->id) {
             return [null, response()->json(['error' => 'Not your experience.'], 403)];
         }
         return [$experience, null];
