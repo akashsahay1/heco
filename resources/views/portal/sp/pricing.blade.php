@@ -4,27 +4,19 @@
 @section('content')
 <div class="container py-4 heco-portal">
 
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <div>
-            <h4 class="mb-1"><i class="bi bi-cash-stack"></i> Services, Rooms &amp; Pricing</h4>
-            <p class="text-muted small mb-0">
-                Each <strong>Accommodation</strong> row is one room category (e.g. 4 Single Rooms).
-                Each <strong>Transport / Guide / Activity</strong> row is one offered rate. Trip Manager
-                + the AI pull these in when this property is included in a trip.
-            </p>
-        </div>
-        <div class="d-flex gap-2">
-            @if($provider->isHost())
-                {{-- Rates and experiences are different things; providers look
-                     for one while on the other, so link across. --}}
-                <a href="{{ route('sp.experiences') }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-layers"></i> My Experiences
-                </a>
-            @endif
-            <a href="{{ route('sp.dashboard') }}" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Dashboard
-            </a>
-        </div>
+    {{-- The heading, the way back and the tabs all come from the partial, so a
+         partner meets one shape across their own pages. What is left here is
+         what this one page is: the cross-link to experiences went with it,
+         because the tab bar is that link now. --}}
+    @include('portal.sp._service-tabs', ['current' => 'pricing'])
+
+    <div class="mb-3">
+        <h5 class="mb-1"><i class="bi bi-cash-stack"></i> Services, Rooms &amp; Pricing</h5>
+        <p class="text-muted small mb-0">
+            Each <strong>Accommodation</strong> row is one room category (e.g. 4 Single Rooms).
+            Each <strong>Transport / Guide / Activity</strong> row is one offered rate. Trip Manager
+            + the AI pull these in when this property is included in a trip.
+        </p>
     </div>
 
     <div class="card mb-4" id="spPricingCard" data-provider-id="{{ $provider->id }}">

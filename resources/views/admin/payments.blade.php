@@ -18,10 +18,20 @@
 <div class="tab-content">
     {{-- SP Payments Tab --}}
     <div class="tab-pane fade show active" id="spPayments">
-        <div class="d-flex gap-2 mb-3">
+        <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
             <input type="text" class="form-control form-control-sm input-trip-search" id="spTripSearch">
             <button class="btn btn-sm btn-outline-primary" id="spSearchBtn"><i class="bi bi-search"></i> Search</button>
+            {{-- Month end: one place to settle the bills of trips that were
+                 called off, instead of finding them a page at a time. --}}
+            <div class="form-check form-check-sm mb-0 ms-2">
+                <input class="form-check-input" type="checkbox" id="spCancelledOnly">
+                <label class="form-check-label small" for="spCancelledOnly">
+                    Cancelled trips only
+                </label>
+            </div>
         </div>
+
+        <div id="spCancelledNote"></div>
 
         <div id="spPaymentsList">
             <p class="text-muted text-center">Loading...</p>
@@ -78,10 +88,29 @@ function loadSpPayments(page) {
     var params = { get_sp_payments: 1, page: page || 1 };
     var search = $('#spTripSearch').val();
     if (search) params.trip_search = search;
+    if ($('#spCancelledOnly').is(':checked')) params.cancelled_only = 1;
 
     ajaxPost(params, function(resp) {
         var items = resp.data || [];
         var html = '';
+
+        // Said once, above the list, because the list is paginated and a count
+        // of what happens to be on this page would be a different number every
+        // time somebody turned it.
+        var tally = resp.cancelled_totals || { count: 0, balance: 0 };
+        if (tally.count > 0) {
+            $('#spCancelledNote').html(
+                '<div class="alert alert-warning py-2 small">'
+                + '<i class="bi bi-exclamation-triangle"></i> '
+                + tally.count + ' bill' + (tally.count === 1 ? '' : 's')
+                + ' belong' + (tally.count === 1 ? 's' : '') + ' to trips that were cancelled, '
+                + '&#8377;' + Number(tally.balance).toLocaleString() + ' of it still open. '
+                + 'Anything paid on these is a cancellation charge, so check before paying.'
+                + '</div>'
+            );
+        } else {
+            $('#spCancelledNote').empty();
+        }
 
         if (!items.length) {
             html = '<p class="text-muted text-center">No SP payments found</p>';
@@ -105,6 +134,9 @@ function loadSpPayments(page) {
             html += '<strong>' + (sp.service_provider ? sp.service_provider.name : '-') + '</strong>';
             html += ' <span class="badge bg-info ms-1">' + (sp.service_type || '-') + '</span>';
             html += ' <small class="text-muted ms-2">Trip: ' + (sp.trip_code || (sp.trip ? sp.trip.trip_id : '') || '-') + '</small>';
+            if (sp.trip_cancelled) {
+                html += ' <span class="badge bg-danger ms-1">Trip cancelled</span>';
+            }
             html += '</div>';
             html += '<div class="text-end">';
             html += '<span class="small">Due: ₹' + Number(sp.amount_due || 0).toLocaleString() + '</span>';
@@ -132,6 +164,12 @@ function loadSpPayments(page) {
 
             // Add payment form
             html += '<hr>';
+            if (sp.trip_cancelled) {
+                html += '<div class="alert alert-warning py-2 small mb-2">';
+                html += 'This trip was cancelled. The rooms it held were released, but this bill was left standing ';
+                html += 'because a cancellation often still owes somebody something. Pay it only as a cancellation charge.';
+                html += '</div>';
+            }
             html += '<h6 class="small fw-bold">Add Payment</h6>';
             html += '<div class="row g-2">';
             html += '<div class="col-md-3"><input type="number" class="form-control form-control-sm sp-amount" data-id="' + sp.id + '" step="0.01"></div>';
@@ -149,7 +187,9 @@ function loadSpPayments(page) {
             html += '</div>';
             html += '<div class="col-md-3"><input type="text" class="form-control form-control-sm sp-notes" data-id="' + sp.id + '"></div>';
             html += '</div>';
-            html += '<button class="btn btn-sm btn-success mt-2 add-sp-payment" data-id="' + sp.id + '"><i class="bi bi-plus-circle"></i> Add Payment</button>';
+            html += '<button class="btn btn-sm btn-success mt-2 add-sp-payment" data-id="' + sp.id + '"'
+                 + (sp.trip_cancelled ? ' data-cancelled="1"' : '')
+                 + '><i class="bi bi-plus-circle"></i> Add Payment</button>';
 
             html += '</div>';
             html += '</div>';
@@ -230,6 +270,7 @@ $(function() {
 });
 
 $('#spSearchBtn').on('click', function() { loadSpPayments(); });
+$('#spCancelledOnly').on('change', function() { loadSpPayments(); });
 $('#spTripSearch').on('keyup', function(e) { if (e.key === 'Enter') loadSpPayments(); });
 
 $(document).on('click', '.add-sp-payment', function() {
@@ -241,6 +282,14 @@ $(document).on('click', '.add-sp-payment', function() {
 
     if (!amount || !paymentDate) {
         showAlert('Please enter amount and date.', 'warning');
+        return;
+    }
+
+    // Asked, not refused. A cancelled trip can still owe a partner for nights
+    // they held and guests they turned away, so this is a question rather than
+    // a block.
+    if ($(this).data('cancelled')
+        && !confirm('This trip was cancelled. Record a payment against it anyway?')) {
         return;
     }
 

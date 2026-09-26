@@ -20,6 +20,98 @@
             @endforeach
             <span class="badge bg-{{ $provider->status === 'approved' ? 'success' : ($provider->status === 'pending' ? 'warning text-dark' : 'secondary') }} ms-1">{{ ucfirst($provider->status ?? 'pending') }}</span>
         </div>
+
+        {{-- Nothing below this point was touched. What follows is added above
+             it: the four figures and the row of actions the app opens on, so
+             that a partner meets the same dashboard whichever they use. --}}
+        {{-- Four figures, the ones the app opens on. Filled by the same
+             get_sp_dashboard the app calls, so the two cannot disagree. --}}
+        <div class="row g-2 mb-3" id="spSummary" hidden>
+            <div class="col-6 col-lg-3">
+                <div class="card h-100"><div class="card-body py-3">
+                    <div class="small text-muted">Bookings</div>
+                    <div class="fs-4 fw-semibold" id="sumBookings">-</div>
+                </div></div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card h-100"><div class="card-body py-3">
+                    <div class="small text-muted">Next payout</div>
+                    <div class="fs-4 fw-semibold" id="sumPayout">-</div>
+                    <div class="small text-muted" id="sumPayoutDate"></div>
+                </div></div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card h-100"><div class="card-body py-3">
+                    <div class="small text-muted">Earnings this month</div>
+                    <div class="fs-4 fw-semibold" id="sumEarnings">-</div>
+                    <div class="small text-muted" id="sumPeriod"></div>
+                </div></div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card h-100"><div class="card-body py-3">
+                    <div class="small text-muted">Rating</div>
+                    <div class="fs-4 fw-semibold" id="sumRating">-</div>
+                </div></div>
+            </div>
+        </div>
+
+        {{-- Quick actions. Each one is gated the way the app gates its tabs:
+             a rate card belongs to an OSP, a listing to an HLH, a region to an
+             HRP. An action nobody can use is not drawn. --}}
+        <div class="d-flex flex-wrap gap-2 mb-4">
+            <a href="#availability" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-calendar-month"></i> Availability
+            </a>
+            @if($provider->suppliesServices())
+                <a href="{{ route('sp.pricing') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-plus-circle"></i> Add rate
+                </a>
+            @endif
+            @if($provider->isHost())
+                <a href="{{ route('sp.experiences') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-plus-circle"></i> Add experience
+                </a>
+            @endif
+            @if($provider->hasType('hrp'))
+                <a href="{{ route('sp.region') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-map"></i> My region
+                </a>
+            @endif
+            <a href="#assignedTrips" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-signpost-split"></i> Bookings
+            </a>
+            <a href="#paymentSummary" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-cash-coin"></i> Payments
+            </a>
+        </div>
+
+        {{-- Asking HECO for help.
+             The app has had this from the start; on the website only a
+             traveller could ask, from inside their own journey. A partner had
+             no way to reach HECO from their own screens at all, which is the
+             one person most likely to need to. --}}
+        <div class="card mb-4">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-life-preserver"></i> Need a hand?</h6>
+                <button class="btn btn-sm btn-outline-secondary" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#spSupportBox">
+                    Ask HECO
+                </button>
+            </div>
+            <div class="collapse" id="spSupportBox">
+                <div class="card-body">
+                    <label class="form-label small text-muted">
+                        What do you need? Somebody at HECO will read this and come back to you.
+                    </label>
+                    <textarea class="form-control mb-2" id="spSupportMessage" rows="3"
+                        placeholder="A rate that will not save, a booking you did not expect, anything at all"></textarea>
+                    <button class="btn btn-sm sp-btn-primary" type="button" id="spSupportSend">
+                        <i class="bi bi-send"></i> Send
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <div class="d-flex gap-2">
             @if($provider->isHost())
                 {{-- Experiences are authored by the hosts who run them. --}}
@@ -30,7 +122,8 @@
         </div>
     </div>
 
-    {{-- My Assigned Trips --}}
+    {{-- My Assigned Trips --}}
+    <span id="assignedTrips"></span>
     <div class="card mb-3">
         <div class="card-header py-2">
             <h6 class="mb-0"><i class="bi bi-luggage"></i> My Assigned Trips</h6>
@@ -171,7 +264,8 @@
         {{-- Right Column --}}
         <div class="col-md-6">
 
-            {{-- Availability Calendar --}}
+            {{-- Availability Calendar --}}
+            <span id="availability"></span>
             <div class="card mb-3">
                 <div class="card-header py-2 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0"><i class="bi bi-calendar3"></i> Availability Calendar</h6>
@@ -575,7 +669,7 @@
             @if($provider->spPayments && $provider->spPayments->count())
                 <div class="card mb-3">
                     <div class="card-header py-2">
-                        <h6 class="mb-0"><i class="bi bi-cash-stack"></i> Payment Summary</h6>
+                        <h6 class="mb-0" id="paymentSummary"><i class="bi bi-cash-stack"></i> Payment Summary</h6>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -593,14 +687,28 @@
                                     @php
                                         $totalDue = 0;
                                         $totalPaid = 0;
+                                        // What is owed against trips that were called off. A partner
+                                        // read the same row whether the trip was running or cancelled,
+                                        // so they went on waiting for money on a trip that had been
+                                        // dropped, and heard it from HECO by phone or not at all.
+                                        $cancelledBalance = 0;
                                     @endphp
                                     @foreach($provider->spPayments as $payment)
                                         @php
                                             $totalDue += $payment->amount_due ?? 0;
                                             $totalPaid += $payment->amount_paid ?? 0;
+                                            $tripCancelled = ($payment->trip->status ?? null) === 'cancelled';
+                                            if ($tripCancelled) {
+                                                $cancelledBalance += $payment->balance ?? 0;
+                                            }
                                         @endphp
                                         <tr>
-                                            <td class="small text-success">{{ $payment->trip->trip_id ?? '-' }}</td>
+                                            <td class="small text-success">
+                                                {{ $payment->trip->trip_id ?? '-' }}
+                                                @if($tripCancelled)
+                                                    <span class="badge bg-danger ms-1">Trip cancelled</span>
+                                                @endif
+                                            </td>
                                             <td class="small">{{ $payment->service_type ?? '-' }}</td>
                                             <td class="small text-end">&#8377;{{ number_format($payment->amount_due ?? 0, 2) }}</td>
                                             <td class="small text-end text-success">&#8377;{{ number_format($payment->amount_paid ?? 0, 2) }}</td>
@@ -615,6 +723,14 @@
                                         <td class="small text-end text-success">&#8377;{{ number_format($totalPaid, 2) }}</td>
                                         <td class="small text-end {{ ($totalDue - $totalPaid) > 0 ? 'text-danger' : 'text-success' }}">&#8377;{{ number_format($totalDue - $totalPaid, 2) }}</td>
                                     </tr>
+                                    @if($cancelledBalance > 0)
+                                        <tr>
+                                            <td colspan="5" class="small text-muted">
+                                                &#8377;{{ number_format($cancelledBalance, 2) }} of this is against trips that
+                                                were cancelled. HECO will be in touch about what is payable on those.
+                                            </td>
+                                        </tr>
+                                    @endif
                                 </tfoot>
                             </table>
                         </div>
@@ -673,6 +789,55 @@ jQuery(function() {
         return '<span class="badge bg-' + cls + '">' + label + '</span>';
     }
 
+    /**
+     * The four figures at the top, from the same get_sp_dashboard the app
+     * calls. If it cannot be read the row simply stays hidden: nothing else on
+     * this page depends on it, and a partner should not meet an error where a
+     * number was going to be.
+     */
+    /**
+     * The same request_support the traveller's own screen uses and the app
+     * calls, with no trip against it: a partner's question is about their own
+     * work rather than about somebody's journey.
+     */
+    jQuery(document).on('click', '#spSupportSend', function() {
+        var msg = jQuery('#spSupportMessage').val().trim();
+        if (!msg) { showAlert('Write a line about what you need.', 'warning'); return; }
+        var btn = jQuery(this).prop('disabled', true);
+        ajaxPost({ request_support: 1, message: msg }, function() {
+            showAlert('Sent. Somebody at HECO will come back to you.', 'success');
+            jQuery('#spSupportMessage').val('');
+            jQuery('#spSupportBox').collapse('hide');
+            btn.prop('disabled', false);
+        }, function(xhr) {
+            var m = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not send it.') : 'Could not send it.';
+            showAlert(m, 'danger');
+            btn.prop('disabled', false);
+        });
+    });
+
+    function loadSummary() {
+        ajaxPost({ get_sp_dashboard: 1 }, function(resp) {
+            var d = (resp && resp.dashboard) ? resp.dashboard : resp;
+            if (!d) { return; }
+            var money = function(n) {
+                n = parseFloat(n) || 0;
+                return '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+            };
+            jQuery('#sumBookings').text(d.bookings != null ? d.bookings : '-');
+            if (d.next_payout) {
+                jQuery('#sumPayout').text(money(d.next_payout.amount));
+                jQuery('#sumPayoutDate').text(d.next_payout.date ? ('due ' + d.next_payout.date) : '');
+            } else {
+                jQuery('#sumPayout').text(money(0));
+            }
+            jQuery('#sumEarnings').text(money(d.earnings));
+            jQuery('#sumPeriod').text(d.period || '');
+            jQuery('#sumRating').text(d.rating ? Number(d.rating).toFixed(1) : 'No ratings yet');
+            jQuery('#spSummary').prop('hidden', false);
+        }, function() { /* left hidden */ });
+    }
+
     function loadAssignedTrips() {
         ajaxPost({ get_sp_assigned_trips: 1 }, function(resp) {
             var trips = resp.trips || [];
@@ -700,7 +865,8 @@ jQuery(function() {
             jQuery('#spAssignedTrips').html('<tr><td colspan="5" class="text-muted text-center small py-3">Could not load assigned trips.</td></tr>');
         });
     }
-    loadAssignedTrips();
+    loadSummary();
+        loadAssignedTrips();
 
     function loadCalendar() {
         jQuery('#calMonthLabel').text(monthNames[calMonth - 1] + ' ' + calYear);

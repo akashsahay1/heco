@@ -244,6 +244,56 @@
             </div>
         </div>
 
+
+                {{-- Documents.
+                     Filing them at signup is optional, and the app has always
+                     let a partner add them afterwards. On the website there
+                     was no way at all: somebody who skipped them could never
+                     send them, and HECO had no way to ask except by email. --}}
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <h6 class="mb-0"><i class="bi bi-file-earmark-text"></i> Your documents</h6>
+                    </div>
+                    <div class="card-body">
+                        @if($provider->documents && count((array) $provider->documents))
+                            <ul class="list-unstyled small mb-3">
+                                @foreach((array) $provider->documents as $doc)
+                                    <li class="mb-1">
+                                        <i class="bi bi-paperclip me-1"></i>
+                                        <a href="{{ $doc['url'] ?? '#' }}" target="_blank" rel="noopener">
+                                            {{ $doc['label'] ?? ($doc['original_name'] ?? 'Document') }}
+                                        </a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @else
+                            <p class="text-muted small">Nothing on file yet.</p>
+                        @endif
+
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label small text-muted">What is it</label>
+                                <select class="form-select form-select-sm" id="spDocLabel">
+                                    @foreach(\App\Models\SystemList::ofType('document_type')->get() as $dt)
+                                        <option value="{{ $dt->name }}">{{ $dt->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label small text-muted">The file</label>
+                                <input type="file" class="form-control form-control-sm" id="spDocFile"
+                                    accept=".pdf,.jpg,.jpeg,.png">
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-sm sp-btn-primary w-100" id="spDocAdd">
+                                    Upload
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-text">A photo or a PDF, up to 2 MB.</div>
+                    </div>
+                </div>
+
         <div class="d-flex gap-2 mt-3">
             <button type="submit" class="btn btn-success" id="spSaveBtn">
                 <i class="bi bi-check-lg"></i> Save Changes
@@ -394,4 +444,30 @@ jQuery('#spProfileForm').on('submit', function(e) {
     });
 });
 </script>
+
+    /**
+     * One document at a time, the way the app does it. The same add_sp_document
+     * the app calls, so a file filed from either lands in the same place under
+     * the same rules.
+     */
+    jQuery(document).on('click', '#spDocAdd', function() {
+        var file = jQuery('#spDocFile')[0] && jQuery('#spDocFile')[0].files[0];
+        if (!file) { showAlert('Choose a file first.', 'warning'); return; }
+        var fd = new FormData();
+        fd.append('add_sp_document', 1);
+        fd.append('documents[]', file);
+        fd.append('document_labels[]', jQuery('#spDocLabel').val());
+        jQuery.ajax({
+            url: '/ajax', method: 'POST', data: fd,
+            processData: false, contentType: false,
+            headers: { 'X-CSRF-TOKEN': jQuery('meta[name="csrf-token"]').attr('content') }
+        }).done(function() {
+            showAlert('Document uploaded.', 'success');
+            location.reload();
+        }).fail(function(xhr) {
+            var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not upload it.') : 'Could not upload it.';
+            showAlert(msg, 'danger');
+        });
+    });
+
 @endsection

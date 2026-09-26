@@ -3,18 +3,14 @@
 
 @section('content')
 <div class="container py-4 heco-portal">
+    @include('portal.sp._service-tabs', ['current' => 'experiences'])
 
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <div>
-            <h4 class="mb-1"><i class="bi bi-layers"></i> My Experiences</h4>
-            <p class="text-muted small mb-0">
-                Build the experiences you run. Each one goes to HECO for review - once approved
-                it becomes visible to travellers and can be added to trips.
-            </p>
-        </div>
-        <a href="{{ route('sp.dashboard') }}" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-arrow-left"></i> Back to Dashboard
-        </a>
+    <div class="mb-3">
+        <h5 class="mb-1"><i class="bi bi-layers"></i> My Experiences</h5>
+        <p class="text-muted small mb-0">
+            Build the experiences you run. Each one goes to HECO for review - once approved
+            it becomes visible to travellers and can be added to trips.
+        </p>
     </div>
 
     <div class="card mb-4" id="spExpCard" data-provider-id="{{ $provider->id }}">

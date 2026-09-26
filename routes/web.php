@@ -151,6 +151,7 @@ Route::domain(config('app.portal_domain'))->group(function () {
         Route::get('/sp/profile/edit', [SpController::class, 'editProfile'])->name('sp.profile.edit');
         Route::get('/sp/pricing', [SpController::class, 'pricing'])->name('sp.pricing');
         Route::get('/sp/experiences', [SpController::class, 'experiences'])->name('sp.experiences');
+        Route::get('/sp/region', [SpController::class, 'region'])->name('sp.region');
     });
 
     // AJAX

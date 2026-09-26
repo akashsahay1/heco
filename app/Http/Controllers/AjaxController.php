@@ -6983,13 +6983,31 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                   ->orWhere("trip_name", "like", "%{$search}%");
             });
         }
+        // A bill against a cancelled trip reads exactly like a bill against one
+        // that is running: same partner, same figure, same Add Payment button.
+        // Nothing on this screen said otherwise, so the only thing standing
+        // between HECO and paying for a trip that will not happen was somebody
+        // remembering. Whether a trip is cancelled is asked of the trip rather
+        // than stored on the bill, because the trip is the only thing that
+        // knows it.
+        $cancelled = (clone $query)->whereHas('trip', fn ($q) => $q->where('status', 'cancelled'));
+        $cancelledTotals = [
+            'count' => (clone $cancelled)->count(),
+            'balance' => (float) (clone $cancelled)->sum('balance'),
+        ];
+        if ($request->boolean('cancelled_only')) {
+            $query = $cancelled;
+        }
+
         $payments = $query->orderBy("created_at", "desc")->paginate(config('pagination.admin_per_page', 20));
         // Expose the HECO-T-… code as a separate field; leave the numeric trip_id FK intact.
         $payments->getCollection()->transform(function ($p) {
             $p->trip_code = $p->trip?->trip_id;
+            $p->trip_cancelled = $p->trip?->status === 'cancelled';
             return $p;
         });
-        return response()->json($payments);
+
+        return response()->json($payments->toArray() + ['cancelled_totals' => $cancelledTotals]);
     }
 
     /**

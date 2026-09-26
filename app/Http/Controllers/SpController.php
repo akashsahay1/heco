@@ -22,6 +22,15 @@ class SpController extends Controller
         $activityTypes           = SystemList::ofType("activity_type")->get();
         $businessTypes           = SystemList::ofType("business_type")->get();
         $documentTypes           = SystemList::ofType("document_type")->get();
+        // The app asks these and the web form did not, so an applicant who came
+        // in by the website was never asked what the client specifically wanted
+        // to know - most of all from a regional partner, whose application IS
+        // their background. Same lists, so both forms offer the same words.
+        $experienceCategories    = SystemList::ofType("experience_category")->get();
+        $serviceCategories       = SystemList::ofType("service_category")->get();
+        $educationLevels         = SystemList::ofType("education_level")->get();
+        $englishLevels           = SystemList::ofType("english_level")->get();
+        $computerSkillLevels     = SystemList::ofType("computer_skill_level")->get();
         // Countries come from the regions HECO operates in, not a hardcoded list.
         $countries = Region::where("is_active", true)->whereNotNull("country")
             ->distinct()->orderBy("country")->pluck("country");
@@ -29,7 +38,9 @@ class SpController extends Controller
         return view("portal.sp.application", compact(
             "regions", "serviceTypes", "accommodationCategories",
             "vehicleTypes", "guideTypes", "activityTypes",
-            "businessTypes", "documentTypes", "countries"
+            "businessTypes", "documentTypes", "countries",
+            "experienceCategories", "serviceCategories",
+            "educationLevels", "englishLevels", "computerSkillLevels"
         ));
     }
 
@@ -147,6 +158,38 @@ class SpController extends Controller
      * signed up as one. A pure host gets experiences instead; a host that also
      * ticked OSP (it runs a taxi as well as a homestay) gets both.
      */
+    /**
+     * A regional partner's own screen: their region, the partners in it, and
+     * the trips travelling through it.
+     *
+     * The app has given an HRP a tab of their own all along, beside Rate card
+     * and Experiences. On the website the same information sat as a card on
+     * the dashboard, so the third tab had nowhere to point. It has a page now.
+     */
+    public function region()
+    {
+        $user = auth()->user();
+        $provider = ServiceProvider::where("user_id", $user->id)->with("region")->firstOrFail();
+
+        if (! $provider->hasType("hrp")) {
+            return redirect()->route("sp.dashboard")
+                ->with("error", "A region is coordinated by a regional partner.");
+        }
+
+        $partners = $provider->region_id
+            ? ServiceProvider::where("region_id", $provider->region_id)
+                ->where("id", "!=", $provider->id)
+                ->orderBy("name")->get()
+            : collect();
+
+        $trips = $provider->region_id
+            ? \App\Models\Trip::whereHas("regions", fn ($q) => $q->where("regions.id", $provider->region_id))
+                ->orderByDesc("start_date")->limit(50)->get()
+            : collect();
+
+        return view("portal.sp.region", compact("provider", "partners", "trips"));
+    }
+
     public function pricing()
     {
         $user = auth()->user();

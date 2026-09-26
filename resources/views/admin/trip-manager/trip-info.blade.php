@@ -522,6 +522,17 @@
                             </div>
                         </div>
 
+                        {{-- The status sits at the top of this page, but somebody
+                             scrolling straight down to pay a partner never passes it. --}}
+                        @if($trip->status === 'cancelled' && $trip->spPayments && $trip->spPayments->count())
+                            <div class="alert alert-warning py-2 small mb-2">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                This trip was cancelled. Its rooms were released; these bills were left
+                                standing because a cancellation often still owes somebody something.
+                                Pay them only as a cancellation charge.
+                            </div>
+                        @endif
+
                         @if($trip->spPayments && $trip->spPayments->count())
                             <div class="list-group list-group-flush">
                                 @foreach($trip->spPayments as $spPayment)
