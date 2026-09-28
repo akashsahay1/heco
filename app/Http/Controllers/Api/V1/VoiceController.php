@@ -77,6 +77,7 @@ class VoiceController extends Controller
 
         $validator = Validator::make($request->all(), [
             'form' => 'required|in:' . implode(',', $this->assistant->forms()),
+            'known' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
@@ -87,16 +88,58 @@ class VoiceController extends Controller
             return $refusal;
         }
 
-        // Both lines are HCT's own words, and no model is called to produce
-        // them: the opening never varies, and a member should not wait on an
-        // AI round trip to be said hello to.
+        $form = $request->input('form');
+        $known = (array) $request->input('known', []);
+        $ahead = $this->assistant->walk($form, $known, [], 'hi');
+        $next = $ahead['next'];
+
+        // The first question is not sent yet, only carried.
+        //
+        // Nobody has said a word, so there is nothing to read a language off,
+        // and putting the question in both would mean saying everything twice
+        // out loud. Instead the member is asked whether they are ready; their
+        // answer says which language they speak, and the app then shows the
+        // half of the question that belongs to it.
+
+        // HCT's own words, and no model is called for either: the opening
+        // never varies, and a member should not wait on an AI round trip to
+        // be said hello to.
         return response()->json([
             'success' => true,
             'greeting' => trim((string) Setting::getValue('voice_greeting', '')) ?: null,
-            'reply' => trim((string) Setting::getValue('voice_language_question', '')) ?: null,
-            // What the next answer will be taken to mean. Until a language is
-            // settled, nothing said is read as an answer about the form.
-            'stage' => 'language',
+            // Said after the greeting and before anything is asked. Somebody
+            // who has just pressed a button and heard a voice needs a moment
+            // to answer, and their answer - whatever it is - is what settles
+            // which language the rest of this is held in.
+            'ready' => trim((string) Setting::getValue('voice_ready_question', '')) ?: null,
+            // Sent for the app that is already on somebody's phone.
+            //
+            // A build that predates the ready line reads this field and
+            // nothing else, so leaving it empty would open the assistant on a
+            // blank screen for every provider who has not updated. It is the
+            // first question in both tongues, which is exactly what that build
+            // expects and puts on screen.
+            //
+            // The current build ignores it: it waits for the ready line to be
+            // answered and asks its first question in the one language that
+            // answer was given in.
+            'reply' => $next === null ? null : trim(implode("
+", array_filter([
+                $this->assistant->questionFor($form, $next, 'hi', $known),
+                $this->assistant->questionFor($form, $next, 'en', $known),
+            ]))),
+            'asked' => $next,
+            'label' => $next === null ? null : $this->assistant->labelFor($form, $next, $known),
+            'choices' => $next === null ? null : $this->assistant->choiceOptionsFor($form, $next, $known, 'hi'),
+            'multiple' => $next !== null && $this->assistant->takesSeveral($form, $next, $known),
+            'skippable' => $next === null || $this->assistant->skippable($form, $next, $known),
+            'guidance' => $ahead['guidance'],
+            'passed' => $ahead['passed'],
+            'fields' => (object) [],
+            'rejected' => [],
+            'language' => null,
+            'stage' => 'form',
+            'done' => $next === null,
         ]);
     }
 
@@ -155,7 +198,12 @@ class VoiceController extends Controller
             ),
             'asked' => $next,
             'label' => $next === null ? null : $this->assistant->labelFor($request->input('form'), $next, $known),
-            'choices' => $next === null ? null : $this->assistant->choicesFor($request->input('form'), $next, $known, $language),
+            // Pairs rather than words: a member can tap one of these, and
+            // what the column holds is not always what the chip reads.
+            'choices' => $next === null ? null : $this->assistant->choiceOptionsFor($request->input('form'), $next, $known, $language),
+            // Whether tapping one of them is the whole answer, or one of
+            // several the member is gathering before they say they are done.
+            'multiple' => $next !== null && $this->assistant->takesSeveral($request->input('form'), $next, $known),
             // Whether the app should offer Skip at all. The field that decides
             // the shape of the form cannot be passed over, and offering the
             // button anyway meant pressing it brought the same question
@@ -163,6 +211,114 @@ class VoiceController extends Controller
             'skippable' => $next === null || $this->assistant->skippable($request->input('form'), $next, $known),
             'language' => $language,
             'done' => $next === null,
+        ]);
+    }
+
+    /**
+     * A choice tapped rather than spoken.
+     *
+     * The questions that offer a list already show what may be said. Saying it
+     * is the long way round: the recording goes to Whisper, the words go to a
+     * model, and the model works out that "रहने की जगह" means `accommodation` —
+     * three seconds and two calls to learn something the member had already
+     * pointed at. It is also the one path where the mis-hearing happens, and
+     * there is nothing to mis-hear in a tap.
+     *
+     * So nothing is heard here and no model is called. The value is checked
+     * against what the field itself offers and written, and the next question
+     * comes back exactly as it does after a spoken answer, so the conversation
+     * reads as one conversation however each answer arrived.
+     */
+    public function choose(Request $request): JsonResponse
+    {
+        $provider = Auth::user()?->serviceProvider;
+        if (! $provider) {
+            return response()->json(['error' => 'This account has no provider profile.'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'form' => 'required|in:' . implode(',', $this->assistant->forms()),
+            'field' => 'required|string|max:60',
+            // One word, or a list of them. A box that takes several is
+            // answered once, when the member has finished choosing: every tap
+            // before that is the app's business and costs nothing.
+            'value' => 'required',
+            'value.*' => 'string|max:200',
+            'known' => 'nullable|array',
+            'skipped' => 'nullable|array',
+            'skipped.*' => 'string|max:60',
+            'language' => 'nullable|in:hi,en',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        if ($refusal = $this->refuseForm($provider, $request->input('form'))) {
+            return $refusal;
+        }
+
+        $language = $request->input('language') === 'en' ? 'en' : 'hi';
+
+        $chosen = $request->input('value');
+        if (! is_array($chosen) && ! is_string($chosen)) {
+            return response()->json(['error' => 'That choice could not be read.'], 422);
+        }
+        if (is_array($chosen)) {
+            $chosen = array_values(array_filter(
+                array_map(fn ($one) => is_scalar($one) ? trim((string) $one) : '', $chosen),
+                fn ($one) => $one !== '',
+            ));
+
+            if ($chosen === []) {
+                return response()->json([
+                    'error' => $request->input('language') === 'en'
+                        ? 'Nothing was chosen.'
+                        : 'कुछ चुना नहीं गया।',
+                ], 422);
+            }
+        }
+
+        $result = $this->assistant->chose(
+            $request->input('form'),
+            (array) $request->input('known', []),
+            (array) $request->input('skipped', []),
+            (string) $request->input('field'),
+            $chosen,
+            $language,
+        );
+
+        // Either the box does not belong to this form as it now stands, or the
+        // value is not one it offers. Both mean the app and the portal have
+        // drifted apart, and the member is told plainly rather than watching
+        // a tap do nothing.
+        if (! ($result['ok'] ?? false)) {
+            return response()->json([
+                'error' => $language === 'hi'
+                    ? 'यह विकल्प इस डिब्बे के लिए नहीं है। बोलकर बताइए, या फ़ॉर्म में खुद चुन लीजिए।'
+                    : 'That choice does not belong to this box. Say it instead, or pick it on the form yourself.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            // Nothing was heard, so there is nothing to show them as heard.
+            // The app puts the chip's own word up as what they answered.
+            'transcript' => null,
+            'language' => $language,
+            'fields' => (object) $result['fields'],
+            'reply' => $result['reply'],
+            'asked' => $result['asked'],
+            'label' => $result['label'],
+            'choices' => $result['choices'],
+            'multiple' => $result['multiple'],
+            'skippable' => $result['skippable'],
+            'guidance' => $result['guidance'],
+            'passed' => $result['passed'],
+            'rejected' => [],
+            'note' => null,
+            'stage' => 'form',
+            'done' => $result['done'],
         ]);
     }
 
@@ -196,11 +352,16 @@ class VoiceController extends Controller
             // rather than kept here: a conversation that lives on the server is
             // a conversation that has to be expired, resumed and cleaned up.
             'known' => 'nullable|array',
-            // Absent on the first answer, which is the one that settles it.
-            // Sent on every answer after that, so the assistant keeps speaking
-            // the language the member asked for even when a reply of theirs is
-            // short enough to be mistaken for the other one.
+            // Taken if it is sent and ignored if it is not: a recording
+            // answers this question by itself. It is still accepted because
+            // the other two doors, Skip and a tapped choice, have no recording
+            // to read and go on the last answer instead.
             'language' => 'nullable|in:hi,en',
+            // The first answer of all, given to "shall we start?". It is read
+            // for its language and for nothing else: "haan" is not the name of
+            // anybody's homestay, and putting it in front of a model would
+            // spend a call to be told so.
+            'ready' => 'nullable|boolean',
             // Fields the member has passed over. Sent every turn alongside
             // `known`, for the same reason: nothing about this conversation
             // lives on the server.
@@ -253,144 +414,169 @@ class VoiceController extends Controller
         }
 
         $file = $request->file('audio');
-
-        // On the first answer nothing is named: that answer IS the choice of
-        // language, and it could come in either. From then on the recording is
-        // read as the language the member asked for — it is markedly more
-        // accurate for not having to guess, about four times faster, and it
-        // means what they see written back are their own words rather than a
-        // translation they never said.
-        //
-        // Turning that into English is a separate step, done where the fields
-        // are read out of it: a listing is kept in English wherever it came
-        // from, so a homestay described in Hindi is still recorded as
-        // "Pradeep Homestay".
-        $chosen = $request->input('language');
         $audio = (string) file_get_contents($file->getRealPath());
         $name = 'turn.' . ($file->guessExtension() ?: 'm4a');
 
-        if ($chosen) {
-            // No language is suggested, and that is a change: it used to be
-            // told which tongue to expect, which is faster and more accurate.
-            // The cost was that a member who chose English and then spoke Hindi
-            // had it TRANSLATED and filed as though they had said it in
-            // English. Whisper does that quietly and there is no way to notice
-            // afterwards — asked to read English audio as Hindi it answered
-            // "language: Hindi" with the English text untouched, so the field
-            // it returns is the hint echoed back, not what it heard (proved
-            // 2026-09-09). Unhinted, it reports the tongue correctly, and that
-            // is the only way to catch the mismatch at all.
-            $heard = $this->groq->transcribe($audio, $name);
-            $language = $chosen;
+        // Nothing is chosen and nothing is hinted.
+        //
+        // A member used to be asked, before the form, which language they
+        // wanted, and then held to it: an English sentence on a Hindi form was
+        // turned away and had to be said again. Both halves of that were
+        // wrong. People here put the two languages in one breath, so "double
+        // room AC ke saath" is how somebody actually talks, not a mistake; and
+        // ten minutes into a form nobody remembers what they picked at the
+        // start, so being refused reads as the thing being broken. A member
+        // said "I am Pradeep" to a form that had been set to Hindi and was
+        // sent away.
+        //
+        // Nothing is hinted to Whisper either, and that is older: told which
+        // language to expect, it echoes the hint back as its answer instead of
+        // reporting what it heard (proved 2026-09-09), and English audio read
+        // "as Hindi" came back as untouched English labelled Hindi. So it is
+        // asked cold, every time.
+        $heard = $this->groq->transcribe($audio, $name);
+        $text = trim((string) ($heard['text'] ?? ''));
 
-            $spoke = match (strtolower((string) ($heard['language'] ?? ''))) {
-                'hindi', 'hi' => 'hi',
-                'english', 'en' => 'en',
-                default => null,
-            };
+        // A reading in some third alphabet is not an answer, it is a
+        // misreading. This member's plain Hindi has come back as Russian in
+        // Cyrillic, as Urdu in Arabic script, and once as the Korean for the
+        // word "Hindi". Read it once more, told that it is Hindi, because
+        // that is what the speech has been every single time this happened.
+        //
+        // Transcription is counted in audio seconds, not in the tokens the
+        // day's allowance is made of, so the second reading costs nothing
+        // that anybody else needs.
+        $foreign = fn (string $t) => (bool) preg_match(
+            '/[^\p{Latin}\p{Devanagari}\p{Common}\p{Inherited}]/u', $t);
 
-            // The two directions are not alike, so they are not judged alike.
-            //
-            // Devanagari on an English form settles it: nobody types or speaks
-            // देवनागरी by accident, however short. "मुझे नहीं पता" is three
-            // words and got through a rule that asked for four.
-            //
-            // The other way round is genuinely uncertain. A member speaking
-            // Hindi answers "Innova", "double room", "AC" — English words every
-            // one, written in Latin, and a short answer of that kind reads as
-            // English however it was meant. Turning those away would make the
-            // assistant unusable for the way people here actually speak, so on
-            // a Hindi form only a whole sentence of English is turned back.
-            $text = trim((string) ($heard['text'] ?? ''));
+        if ($text !== '' && $foreign($text)) {
+            $again = $this->groq->transcribe($audio, $name, ['language' => 'hi']);
+            $rescued = trim((string) ($again['text'] ?? ''));
 
-            // Not Devanagari, which is what this looked for at first: Whisper
-            // wrote a member's "नहीं" as "نہیں" and called it Urdu, and the
-            // check let it straight through. Any script but the Latin one
-            // settles it the same way, whichever script it happens to be.
-            $foreign = (bool) preg_match('/[^\p{Latin}\p{Common}\p{Inherited}]/u', $text);
-            $words = count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: []);
+            Log::info('[voice] read again for the script', [
+                'first' => $text,
+                'second' => $rescued,
+                'kept' => $rescued !== '' && ! $foreign($rescued) ? 'second' : 'neither',
+            ]);
 
-            // On an English form a foreign script is enough on its own, and it
-            // does not matter what Whisper called the language: Urdu, Hindi,
-            // Nepali are all "not the English this form is set to". That is why
-            // the script is tested before $spoke, which was null for Urdu and
-            // let the whole check fall through.
-            $mismatch = $heard && ($chosen === 'en'
-                ? ($foreign || ($spoke === 'hi' && $words > 3))
-                : ($spoke === 'en' && $words > 3));
-
-            if ($mismatch) {
+            if ($rescued !== '' && ! $foreign($rescued)) {
+                $heard = $again;
+                $text = $rescued;
+            } else {
+                // Still not a script anybody here writes in. Better to say so
+                // than to write it into somebody's listing.
                 return response()->json([
-                    'error' => $chosen === 'hi'
-                        ? 'यह फ़ॉर्म हिंदी पर है, पर यह अंग्रेज़ी में लगा। हिंदी में बोलिए, या फ़ॉर्म में खुद भर लीजिए।'
-                        : 'This form is set to English, but that sounded like Hindi. Say it in English, or fill this in on the form yourself.',
+                    'error' => 'That did not come through. Say it again, or fill this in yourself.',
                     'transcript' => null,
                 ], 422);
             }
-        } else {
-            // Nothing is suggested to Whisper here, and that is deliberate.
-            // Naming the expected answers does make it better at a single
-            // half-second word, but a suggestion offered to silence comes
-            // straight back as the answer — thirty seconds of an empty room
-            // returned "English." and chose a language nobody had spoken, and
-            // so did a Hindi sentence that named no language at all.
-            // Written down in the Latin alphabet, because both answers are
-            // English words — "Hindi" and "English" — whichever language the
-            // member speaks. Left to choose a script for one half-second word
-            // with nothing around it, Whisper decided it was Korean and wrote
-            // 힌디, which is that word, correctly heard and unusable. It is the
-            // script that is being fixed here, not the language: a member
-            // saying हिंदी still comes back as "Hindi".
-            $heard = $this->groq->transcribe($audio, $name, ['language' => 'en']);
-            $language = $heard ? $this->assistant->languageFrom($heard['text']) : null;
         }
 
-        if (! $heard) {
+        if (! $heard || $text === '') {
             // Silence, a room too loud to hear over, or the service being down.
             // The member is told plainly, and the form is left exactly as it
-            // was — an assistant that cannot hear must not also guess.
+            // was - an assistant that cannot hear must not also guess.
             return response()->json([
                 'error' => 'That did not come through. Try again, or fill this in yourself.',
                 'transcript' => null,
             ], 422);
         }
 
-        // The first answer is not about the form at all: it is which language
-        // to hold the conversation in. Only once that is settled does the
-        // assistant start asking about rooms and prices.
-        $settling = $chosen === null;
+        // Read off what they actually said, not off what they once chose.
+        // Whisper's own label is not used for this: it is an opinion, and the
+        // script in front of us is evidence.
+        $language = $this->assistant->tongueOf($text);
 
-        // Hindi or English, and nothing else. If neither was named the answer
-        // is put back rather than guessed at: taking the language Whisper
-        // thought it heard is how a member who said "Hindi" — written down as
-        // "In the." — spent the rest of the form being asked in English.
+        // One or two words do not change the language of a conversation.
         //
-        // Nothing about the form is touched, no model is called, and the same
-        // question comes round with a word about why.
-        if ($settling && $language === null) {
+        // A member speaking Hindi answers "Innova", "double room", "AC" - all
+        // English words, and every one of them would otherwise turn the next
+        // question English on somebody who has been speaking Hindi throughout.
+        // It takes a sentence to be taken as a change of language, or an
+        // asking, which is the next thing checked.
+        $words = count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: []);
+        $before = $request->input('language');
+
+        if ($before !== null && $words <= 3) {
+            $language = $before;
+        }
+
+        // And a member who asks, in so many words, to be spoken to in the
+        // other one. Asked in English - "speak in Hindi, please" - that is an
+        // English sentence by every other measure, so nothing but this would
+        // catch it.
+        $known = (array) $request->input('known', []);
+        $form = $request->input('form');
+        $asked = $this->assistant->nextField($form, $known, (array) $request->input('skipped', []));
+        $asking = $this->assistant->switchRequest($text, $form, $asked, $known);
+
+        if ($asking !== null) {
+            // Nothing is written and no model is called: they were talking
+            // about the conversation, not about their rooms. The same question
+            // comes round again in the language they asked for.
+            $ahead = $this->assistant->walk($form, $known, (array) $request->input('skipped', []), $asking);
+            $next = $ahead['next'];
+
             return response()->json([
                 'success' => true,
-                'transcript' => $heard['text'],
-                'language' => null,
+                'transcript' => $text,
+                'language' => $asking,
                 'fields' => (object) [],
-                'reply' => trim((string) Setting::getValue('voice_language_question', '')) ?: null,
-                'asked' => null,
-                'label' => null,
-                'choices' => null,
-                'skippable' => false,
+                'reply' => trim($this->assistant->switchedTo($asking) . ' '
+                    . ($next === null ? '' : $this->assistant->questionFor($form, $next, $asking, $known))),
+                'asked' => $next,
+                'label' => $next === null ? null : $this->assistant->labelFor($form, $next, $known),
+                'choices' => $next === null ? null : $this->assistant->choiceOptionsFor($form, $next, $known, $asking),
+                'multiple' => $next !== null && $this->assistant->takesSeveral($form, $next, $known),
+                'skippable' => $next === null || $this->assistant->skippable($form, $next, $known),
+                'guidance' => $ahead['guidance'],
+                'passed' => $ahead['passed'],
                 'rejected' => [],
-                'stage' => 'language',
-                'note' => 'I did not catch that. Please say Hindi, or English.',
-                'done' => false,
+                'note' => null,
+                'stage' => 'form',
+                'done' => $next === null,
+            ]);
+        }
+
+        Log::info('[voice] heard', [
+            'text' => $text,
+            'whisper_said' => $heard['language'] ?? null,
+            'taken_as' => $language,
+            'form' => $request->input('form'),
+            'asked_before' => array_keys((array) $request->input('known', [])),
+        ]);
+
+        // They were answering "shall we start?", so this settles the language
+        // and nothing else. No model is called and nothing is written: the
+        // first question simply comes back in the tongue they used.
+        if ($request->boolean('ready')) {
+            $ahead = $this->assistant->walk($form, $known, (array) $request->input('skipped', []), $language);
+            $next = $ahead['next'];
+
+            return response()->json([
+                'success' => true,
+                'transcript' => $text,
+                'language' => $language,
+                'fields' => (object) [],
+                'reply' => $next === null ? null : $this->assistant->questionFor($form, $next, $language, $known),
+                'asked' => $next,
+                'label' => $next === null ? null : $this->assistant->labelFor($form, $next, $known),
+                'choices' => $next === null ? null : $this->assistant->choiceOptionsFor($form, $next, $known, $language),
+                'multiple' => $next !== null && $this->assistant->takesSeveral($form, $next, $known),
+                'skippable' => $next === null || $this->assistant->skippable($form, $next, $known),
+                'guidance' => $ahead['guidance'],
+                'passed' => $ahead['passed'],
+                'rejected' => [],
+                'note' => null,
+                'stage' => 'form',
+                'done' => $next === null,
             ]);
         }
 
         $result = $this->assistant->turn(
             $request->input('form'),
             (array) $request->input('known', []),
-            // Nothing they said while choosing a language is an answer about
-            // the form — "Hindi" is not the name of their homestay.
-            $settling ? '' : $heard['text'],
+            $text,
             $language,
             (array) $request->input('skipped', []),
         );
@@ -422,8 +608,19 @@ class VoiceController extends Controller
             'label' => $result['label'],
             // What they may choose from, when the field takes one of HCT's
             // own list values. Shown under the question so a member is not
-            // guessing at wording the portal will only reject.
-            'choices' => $result['choices'],
+            // guessing at wording the portal will only reject, and tappable,
+            // which is why each one carries the value as well as the word.
+            'choices' => $result['asked'] === null ? null : $this->assistant->choiceOptionsFor(
+                $request->input('form'),
+                $result['asked'],
+                $result['fields'] + (array) $request->input('known', []),
+                $language,
+            ),
+            'multiple' => $result['asked'] !== null && $this->assistant->takesSeveral(
+                $request->input('form'),
+                $result['asked'],
+                $result['fields'] + (array) $request->input('known', []),
+            ),
             'skippable' => $result['asked'] === null
                 || $this->assistant->skippable($request->input('form'), $result['asked'], (array) $request->input('known', [])),
             // What was heard but could not be used — a room type that is not on

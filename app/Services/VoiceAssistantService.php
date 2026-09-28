@@ -1377,45 +1377,147 @@ class VoiceAssistantService
     }
 
     /**
-     * Which language a member just asked to speak in, or null if they did not.
+     * Which tongue an answer was given in: 'hi' or 'en', and never a third.
      *
-     * Two languages are on offer and no third is accepted. Reading the answer
-     * loosely would be the wrong kindness here: it is the first thing asked,
-     * and getting it wrong holds the whole conversation in a language the
-     * member did not choose. So the word itself has to be there.
+     * Nobody is asked to choose any more. A member used to be asked, before
+     * the form, which language they wanted, and was then held to it - an
+     * English sentence on a Hindi form was turned away and had to be said
+     * again. Two things were wrong with that. People here put the two
+     * languages in one breath, so "double room AC ke saath" is not a mistake
+     * to be corrected; and ten minutes into a form nobody remembers what they
+     * picked at the start, so being refused reads as the thing being broken.
      *
-     * It is matched forgivingly, though, because the answer is one word of
-     * half a second and the transcription of it wobbles — a member saying
-     * हिंदी has come back as "इन्दी" and as "हिन्नी", and both plainly mean
-     * Hindi. What is not accepted is an answer with neither language in it:
-     * "In the.", which is what a mis-heard word looks like, once settled the
-     * conversation into English nobody asked for.
+     * So every answer is read as it comes, and the next question is put in the
+     * tongue that answer was in. Switch mid-form and the assistant switches
+     * with you.
      *
-     * @param  string  $said  The transcript of their answer.
+     * The script decides it, not the label Whisper puts on the recording.
+     * Asked to read this project's members, it has answered Russian, Urdu and
+     * Korean on separate days, all of them plain Hindi. What it WRITES is the
+     * evidence; what it CALLS the language is an opinion.
+     *
+     * Hindi written in English letters counts as Hindi, which is how most
+     * people here type and a fair number speak. It takes two of these words to
+     * settle it: one could be a name, a place, or a word English has taken.
+     * Where there is doubt the answer is English, because an English question
+     * put to a Hindi speaker is read easily enough, and the other way round is
+     * not.
      */
-    public function languageFrom(string $said): ?string
+    public function tongueOf(?string $said): string
     {
-        // Punctuation and spacing carry nothing here and vary with every
-        // transcription of the same word. Marks are kept along with letters:
-        // in Devanagari the vowel signs ARE the word, and stripping them
-        // leaves हिंदी as हद, which matches nothing.
-        $text = preg_replace('/[^\p{L}\p{M}]+/u', '', mb_strtolower($said)) ?? '';
+        $text = trim((string) $said);
+        if ($text === '') {
+            return 'en';
+        }
 
-        foreach (['हिंद', 'हिन', 'इन्द', 'इंद', 'hind'] as $stem) {
-            if (mb_strpos($text, $stem) !== false) {
+        if (preg_match('/\p{Devanagari}/u', $text)) {
+            return 'hi';
+        }
+
+        $hits = 0;
+        foreach (self::HINDI_IN_ENGLISH_LETTERS as $word) {
+            if (preg_match('/\b' . preg_quote($word, '/') . '\b/iu', $text)) {
+                $hits++;
+                if ($hits >= 2) {
+                    return 'hi';
+                }
+            }
+        }
+
+        return 'en';
+    }
+
+    /**
+     * A member asking, in words, to be spoken to in the other language.
+     *
+     * Reading the language off each answer covers somebody who simply starts
+     * speaking English. It does not cover somebody who says, in English,
+     * "please speak in Hindi" - read for its own language that is an English
+     * sentence, and they would go on being answered in English by a system
+     * that had just been asked not to.
+     *
+     * Only an asking counts. A language named inside an answer is an answer:
+     * a guide asked which languages they work in says "Hindi and English",
+     * and switching the conversation because of it would be absurd. So the
+     * field being asked about is handed in, and one that is itself about
+     * languages never switches anything.
+     *
+     * It also has to be short. "I learnt Hindi in Shimla and guide in it" is
+     * about them, not about this conversation.
+     *
+     * @return 'hi'|'en'|null
+     */
+    public function switchRequest(string $said, string $form = '', ?string $field = null, array $known = []): ?string
+    {
+        $text = trim($said);
+        if ($text === '') {
+            return null;
+        }
+
+        $words = count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: []);
+        if ($words > 6) {
+            return null;
+        }
+
+        // A box that collects languages is answered with language names.
+        if ($field !== null && $form !== '') {
+            $spec = $this->specFor($form, $field, $known);
+            $list = (string) ($spec['list'] ?? '');
+            if (str_contains($list, 'language')) {
+                return null;
+            }
+        }
+
+        // Asked for, not merely mentioned: there has to be a word about
+        // speaking or switching beside the name of the language.
+        $asking = '/(bol|बोल|baat|बात|kah|कह|speak|say|talk|switch|change|badal|बदल|me|में|mein|in|par|पर|please|plz|kripya|कृपया)/iu';
+        if (! preg_match($asking, $text)) {
+            return null;
+        }
+
+        foreach (['हिंद', 'हिन्द', 'हिन', 'hindi', 'hindee'] as $stem) {
+            if (mb_stripos($text, $stem) !== false) {
                 return 'hi';
             }
         }
-        foreach (['english', 'ingli', 'इंग्ल', 'इंगल', 'अंग्रे', 'angre', 'angrej'] as $stem) {
-            if (mb_strpos($text, $stem) !== false) {
+        foreach (['english', 'angrez', 'अंग्रे', 'इंग्ल', 'ingli'] as $stem) {
+            if (mb_stripos($text, $stem) !== false) {
                 return 'en';
             }
         }
 
-        // Neither language was named. They are asked again rather than being
-        // given one of the two at a guess.
         return null;
     }
+
+    /**
+     * What is said when the conversation changes language at their request.
+     *
+     * Said in the language they have just moved to, because the first thing
+     * they should hear in it is that it worked.
+     */
+    public function switchedTo(string $language): string
+    {
+        return $language === 'hi'
+            ? 'ठीक है, अब हिंदी में।'
+            : 'Of course, English it is.';
+    }
+
+    /**
+     * Words that mark Hindi written in English letters.
+     *
+     * Only ones that are not also English. "do", "me", "par" and "main" all
+     * are, and every one of them would have read a plain English sentence as
+     * Hindi.
+     */
+    private const HINDI_IN_ENGLISH_LETTERS = [
+        'hai', 'hain', 'nahi', 'nahin', 'mera', 'meri', 'mere', 'aap', 'aapka',
+        'aapke', 'kitna', 'kitne', 'kitni', 'kamra', 'kamre', 'jagah', 'khana',
+        'nashta', 'gaadi', 'gadi', 'aur', 'hum', 'bhi', 'karta', 'karte',
+        'karti', 'wala', 'wali', 'thoda', 'bahut', 'achha', 'accha', 'sirf',
+        'teen', 'chaar', 'paanch', 'raat', 'din', 'log', 'lekin', 'kyunki',
+        'yahan', 'wahan', 'apna', 'apne', 'humare', 'hamare', 'rehne', 'dete',
+        'deta', 'milta', 'milte', 'hota', 'hote', 'liye', 'saath', 'baad',
+    ];
 
     /**
      * The question that belongs to a field, in the language being spoken.
@@ -2395,6 +2497,147 @@ class VoiceAssistantService
         return isset($spec['only']) && isset($spec['words'][$tongue])
             ? array_values($spec['words'][$tongue])
             : null;
+    }
+
+    /**
+     * The same choices, each carrying what the form actually stores.
+     *
+     * choicesFor() answers with words to be read: "रहने की जगह", "A place to
+     * stay". The column holds `accommodation`. That difference never mattered
+     * while the only thing a member could do with a choice was say it out
+     * loud, because what they said went through the model, which knows the
+     * codes. A tap does not go through the model, so the app has to be handed
+     * both halves: what to show, and what to send back.
+     *
+     * Where a field's values are HCT's own list, the two halves are the same
+     * string and are still sent as a pair, so the app has one shape to read
+     * rather than two.
+     *
+     * @return array<int, array{label: string, value: string}>|null
+     */
+    public function choiceOptionsFor(string $form, string $field, array $known = [], ?string $language = null): ?array
+    {
+        $spec = $this->specFor($form, $field, $known);
+        $tongue = $language === 'hi' ? 'hi' : 'en';
+
+        if (isset($spec['list']) || isset($spec['source'])) {
+            $allowed = $this->allowedFor($spec);
+
+            return $allowed
+                ? array_map(fn ($value) => ['label' => (string) $value, 'value' => (string) $value], $allowed)
+                : null;
+        }
+
+        if (($spec['type'] ?? '') === 'bool') {
+            // 'yes' and 'no' rather than true and false: keepValid() reads
+            // both, and a string survives a journey through JSON and back
+            // without turning into 1 and 0 on the way.
+            return $tongue === 'hi'
+                ? [['label' => 'हाँ', 'value' => 'yes'], ['label' => 'नहीं', 'value' => 'no']]
+                : [['label' => 'Yes', 'value' => 'yes'], ['label' => 'No', 'value' => 'no']];
+        }
+
+        if (! isset($spec['only'])) {
+            return null;
+        }
+
+        // Written side by side in the schema, so they are paired by position.
+        // A list that has drifted out of step would put the wrong code behind
+        // a word, which is worse than showing nothing, so where there is no
+        // word the code itself is shown. ak_voice_choices.php holds them level.
+        $values = array_values($spec['only']);
+        $words = array_values($spec['words'][$tongue] ?? []);
+
+        return array_map(
+            fn ($i) => [
+                'label' => (string) ($words[$i] ?? $values[$i]),
+                'value' => (string) $values[$i],
+            ],
+            array_keys($values),
+        );
+    }
+
+    /**
+     * Whether this box takes several answers rather than one.
+     *
+     * Four boxes do, across the two forms: the languages a guide works in, the
+     * seasons an experience is best in, what a day of it includes, and what
+     * the other providers on it supply. Spoken, the difference never showed —
+     * a member says "Hindi, English and a bit of French" and the model hands
+     * back a list. Tapped, it is the whole interaction: one tap cannot mean
+     * "this one and I have finished" when the next tap might add another.
+     */
+    public function takesSeveral(string $form, string $field, array $known = []): bool
+    {
+        return ($this->specFor($form, $field, $known)['type'] ?? '') === 'multi';
+    }
+
+    /**
+     * A member tapping one of those choices, which is not a sentence.
+     *
+     * Everything else here goes through hearing and then a model, because
+     * everything else is talk. A tap is already the answer: the value is one
+     * the form itself offers, and reading it back to a model to find out what
+     * it means would spend a call, a second of their time and a slice of a
+     * shared daily allowance to arrive where it started.
+     *
+     * So this writes it and asks the next question. It still goes through
+     * keepValid(), which is what turns "Tirthan Valley" into the id the column
+     * holds and refuses anything the field does not offer — a tap should not
+     * be trusted further than a sentence merely because it came from a button.
+     *
+     * @return array{ok: bool, fields?: array, reply?: ?string, asked?: ?string,
+     *                label?: ?string, choices?: ?array, skippable?: bool,
+     *                guidance?: array, passed?: array, done?: bool}
+     */
+    public function chose(string $form, array $known, array $skipped, string $field, mixed $value, string $language): array
+    {
+        $checked = $this->keepValid($form, $known, [$field => $value], $field);
+
+        if (! array_key_exists($field, $checked['fields'])) {
+            return ['ok' => false];
+        }
+
+        $filled = $checked['fields'] + $known;
+
+        // The same sentence a spoken answer earns. A member who taps has just
+        // as much right to be told what went into which box, and hearing it
+        // the same way both times is how the two stop being two things.
+        $wrote = $language === 'hi'
+            ? 'मैंने ' . $this->labelFor($form, $field, $filled) . ' में '
+                . $this->spokenValue($form, $field, $checked['fields'][$field], $language, $filled) . ' लिख दिया है।'
+            : 'I have written ' . $this->spokenValue($form, $field, $checked['fields'][$field], $language, $filled)
+                . ' into ' . $this->labelFor($form, $field, $filled) . '.';
+
+        $ahead = $this->walk($form, $filled, $skipped, $language);
+        $next = $ahead['next'];
+
+        // Asked as it is written, not reworded by a model.
+        //
+        // Every other question here is put through phrase(), so that a member
+        // who hears the same box asked twice does not hear the same sentence
+        // twice. A tap does not repeat a question: it answers one and moves to
+        // the next box, which has its own words already. Sending it to a model
+        // anyway would spend a call and a second of their time to arrive at
+        // the sentence sitting beside the field - and the whole point of a tap
+        // is that it is instant and costs nothing.
+        $question = $next === null
+            ? null
+            : $this->questionFor($form, $next, $language, $filled);
+
+        return [
+            'ok' => true,
+            'fields' => $checked['fields'],
+            'reply' => trim($wrote . ($question ? ' ' . $question : '')),
+            'asked' => $next,
+            'label' => $next === null ? null : $this->labelFor($form, $next, $filled),
+            'choices' => $next === null ? null : $this->choiceOptionsFor($form, $next, $filled, $language),
+            'multiple' => $next !== null && $this->takesSeveral($form, $next, $filled),
+            'skippable' => $next === null || $this->skippable($form, $next, $filled),
+            'guidance' => $ahead['guidance'],
+            'passed' => $ahead['passed'],
+            'done' => $next === null,
+        ];
     }
 
     /**
