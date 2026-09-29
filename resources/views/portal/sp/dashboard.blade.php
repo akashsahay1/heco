@@ -21,97 +21,6 @@
             <span class="badge bg-{{ $provider->status === 'approved' ? 'success' : ($provider->status === 'pending' ? 'warning text-dark' : 'secondary') }} ms-1">{{ ucfirst($provider->status ?? 'pending') }}</span>
         </div>
 
-        {{-- Nothing below this point was touched. What follows is added above
-             it: the four figures and the row of actions the app opens on, so
-             that a partner meets the same dashboard whichever they use. --}}
-        {{-- Four figures, the ones the app opens on. Filled by the same
-             get_sp_dashboard the app calls, so the two cannot disagree. --}}
-        <div class="row g-2 mb-3" id="spSummary" hidden>
-            <div class="col-6 col-lg-3">
-                <div class="card h-100"><div class="card-body py-3">
-                    <div class="small text-muted">Bookings</div>
-                    <div class="fs-4 fw-semibold" id="sumBookings">-</div>
-                </div></div>
-            </div>
-            <div class="col-6 col-lg-3">
-                <div class="card h-100"><div class="card-body py-3">
-                    <div class="small text-muted">Next payout</div>
-                    <div class="fs-4 fw-semibold" id="sumPayout">-</div>
-                    <div class="small text-muted" id="sumPayoutDate"></div>
-                </div></div>
-            </div>
-            <div class="col-6 col-lg-3">
-                <div class="card h-100"><div class="card-body py-3">
-                    <div class="small text-muted">Earnings this month</div>
-                    <div class="fs-4 fw-semibold" id="sumEarnings">-</div>
-                    <div class="small text-muted" id="sumPeriod"></div>
-                </div></div>
-            </div>
-            <div class="col-6 col-lg-3">
-                <div class="card h-100"><div class="card-body py-3">
-                    <div class="small text-muted">Rating</div>
-                    <div class="fs-4 fw-semibold" id="sumRating">-</div>
-                </div></div>
-            </div>
-        </div>
-
-        {{-- Quick actions. Each one is gated the way the app gates its tabs:
-             a rate card belongs to an OSP, a listing to an HLH, a region to an
-             HRP. An action nobody can use is not drawn. --}}
-        <div class="d-flex flex-wrap gap-2 mb-4">
-            <a href="#availability" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-calendar-month"></i> Availability
-            </a>
-            @if($provider->suppliesServices())
-                <a href="{{ route('sp.pricing') }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-plus-circle"></i> Add rate
-                </a>
-            @endif
-            @if($provider->isHost())
-                <a href="{{ route('sp.experiences') }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-plus-circle"></i> Add experience
-                </a>
-            @endif
-            @if($provider->hasType('hrp'))
-                <a href="{{ route('sp.region') }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-map"></i> My region
-                </a>
-            @endif
-            <a href="#assignedTrips" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-signpost-split"></i> Bookings
-            </a>
-            <a href="#paymentSummary" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-cash-coin"></i> Payments
-            </a>
-        </div>
-
-        {{-- Asking HECO for help.
-             The app has had this from the start; on the website only a
-             traveller could ask, from inside their own journey. A partner had
-             no way to reach HECO from their own screens at all, which is the
-             one person most likely to need to. --}}
-        <div class="card mb-4">
-            <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                <h6 class="mb-0"><i class="bi bi-life-preserver"></i> Need a hand?</h6>
-                <button class="btn btn-sm btn-outline-secondary" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#spSupportBox">
-                    Ask HECO
-                </button>
-            </div>
-            <div class="collapse" id="spSupportBox">
-                <div class="card-body">
-                    <label class="form-label small text-muted">
-                        What do you need? Somebody at HECO will read this and come back to you.
-                    </label>
-                    <textarea class="form-control mb-2" id="spSupportMessage" rows="3"
-                        placeholder="A rate that will not save, a booking you did not expect, anything at all"></textarea>
-                    <button class="btn btn-sm sp-btn-primary" type="button" id="spSupportSend">
-                        <i class="bi bi-send"></i> Send
-                    </button>
-                </div>
-            </div>
-        </div>
-
         <div class="d-flex gap-2">
             @if($provider->isHost())
                 {{-- Experiences are authored by the hosts who run them. --}}
@@ -119,6 +28,102 @@
             @endif
             <a href="{{ route('sp.profile.edit') }}" class="btn btn-sm sp-btn-primary"><i class="bi bi-pencil-square"></i> Edit Profile</a>
             <a href="/home" class="btn btn-sm btn-outline-secondary"><i class="bi bi-house"></i> Home</a>
+        </div>
+    </div>
+
+    {{-- Under the header rather than inside it. What follows is what the app
+         opens on: the four figures, the row of actions, and a way to ask HECO
+         for help. --}}
+    {{-- Four figures, the ones the app opens on. Filled by the same
+         get_sp_dashboard the app calls, so the two cannot disagree. --}}
+    <div class="row g-2 mb-3" id="spSummary" hidden>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100"><div class="card-body py-3">
+                <div class="small text-muted">Bookings</div>
+                <div class="fs-4 fw-semibold" id="sumBookings">-</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100"><div class="card-body py-3">
+                <div class="small text-muted">Next payout</div>
+                <div class="fs-4 fw-semibold" id="sumPayout">-</div>
+                <div class="small text-muted" id="sumPayoutDate"></div>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100"><div class="card-body py-3">
+                <div class="small text-muted">Earnings this month</div>
+                <div class="fs-4 fw-semibold" id="sumEarnings">-</div>
+                <div class="small text-muted" id="sumPeriod"></div>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100"><div class="card-body py-3">
+                <div class="small text-muted">Rating</div>
+                <div class="fs-4 fw-semibold" id="sumRating">-</div>
+            </div></div>
+        </div>
+    </div>
+
+    {{-- Quick actions. Each one is gated the way the app gates its tabs:
+         a rate card belongs to an OSP, a listing to an HLH, a region to an
+         HRP. An action nobody can use is not drawn. --}}
+    <div class="d-flex flex-wrap gap-2 mb-4">
+        <a href="#availability" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-calendar-month"></i> Availability
+        </a>
+        @if($provider->suppliesServices())
+            <a href="{{ route('sp.pricing') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-plus-circle"></i> Add rate
+            </a>
+        @endif
+        @if($provider->isHost())
+            <a href="{{ route('sp.experiences') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-plus-circle"></i> Add experience
+            </a>
+        @endif
+        @if($provider->hasType('hrp'))
+            <a href="{{ route('sp.region') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-map"></i> My region
+            </a>
+        @endif
+        <a href="#assignedTrips" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-signpost-split"></i> Bookings
+        </a>
+        {{-- Only when there is a Payment Summary to jump to. That card is
+             drawn only for a partner who has been billed for something, so on
+             a new partner this was a button that did nothing at all. --}}
+        @if($provider->spPayments && $provider->spPayments->count())
+            <a href="#paymentSummary" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-cash-coin"></i> Payments
+            </a>
+        @endif
+    </div>
+
+    {{-- Asking HECO for help.
+         The app has had this from the start; on the website only a
+         traveller could ask, from inside their own journey. A partner had
+         no way to reach HECO from their own screens at all, which is the
+         one person most likely to need to. --}}
+    <div class="card mb-4">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-life-preserver"></i> Need a hand?</h6>
+            <button class="btn btn-sm btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#spSupportBox">
+                Ask HECO
+            </button>
+        </div>
+        <div class="collapse" id="spSupportBox">
+            <div class="card-body">
+                <label class="form-label small text-muted">
+                    What do you need? Somebody at HECO will read this and come back to you.
+                </label>
+                <textarea class="form-control mb-2" id="spSupportMessage" rows="3"
+                    placeholder="A rate that will not save, a booking you did not expect, anything at all"></textarea>
+                <button class="btn btn-sm sp-btn-primary" type="button" id="spSupportSend">
+                    <i class="bi bi-send"></i> Send
+                </button>
+            </div>
         </div>
     </div>
 
