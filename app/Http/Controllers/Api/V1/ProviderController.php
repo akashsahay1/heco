@@ -141,6 +141,11 @@ class ProviderController extends Controller
             // Optional extras alongside the rate — an extra bed, an airport
             // pickup. Uploaded files travel outside this list.
             'addons',
+            // Keeps a rate the member has not finished: no review, no
+            // trip can quote it, and the boxes it still wants come back
+            // in the answer. Not in this list it was dropped in silence
+            // and every draft from the app saved as a submission.
+            'as_draft',
         ]), $request); // forward uploaded `vehicle_photos[]` files
     }
 

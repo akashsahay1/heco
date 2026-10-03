@@ -5708,6 +5708,53 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         ];
 
         $rules = array_merge($baseRules, $rulesByType[$serviceType] ?? []);
+
+        // A draft is judged by shape, not by completeness.
+        //
+        // Every bound stays - a price that is not a number, or a description
+        // too long for its column, is wrong whether it is finished or not -
+        // and only the demand that a box be filled at all is lifted. Two are
+        // not lifted: whose rate this is, and which kind of service, because
+        // the second decides what the rest of the boxes even are.
+        //
+        // Derived from the rules themselves rather than listed again here. A
+        // second list would be a second thing to keep in step, and this is
+        // exactly where the two would drift.
+        if ($request->boolean('as_draft') && ! (Auth::user()?->isHct())) {
+            // Three columns cannot be empty whatever the rules say: whose rate
+            // it is, what kind of service, and the price. The first two a
+            // draft must have anyway - they are what it is. The price it may
+            // genuinely not know yet, so an unpriced draft is written as zero
+            // and reported as missing by whatARateStillNeeds(), which counts
+            // zero as not filled.
+            //
+            // Zero rather than a nullable column: a draft is invisible to
+            // every query that could quote it - HCT's queue names `pending`, a
+            // trip and a traveller name `approved` - so the figure is never
+            // read by anything, whereas a nullable price would put a null in
+            // front of every piece of arithmetic in the pricing engine.
+            if (! $request->filled('price')) {
+                $request->merge(['price' => 0]);
+            }
+
+            foreach ($rules as $field => $rule) {
+                if (in_array($field, ['provider_id', 'service_type'], true)) {
+                    continue;
+                }
+
+                $kept = array_values(array_filter(
+                    explode('|', (string) $rule),
+                    fn ($one) => ! str_starts_with($one, 'required'),
+                ));
+
+                if (! in_array('nullable', $kept, true)) {
+                    array_unshift($kept, 'nullable');
+                }
+
+                $rules[$field] = implode('|', $kept);
+            }
+        }
+
         $validator = Validator::make($request->all(), $rules);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -5791,8 +5838,31 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $user = Auth::user();
         $isAdmin = $user && $user->isHct();
 
+        // A rate the member has not finished.
+        //
+        // An experience has had Save draft from the start; a rate had nothing,
+        // so a supplier who knows the vehicle but not the price yet, or who is
+        // halfway through when somebody calls, loses the lot. A draft keeps
+        // what there is. It is not sent to HCT, it cannot be quoted on a trip,
+        // and the boxes it is missing are asked for when it is submitted.
+        //
+        // Not offered to HCT's own people: an admin's row is live the moment
+        // it is written, and a half-written live rate is the thing drafts
+        // exist to prevent.
+        $asDraft = $request->boolean('as_draft') && ! $isAdmin;
+
+
         if ($request->filled("id")) {
             $existing = SpPricing::findOrFail($request->id);
+
+            // A rate that is already live is not drafted. An edit to it goes
+            // to review as it always did: taking a published rate back into a
+            // half-finished state would quietly withdraw it from every trip
+            // being priced.
+            if ($existing->approval_status === 'approved') {
+                $asDraft = false;
+            }
+
             if ($isAdmin || $existing->approval_status !== 'approved') {
                 // Only a LIVE rate needs protecting from an edit. A row that is
                 // still pending, or was rejected, is edited where it stands -
@@ -5802,8 +5872,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 $row = $existing;
                 $row->update($isAdmin ? $data : array_merge($data, [
                     'is_active'       => false,
-                    'approval_status' => 'pending',
-                    'submitted_at'    => now(),
+                    'approval_status' => $asDraft ? 'draft' : 'pending',
+                    // A draft has not been submitted, so it carries no date
+                    // for it. Submitting the same row later fills this in.
+                    'submitted_at'    => $asDraft ? null : now(),
                     'submitted_by'    => $user->id,
                     'rejection_reason' => null,
                 ]));
@@ -5850,8 +5922,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             } else {
                 $row = SpPricing::create(array_merge($data, [
                     'is_active'        => false,
-                    'approval_status'  => 'pending',
-                    'submitted_at'     => now(),
+                    'approval_status'  => $asDraft ? 'draft' : 'pending',
+                    'submitted_at'     => $asDraft ? null : now(),
                     'submitted_by'     => $user->id,
                 ]));
             }
@@ -5869,7 +5941,58 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "success" => true,
             "row" => $row->load('addons'),
             "pending" => $row->approval_status === 'pending',
+            // So the screen can say which of the two just happened, and what
+            // is still missing before this one can be sent.
+            "draft" => $row->approval_status === 'draft',
+            "missing" => $row->approval_status === 'draft'
+                ? $this->whatARateStillNeeds($row)
+                : [],
         ]);
+    }
+
+    /**
+     * The boxes a draft rate must have before it can be sent for review.
+     *
+     * Named the way the form names them, because that is where the member
+     * will go to fill them in. Read off the same rules the save enforces, so
+     * the list cannot claim something the server does not ask for, or miss
+     * something it does.
+     *
+     * @return array<int, string>
+     */
+    private function whatARateStillNeeds(SpPricing $row): array
+    {
+        $labels = [
+            'price' => 'Rate', 'unit' => 'Unit', 'vehicle_type' => 'Vehicle type',
+            'comfort_tier' => 'Comfort tier', 'room_category' => 'Room category',
+            'total_rooms' => 'Total rooms', 'rental_item' => 'Item on rent',
+            'category' => 'Name', 'guide_type' => 'Guide type',
+        ];
+
+        $needed = match ($row->service_type) {
+            'accommodation' => ['comfort_tier', 'room_category', 'total_rooms', 'price'],
+            'transport' => ['vehicle_type', 'price', 'unit'],
+            'rental' => ['rental_item', 'price', 'unit'],
+            'guide', 'activity', 'other' => ['price', 'unit'],
+            default => ['price'],
+        };
+
+        $missing = [];
+        foreach ($needed as $field) {
+            $value = $row->{$field} ?? null;
+
+            // A price is cast to decimal, so an unfilled one comes back as
+            // "0.00" and not as 0: comparing to the integer missed it, and a
+            // draft with no price at all said its price was fine.
+            $empty = $value === null || $value === ''
+                || (is_numeric($value) && (float) $value === 0.0);
+
+            if ($empty) {
+                $missing[] = $labels[$field] ?? $field;
+            }
+        }
+
+        return $missing;
     }
 
     /** Tell HCT a rate is waiting on them. */

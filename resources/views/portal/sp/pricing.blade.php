@@ -589,7 +589,17 @@
         </div>
         </div> {{-- /.add-mode-single-only --}}
 
-        <button type="submit" class="btn sp-btn-primary w-100" id="spPriceSaveBtn"><i class="bi bi-check-lg me-1"></i> Save</button>
+        {{-- Save draft keeps an unfinished rate without sending it to HCT, the
+             way My Experiences already does. `formnovalidate` is what lets a
+             half-filled form be submitted at all: the browser's own required
+             marks would refuse it before any of this runs. --}}
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-outline-secondary" id="spPriceDraftBtn" formnovalidate
+                    title="Keep this without sending it for review. Nobody else sees a draft.">
+                <i class="bi bi-save me-1"></i> Save draft
+            </button>
+            <button type="submit" class="btn sp-btn-primary flex-grow-1" id="spPriceSaveBtn"><i class="bi bi-check-lg me-1"></i> Save</button>
+        </div>
     </form></div>
 </div></div></div>
 
@@ -849,6 +859,9 @@ jQuery(function() {
             });
             // ── Cell builders shared by grouped + flat rows ──
             function statusBadge(r) {
+                if (r.approval_status === 'draft') {
+                    return '<span class="badge bg-secondary ms-1" title="Not sent for review yet — only you can see this"><i class="bi bi-pencil-square me-1"></i>draft</span>';
+                }
                 if (r.approval_status === 'pending') {
                     var label = r.pending_for_id ? 'pending edit' : 'pending review';
                     return '<span class="badge bg-warning text-dark ms-1" title="Awaiting HCT admin approval — not yet visible to travellers"><i class="bi bi-hourglass-split me-1"></i>' + label + '</span>';
@@ -1009,6 +1022,11 @@ jQuery(function() {
     function fillPriceForm(r) {
         var $f = jQuery('#spPriceForm');
         $f[0].reset();
+        // A rate that is already live cannot be taken back to a draft - that
+        // would withdraw it from every trip being priced - so the button is
+        // not offered for one. The server refuses it too; this is so nobody
+        // presses a button that quietly does something else.
+        jQuery('#spPriceDraftBtn').toggleClass('d-none', !!(r && r.approval_status === 'approved'));
         $f.find('[name=id]').val(r ? r.id : '');
         var t = r ? r.service_type : 'accommodation';
         $f.find('[name=service_type]').val(t);
@@ -1100,6 +1118,9 @@ jQuery(function() {
         jQuery('.add-mode-single, .add-mode-single-only').toggleClass('d-none', mode !== 'single');
         var $btn = jQuery('#spPriceSaveBtn');
         $btn.html(mode === 'bulk' ? '<i class="bi bi-check-lg me-1"></i> Save All Rows' : '<i class="bi bi-check-lg me-1"></i> Save');
+        // Bulk mode writes a row per tier in one go; there is no one rate to
+        // leave half done, so the draft button has nothing to do there.
+        jQuery('#spPriceDraftBtn').toggleClass('d-none', mode === 'bulk');
     }
 
     function refreshBulkVisibility(serviceType, isEdit) {
@@ -1437,8 +1458,16 @@ jQuery(function() {
         });
     });
 
+    // Both buttons submit the form, so which one was pressed has to be
+    // remembered here: a submit event cannot say where it came from.
+    var savingAsDraft = false;
+    jQuery('#spPriceDraftBtn').on('click', function() { savingAsDraft = true; });
+
     jQuery('#spPriceForm').on('submit', function(e) {
         e.preventDefault();
+
+        var asDraft = savingAsDraft;
+        savingAsDraft = false;
 
         // BULK MODE — save each row sequentially.
         if (currentAddMode === 'bulk') {
@@ -1547,9 +1576,24 @@ jQuery(function() {
             data.unit     = jQuery(this).find('[name=unit_other]').val();
         }
 
-        ajaxPost(data, function() {
+        if (asDraft) data.as_draft = 1;
+
+        ajaxPost(data, function(resp) {
             bootstrap.Modal.getInstance(jQuery('#spPriceModal')[0]).hide();
             loadPricing();
+
+            if (resp && resp.draft) {
+                // Saying what is still wanted is the point of a draft: the
+                // member left it unfinished and needs to know what finishing
+                // it means.
+                showAlert('Saved as a draft. Nobody else can see it yet.'
+                    + (resp.missing && resp.missing.length
+                        ? ' Before it can go for review: ' + resp.missing.join(', ') + '.'
+                        : ' Everything needed is filled in, so you can submit it whenever you like.'),
+                    'info');
+                return;
+            }
+
             showAlert('Saved.', 'success');
         }, function(xhr) {
             showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Save failed') : 'Save failed', 'danger');
