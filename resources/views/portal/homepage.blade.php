@@ -148,6 +148,25 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                     {{-- RIGHT: Filters + Map --}}
                     <div class="discover-map-panel">
                         <div class="filter-bar">
+                            {{-- The search the catalogue has always been able to do.
+                                 get_experiences_for_discover has read a `search` word
+                                 from the start - names, short descriptions and types,
+                                 whole phrase and word by word, plurals stripped - but
+                                 no box on this page ever sent one, so a visitor
+                                 looking for a trek had to find it in the grid by eye.
+                                 It sits across the top because it is the one control
+                                 somebody reaches for first. --}}
+                            <div class="row g-2 mb-2">
+                                <div class="col-12">
+                                    <label class="form-label" for="filterSearch">Search</label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                        <input type="search" class="form-control form-control-sm" id="filterSearch"
+                                               placeholder="Name, description or type. Try trek, homestay, wellness"
+                                               autocomplete="off">
+                                    </div>
+                                </div>
+                            </div>
                             <div class="row g-2 align-items-end">
                                 <div class="col-lg-4 col-md-4 col-6">
                                     <label class="form-label">Continent</label>
@@ -1199,6 +1218,16 @@ jQuery(function() {
     jQuery('#clearFilters').on('click', function() {
         jQuery('#filterType, #filterDifficulty, #filterMonth').val('');
         jQuery('#filterContinent').val('');
+        // Country and Region are emptied here, before their lists are rebuilt.
+        //
+        // Those two rebuilds keep whatever was chosen if it is still on offer,
+        // which is what you want when somebody changes continent - a country
+        // they picked should survive. On Clear it was wrong: with the continent
+        // now empty every country is on offer again, so the old one was always
+        // still there and was always kept. Clear Filters left two filters set,
+        // and the catalogue stayed narrowed with nothing on screen to say why.
+        jQuery('#filterCountry, #filterRegion').val('');
+        jQuery('#filterSearch').val('');
         updateCountryOptions();
         updateRegionOptions();
         jQuery('.filter-bar select').each(function() { buildCustomDropdown(this); });
@@ -1210,6 +1239,28 @@ jQuery(function() {
 
         if (typeof map !== 'undefined') {
             map.setView([20, 60], 3);
+        }
+    });
+
+    // Typing is not a search on its own: somebody halfway through "homestay"
+    // would otherwise fetch the catalogue five times and see it jump about
+    // underneath them. A short pause after they stop, or Enter, or the
+    // crossing-out of the box, is when it runs.
+    var searchWait = null;
+    jQuery('#filterSearch').on('input', function() {
+        clearTimeout(searchWait);
+        searchWait = setTimeout(function() {
+            discoverPage = 1;
+            discoverHasMore = true;
+            loadExperiences(false);
+        }, 400);
+    }).on('keypress', function(e) {
+        if (e.which === 13) {
+            e.preventDefault();
+            clearTimeout(searchWait);
+            discoverPage = 1;
+            discoverHasMore = true;
+            loadExperiences(false);
         }
     });
 
@@ -1295,6 +1346,8 @@ jQuery(function() {
         if (jQuery('#filterType').val()) params.type = jQuery('#filterType').val();
         if (jQuery('#filterDifficulty').val()) params.difficulty = jQuery('#filterDifficulty').val();
         if (jQuery('#filterMonth').val()) params.month = jQuery('#filterMonth').val();
+        var words = (jQuery('#filterSearch').val() || '').trim();
+        if (words) params.search = words;
 
         if (!append) {
             allDiscoverExps = [];

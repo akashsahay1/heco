@@ -80,11 +80,27 @@ class Trip extends Model
         });
     }
 
+    /**
+     * The next trip number.
+     *
+     * Taken from the highest number in use, not from the newest row. Those are
+     * the same thing only while nothing is ever inserted out of order, and
+     * `trip_id` is unique: the moment the newest row is not the highest, this
+     * hands back a number that already exists and the insert fails. A trip
+     * created by hand is wrapped in a transaction with the traveller's account,
+     * so that failure would take the account down with it and leave somebody
+     * looking at a screen that did nothing.
+     *
+     * Read in SQL rather than by sorting strings, because 'HECO-T-0099' sorts
+     * above 'HECO-T-0100'.
+     */
     public static function generateTripId(): string
     {
-        $last = static::orderBy('id', 'desc')->first();
-        $num = $last ? (intval(substr($last->trip_id, -4)) + 1) : 1;
-        return 'HECO-T-' . str_pad($num, 4, '0', STR_PAD_LEFT);
+        $highest = (int) static::query()
+            ->selectRaw('MAX(CAST(RIGHT(trip_id, 4) AS UNSIGNED)) AS n')
+            ->value('n');
+
+        return 'HECO-T-' . str_pad($highest + 1, 4, '0', STR_PAD_LEFT);
     }
 
     public function user()
