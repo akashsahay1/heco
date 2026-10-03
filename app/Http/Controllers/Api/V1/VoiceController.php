@@ -7,7 +7,8 @@ use App\Services\GroqService;
 use App\Services\VoiceAssistantService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -93,6 +94,8 @@ class VoiceController extends Controller
         $ahead = $this->assistant->walk($form, $known, [], 'hi');
         $next = $ahead['next'];
 
+        $opening = $this->assistant->greetingFor($provider, $form, Auth::user(), $known);
+
         // The first question is not sent yet, only carried.
         //
         // Nobody has said a word, so there is nothing to read a language off,
@@ -106,12 +109,15 @@ class VoiceController extends Controller
         // be said hello to.
         return response()->json([
             'success' => true,
-            'greeting' => trim((string) Setting::getValue('voice_greeting', '')) ?: null,
+            // Put together from the hour, their name and whether they have
+            // done this before, rather than read off a setting. Sixty
+            // openings, and nothing for anybody to write or maintain.
+            'greeting' => $opening[0],
             // Said after the greeting and before anything is asked. Somebody
             // who has just pressed a button and heard a voice needs a moment
             // to answer, and their answer - whatever it is - is what settles
             // which language the rest of this is held in.
-            'ready' => trim((string) Setting::getValue('voice_ready_question', '')) ?: null,
+            'ready' => $opening[1],
             // Sent for the app that is already on somebody's phone.
             //
             // A build that predates the ready line reads this field and
@@ -318,6 +324,8 @@ class VoiceController extends Controller
             'rejected' => [],
             'note' => null,
             'stage' => 'form',
+            'asking_stop' => false,
+            'stopped' => false,
             'done' => $result['done'],
         ]);
     }
@@ -362,6 +370,9 @@ class VoiceController extends Controller
             // anybody's homestay, and putting it in front of a model would
             // spend a call to be told so.
             'ready' => 'nullable|boolean',
+            // Their answer to "shall I stop?". Read for yes or no and nothing
+            // else, so no model is called to hear one word.
+            'confirm_stop' => 'nullable|boolean',
             // Fields the member has passed over. Sent every turn alongside
             // `known`, for the same reason: nothing about this conversation
             // lives on the server.
@@ -434,6 +445,8 @@ class VoiceController extends Controller
         // reporting what it heard (proved 2026-09-09), and English audio read
         // "as Hindi" came back as untouched English labelled Hindi. So it is
         // asked cold, every time.
+        // Where the seconds actually go.
+        //
         $heard = $this->groq->transcribe($audio, $name);
         $text = trim((string) ($heard['text'] ?? ''));
 
@@ -453,10 +466,13 @@ class VoiceController extends Controller
             $again = $this->groq->transcribe($audio, $name, ['language' => 'hi']);
             $rescued = trim((string) ($again['text'] ?? ''));
 
+        // Worth knowing that the rescue fired and whether it helped, because a
+        // misread alphabet is a fault in the asking. What is deliberately not
+        // written down is either reading: a member's own sentences about their
+        // own business do not belong in a server log.
             Log::info('[voice] read again for the script', [
-                'first' => $text,
-                'second' => $rescued,
-                'kept' => $rescued !== '' && ! $foreign($rescued) ? 'second' : 'neither',
+                'kept' => $rescued !== '' && ! $foreign($rescued) ? 'the second reading' : 'neither',
+                'length' => mb_strlen($text),
             ]);
 
             if ($rescued !== '' && ! $foreign($rescued)) {
@@ -538,13 +554,93 @@ class VoiceController extends Controller
             ]);
         }
 
-        Log::info('[voice] heard', [
-            'text' => $text,
-            'whisper_said' => $heard['language'] ?? null,
-            'taken_as' => $language,
-            'form' => $request->input('form'),
-            'asked_before' => array_keys((array) $request->input('known', [])),
-        ]);
+        $standing = $asked;
+
+        // "Shall I stop?" has just been asked, and this is the answer to it.
+        //
+        // Read here rather than sent to a model: a yes is a yes in both
+        // tongues, nothing about the form turns on it, and a member who has
+        // said they want to leave should not wait three seconds to be let go.
+        if ($request->boolean('confirm_stop')) {
+            $yes = $this->assistant->saidYes($text);
+
+            if ($yes === true) {
+                return response()->json([
+                    'success' => true,
+                    'transcript' => $text,
+                    'language' => $language,
+                    'fields' => (object) [],
+                    'reply' => $language === 'hi'
+                        ? 'ठीक है, मैं बंद कर रही हूँ। जो भर चुका है वह फ़ॉर्म में है। जब भी लिस्टिंग करनी हो, माइक दबा दीजिए।'
+                        : 'All right, I am stopping. What we filled in is on the form. '
+                            . 'Whenever you want to carry on with the listing, tap the microphone.',
+                    'asked' => $standing,
+                    'label' => $standing === null ? null : $this->assistant->labelFor($form, $standing, $known),
+                    'choices' => null,
+                    'multiple' => false,
+                    'skippable' => true,
+                    'guidance' => [],
+                    'passed' => [],
+                    'rejected' => [],
+                    'note' => null,
+                    'stage' => 'form',
+                    'stopped' => true,
+                    'done' => false,
+                ]);
+            }
+
+            // Anything that is not a yes carries on. "नहीं", "carry on", or a
+            // word that was neither - all of them mean the form is still open,
+            // and the question that was standing is put again.
+            return response()->json([
+                'success' => true,
+                'transcript' => $text,
+                'language' => $language,
+                'fields' => (object) [],
+                'reply' => trim(($language === 'hi' ? 'ठीक है, चलते हैं। ' : 'Right, carrying on. ')
+                    . ($standing === null ? '' : (string) $this->assistant->questionFor($form, $standing, $language, $known))),
+                'asked' => $standing,
+                'label' => $standing === null ? null : $this->assistant->labelFor($form, $standing, $known),
+                'choices' => $standing === null ? null : $this->assistant->choiceOptionsFor($form, $standing, $known, $language),
+                'multiple' => $standing !== null && $this->assistant->takesSeveral($form, $standing, $known),
+                'skippable' => $standing === null || $this->assistant->skippable($form, $standing, $known),
+                'guidance' => [],
+                'passed' => [],
+                'rejected' => [],
+                'note' => null,
+                'stage' => 'form',
+                'stopped' => false,
+                'done' => false,
+            ]);
+        }
+
+        // A member saying they will do this another time, or asking it to
+        // stop. Nothing is written and no model is called: they are asked
+        // whether to stop, and the answer to that comes back with
+        // confirm_stop above.
+        if ($this->assistant->stopRequest($text, $form, $standing, $known)) {
+            return response()->json([
+                'success' => true,
+                'transcript' => $text,
+                'language' => $language,
+                'fields' => (object) [],
+                'reply' => $language === 'hi'
+                    ? 'क्या मैं अभी बंद कर दूँ? हाँ कहिए तो बंद कर देती हूँ।'
+                    : 'Shall I stop here? Say yes and I will.',
+                'asked' => $standing,
+                'label' => $standing === null ? null : $this->assistant->labelFor($form, $standing, $known),
+                'choices' => null,
+                'multiple' => false,
+                'skippable' => true,
+                'guidance' => [],
+                'passed' => [],
+                'rejected' => [],
+                'note' => null,
+                'stage' => 'form',
+                'asking_stop' => true,
+                'done' => false,
+            ]);
+        }
 
         // They were answering "shall we start?", so this settles the language
         // and nothing else. No model is called and nothing is written: the

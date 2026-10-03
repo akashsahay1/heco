@@ -2,7 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\Experience;
+use App\Models\ServiceProvider;
+use App\Models\SpPricing;
 use App\Models\SystemList;
+use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -127,10 +132,10 @@ class VoiceAssistantService
                 'category' => ['label' => 'Property name', 'ask' => 'what their place is called', 'q' => ['hi' => 'आपकी जगह का नाम क्या है?', 'en' => 'What is your place called?'], 'type' => 'string'],
                 // asked_only: how good the rooms are is not something the word
                 // "homestay" settles. See mineAgain().
-                'comfort_tier' => ['label' => 'Comfort tier', 'ask' => 'what sort of place it is', 'q' => ['hi' => 'यह किस तरह की जगह है?', 'en' => 'What sort of place is it?'], 'type' => 'string', 'list' => 'accommodation_category', 'asked_only' => true],
-                'room_category' => ['label' => 'Room category', 'ask' => 'what kind of room they are pricing', 'q' => ['hi' => 'आप किस तरह के कमरे का दाम बता रहे हैं?', 'en' => 'Which kind of room are you pricing?'], 'type' => 'string', 'list' => 'room_category'],
-                'total_rooms' => ['label' => 'Total rooms', 'ask' => 'how many rooms of that kind they have', 'q' => ['hi' => 'ऐसे कितने कमरे हैं आपके पास?', 'en' => 'How many such rooms do you have?'], 'type' => 'int'],
-                'price' => ['label' => 'Rate per night (Rs)', 'ask' => 'what one room costs for a night', 'q' => ['hi' => 'एक रात का कितना लेते हैं?', 'en' => 'What do you charge for a night?'], 'type' => 'number'],
+                'comfort_tier' => ['label' => 'Comfort tier', 'ask' => 'what sort of place it is', 'q' => ['hi' => 'यह किस तरह की जगह है?', 'en' => 'What sort of place is it?'], 'type' => 'string', 'list' => 'accommodation_category', 'asked_only' => true, 'needed_to_send' => true],
+                'room_category' => ['label' => 'Room category', 'ask' => 'what kind of room they are pricing', 'q' => ['hi' => 'आप किस तरह के कमरे का दाम बता रहे हैं?', 'en' => 'Which kind of room are you pricing?'], 'type' => 'string', 'list' => 'room_category', 'needed_to_send' => true],
+                'total_rooms' => ['label' => 'Total rooms', 'ask' => 'how many rooms of that kind they have', 'q' => ['hi' => 'ऐसे कितने कमरे हैं आपके पास?', 'en' => 'How many such rooms do you have?'], 'type' => 'int', 'needed_to_send' => true],
+                'price' => ['label' => 'Rate per night (Rs)', 'ask' => 'what one room costs for a night', 'q' => ['hi' => 'एक रात का कितना लेते हैं?', 'en' => 'What do you charge for a night?'], 'type' => 'number', 'needed_to_send' => true],
                 'meal_plan' => ['label' => 'Meal plan', 'ask' => 'which meals are included in that price', 'q' => ['hi' => 'इस दाम में कौन सा खाना शामिल है?', 'en' => 'Which meals are included in that price?'], 'type' => 'string', 'list' => 'meal_plan'],
                 'default_occupancy' => ['label' => 'Default occupancy', 'ask' => 'whether the room is normally sold as a single, a double, and so on', 'q' => ['hi' => 'यह कमरा आम तौर पर किस हिसाब से दिया जाता है: सिंगल, डबल या कोई और?', 'en' => 'How is this room normally sold: as a single, a double, or something else?'], 'type' => 'string', 'list' => 'room_occupancy'],
                 // Nobody says their own coordinates aloud, and a misheard
@@ -169,7 +174,7 @@ class VoiceAssistantService
             ],
             'transport' => [
                 'category' => ['label' => 'Vehicle name', 'ask' => 'what to call this vehicle on their rate card', 'q' => ['hi' => 'इस गाड़ी को रेट कार्ड पर क्या नाम दें?', 'en' => 'What should this vehicle be called on your rate card?'], 'type' => 'string'],
-                'vehicle_type' => ['label' => 'Vehicle type', 'ask' => 'what kind of vehicle it is', 'q' => ['hi' => 'गाड़ी कौन सी है?', 'en' => 'What kind of vehicle is it?'], 'type' => 'string', 'list' => 'vehicle_type'],
+                'vehicle_type' => ['label' => 'Vehicle type', 'ask' => 'what kind of vehicle it is', 'q' => ['hi' => 'गाड़ी कौन सी है?', 'en' => 'What kind of vehicle is it?'], 'type' => 'string', 'list' => 'vehicle_type', 'needed_to_send' => true],
                 'vehicle_make_model' => ['label' => 'Make & model', 'ask' => 'the make and model of the vehicle', 'q' => ['hi' => 'गाड़ी का मेक और मॉडल क्या है?', 'en' => 'What is the make and model of the vehicle?'], 'type' => 'string'],
                 // Letters and digits with no sense to check them against, so a
                 // member has no way of knowing it went down wrong — and a
@@ -190,8 +195,8 @@ class VoiceAssistantService
                     ],
                 ],
                 'vehicle_year' =>['label' => 'Year', 'ask' => 'which year the vehicle is from', 'q' => ['hi' => 'गाड़ी किस साल की है?', 'en' => 'What year is the vehicle from?'], 'type' => 'int'],
-                'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
-                'unit' => ['label' => 'Unit', 'ask' => 'whether that is per day, per trip or per kilometre', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'transport_unit'],
+                'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number', 'needed_to_send' => true],
+                'unit' => ['label' => 'Unit', 'ask' => 'whether that is per day, per trip or per kilometre', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'transport_unit', 'needed_to_send' => true],
                 // Optional details, and the form keeps them in their own
                 // section below the required ones.
                 'vehicle_capacity' => ['label' => 'Seating capacity', 'ask' => 'how many passengers it seats', 'q' => ['hi' => 'इसमें कितने लोग बैठ सकते हैं?', 'en' => 'How many passengers does it seat?'], 'type' => 'int'],
@@ -287,7 +292,7 @@ class VoiceAssistantService
                 // nowhere. Specialties is the box that wants the subject, and it
                 // is asked further down in those words.
                 'category' => ['label' => 'Guide type / language', 'ask' => 'which sort of guide they are: a local one, an English-speaking one, or a certified or expert one', 'q' => ['hi' => 'आप स्थानीय गाइड हैं, अंग्रेज़ी बोलने वाले गाइड, या प्रमाणित या विशेषज्ञ गाइड?', 'en' => 'Are you a local guide, an English-speaking guide, or a certified or expert one?'], 'type' => 'string', 'list' => 'guide_preference', 'except' => ['No Guide'], 'asked_only' => true],
-                'price' => ['label' => 'Rate per day (Rs)', 'ask' => 'what they charge for a day', 'q' => ['hi' => 'एक दिन का कितना लेते हैं?', 'en' => 'What do you charge for a day?'], 'type' => 'number'],
+                'price' => ['label' => 'Rate per day (Rs)', 'ask' => 'what they charge for a day', 'q' => ['hi' => 'एक दिन का कितना लेते हैं?', 'en' => 'What do you charge for a day?'], 'type' => 'number', 'needed_to_send' => true],
                 // Optional details, in the order the form's own section has them.
                 'specialties' => ['label' => 'Specialties', 'ask' => 'what they guide: birds, forest, culture, and so on', 'q' => ['hi' => 'आप किस चीज़ के बारे में बताते हैं?', 'en' => 'What is it that you show people?'], 'type' => 'string', 'accrues' => true],
                 'wage_multi_day' => ['label' => 'Rate per day: multi-day with night stay (Rs)', 'ask' => 'what they charge a day on a trip where they stay the night', 'q' => ['hi' => 'जिस काम में रात रुकना पड़े, उसका एक दिन का कितना लेते हैं?', 'en' => 'On a trip where you stay the night, what do you charge for a day?'], 'type' => 'number'],
@@ -325,8 +330,8 @@ class VoiceAssistantService
             'activity' => [
                 // Also a picker in the form, over HCT's activity types.
                 'category' => ['label' => 'Activity type', 'ask' => 'what kind of activity it is', 'q' => ['hi' => 'यह किस तरह की गतिविधि है?', 'en' => 'What kind of activity is it?'], 'type' => 'string', 'list' => 'activity_type'],
-                'price' => ['label' => 'Rate (Rs)', 'ask' => 'what it costs', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
-                'unit' => ['label' => 'Unit', 'ask' => 'whether that price is per person or per group', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'activity_unit'],
+                'price' => ['label' => 'Rate (Rs)', 'ask' => 'what it costs', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number', 'needed_to_send' => true],
+                'unit' => ['label' => 'Unit', 'ask' => 'whether that price is per person or per group', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'list' => 'activity_unit', 'needed_to_send' => true],
                 // Optional details, in the order the form's own section has them.
                 'min_group' => ['label' => 'Min group size', 'ask' => 'the smallest group they will take', 'q' => ['hi' => 'कम से कम कितने लोगों का समूह ले सकते हैं?', 'en' => 'What is the smallest group you will take?'], 'type' => 'int'],
                 'max_group' => ['label' => 'Max group size', 'ask' => 'the largest group they will take', 'q' => ['hi' => 'ज़्यादा से ज़्यादा कितने लोगों का समूह ले सकते हैं?', 'en' => 'What is the largest group you will take?'], 'type' => 'int'],
@@ -364,8 +369,8 @@ class VoiceAssistantService
             // about" over a completely empty form.
             'other' => [
                 'category' => ['label' => 'Service name', 'ask' => 'what to call this service', 'q' => ['hi' => 'इस सेवा को क्या नाम दें?', 'en' => 'What should this service be called?'], 'type' => 'string'],
-                'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number'],
-                'unit' => ['label' => 'Unit', 'ask' => 'what that price is for: per person, per day, per piece, whatever they charge by', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string'],
+                'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number', 'needed_to_send' => true],
+                'unit' => ['label' => 'Unit', 'ask' => 'what that price is for: per person, per day, per piece, whatever they charge by', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'needed_to_send' => true],
                 'addons' => [
                     'label' => 'Add-ons',
                     'more' => [
@@ -394,8 +399,8 @@ class VoiceAssistantService
                 'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
             ],
             'rental' => [
-                'rental_item' => ['label' => 'Item on rent', 'ask' => 'what they rent out', 'q' => ['hi' => 'आप किराये पर क्या देते हैं?', 'en' => 'What do you rent out?'], 'type' => 'string'],
-                'price' => ['label' => 'Charges per day (Rs)', 'ask' => 'what it costs to rent for a day', 'q' => ['hi' => 'एक दिन का किराया कितना है?', 'en' => 'What does it cost to rent for a day?'], 'type' => 'number'],
+                'rental_item' => ['label' => 'Item on rent', 'ask' => 'what they rent out', 'q' => ['hi' => 'आप किराये पर क्या देते हैं?', 'en' => 'What do you rent out?'], 'type' => 'string', 'needed_to_send' => true],
+                'price' => ['label' => 'Charges per day (Rs)', 'ask' => 'what it costs to rent for a day', 'q' => ['hi' => 'एक दिन का किराया कितना है?', 'en' => 'What does it cost to rent for a day?'], 'type' => 'number', 'needed_to_send' => true],
                                 'security_deposit' => ['label' => 'Security deposit (Rs)', 'ask' => 'what deposit they hold, if any', 'q' => ['hi' => 'कितनी रकम जमानत के तौर पर रखते हैं?', 'en' => 'What deposit do you hold?'], 'type' => 'number'],
                 'addons' => [
                     'label' => 'Add-ons',
@@ -1141,9 +1146,35 @@ class VoiceAssistantService
                 ? implode(', ', array_slice($named, 0, -1)) . $join . end($named)
                 : implode($join, $named);
 
+            $left[] = $this->wroteItDown($all, $language, count($known));
+        }
+
+        if ($declined && ! $this->skippable($form, $asked, $known)) {
+            // The one box that cannot be left.
+            //
+            // A member who says "छोड़ दीजिए" on the first question was told
+            // "ठीक है, खाली छोड़ देते हैं, बाद में फ़ॉर्म में भर सकते हैं" - and
+            // it is not true. That box decides which boxes exist after it: a
+            // room rate and a taxi rate have almost nothing in common, and
+            // until it is answered there is nothing to ask. Left empty, the
+            // conversation has nowhere to go and the form cannot be saved
+            // either.
+            //
+            // So it is not marked as passed over and no promise is made about
+            // later. What it does instead is say why it is being asked, and
+            // name what may be answered. Then the same question comes round,
+            // which it does anyway because nothing was written.
+            $declined = false;
+
+            $choices = $this->choicesFor($form, $asked, $known, $language);
+            $list = $choices ? implode(', ', $choices) : '';
+
             $left[] = $language === 'hi'
-                ? "मैंने {$all} लिख दिया है।"
-                : "I have written {$all}.";
+                ? ('यह बताना ज़रूरी है, इसी से तय होता है कि आगे क्या पूछना है और आपकी लिस्टिंग किस तरह की बनेगी।'
+                    . ($list !== '' ? " इनमें से कोई एक बता दीजिए: {$list}।" : ''))
+                : ('This one I do have to ask: it decides what comes next and what '
+                    . 'kind of listing this becomes.'
+                    . ($list !== '' ? " Tell me one of these: {$list}." : ''));
         }
 
         if ($declined) {
@@ -1361,6 +1392,374 @@ class VoiceAssistantService
     }
 
     /**
+     * Hello, put together rather than written down.
+     *
+     * It used to be one sentence in a setting, and a member filing their
+     * fourth listing heard it for the fourth time, word for word. Writing
+     * four sentences into the setting instead only moves the problem: four is
+     * still a loop, and somebody has to sit and write them.
+     *
+     * So it is built here, out of things that are true at the moment it is
+     * said: what time of day it is where they are, their own name, and
+     * whether they have done this before. Four times of day, five ways of
+     * putting it, three ways of asking whether to begin - that is sixty
+     * openings without anybody writing anything, and each one fits the
+     * moment rather than being a line that fits every moment equally badly.
+     *
+     * No model is called. A model would take a second and a half at the one
+     * moment somebody is waiting to be spoken to, and it does not know their
+     * name, the hour, or that this is their first listing.
+     *
+     * @return array{0: string, 1: string} the greeting, and the line that
+     *         waits for them to answer.
+     */
+    public function greetingFor(
+        ServiceProvider $provider,
+        string $form = 'rate',
+        ?User $user = null,
+        array $known = [],
+    ): array {
+        // Which tongue to say hello in, and it changes.
+        //
+        // Greeting everybody in Hindi says, without meaning to, that this is
+        // a Hindi thing and English is the exception. Greeting everybody in
+        // English says the opposite, to people who mostly do not want it.
+        // So it alternates, and whichever one it opens in, the line that
+        // follows offers the other. Nobody is asked to choose: the language
+        // of the conversation is still read off their first answer.
+        $tongue = $this->notTheLast(['hi', 'en'], 'tongue', $provider->id);
+
+        // The name of whoever is sitting there filling it in.
+        //
+        // Three places hold a name and only one of them is reliably a person.
+        // The account belongs to somebody, and that somebody is who just
+        // pressed the button, so their own name comes first. After that the
+        // contact person, who is a person by definition. The provider's name
+        // is used only when there is no business, because the join form says
+        // in as many words that it will use their own name when the trading
+        // name is left empty.
+        //
+        // Only the first word of it: "namaste Pradeep Hembrom ji" is how a
+        // form addresses somebody, not how a person does.
+        $person = trim((string) ($user?->full_name ?: ''));
+        if ($person === '') {
+            $person = trim((string) $provider->contact_person);
+        }
+        if ($person === '' && ! $provider->has_business) {
+            $person = trim((string) $provider->name);
+        }
+
+        // And a guard, because the data cannot always tell us.
+        //
+        // Accounts made before the join form asked for a contact person carry
+        // the property's name where a person's should be - one of them reads
+        // "Kaza Heritage House" in every column there is - and greeting a
+        // guesthouse by name is worse than greeting nobody. Where the name
+        // reads like a place, it is not used. This withholds a name it is
+        // unsure of; it never invents one, and a greeting without a name is a
+        // perfectly good greeting.
+        $soundsLikeAPlace = preg_match(
+            '/\b(house|homestay|hotel|resort|lodge|retreat|camp|camps|guest|'
+            . 'guesthouse|stay|stays|villa|inn|cottage|farm|kitchen|travels|'
+            . 'tours|tour|trek|treks|adventure|adventures|services|transport)\b/i',
+            $person,
+        ) === 1;
+
+        $first = $soundsLikeAPlace ? '' : trim(explode(' ', $person)[0] ?? '');
+        $named = mb_strlen($first) >= 2;
+
+        // No time of day. A greeting that names the hour has to be right
+        // about it, and it cannot be: the member asked for it to go after
+        // being wished good morning at two in the afternoon, and even with
+        // the clock corrected it would be wrong for anybody outside India.
+        // "Hello" is right at every hour in every country.
+        // Somebody who has filed something before does not need to be told
+        // what this is for, and being told again is its own small insult.
+        $before = Experience::ownedBy($provider->id)->exists()
+            || SpPricing::where('service_provider_id', $provider->id)->exists();
+
+        if ($tongue === 'hi') {
+            $time = 'नमस्ते';
+            $name = $named ? " {$first} जी" : '';
+
+            $whichForm = $form === 'experience'
+                ? ['यह अनुभव की listing है।', 'हम आपका अनुभव दर्ज कर रहे हैं।']
+                : ['यह आपकी सेवाओं और दाम की सूची है।', 'हम आपका rate card भर रहे हैं।'];
+
+            $invitations = $before
+                ? [
+                    'चलिए, एक और जोड़ते हैं। आप बोलिए, लिखने का काम मेरा।',
+                    'आज क्या जोड़ना है? आप बताते जाइए।',
+                    'फिर से हाज़िर हूँ। आप बोलिए, मैं भरती जाती हूँ।',
+                    'चलिए शुरू करते हैं, आप बस बोलते जाइए।',
+                    'बताइए, इस बार क्या दर्ज करना है?',
+                ]
+                : [
+                    'मैं हेको से हूँ। आप बोलते जाइए, फ़ॉर्म मैं भर देती हूँ।',
+                    'फ़ॉर्म भरने में मैं आपकी मदद करती हूँ। आप बस बताते जाइए।',
+                    'जो आप बताएँगे, वही मैं फ़ॉर्म में लिख दूँगी।',
+                    'आप बोलिए, लिखने का काम मेरा।',
+                    'मैं हेको से हूँ, और यह फ़ॉर्म आपकी बातों से भर जाएगा।',
+                ];
+
+            $openings = ['तो शुरू करें?', 'चलिए, शुरू करते हैं।', 'तैयार हैं?'];
+            $andTheOther = ' You can answer in English too.';
+        } else {
+            $time = 'Hello';
+            $name = $named ? " {$first}" : '';
+
+            $whichForm = $form === 'experience'
+                ? ['This is your experience listing.', 'We are writing down one of your experiences.']
+                : ['This is your list of services and prices.', 'We are filling in your rate card.'];
+
+            $invitations = $before
+                ? [
+                    'Let us add another one. You talk, the writing is mine.',
+                    'What are we adding today? Just tell me.',
+                    'Here again. You talk, and I will fill it in.',
+                    'Let us get started, just say it as it comes.',
+                    'Tell me what goes down this time.',
+                ]
+                : [
+                    'I am from Heco. Just talk, and I will fill this in for you.',
+                    'I help with filling this in. You only have to tell me.',
+                    'Whatever you tell me is what goes into the form.',
+                    'You talk, the writing is mine.',
+                    'I am from Heco, and this form fills itself from what you say.',
+                ];
+
+            $openings = ['Shall we start?', 'Let us begin.', 'Ready when you are.'];
+            $andTheOther = ' आप हिंदी में भी जवाब दे सकते हैं।';
+        }
+
+        // Coming back to something half written.
+        //
+        // A member who opens a draft is not starting: they are carrying on,
+        // and the first thing they want to know is where they left it. Told
+        // what is already down and what still stands between it and being
+        // sent, they can decide whether to finish it now or add one more
+        // thing and leave it. Without that they are asked questions with no
+        // idea how many are left.
+        $sofar = $this->whereTheyLeftIt($form, $known, $tongue);
+
+        return [
+            $time . $name . '! '
+                . ($sofar !== ''
+                    ? $sofar
+                    : $this->notTheLast($whichForm, 'which', $provider->id) . ' '
+                        . $this->notTheLast($invitations, 'hello', $provider->id)),
+            ($sofar !== ''
+                ? ($tongue === 'hi' ? 'चलिए, आगे बढ़ते हैं।' : 'Let us carry on.')
+                : $this->notTheLast($openings, 'begin', $provider->id)) . $andTheOther,
+        ];
+    }
+
+    /**
+     * What is already filled in, and what is still wanted, in one sentence.
+     *
+     * Empty when nothing has been filled: somebody starting is greeted as
+     * somebody starting, and being told "nothing is filled in yet" is the
+     * kind of thing only a machine says.
+     *
+     * The boxes are named the way the form names them, because that is where
+     * the member will look, and only the ones that stand between this and
+     * being sent for review are listed. Everything else can wait, and reading
+     * out forty box names would help nobody.
+     */
+    private function whereTheyLeftIt(string $form, array $known, string $tongue): string
+    {
+        $isEmpty = fn ($value) => $value === null || $value === '' || $value === []
+            || (is_numeric($value) && (float) $value === 0.0);
+
+        $filled = [];
+        $needed = [];
+        foreach ($this->schema($form, $known) as $key => $spec) {
+            if (! isset($spec['label'])) {
+                continue;
+            }
+
+            // Which kind of service is not one of the boxes a member filled
+            // in: it is what the form is. Counted as filled, an untouched form
+            // reported progress, and every new rate was greeted as a
+            // half-finished one.
+            if ($key === 'service_type') {
+                continue;
+            }
+
+            $name = $this->boxNamed($key, $spec['label'], $tongue);
+
+            if ($isEmpty($known[$key] ?? null)) {
+                if (($spec['needed_to_send'] ?? false) === true) {
+                    $needed[] = $name;
+                }
+                continue;
+            }
+
+            $filled[] = $name;
+        }
+
+        if ($filled === []) {
+            return '';
+        }
+
+        $join = fn (array $bits) => count($bits) > 2
+            ? implode(', ', array_slice($bits, 0, -1)) . ($tongue === 'hi' ? ' और ' : ' and ') . end($bits)
+            : implode($tongue === 'hi' ? ' और ' : ' and ', $bits);
+
+        // Three at most. A member who has filled fifteen boxes does not want
+        // fifteen read back at them; they want to know it is all still there.
+        $many = count($filled) > 3;
+
+        // Commas only in front of "and N more", or the sentence ends up with
+        // two of them: "Comfort tier and Total rooms and 1 more".
+        $first = implode(', ', array_slice($filled, 0, 3));
+
+        $some = $many
+            ? ($tongue === 'hi'
+                ? $first . ' समेत ' . count($filled) . ' चीज़ें'
+                : $first . ' and ' . (count($filled) - 3) . ' more')
+            : $join($filled);
+
+        if ($tongue === 'hi') {
+            // The verb follows what it is about: one box, several boxes, or
+            // the feminine "चीज़ें" of the counted form.
+            $said = $many ? 'बता दी थीं' : (count($filled) > 1 ? 'बता दिए थे' : 'बता दिया था');
+
+            return "पिछली बार आपने {$some} {$said}।"
+                . ($needed !== []
+                    ? ' भेजने के लिए अभी ' . $join($needed)
+                        . (count($needed) > 1 ? ' बाकी हैं।' : ' बाकी है।')
+                    : ' भेजने के लिए जो ज़रूरी था, सब भर चुका है।');
+        }
+
+        return "Last time you filled in {$some}."
+            . ($needed !== []
+                ? ' Before this can go for review, ' . $join($needed)
+                    . (count($needed) > 1 ? ' are still wanted.' : ' is still wanted.')
+                : ' Everything needed to send it is filled in.');
+    }
+
+    /**
+     * What to call a box out loud.
+     *
+     * The form's own English label is the fallback, and for most of the
+     * eighty-odd boxes that is what a Hindi speaker says too - nobody asks for
+     * the "अक्षांश". Named in Hindi here are the ones that actually get read
+     * out: everything that stands between a draft and being sent, and the
+     * handful members fill first. A box with no Hindi name reads as its
+     * English one rather than as nothing.
+     */
+    private function boxNamed(string $key, string $label, string $tongue): string
+    {
+        if ($tongue !== 'hi') {
+            // The form writes the currency and the period in brackets so a
+            // member typing knows what goes in the box - "Rate (Rs)", "Driver
+            // allowance (Rs/day)". Read out they become "Rate open bracket
+            // rupees", so they are dropped: this is being spoken, not read.
+            return trim(preg_replace('/\s*\([^)]*\)/', '', $label)) ?: $label;
+        }
+
+        return [
+            // The ones that hold a listing back from review.
+            'comfort_tier' => 'जगह की श्रेणी',
+            'room_category' => 'कमरे की श्रेणी',
+            'total_rooms' => 'कमरों की गिनती',
+            'price' => 'दाम',
+            'unit' => 'दाम का हिसाब',
+            'vehicle_type' => 'गाड़ी का प्रकार',
+            'rental_item' => 'किराये की चीज़',
+            // And the ones members fill first, so the sentence stays Hindi.
+            'category' => 'नाम',
+            'name' => 'नाम',
+            'meal_plan' => 'खाने का इंतज़ाम',
+            'guest_capacity' => 'सोने की गुंजाइश',
+            'default_occupancy' => 'एक कमरे में लोग',
+            'vehicle_count' => 'गाड़ियों की गिनती',
+            'vehicle_make_model' => 'गाड़ी का मॉडल',
+            'vehicle_capacity' => 'गाड़ी में सीटें',
+            'price_per_km_plains' => 'मैदान का प्रति किलोमीटर दाम',
+            'price_per_km_hills' => 'पहाड़ का प्रति किलोमीटर दाम',
+            'specialties' => 'गाइड का विषय',
+            'languages' => 'भाषाएँ',
+            'security_deposit' => 'जमानत की रकम',
+            'photos' => 'तस्वीरें',
+            'vehicle_photos' => 'गाड़ी की तस्वीरें',
+            'region_id' => 'इलाका',
+            'area' => 'इलाका',
+            'type' => 'प्रकार',
+            'short_description' => 'छोटा ब्यौरा',
+            'long_description' => 'पूरा ब्यौरा',
+            'duration_type' => 'अवधि',
+            'start_time' => 'शुरू का समय',
+            'end_time' => 'खत्म का समय',
+            'difficulty_level' => 'कठिनाई',
+        ][$key] ?? $label;
+    }
+
+    /**
+     * One of them, and not the one said last time.
+     *
+     * Remembered for a day and per member, so the same person does not hear
+     * the same opening twice running. Somebody else's turn is their own.
+     */
+    private function notTheLast(array $lines, string $what, int $providerId): string
+    {
+        if (count($lines) < 2) {
+            return $lines[0] ?? '';
+        }
+
+        $remember = "voice:said:{$what}:{$providerId}";
+        $last = Cache::get($remember);
+
+        $choices = array_values(array_filter($lines, fn ($line) => $line !== $last));
+        $picked = $choices[array_rand($choices)];
+
+        Cache::put($remember, $picked, now()->addDay());
+
+        return $picked;
+    }
+
+    /**
+     * Telling a member what has just been written down.
+     *
+     * It was one sentence, and a member hears it forty times in a row while
+     * filling an experience: "मैंने Property name में Pradeep Homestay लिख दिया
+     * है।" Then the same shape again, and again. Nothing else about this
+     * conversation sounds as much like a machine, and the client asked for it
+     * to sound natural; a person says "ठीक", then "अच्छा, लिख लिया", then
+     * simply "हो गया".
+     *
+     * The line is picked by how many boxes are already filled rather than at
+     * random. It costs nothing, it cannot say the same thing twice running,
+     * and a test can say which line it expects.
+     *
+     * @param  string  $what  "Box में value", or "value into Box" in English.
+     * @param  int     $sofar How many boxes are already answered.
+     */
+    private function wroteItDown(string $what, string $language, int $sofar): string
+    {
+        $lines = $language === 'hi'
+            ? [
+                "मैंने {$what} लिख दिया है।",
+                "ठीक, {$what} लिख लिया।",
+                "अच्छा। {$what} लिख लिया है।",
+                "हो गया, {$what} लिख लिया।",
+                "समझ गयी, {$what} लिख दिया।",
+                "{$what} लिख लिया है।",
+            ]
+            : [
+                "I have written {$what}.",
+                "Right, I have put {$what}.",
+                "Good, I have noted {$what}.",
+                "Got it. I have written {$what}.",
+                "Done, I have put {$what}.",
+                "I have noted {$what}.",
+            ];
+
+        return $lines[$sofar % count($lines)];
+    }
+
+    /**
      * What is said when an answer did not answer the question.
      *
      * Named with the form's own heading — "Property name", "Total rooms" — so
@@ -1371,9 +1770,46 @@ class VoiceAssistantService
     {
         $label = $this->labelFor($form, $field, $known);
 
-        return $language === 'hi'
-            ? ($label ? "यह समझ नहीं आया, कृपया {$label} के बारे में बताइए।" : 'यह समझ नहीं आया।')
-            : ($label ? "That did not answer it, please tell me about {$label}." : 'I did not catch that.');
+        // Said kindly, and said differently each time.
+        //
+        // "That did not answer it" is what somebody hears after they have
+        // tried their best, on the third go, in a language they use less
+        // often than the person who wrote the sentence. It reads as being
+        // told off. And being told off in exactly the same words twice reads
+        // as a machine. Both are fixed here: the fault is put on the
+        // listening, which is where it belongs, and there are three ways of
+        // saying it.
+        $tries = count($known);
+
+        if ($language === 'hi') {
+            $lines = $label
+                ? [
+                    "माफ़ कीजिए, मुझे आपका जवाब ठीक से समझ नहीं आया। ज़रा {$label} के बारे में फिर से बताइए।",
+                    "क्षमा कीजिए, मैं समझ नहीं पायी। {$label} के बारे में एक बार और बता दीजिए।",
+                    "मुझे आपकी बात पकड़ में नहीं आयी। ज़रा फिर से, {$label} के बारे में।",
+                ]
+                : [
+                    'माफ़ कीजिए, मुझे आपका जवाब समझ नहीं आया। ज़रा फिर से बोलिए।',
+                    'क्षमा कीजिए, मैं समझ नहीं पायी। एक बार और बोल दीजिए।',
+                    'मुझे आपकी बात पकड़ में नहीं आयी। ज़रा फिर से बोलिए।',
+                ];
+
+            return $lines[$tries % count($lines)];
+        }
+
+        $lines = $label
+            ? [
+                "Sorry, I did not quite catch that. Could you tell me about {$label} again?",
+                "Forgive me, I missed that one. Say it once more, about {$label}.",
+                "I did not follow that. Tell me about {$label} again, please.",
+            ]
+            : [
+                'Sorry, I did not quite catch that. Could you say it again?',
+                'Forgive me, I missed that. Say it once more, please.',
+                'I did not follow that. Say it again, please.',
+            ];
+
+        return $lines[$tries % count($lines)];
     }
 
     /**
@@ -1483,6 +1919,110 @@ class VoiceAssistantService
         foreach (['english', 'angrez', 'अंग्रे', 'इंग्ल', 'ingli'] as $stem) {
             if (mb_stripos($text, $stem) !== false) {
                 return 'en';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A member asking to stop, or to do this another time.
+     *
+     * "बाद में कर लूँगा", "अभी नहीं", "बंद कर दीजिए", "I will do this later".
+     * Until now every one of those went to the model as an answer about a
+     * room or a price, and came back as "that did not answer it" - so the one
+     * thing a member cannot do by talking was leave.
+     *
+     * Short utterances only, and never on a box that could plausibly hold one
+     * of these words as its answer. Somebody describing a trek who says "the
+     * walk ends later in the day" is not asking to stop.
+     */
+    public function stopRequest(string $said, string $form = '', ?string $field = null, array $known = []): bool
+    {
+        $text = trim($said);
+        if ($text === '') {
+            return false;
+        }
+
+        $words = count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: []);
+        if ($words > 8) {
+            return false;
+        }
+
+        // A box that takes free text can hold anything, including these
+        // words: a listing called "Later" is unlikely, but a description
+        // saying "we finish later" is not. Only asked on a box with a list,
+        // or where nothing is being asked at all.
+        if ($field !== null && $form !== '') {
+            $spec = $this->specFor($form, $field, $known);
+            $takesAnything = ! isset($spec['only']) && ! isset($spec['list'])
+                && ! isset($spec['source']) && ($spec['type'] ?? 'string') === 'string';
+
+            // Six, not four. "I will do this later" is five words and was
+            // being read as an answer to the Property name box, so the one
+            // member who wanted to leave could not. Being asked "shall I
+            // stop?" in the middle of a long description is a nuisance they
+            // answer with one word; not being able to leave is not.
+            if ($takesAnything && $words > 6) {
+                return false;
+            }
+        }
+
+        $flat = mb_strtolower($text);
+
+        // Leaving the CONVERSATION, not leaving a box.
+        //
+        // "छोड़ दीजिए", "रहने दीजिए", "leave it" are what somebody says about
+        // the question in front of them, and the assistant already passes
+        // that box over and moves on. They were in this list and turned every
+        // skip into "shall I stop?", which is the opposite of what was asked.
+        // What is left here is only what ends the sitting.
+        foreach ([
+            'बंद कर', 'बन्द कर', 'बाद में कर', 'बाद मे कर', 'बाद में करूँ', 'अभी नहीं कर',
+            'बस करो', 'बस कीजिए', 'फिर कर', 'रोक द', 'खत्म कर', 'ख़त्म कर',
+            'band kar', 'baad me kar', 'baad mein kar', 'abhi nahi kar',
+            'bas karo', 'bas kijiye', 'phir kar', 'rok d', 'khatam kar',
+            'stop', 'later', 'not now', 'another time', 'close this',
+            'i am done', 'that is enough', 'enough for now', 'finish this later',
+            'cancel',
+        ] as $phrase) {
+            if (str_contains($flat, $phrase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a short answer means yes, no, or neither.
+     *
+     * Used once, on the question "shall I stop?". Nothing about a form turns
+     * on it, so it is read here rather than sent to a model: a yes is a yes
+     * in both tongues and there is no third thing it could be.
+     *
+     * @return bool|null  true for yes, false for no, null for neither
+     */
+    public function saidYes(string $said): ?bool
+    {
+        $flat = mb_strtolower(trim($said));
+        if ($flat === '') {
+            return null;
+        }
+
+        foreach (['हाँ', 'हा ', 'जी ', 'ठीक', 'बंद कर', 'कर दीजिए', 'कर दो',
+                  'haan', 'han ', 'ji ', 'theek', 'thik', 'yes', 'yeah', 'yep',
+                  'ok', 'okay', 'sure', 'please do', 'go ahead'] as $yes) {
+            if (str_contains($flat . ' ', $yes)) {
+                return true;
+            }
+        }
+
+        foreach (['नहीं', 'नही', 'मत ', 'रुकिए', 'जारी', 'चालू',
+                  'nahi', 'nahin', 'mat ', 'no', 'not', 'carry on', 'continue',
+                  'keep going', 'wait'] as $no) {
+            if (str_contains($flat . ' ', $no)) {
+                return false;
             }
         }
 
@@ -1811,6 +2351,24 @@ class VoiceAssistantService
 
         $prompt = app(PromptBuilderService::class)->build('provider_voice_help', [
             'reply_in' => $language === 'hi' ? 'Hindi' : 'English',
+            // Which of the two forms is open. Without it, "which form is
+            // this?" was answered with what the current box is for, which is
+            // an answer to a different question.
+            // Whether THIS box may be left. The system prompt has always said
+            // that one box cannot be, and never said which, so asked "can I
+            // leave this?" on the very box that decides the rest of the form
+            // the answer came back "yes, just say so" - which is not true and
+            // leaves the conversation with nowhere to go.
+            'may_leave' => $this->skippable($form, $field, $known)
+                ? 'Yes. If they would rather not say, tell them so and that saying so is enough.'
+                : 'NO. This is the box that decides which boxes come after it, and '
+                    . 'nothing can be asked or saved until it is answered. Asked whether '
+                    . 'they may leave it, say kindly that this one is needed, say in a '
+                    . 'few words what it decides, and read out what they may choose from. '
+                    . 'Never say they can fill it in later.',
+            'form' => $form === 'experience'
+                ? 'An experience listing: something this member runs and sells to travellers, such as a trek, a stay or a workshop. It goes to HECO for review and then on sale.'
+                : 'A rate card: the rooms, vehicles, guides or activities this member supplies, and what each costs. HECO draws on it when building a trip.',
             // The heading, not the key. Asked about the box by its key, the
             // model said the key back — "आपको 'service_type' में..." — which
             // names nothing a member has ever seen on their screen.
@@ -2603,11 +3161,15 @@ class VoiceAssistantService
         // The same sentence a spoken answer earns. A member who taps has just
         // as much right to be told what went into which box, and hearing it
         // the same way both times is how the two stop being two things.
-        $wrote = $language === 'hi'
-            ? 'मैंने ' . $this->labelFor($form, $field, $filled) . ' में '
-                . $this->spokenValue($form, $field, $checked['fields'][$field], $language, $filled) . ' लिख दिया है।'
-            : 'I have written ' . $this->spokenValue($form, $field, $checked['fields'][$field], $language, $filled)
-                . ' into ' . $this->labelFor($form, $field, $filled) . '.';
+        $wrote = $this->wroteItDown(
+            $language === 'hi'
+                ? $this->labelFor($form, $field, $filled) . ' में '
+                    . $this->spokenValue($form, $field, $checked['fields'][$field], $language, $filled)
+                : $this->spokenValue($form, $field, $checked['fields'][$field], $language, $filled)
+                    . ' into ' . $this->labelFor($form, $field, $filled),
+            $language,
+            count($known),
+        );
 
         $ahead = $this->walk($form, $filled, $skipped, $language);
         $next = $ahead['next'];
@@ -2841,31 +3403,164 @@ class VoiceAssistantService
      * when it names exactly one of them, because half a name that fits two
      * values names neither.
      */
-    private function matchOption(array $allowed, mixed $value): ?string
+    private function matchOption(array $allowed, mixed $value, array $synonyms = []): ?string
     {
-        $said = mb_strtolower(trim((string) $value));
+        $said = $this->plainly((string) $value);
         if ($said === '') {
             return null;
         }
 
-        foreach ($allowed as $option) {
-            if ($said === mb_strtolower($option)) {
+        // What a member actually says is not what the list calls it.
+        //
+        // The list holds "Cat D - Basic/Homestay", "CP - With breakfast",
+        // "Double Room", "Dormitory Bed". Somebody says "homestay", "with
+        // breakfast", "double", "dorm". Every one of those was thrown away
+        // and the question came round again, because this matched the whole
+        // string or one half of a "Code - Rest" pair and nothing else. The
+        // member does not know there is a list, let alone how it is worded.
+        //
+        // So the option is broken into the pieces a person would say - the
+        // code, the words after it, and either side of a slash, a plus or a
+        // comma - and a piece is as good as the whole. Then, if that finds
+        // nothing, one containing the other counts, which catches "dorm" in
+        // "dormitory bed" and "double room ac" holding "double room".
+        //
+        // Two options matching equally is not a match. Better to ask again
+        // than to write the wrong one into somebody's listing.
+
+        // Their own words for the codes, where a field carries them:
+        // "रहने की जगह" is how this member says `accommodation`.
+        foreach ($synonyms as $word => $option) {
+            if ($this->plainly((string) $word) === $said && in_array($option, $allowed, true)) {
                 return $option;
             }
         }
 
-        $byHalf = [];
         foreach ($allowed as $option) {
-            if (! str_contains($option, ' - ')) {
-                continue;
-            }
-            [$code, $rest] = explode(' - ', $option, 2);
-            if ($said === mb_strtolower(trim($code)) || $said === mb_strtolower(trim($rest))) {
-                $byHalf[] = $option;
+            if ($said === $this->plainly((string) $option)) {
+                return $option;
             }
         }
 
+        // Anything that has the word in it, whole.
+        //
+        // Word by word, not letter by letter, and this is the part that keeps
+        // it honest. "breakfast" is a word in BOTH "CP - With breakfast" and
+        // "MAP - Breakfast + one meal", and the two are priced differently.
+        // Splitting on the separators alone made it a piece of the second and
+        // not of the first, so the second won on a technicality and the
+        // member was sold a meal plan they never chose. Counted as words, it
+        // fits two, and two is not a match.
+        $byWord = [];
+        foreach ($allowed as $option) {
+            if (in_array($said, $this->wordsOf((string) $option), true)) {
+                $byWord[] = $option;
+            }
+        }
+
+        $byWord = array_values(array_unique($byWord));
+        if (count($byWord) === 1) {
+            return $byWord[0];
+        }
+        if ($byWord !== []) {
+            return null; // Two rows own the same word. Ask again.
+        }
+
+        // Then a piece of one: "Cat D", "Basic/Homestay", "per double".
+        $byPart = [];
+        foreach ($allowed as $option) {
+            if (in_array($said, $this->piecesOf((string) $option), true)) {
+                $byPart[] = $option;
+            }
+        }
+
+        $byPart = array_values(array_unique($byPart));
+        if (count($byPart) === 1) {
+            return $byPart[0];
+        }
+        if ($byPart !== []) {
+            return null;
+        }
+
+        // And last, the short form of one: "dorm" in "dormitory bed".
+        //
+        // One direction only. Letting a long answer that CONTAINS an option
+        // count as that option looks generous and is a trap: "no guide
+        // needed" holds "guide", "monsoonish" holds "monsoon", and each would
+        // have been written down as the thing it was denying or approximating.
+        // What is allowed is the other way about - they said less than the
+        // list does, which is how people speak.
+        //
+        // Three letters at least: "ac" sits inside "accommodation", and a
+        // member saying AC means air conditioning.
+        $byHalf = [];
+        if (mb_strlen($said) >= 3) {
+            foreach ($allowed as $option) {
+                if (str_contains($this->plainly((string) $option), $said)) {
+                    $byHalf[] = $option;
+                }
+            }
+        }
+
+        $byHalf = array_values(array_unique($byHalf));
+
         return count($byHalf) === 1 ? $byHalf[0] : null;
+    }
+
+    /**
+     * An option's own words, each flattened, for matching one word at a time.
+     *
+     * @return array<int, string>
+     */
+    private function wordsOf(string $option): array
+    {
+        $words = preg_split('/[^\p{L}\p{N}]+/u', $option, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return array_values(array_filter(array_map(
+            fn ($word) => $this->plainly($word),
+            $words,
+        )));
+    }
+
+    /**
+     * An option cut into the pieces somebody might say on its own.
+     *
+     * "Cat D - Basic/Homestay" is a code, a pair of words, and two words
+     * either side of a slash: Cat D, Basic/Homestay, Basic, Homestay. Any one
+     * of them, said alone, means that option and nothing else on the list.
+     *
+     * @return array<int, string> each already flattened for comparing
+     */
+    private function piecesOf(string $option): array
+    {
+        $pieces = [$option];
+
+        if (str_contains($option, ' - ')) {
+            [$code, $rest] = explode(' - ', $option, 2);
+            $pieces[] = $code;
+            $pieces[] = $rest;
+            $option = $rest;
+        }
+
+        foreach (preg_split('#\s*[/+,]\s*#u', $option) ?: [] as $bit) {
+            $pieces[] = $bit;
+        }
+
+        return array_values(array_filter(array_unique(
+            array_map(fn ($piece) => $this->plainly($piece), $pieces),
+        )));
+    }
+
+    /**
+     * A string with nothing in it but its letters and numbers, lowercased.
+     *
+     * Case, spacing, hyphens and full stops are the transcription's to get
+     * wrong and vary with every reading of the same word; what was said is
+     * not.
+     */
+    private function plainly(string $text): string
+    {
+        return mb_strtolower(trim(preg_replace('/[^\p{L}\p{N}]+/u', '', $text) ?? ''));
     }
 
     /**
@@ -3082,6 +3777,18 @@ class VoiceAssistantService
 
             $allowed = $this->allowedFor($field);
 
+            // The member's own words for the codes behind a list, where the
+            // schema writes them out: "रहने की जगह" and "a place to stay" both
+            // mean `accommodation`, and neither of them looks like it.
+            $synonyms = [];
+            foreach (['hi', 'en'] as $tongue) {
+                foreach (array_values($field['words'][$tongue] ?? []) as $i => $word) {
+                    if (isset($field['only'][$i])) {
+                        $synonyms[$word] = $field['only'][$i];
+                    }
+                }
+            }
+
             // A box that holds several of the list at once, not one of them —
             // the languages a guide works in. Asked "which languages can you
             // guide in", nobody names one, and read as a single value the
@@ -3093,7 +3800,7 @@ class VoiceAssistantService
 
                 $kept = [];
                 foreach ($said as $one) {
-                    $option = $this->matchOption($allowed, $one);
+                    $option = $this->matchOption($allowed, $one, $synonyms);
                     if ($option !== null) {
                         $kept[] = $option;
                     }
@@ -3112,7 +3819,7 @@ class VoiceAssistantService
             if ($allowed !== null) {
                 // Case and spacing are the model's to get wrong; the value
                 // itself is not. Match loosely, store exactly.
-                $match = $this->matchOption($allowed, $value);
+                $match = $this->matchOption($allowed, $value, $synonyms);
                 if ($match === null) {
                     $rejected[] = (string) $key;
                     continue;
