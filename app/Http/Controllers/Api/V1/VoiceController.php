@@ -675,6 +675,9 @@ class VoiceController extends Controller
             $text,
             $language,
             (array) $request->input('skipped', []),
+            // So a member who says hello is greeted by name, exactly as the
+            // opening greeting does it.
+            $this->assistant->firstNameOf($provider, Auth::user()),
         );
 
         // The assistant heard them but could not be reached to make sense of it

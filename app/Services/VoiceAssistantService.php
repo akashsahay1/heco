@@ -741,9 +741,10 @@ class VoiceAssistantService
         string $said,
         string $language = 'hi',
         array $skipped = [],
+        string $memberName = '',
     ): array
     {
-        $out = $this->exchange($form, $known, $said, $language, $skipped);
+        $out = $this->exchange($form, $known, $said, $language, $skipped, $memberName);
 
         foreach (['note', 'reply'] as $key) {
             if (is_string($out[$key] ?? null)) {
@@ -807,6 +808,7 @@ class VoiceAssistantService
         string $said,
         string $language = 'hi',
         array $skipped = [],
+        string $memberName = '',
     ): array
     {
         // Where the form has got to, and a word about any box reached on the
@@ -822,6 +824,34 @@ class VoiceAssistantService
                 'passed' => $here['passed'],
                 'fields' => [],
                 'reply' => $this->phrase($this->questionFor($form, $asked, $language, $known), $language, (string) $this->labelFor($form, $asked, $known), $this->choicesFor($form, $asked, $known, $language), $this->meaningsFor($this->specFor($form, $asked, $known), $language)),
+                'asked' => $asked,
+                'label' => $this->labelFor($form, $asked, $known),
+                'choices' => $this->choicesFor($form, $asked, $known, $language),
+                'done' => false,
+                'rejected' => [],
+                'note' => null,
+                'unavailable' => false,
+            ];
+        }
+
+        // "Hi." A greeting is none of the three things the reading model is
+        // taught to recognise: it is not an answer, not a decline, and not a
+        // question. So the turn came back empty, helpWith() was called, and the
+        // first thing that asks is whether the sentence has anything to do with
+        // this listing. A greeting has not, so a member who said hello was told
+        // "I can only help with filling this in", which reads as a telling off
+        // for being polite.
+        //
+        // It is answered here, in writing, before any model is called: there is
+        // nothing in "namaste" to read, and the day's token allowance is only
+        // four or five listings wide.
+        if ($asked !== null && $this->justAGreeting($said)) {
+            return [
+                'guidance' => $here['guidance'],
+                'passed' => $here['passed'],
+                'fields' => [],
+                'reply' => trim($this->greetingBack($language, $known, $memberName) . ' '
+                    . $this->phrase($this->questionFor($form, $asked, $language, $known), $language, (string) $this->labelFor($form, $asked, $known), $this->choicesFor($form, $asked, $known, $language), $this->meaningsFor($this->specFor($form, $asked, $known), $language))),
                 'asked' => $asked,
                 'label' => $this->labelFor($form, $asked, $known),
                 'choices' => $this->choicesFor($form, $asked, $known, $language),
@@ -879,12 +909,12 @@ class VoiceAssistantService
             // So the variation is asked for outright, and it rotates on how
             // much of the form is done — no memory needed, and a member goes
             // through the shapes rather than hearing one of them forty times.
-            'tone' => $this->toneFor(count($known)),
+            'tone' => $this->toneFor(count($known), $said),
             // The headings of the boxes already answered. Asked to name one a
             // member wants to change without being told what there is to name,
             // the model named nothing at all — the instruction was abstract and
             // it had no list to point at.
-            'filled' => $this->filledLabels($form, $known) ?: '(nothing yet)',
+            'filled' => $this->filledLabels($form, $known, $skipped) ?: '(nothing yet)',
             // The question that will almost certainly come next, so the model
             // can put it in its own words rather than have the written one
             // appended to whatever it says.
@@ -1003,6 +1033,20 @@ class VoiceAssistantService
         // and the member answers that instead of the one that follows.
         $say = trim((string) ($data['say'] ?? ''));
         $say = mb_strlen($say) > 160 ? '' : $say;
+
+        // And it may not contain a question. The prompt says so twice over -
+        // "Never put a question in it, that is what ask is for" - and the model
+        // breaks it now and then: the line back asks the next box in its own
+        // words, the written question is then put after it, and the member
+        // hears the same thing asked twice in one breath. The user heard
+        // exactly that after switching to Hindi, and he is right that it is the
+        // machine sound again.
+        //
+        // A turn asks ONE question. The sentence carrying the stray one is
+        // dropped and whatever was said before it is kept, so an
+        // acknowledgement that happened to end in a question is still heard.
+        // Enforced here, where it cannot drift.
+        $say = $this->withoutAQuestion($say);
 
         // It runs straight into the question that follows it otherwise —
         // "fifteen hundred a day What is it that you show people?" — which
@@ -1200,7 +1244,7 @@ class VoiceAssistantService
         // Reopening is blanking. The box is emptied, which is what puts it
         // back in front of the next question, and the app is told so it can
         // stop counting it among the ones passed over.
-        $reopened = $this->fieldNamed($form, $known, trim((string) ($data['revisit'] ?? '')));
+        $reopened = $this->fieldNamed($form, $known, trim((string) ($data['revisit'] ?? '')), $skipped);
         if ($reopened !== null) {
             $checked['fields'][$reopened] = '';
         }
@@ -1212,8 +1256,24 @@ class VoiceAssistantService
 
         // Which field comes next, decided here in the form's own order — the
         // model is not asked what to ask, only what was said.
-        $ahead = $this->walk($form, $filled, array_merge($skipped, $here['passed'], $finished), $language);
-        $next = $ahead['next'];
+        $passedOver = array_merge($skipped, $here['passed'], $finished);
+
+        // Except a box they have just asked to go back to. It was being
+        // stepped over twice: once because the app still lists it as passed
+        // over, and once because the form's own order reaches whatever else is
+        // empty first. So "let us fill the rooms in now" emptied the rooms and
+        // then asked about something else entirely, which is worse than not
+        // working at all.
+        if ($reopened !== null) {
+            $passedOver = array_values(array_diff($passedOver, [$reopened]));
+        }
+
+        $ahead = $this->walk($form, $filled, $passedOver, $language);
+
+        // A member who named a box is asked THAT box. Nothing is lost by it:
+        // whatever the form's order would have reached is still empty and
+        // still comes round afterwards.
+        $next = $reopened ?? $ahead['next'];
 
         // A few answers are worth reading back, and they are the ones a member
         // has no way of checking by ear.
@@ -1315,12 +1375,20 @@ class VoiceAssistantService
             // then the list read out when what they said was not on it. Only
             // when all three come to nothing is a member told they were not
             // understood — which is now the rarest thing said, not the usual.
-            'note' => $help
+            // Whatever it is, it does not ask. The question is the reply's
+            // job, and it is about to be asked there with the box it belongs
+            // to attached. An answer to a question the member asked, or a
+            // value turned away, that ends by asking the box again has the
+            // member hear the same thing asked twice in one breath, in two
+            // different wordings - which is what the user heard, and is why
+            // stripping it from `say` alone was not enough. Both prompts are
+            // told not to; this is where it stops being up to them.
+            'note' => $this->withoutAQuestion((string) ($help
                 ?: ($answer
                     ?: ($refused
                         ?: ($finished === [] && $checked['fields'] === [] && $checked['rejected'] === []
                             ? ($say ?: $this->notHeard($form, $asked, $language, $known))
-                            : null))),
+                            : null))))) ?: null,
             // The model's own wording of the next question, used only when the
             // question it was wording is the one that actually came next.
             // Otherwise the written question is put after whatever it said —
@@ -1413,6 +1481,49 @@ class VoiceAssistantService
      * @return array{0: string, 1: string} the greeting, and the line that
      *         waits for them to answer.
      */
+    /**
+     * The first name of whoever is sitting there filling it in, or ''.
+     *
+     * Three places hold a name and only one of them is reliably a person. The
+     * account belongs to somebody, and that somebody is who just pressed the
+     * button, so their own name comes first. After that the contact person,
+     * who is a person by definition. The provider's name is used only when
+     * there is no business, because the join form says in as many words that
+     * it will use their own name when the trading name is left empty.
+     *
+     * Only the first word of it: "namaste Pradeep Hembrom ji" is how a form
+     * addresses somebody, not how a person does.
+     *
+     * And a guard, because the data cannot always tell us. Accounts made
+     * before the join form asked for a contact person carry the property's
+     * name where a person's should be - one of them reads "Kaza Heritage
+     * House" in every column there is - and greeting a guesthouse by name is
+     * worse than greeting nobody. Where the name reads like a place it is not
+     * used: this withholds a name it is unsure of, it never invents one, and a
+     * greeting without a name is a perfectly good greeting.
+     */
+    public function firstNameOf(ServiceProvider $provider, ?User $user = null): string
+    {
+        $person = trim((string) ($user?->full_name ?: ''));
+        if ($person === '') {
+            $person = trim((string) $provider->contact_person);
+        }
+        if ($person === '' && ! $provider->has_business) {
+            $person = trim((string) $provider->name);
+        }
+
+        $soundsLikeAPlace = preg_match(
+            '/\b(house|homestay|hotel|resort|lodge|retreat|camp|camps|guest|'
+            . 'guesthouse|stay|stays|villa|inn|cottage|farm|kitchen|travels|'
+            . 'tours|tour|trek|treks|adventure|adventures|services|transport)\b/i',
+            $person,
+        ) === 1;
+
+        $first = $soundsLikeAPlace ? '' : trim(explode(' ', $person)[0] ?? '');
+
+        return mb_strlen($first) >= 2 ? $first : '';
+    }
+
     public function greetingFor(
         ServiceProvider $provider,
         string $form = 'rate',
@@ -1429,44 +1540,11 @@ class VoiceAssistantService
         // of the conversation is still read off their first answer.
         $tongue = $this->notTheLast(['hi', 'en'], 'tongue', $provider->id);
 
-        // The name of whoever is sitting there filling it in.
-        //
-        // Three places hold a name and only one of them is reliably a person.
-        // The account belongs to somebody, and that somebody is who just
-        // pressed the button, so their own name comes first. After that the
-        // contact person, who is a person by definition. The provider's name
-        // is used only when there is no business, because the join form says
-        // in as many words that it will use their own name when the trading
-        // name is left empty.
-        //
-        // Only the first word of it: "namaste Pradeep Hembrom ji" is how a
-        // form addresses somebody, not how a person does.
-        $person = trim((string) ($user?->full_name ?: ''));
-        if ($person === '') {
-            $person = trim((string) $provider->contact_person);
-        }
-        if ($person === '' && ! $provider->has_business) {
-            $person = trim((string) $provider->name);
-        }
-
-        // And a guard, because the data cannot always tell us.
-        //
-        // Accounts made before the join form asked for a contact person carry
-        // the property's name where a person's should be - one of them reads
-        // "Kaza Heritage House" in every column there is - and greeting a
-        // guesthouse by name is worse than greeting nobody. Where the name
-        // reads like a place, it is not used. This withholds a name it is
-        // unsure of; it never invents one, and a greeting without a name is a
-        // perfectly good greeting.
-        $soundsLikeAPlace = preg_match(
-            '/\b(house|homestay|hotel|resort|lodge|retreat|camp|camps|guest|'
-            . 'guesthouse|stay|stays|villa|inn|cottage|farm|kitchen|travels|'
-            . 'tours|tour|trek|treks|adventure|adventures|services|transport)\b/i',
-            $person,
-        ) === 1;
-
-        $first = $soundsLikeAPlace ? '' : trim(explode(' ', $person)[0] ?? '');
-        $named = mb_strlen($first) >= 2;
+        // The name of whoever is sitting there filling it in. Worked out in
+        // one place, because the hello said mid-conversation needs the same
+        // name and the same guards as the one said at the start.
+        $first = $this->firstNameOf($provider, $user);
+        $named = $first !== '';
 
         // No time of day. A greeting that names the hour has to be right
         // about it, and it cannot be: the member asked for it to go after
@@ -3221,12 +3299,29 @@ class VoiceAssistantService
      * Headings rather than field names: it is what the member sees, what they
      * will say, and what fieldNamed() matches against on the way back.
      */
-    private function filledLabels(string $form, array $known): string
+    private function filledLabels(string $form, array $known, array $skipped = []): string
     {
         $labels = [];
         foreach ($this->schema($form, $known) as $key => $field) {
             $value = $known[$key] ?? null;
-            if ($value === null || $value === '' || $value === [] || ! isset($field['label'])) {
+            if (! isset($field['label'])) {
+                continue;
+            }
+
+            // A box the member passed over is named too, and marked.
+            //
+            // Without this there was no way back to it by talking. The model
+            // is told to name a box "copied exactly from FILLED", and a
+            // skipped box was in neither: not in `known`, because it has no
+            // value, and not here. So a member who said "let us fill in the
+            // rooms now" named something the model had never heard of, and the
+            // turn came to nothing. It is listed as skipped rather than
+            // silently as empty, which also answers "what did I leave out?".
+            if ($value === null || $value === '' || $value === []) {
+                if (in_array($key, $skipped, true)) {
+                    $labels[] = $field['label'] . ': (skipped, not filled in)';
+                }
+
                 continue;
             }
             // With the value beside it, not just the heading. Asked "what did
@@ -3250,10 +3345,19 @@ class VoiceAssistantService
      * of them is anything reopened: a wrong guess here would empty a box they
      * had already filled correctly.
      *
-     * A box that was never filled is not reopened either. There is nothing to
-     * go back to, and the conversation is already on its way there.
+     * A box that is neither filled nor passed over is not reopened. There is
+     * nothing to go back to and the conversation is already on its way there,
+     * so emptying something on the strength of a guessed heading could only do
+     * harm.
+     *
+     * A SKIPPED box is a different matter, and used to be refused along with
+     * the rest. The conversation is NOT on its way there: it has been stepped
+     * over, and the app keeps it in its skipped list so it is stepped over
+     * again every turn. Until now that was one way: a member could pass a box
+     * by voice and had no way to come back to it by voice. Naming it reopens
+     * it, and `reopened` tells the app to stop counting it as passed over.
      */
-    private function fieldNamed(string $form, array $known, string $said): ?string
+    private function fieldNamed(string $form, array $known, string $said, array $skipped = []): ?string
     {
         $said = mb_strtolower(trim($said));
         if ($said === '') {
@@ -3262,7 +3366,9 @@ class VoiceAssistantService
 
         foreach ($this->schema($form, $known) as $key => $field) {
             $label = mb_strtolower((string) ($field['label'] ?? ''));
-            if ($label === '' || ! isset($known[$key]) || $known[$key] === '' || $known[$key] === []) {
+            $empty = ! isset($known[$key]) || $known[$key] === '' || $known[$key] === [];
+
+            if ($label === '' || ($empty && ! in_array($key, $skipped, true))) {
                 continue;
             }
 
@@ -3303,14 +3409,198 @@ class VoiceAssistantService
      * murmur after every answer, and a number following a number needs no
      * remark at all. Hearing nothing is what makes the others land.
      */
-    private function toneFor(int $answered): string
+    /**
+     * The spoken reaction, with any question taken out of it.
+     *
+     * Sentence by sentence, keeping the ones that state something and dropping
+     * the ones that ask. "पंद्रह सौ रुपये, ठीक है। और नाम क्या है?" keeps the
+     * first half and loses the second, because the question that follows is
+     * about to be asked properly, with the box it belongs to attached to it.
+     *
+     * A question mark is the whole test. Both tongues use the same mark, and
+     * the Hindi danda ends a sentence exactly as a full stop does.
+     */
+    private function withoutAQuestion(string $say): string
     {
-        return [
+        if (! str_contains($say, '?')) {
+            return $say;
+        }
+
+        $kept = [];
+        $sentences = preg_split('/(?<=[.!?।])\s+/u', $say, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        foreach ($sentences as $sentence) {
+            if (! str_contains($sentence, '?')) {
+                $kept[] = trim($sentence);
+            }
+        }
+
+        return trim(implode(' ', $kept));
+    }
+
+    private function toneFor(int $answered, string $said = ''): string
+    {
+        $shapes = [
             'Say the thing back to them, briefly.',
             'Just acknowledge it: a word or two, nothing more.',
             'Return "say" as an empty string this time. The question stands on its own.',
             'Remark on what they said, the way somebody listening would.',
-        ][$answered % 4];
+            'Say what it is good for, in a few words, rather than that you have it.',
+            'Return "say" as an empty string this time. Two bare questions in a row is how people talk.',
+        ];
+
+        // Rotated on how much of the form is done AND on the length of what
+        // was just said.
+        //
+        // The count on its own was not enough. It moves only when a value
+        // lands, so every turn that recorded nothing - a question, a decline,
+        // an answer that did not fit - got the same shape as the turn before
+        // it, and a member who asked three things in a row heard the same six
+        // words three times. The length of the sentence is the one thing to
+        // hand that differs on every turn, so it is what breaks the tie. It is
+        // not randomness for its own sake: the same turn always gets the same
+        // shape, which is what keeps a fault reproducible.
+        //
+        // The sentence goes through crc32 rather than being measured. Its
+        // LENGTH was the first attempt and it collided far too readily: "what
+        // does this mean" and "I do not understand" are both nineteen
+        // characters, so two consecutive turns of exactly the kind this is for
+        // still got the same shape. A checksum of the words separates them.
+        return $shapes[((int) $answered + (int) crc32(mb_strtolower(trim($said)))) % count($shapes)];
+    }
+
+    /**
+     * Nothing but hello.
+     *
+     * Every word has to be a greeting or the small change that surrounds one.
+     * "namaste, mera homestay hai" is NOT this: it carries an answer, and an
+     * answer goes to the model like any other. Six words is the ceiling, so a
+     * sentence that merely opens with hello never lands here either.
+     */
+    private function justAGreeting(string $said): bool
+    {
+        $said = trim(mb_strtolower($said));
+        if ($said === '') {
+            return false;
+        }
+
+        // The written-down speech keeps its full stops and exclamation marks,
+        // and Hindi its own danda.
+        $words = preg_split('/[\s,.!?।]+/u', $said, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        if ($words === [] || count($words) > 6) {
+            return false;
+        }
+
+        // Hello in both tongues, the ways a transcript spells each, the times
+        // of day, and "how are you", which is a greeting and not a question
+        // about anything on the form. Then the small change: the address and
+        // the auxiliaries those phrases need, which carry no meaning of their
+        // own and must not fail the whole line.
+        $hello = [
+            'hi', 'hii', 'hiii', 'hey', 'helo', 'hello', 'hallo', 'yo',
+            'namaste', 'namaskar', 'namaskaar', 'pranam', 'pranaam',
+            'salam', 'salaam', 'assalam', 'aadab', 'adab',
+            'good', 'morning', 'afternoon', 'evening', 'day',
+            'how', 'are', 'you', 'there', 'kaise', 'kaisi', 'kaisa',
+            'haal', 'hal', 'kya', 'ho', 'hain', 'hai', 'aap', 'tum',
+            'ji', 'sir', 'madam', 'bhai', 'didi', 'bhaiya',
+            'नमस्ते', 'नमस्कार', 'प्रणाम', 'हैलो', 'हेलो', 'हलो', 'हाय',
+            'सलाम', 'आदाफ', 'सुप्रभात', 'कैसे', 'कैसी', 'कैसा', 'क्या',
+            'हाल', 'हो', 'हैं', 'है', 'आप', 'तुम', 'जी', 'सुनिये', 'सुनिे',
+            'मैडम', 'सर', 'भाई', 'दीदी', 'भैया',
+        ];
+
+        foreach ($words as $word) {
+            if (! in_array($word, $hello, true)) {
+                return false;
+            }
+        }
+
+        // "hai", "kya", "aap" and the rest are in that list only to keep a
+        // hello company. On their own they are no greeting at all: "kya?" is a
+        // member asking something, and meeting it with "namaste" would be
+        // worse than the telling off this replaces.
+        $greetings = [
+            'hi', 'hii', 'hiii', 'hey', 'helo', 'hello', 'hallo', 'yo',
+            'namaste', 'namaskar', 'namaskaar', 'pranam', 'pranaam',
+            'salam', 'salaam', 'assalam', 'aadab', 'adab', 'morning',
+            'afternoon', 'evening', 'kaise', 'kaisi', 'kaisa',
+            // Asking after somebody is a greeting and not a question about
+            // anything on the form. "how are you" and "kya haal hai" reach
+            // here with every word already allowed and were being refused for
+            // want of a core word to point at.
+            'how', 'haal', 'hal', 'हाल',
+            'नमस्ते', 'नमस्कार', 'प्रणाम', 'हैलो', 'हेलो', 'हलो', 'हाय',
+            'सलाम', 'आदाफ', 'सुप्रभात', 'कैसे', 'कैसी', 'कैसा',
+        ];
+
+        // One word, and it has to be a hello outright. "how", "kaise" and
+        // "haal" are in the list above because they carry "how are you" and
+        // "kya haal hai", but a member who says only "how?" is asking
+        // something, and "namaste" back would be worse than the telling off
+        // this replaces.
+        if (count($words) === 1) {
+            return in_array($words[0], [
+                'hi', 'hii', 'hiii', 'hey', 'helo', 'hello', 'hallo', 'yo',
+                'namaste', 'namaskar', 'namaskaar', 'pranam', 'pranaam',
+                'salam', 'salaam', 'assalam', 'aadab', 'adab',
+                'नमस्ते', 'नमस्कार', 'प्रणाम', 'हैलो', 'हेलो', 'हलो', 'हाय',
+                'सलाम', 'आदाफ', 'सुप्रभात',
+            ], true);
+        }
+
+        return array_intersect($words, $greetings) !== [];
+    }
+
+    /**
+     * Hello back, by name, and nothing else.
+     *
+     * Written here rather than asked of a model: there is one right answer to
+     * hello and it does not need composing.
+     *
+     * SHORT, deliberately. It was "Hello! Let us begin." and then the question
+     * in the same breath, and the user heard what that is: a paragraph where a
+     * person would have said two words. "Hi Pradeep" is the whole of what
+     * somebody says back to hello. The question follows as its own sentence,
+     * and the app speaks each sentence with a beat between, so the two arrive
+     * as two things said rather than one thing recited.
+     *
+     * The name is the one the opening greeting uses, with the same guards:
+     * where there is no name, or the name reads like a guesthouse, hello on
+     * its own is a perfectly good hello.
+     */
+    private function greetingBack(string $language, array $known, string $name = ''): string
+    {
+        // Hello in the middle of a conversation is NOT a greeting.
+        //
+        // It used to answer with one - "Hi again, Pradeep." - and the user put
+        // his finger on exactly what is wrong with that: "baar baar aisa karne
+        // se robotics aur jyada lagega". He is right twice over. Nobody greets
+        // somebody they are already talking to, and a fixed line that fires
+        // every single time is the definition of the machine sound this whole
+        // day has been spent removing.
+        //
+        // So the second hello is met the way a person meets it: a word, or
+        // nothing whatever, and then the question they were on. The question
+        // coming back IS the reply. Which of the three it is rotates on how
+        // much is filled, so it is not the same word twice running.
+        if ($known !== []) {
+            $shrug = $language === 'hi'
+                ? ['', 'हाँ जी।', 'जी, बोलिए।']
+                : ['', 'Yes?', 'Go on.'];
+
+            return $shrug[count($known) % count($shrug)];
+        }
+
+        // The first hello of the sitting, which IS a greeting, and is theirs
+        // by name. Where there is no name, or the name reads like a
+        // guesthouse, hello on its own is a perfectly good hello.
+        if ($language === 'hi') {
+            return $name === '' ? 'नमस्ते।' : "नमस्ते {$name} जी।";
+        }
+
+        return $name === '' ? 'Hello.' : "Hi {$name}.";
     }
 
     /**
