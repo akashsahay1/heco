@@ -35,10 +35,19 @@ class TripManagerController extends Controller
         // Part of the total, but never stored on the trip, so the panel has to
         // ask for it. Without this its Financial Snapshot silently came up
         // short on every trip where somebody had a room to themselves.
-        $singleSupplement = app(CostCalculatorService::class)->singleSupplementFor($trip);
+        $calculator = app(CostCalculatorService::class);
+        $singleSupplement = $calculator->singleSupplementFor($trip);
+
+        // How many heads a per-person service line is multiplied by. Children
+        // and infants count at the percentages set in Settings, the same as
+        // they do for an experience, so the screen shows the same figure the
+        // calculator charges.
+        $peopleFactor = $calculator->partyBreakdown(
+            (int) $trip->adults, (int) ($trip->children ?: 0), (int) ($trip->infants ?: 0),
+        )['people_factor'];
 
         return view("admin.trip-manager.layout",
-            compact("trip", "regions", "providers", "involved", "singleSupplement"));
+            compact("trip", "regions", "providers", "involved", "singleSupplement", "peopleFactor"));
     }
 
     /**

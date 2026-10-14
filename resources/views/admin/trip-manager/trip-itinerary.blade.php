@@ -53,7 +53,10 @@
             </div>
 
             <hr class="my-2">
-            <button class="btn btn-sm btn-success w-100" id="btnAddTripDay"><i class="bi bi-plus"></i> Add Day</button>
+            <button class="btn btn-sm btn-success w-100 mb-1" id="btnAddTripDay"><i class="bi bi-plus"></i> Add Day</button>
+            {{-- A day written by hand: its own title, activities and prices,
+                 charged only for what is put on it. --}}
+            <button class="btn btn-sm btn-outline-success w-100" id="btnAddCustomDay" title="A day you write yourself, with its own activities and prices"><i class="bi bi-pencil-square"></i> Add Custom Day</button>
         </div>
 
         {{-- Center column: Timeline --}}
@@ -113,9 +116,19 @@
                         </div>
                         <div class="row g-1 mb-1">
                             <div class="col-6">
-                                <input type="number" class="form-control form-control-sm" name="cost" step="0.01" min="0">
+                                <input type="number" class="form-control form-control-sm" name="cost" step="0.01" min="0" placeholder="Cost">
                             </div>
                             <div class="col-6">
+                                {{-- Per head or for the whole party. A rafting ticket is one,
+                                     a jeep is the other, and both land on the same day. --}}
+                                <select class="form-select form-select-sm custom-select" name="price_basis" title="Is the cost per person or for the whole group?">
+                                    <option value="flat">Whole group</option>
+                                    <option value="per_person">Per person</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-1 mb-1">
+                            <div class="col-12">
                                 <select class="form-select form-select-sm custom-select" name="service_provider_id">
                                     <option value="">No Provider</option>
                                     @if(isset($providers))

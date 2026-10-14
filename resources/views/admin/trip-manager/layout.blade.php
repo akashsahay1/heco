@@ -37,6 +37,33 @@
     </div>
 </div>
 
+{{-- Edit Day Modal: the day's own name and notes. A custom day has nothing
+     else to say what it is, so this is where HCT writes it. --}}
+<div class="modal fade" id="editDayModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">Edit Day</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editDayForm">
+                    <input type="hidden" id="editDayId">
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Day title</label>
+                        <input type="text" class="form-control form-control-sm" id="editDayTitle" maxlength="255" placeholder="e.g. Village walk and local lunch">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Notes for the traveller</label>
+                        <textarea class="form-control form-control-sm" id="editDayDescription" rows="4" maxlength="2000" placeholder="What happens on this day"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-check"></i> Save Day</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 {{-- Edit Service Modal --}}
 <div class="modal fade" id="editServiceModal" tabindex="-1">
     <div class="modal-dialog modal-sm">
@@ -63,9 +90,18 @@
                         <label class="form-label small fw-bold">Description</label>
                         <input type="text" class="form-control form-control-sm" id="editServiceDesc">
                     </div>
-                    <div class="mb-2">
-                        <label class="form-label small fw-bold">Cost</label>
-                        <input type="number" class="form-control form-control-sm" id="editServiceCost" step="0.01" min="0">
+                    <div class="row g-1 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Cost</label>
+                            <input type="number" class="form-control form-control-sm" id="editServiceCost" step="0.01" min="0">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Charged</label>
+                            <select class="form-select form-select-sm custom-select" id="editServicePriceBasis">
+                                <option value="flat">Whole group</option>
+                                <option value="per_person">Per person</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="mb-2">
                         <label class="form-label small fw-bold">Service Provider</label>
@@ -105,6 +141,33 @@
 <script>
 var tripId = {{ $trip->id }};
 var tripData = @json($trip);
+// Heads a per-person service is multiplied by (children/infants at their
+// Settings percentage). Comes from the same calculator that prices the trip.
+var tripPeopleFactor = {{ json_encode((float) ($peopleFactor ?? 1)) }};
+
+/**
+ * What a service line comes to for the whole party, before markup.
+ */
+function tmServiceGroupCost(s) {
+    var cost = Number(s.cost) || 0;
+    return s.price_basis === 'per_person' ? cost * tripPeopleFactor : cost;
+}
+
+/**
+ * The price of a service line as HCT should read it: a per-person line shows
+ * its working ("₹1,500 × 4 = ₹6,000"), a flat one just the figure.
+ */
+function tmServicePriceHtml(s) {
+    var cost = Number(s.cost) || 0;
+    if (cost <= 0) return '';
+    var total = tmServiceGroupCost(s);
+    var fmt = function(n) { return '&#8377;' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 }); };
+    if (s.price_basis === 'per_person') {
+        var pax = Number(tripPeopleFactor.toFixed(2));
+        return '<span class="text-muted">' + fmt(cost) + ' &times; ' + pax + ' pax = </span>' + fmt(total);
+    }
+    return fmt(total);
+}
 
 // ==========================================
 // TRIP INFO TAB
@@ -152,9 +215,25 @@ $(function() {
 function tmDayTypeLabel(type) {
     var labels = {
         rest: 'Rest & Relax', travel: 'Travel Day', free: 'Explore Nearby',
-        activity: 'Activity Day', arrival: 'Arrival Day', departure: 'Departure Day'
+        activity: 'Activity Day', arrival: 'Arrival Day', departure: 'Departure Day',
+        custom: 'Custom Day'
     };
     return labels[type] || type;
+}
+
+// The kinds of day HCT can pick on the timeline, in the order shown. A custom
+// day is one written by hand: its own title, its own activities and prices.
+var tmDayTypeOptions = [
+    ['rest', 'Rest / travel day'],
+    ['activity', 'Activity day'],
+    ['free', 'Free day'],
+    ['custom', 'Custom day']
+];
+
+// Text safe to put inside a double-quoted HTML attribute.
+function tmAttr(v) {
+    return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function tmDayDate(raw) {
@@ -276,11 +355,61 @@ $('#addSpPaymentForm').on('submit', function(e) {
     });
 });
 
+// The day's own title and notes.
+$(document).on('click', '.btn-edit-day', function(e) {
+    e.stopPropagation();
+    var $btn = $(this);
+    $('#editDayId').val($btn.data('id'));
+    $('#editDayTitle').val($btn.data('title') || '');
+    $('#editDayDescription').val($btn.data('description') || '');
+    $('#editDayModal').modal('show');
+});
+
+$('#editDayForm').on('submit', function(e) {
+    e.preventDefault();
+    var $submit = $(this).find('[type=submit]').prop('disabled', true);
+    ajaxPost({
+        update_trip_day: 1,
+        day_id: $('#editDayId').val(),
+        title: $('#editDayTitle').val(),
+        description: $('#editDayDescription').val()
+    }, function() {
+        $submit.prop('disabled', false);
+        $('#editDayModal').modal('hide');
+        loadItinerary();
+        showAlert('Day updated.');
+    }, function(xhr) {
+        $submit.prop('disabled', false);
+        var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not save the day') : 'Could not save the day';
+        showAlert(msg, 'danger');
+    });
+});
+
+$('#editDayModal').on('hidden.bs.modal', function() {
+    if ($(this).data('reload-on-close')) {
+        $(this).data('reload-on-close', false);
+        location.reload();
+    }
+});
+
 // Changing a day's type changes the price, so the panel is re-read.
 $(document).on('change', '.day-type-pick', function() {
     var $sel = $(this).prop('disabled', true);
-    ajaxPost({ update_trip_day: 1, day_id: $sel.data('id'), day_type: $sel.val() }, function() {
+    var dayId = $sel.data('id');
+    var newType = $sel.val();
+    ajaxPost({ update_trip_day: 1, day_id: dayId, day_type: newType }, function() {
         showAlert('Day updated.');
+        // A custom day has no name until HCT gives it one, so the editor
+        // opens straight away. The page reloads once it closes, the same
+        // reload every other type change does to refresh the price panel.
+        if (newType === 'custom') {
+            var $edit = $('.btn-edit-day[data-id="' + dayId + '"]');
+            $('#editDayId').val(dayId);
+            $('#editDayTitle').val($edit.data('title') || '');
+            $('#editDayDescription').val($edit.data('description') || '');
+            $('#editDayModal').data('reload-on-close', true).modal('show');
+            return;
+        }
         location.reload();
     }, function(xhr) {
         $sel.prop('disabled', false);
@@ -335,10 +464,11 @@ function loadItinerary() {
                 // the morning somebody flew home.
                 if (!isLocked) {
                     html += '<select class="form-select form-select-sm day-type-pick" data-id="' + day.id + '" style="width:auto" title="What kind of day this is. It sets what an empty day is charged.">';
-                    [['rest', 'Rest / travel day'], ['activity', 'Activity day'], ['free', 'Free day']].forEach(function(o) {
+                    tmDayTypeOptions.forEach(function(o) {
                         html += '<option value="' + o[0] + '"' + ((day.day_type || 'rest') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
                     });
                     html += '</select>';
+                    html += '<button class="btn btn-sm btn-outline-secondary btn-edit-day" data-id="' + day.id + '" data-title="' + tmAttr(day.title) + '" data-description="' + tmAttr(day.description) + '" title="Edit day title and notes"><i class="bi bi-pencil"></i></button>';
                 }
                 html += '<button class="btn btn-sm btn-outline-secondary btn-move-day-up" data-id="' + day.id + '" title="Move up"><i class="bi bi-arrow-up"></i></button>';
                 html += '<button class="btn btn-sm btn-outline-secondary btn-move-day-down" data-id="' + day.id + '" title="Move down"><i class="bi bi-arrow-down"></i></button>';
@@ -379,13 +509,13 @@ function loadItinerary() {
                         html += '<i class="bi bi-' + getServiceIcon(s.service_type) + ' ' + (s.is_included ? 'text-success' : 'text-danger') + ' me-2"></i>';
                         html += '<span class="flex-fill">' + (s.description || s.service_type) + '</span>';
                         if (s.service_provider) html += '<small class="text-muted me-2">' + s.service_provider.name + '</small>';
-                        if (s.cost > 0) html += '<small class="text-success">&#8377;' + Number(s.cost).toLocaleString('en-IN') + '</small>';
+                        if (s.cost > 0) html += '<small class="text-success">' + tmServicePriceHtml(s) + '</small>';
                         html += '</div>';
                     });
                 }
 
                 if ((!day.experiences || !day.experiences.length) && (!day.services || !day.services.length)) {
-                    var dtMap = { arrival: 'bi-airplane', departure: 'bi-airplane', rest: 'bi-moon', travel: 'bi-signpost-split', free: 'bi-compass', activity: 'bi-lightning' };
+                    var dtMap = { arrival: 'bi-airplane', departure: 'bi-airplane', rest: 'bi-moon', travel: 'bi-signpost-split', free: 'bi-compass', activity: 'bi-lightning', custom: 'bi-pencil-square' };
                     var dtIcon = dtMap[day.day_type] || 'bi-calendar';
                     if (day.day_type && day.day_type !== 'activity') {
                         // The label, not the stored word. This printed day_type
@@ -395,6 +525,9 @@ function loadItinerary() {
                         // travel day". The traveller's own Add Day writes a
                         // title and so looked right; the two doors disagreed.
                         html += '<div class="small text-center mb-1"><i class="bi ' + dtIcon + ' text-success me-1"></i><strong>' + (day.title || tmDayTypeLabel(day.day_type)) + '</strong></div>';
+                        if (day.day_type === 'custom') {
+                            html += '<p class="text-muted small text-center mb-0">Nothing is on this day yet, so it costs nothing. Click the day, then add its activities and prices under Add Service.</p>';
+                        }
                     } else {
                         html += day.title
                             ? '<p class="text-muted small text-center mb-0">Nothing is on this day yet. "'
@@ -421,7 +554,7 @@ function loadItinerary() {
         if (window.buildCustomDropdown) buildCustomDropdown($('#targetDaySelect')[0]);
 
         if (selectedDayId) {
-            loadDayServices(selectedDayId);
+            selectDay(selectedDayId);
         }
     });
 }
@@ -443,7 +576,9 @@ function selectDay(dayId) {
     selectedDayId = dayId;
     $('.day-block').removeClass('selected');
     $('.day-block[data-day-id="' + dayId + '"]').addClass('selected');
-    $('#dayServicesPanel').show();
+    // d-none is !important, so .show() alone cannot lift it.
+    $('#dayServicesPanel').removeClass('d-none').show();
+    $('#dayServicesPlaceholder').addClass('d-none');
     $('#serviceDayId').val(dayId);
     var dayLabel = $('.day-block[data-day-id="' + dayId + '"]').find('strong.small').first().text();
     $('#selectedDayLabel').text(dayLabel || 'Selected Day');
@@ -462,10 +597,10 @@ function loadDayServices(dayId) {
                 if (s.service_provider) html += '<div class="small text-muted">' + s.service_provider.name + '</div>';
                 if (s.from_location || s.to_location) html += '<div class="small text-muted">' + (s.from_location || '') + (s.to_location ? ' &rarr; ' + s.to_location : '') + '</div>';
                 html += '</div>';
-                if (s.cost > 0) html += '<span class="small text-success fw-bold">&#8377;' + Number(s.cost).toLocaleString('en-IN') + '</span>';
+                if (s.cost > 0) html += '<span class="small text-success fw-bold text-end">' + tmServicePriceHtml(s) + '</span>';
                 html += '<div class="d-flex gap-1 ms-1">';
                 var dayDate = $('.day-block[data-day-id="' + dayId + '"]').data('day-date') || '';
-                html += '<button class="btn btn-sm btn-outline-secondary btn-edit-service" data-id="' + s.id + '" data-type="' + s.service_type + '" data-description="' + (s.description || '').replace(/"/g, '&quot;') + '" data-cost="' + (s.cost || 0) + '" data-sp-id="' + (s.service_provider_id || '') + '" data-sp-pricing-id="' + (s.sp_pricing_id || '') + '" data-room-qty="' + (s.room_quantity || '') + '" data-day-date="' + dayDate + '" title="Edit"><i class="bi bi-pencil"></i></button>';
+                html += '<button class="btn btn-sm btn-outline-secondary btn-edit-service" data-id="' + s.id + '" data-type="' + s.service_type + '" data-description="' + tmAttr(s.description) + '" data-cost="' + (s.cost || 0) + '" data-price-basis="' + (s.price_basis || 'flat') + '" data-sp-id="' + (s.service_provider_id || '') + '" data-sp-pricing-id="' + (s.sp_pricing_id || '') + '" data-room-qty="' + (s.room_quantity || '') + '" data-day-date="' + dayDate + '" title="Edit"><i class="bi bi-pencil"></i></button>';
                 html += '<button class="btn btn-sm btn-outline-danger rm-service" data-id="' + s.id + '" title="Remove"><i class="bi bi-x"></i></button>';
                 html += '</div>';
                 html += '</div>';
@@ -529,13 +664,31 @@ $('#btnAddTripDay').on('click', function() {
     });
 });
 
+// A custom day is added and opened for naming in one go, then selected so
+// the services panel is ready for its activities.
+$('#btnAddCustomDay').on('click', function() {
+    ajaxPost({ add_trip_day: 1, trip_id: tripId, day_type: 'custom' }, function(resp) {
+        var day = resp.day || {};
+        loadItinerary();
+        showAlert('Custom day added. Give it a title, then add its activities under Add Service.');
+        if (day.id) {
+            selectedDayId = day.id;
+            $('#editDayId').val(day.id);
+            $('#editDayTitle').val('');
+            $('#editDayDescription').val('');
+            $('#editDayModal').modal('show');
+        }
+    });
+});
+
 jQuery(document).on('click', '.btn-remove-day', function(e) {
     e.stopPropagation();
     var dayId = jQuery(this).data('id');
     confirmAction('Remove this day and all its experiences/services?', function() {
         ajaxPost({ remove_trip_day: 1, day_id: dayId }, function() {
             selectedDayId = null;
-            jQuery('#dayServicesPanel').hide();
+            jQuery('#dayServicesPanel').addClass('d-none').hide();
+            jQuery('#dayServicesPlaceholder').removeClass('d-none');
             loadItinerary();
         });
     });
@@ -604,6 +757,7 @@ $(document).on('click', '.btn-edit-service', function() {
     $('#editServiceType').val($btn.data('type'));
     $('#editServiceDesc').val($btn.data('description'));
     $('#editServiceCost').val($btn.data('cost'));
+    $('#editServicePriceBasis').val($btn.data('price-basis') || 'flat');
     $('#editServiceProvider').val(String($btn.data('sp-id') || ''));
     $('#editServiceProvider').data('orig', String($btn.data('sp-id') || ''));
     // Stash the room link the row was saved with so the picker can preselect.
@@ -613,6 +767,7 @@ $(document).on('click', '.btn-edit-service', function() {
     $('#editServiceRoomQty').val($btn.data('room-qty') || 1);
     if (window.buildCustomDropdown) {
         buildCustomDropdown($('#editServiceType')[0]);
+        buildCustomDropdown($('#editServicePriceBasis')[0]);
         buildCustomDropdown($('#editServiceProvider')[0]);
     }
     refreshEditServiceRoomPicker();
@@ -701,6 +856,7 @@ $('#editServiceForm').on('submit', function(e) {
         service_type: serviceType,
         description: $('#editServiceDesc').val(),
         cost: $('#editServiceCost').val(),
+        price_basis: $('#editServicePriceBasis').val() || 'flat',
     };
     if (serviceType === 'accommodation') {
         payload.sp_pricing_id = roomId || '';

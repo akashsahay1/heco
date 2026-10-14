@@ -270,7 +270,13 @@
                                     </span>
                                 @endif
                                 @if($service->cost > 0)
-                                    <span style="float: right;">&#8377;{{ number_format($service->cost, 2) }}</span>
+                                    @php $pf = (float) ($peopleFactor ?? 1); @endphp
+                                    <span style="float: right;">
+                                        @if($service->isPerPerson())
+                                            <span class="text-muted">&#8377;{{ number_format($service->cost, 2) }} &times; {{ rtrim(rtrim(number_format($pf, 2), '0'), '.') }} pax =</span>
+                                        @endif
+                                        &#8377;{{ number_format($service->groupCost($pf), 2) }}
+                                    </span>
                                 @endif
                             </div>
                         @endforeach

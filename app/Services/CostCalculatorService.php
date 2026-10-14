@@ -7,6 +7,7 @@ use App\Models\Trip;
 use App\Models\Setting;
 use App\Models\SpPricing;
 use App\Models\ServiceProvider;
+use App\Models\TripDay;
 use Carbon\Carbon;
 
 class CostCalculatorService
@@ -310,9 +311,14 @@ class CostCalculatorService
             // rooms on three nights that added Rs 30,000 of empty days to
             // Rs 11,970 of real ones, and nothing on the screen said where it
             // had come from.
+            //
+            // A custom day is the exception. HCT builds it line by line, so
+            // its price is the sum of what is on it and nothing else - an
+            // empty one is a day still being written, not a day to bill at
+            // the standing rate.
             $hasExperiences = $day->experiences->isNotEmpty();
             $hasServices = $day->services->contains(fn ($s) => (float) $s->cost > 0);
-            if (! $hasExperiences && ! $hasServices && $day->day_type) {
+            if (! $hasExperiences && ! $hasServices && $day->day_type && $day->day_type !== TripDay::TYPE_CUSTOM) {
                 $costPerPerson = in_array($day->day_type, ['activity', 'free']) ? $activityDayCostPerPerson : $restDayCostPerPerson;
                 $extraDayCost += $costPerPerson * $peopleFactor;
             }
@@ -320,8 +326,9 @@ class CostCalculatorService
             // Day-level SP-matched services are provider add-ons that STACK on top of
             // the experience bundle. cost=0 rows are bundled-cost placeholders - skip.
             // Each is shown at its marked-up price (raw provider price stays hidden).
+            // A per-person line is multiplied up to the whole party first.
             foreach ($day->services as $service) {
-                $cost = (float) $service->cost;
+                $cost = $service->groupCost($peopleFactor);
                 if ($cost <= 0) continue;
                 $marked = $this->applyMarkup((int) round($cost), $service->serviceProvider);
                 match ($service->service_type) {

@@ -947,6 +947,9 @@ class AjaxController extends Controller
         // Day-level assigned providers (trip-manager) - sum each provider's booked
         // day-service cost per service_type and invoice it too, so nothing that was
         // pinned to specific days is left unbilled. Deduped against the pins above.
+        // A per-person line owes the provider its cost times the party, the
+        // same figure the traveller was charged for it.
+        $peopleFactor = $this->peopleFactorFor($trip);
         $dayServices = TripDayService::whereHas('tripDay', fn($q) => $q->where('trip_id', $trip->id))
             ->whereNotNull('service_provider_id')
             ->where('cost', '>', 0)
@@ -963,7 +966,7 @@ class AjaxController extends Controller
             if ($already) {
                 continue;
             }
-            $amount = (int) round($group->sum('cost'));
+            $amount = (int) round($group->sum(fn ($s) => $s->groupCost($peopleFactor)));
             if ($amount <= 0) {
                 continue;
             }
@@ -7187,10 +7190,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // the property - and multiplying by it invoiced a partner twice for
             // a two-room night.
             if ($amountDue <= 0 && $trip) {
+                $peopleFactor = $this->peopleFactorFor($trip);
                 $amountDue = (float) TripDayService::whereIn('trip_day_id', $trip->tripDays()->select('id'))
                     ->where('service_provider_id', $request->service_provider_id)
                     ->where('service_type', $request->service_type)
-                    ->sum('cost');
+                    ->get()
+                    ->sum(fn ($s) => $s->groupCost($peopleFactor));
             }
         }
 
@@ -10943,16 +10948,33 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * Both are set now, the way the traveller's side has always set them.
      */
+    /**
+     * Heads a per-person service line is multiplied by on this trip:
+     * adults in full, children and infants at their Settings percentage.
+     */
+    protected function peopleFactorFor(Trip $trip): float
+    {
+        return (float) app(CostCalculatorService::class)->partyBreakdown(
+            (int) $trip->adults, (int) ($trip->children ?: 0), (int) ($trip->infants ?: 0),
+        )['people_factor'];
+    }
+
     protected function addTripDay(Request $request): JsonResponse
     {
         $trip = Trip::findOrFail($request->trip_id);
         $maxDay = $trip->tripDays()->max("day_number") ?? 0;
 
+        $dayType = $request->input('day_type', 'rest');
+        if (! in_array($dayType, TripDay::TYPES, true)) {
+            $dayType = 'rest';
+        }
+
         $day = TripDay::create([
             "trip_id" => $trip->id,
             "day_number" => $maxDay + 1,
             "sort_order" => $maxDay,
-            "day_type" => $request->input('day_type', 'rest'),
+            "day_type" => $dayType,
+            "title" => trim((string) $request->input('title')) ?: null,
             "added_by" => Auth::id() ? 'hct' : 'system',
         ]);
 
@@ -10992,11 +11014,26 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $data = $request->validate([
             'day_id' => 'required|exists:trip_days,id',
-            'day_type' => 'required|in:rest,activity,free,travel',
+            // Each is optional on its own, so the type picker and the
+            // title editor can each send only what they changed.
+            'day_type' => 'sometimes|required|in:' . implode(',', TripDay::TYPES),
+            'title' => 'sometimes|nullable|string|max:255',
+            'description' => 'sometimes|nullable|string|max:2000',
         ]);
 
         $day = TripDay::findOrFail($data['day_id']);
-        $day->update(['day_type' => $data['day_type']]);
+        unset($data['day_id']);
+
+        if (array_key_exists('title', $data)) {
+            $data['title'] = trim((string) $data['title']) ?: null;
+        }
+        if (array_key_exists('description', $data)) {
+            $data['description'] = trim((string) $data['description']) ?: null;
+        }
+
+        if ($data) {
+            $day->update($data);
+        }
 
         if ($day->trip) {
             app(CostCalculatorService::class)->calculate($day->trip);
@@ -11093,6 +11130,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "sp_pricing_id" => "nullable|integer|exists:sp_pricing,id",
             "room_quantity" => "nullable|integer|min:1|max:500",
             "cost" => "nullable|numeric|min:0",
+            "price_basis" => "nullable|in:flat,per_person",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -11156,6 +11194,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "from_location" => $request->from_location,
             "to_location" => $request->to_location,
             "cost" => $request->cost ?? 0,
+            "price_basis" => $request->input('price_basis') ?: TripDayService::BASIS_FLAT,
             "is_included" => $request->boolean("is_included", false),
             "notes" => $request->notes,
         ]);
@@ -11188,6 +11227,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "sp_pricing_id" => "nullable|integer|exists:sp_pricing,id",
             "room_quantity" => "nullable|integer|min:1|max:500",
             "cost" => "nullable|numeric|min:0",
+            "price_basis" => "nullable|in:flat,per_person",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -11213,7 +11253,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $service->update($request->only([
             "service_provider_id", "sp_pricing_id", "room_quantity",
             "service_type", "description",
-            "from_location", "to_location", "cost", "is_included", "notes",
+            "from_location", "to_location", "cost", "price_basis", "is_included", "notes",
         ]));
 
         // Room booking sync: if the room category or quantity changed, release the
