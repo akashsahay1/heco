@@ -250,13 +250,28 @@ jQuery(function() {
                     rest: { icon: 'bi-moon', label: 'Rest & Relax' },
                     travel: { icon: 'bi-signpost-split', label: 'Travel Day' },
                     free: { icon: 'bi-compass', label: 'Free Day' },
-                    activity: { icon: 'bi-lightning', label: 'Activity Day' }
+                    activity: { icon: 'bi-lightning', label: 'Activity Day' },
+                    custom: { icon: 'bi-pencil-square', label: 'Planned Day' }
                 };
                 var dt = dayTypeMap[day.day_type] || dayTypeMap['travel'];
                 var label = day.title || dt.label;
                 var desc = day.description || day.notes || '';
                 html += '<div class="td-empty-day"><i class="bi ' + dt.icon + '"></i> ' + label + '</div>';
                 if (desc) html += '<div class="td-empty-desc">' + desc + '</div>';
+
+                // What HCT put on the day by hand - a custom day's activities
+                // live here, not in the experience catalogue. Names only:
+                // the price panel carries the money.
+                var planned = (day.services || []).filter(function(s) { return s.description; });
+                if (planned.length) {
+                    planned.forEach(function(s) {
+                        html += '<div class="td-exp-item">' + s.description;
+                        if (s.from_location || s.to_location) {
+                            html += ' <span class="text-muted">(' + (s.from_location || '') + (s.to_location ? ' &rarr; ' + s.to_location : '') + ')</span>';
+                        }
+                        html += '</div>';
+                    });
+                }
             }
 
             html += '</div></div>';
