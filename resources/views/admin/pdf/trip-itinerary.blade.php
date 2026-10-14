@@ -350,23 +350,12 @@
             <td class="text-right bold" style="font-size: 13px;">&#8377;{{ number_format($trip->final_price ?? 0, 2) }}</td>
         </tr>
         {{-- Informational: the regenerative-project share included in the price
-             (not an added charge). HRP/HCT are internal splits, shown to staff only. --}}
+             (not an added charge). The HRP and HCT splits never go on the PDF,
+             whoever downloads it: HCT hands this one to the traveller. --}}
         @if(($trip->margin_rp_amount ?? 0) > 0)
             <tr>
                 <td>Of which, Regenerative Contribution ({{ $trip->margin_rp_percent ?? 0 }}%)</td>
                 <td class="text-right">{{ number_format($trip->margin_rp_amount ?? 0, 2) }}</td>
-            </tr>
-        @endif
-        @if(($showInternal ?? false) && ($trip->margin_hrp_amount ?? 0) > 0)
-            <tr>
-                <td>[Internal] HRP Margin ({{ $trip->margin_hrp_percent ?? 0 }}%)</td>
-                <td class="text-right">{{ number_format($trip->margin_hrp_amount ?? 0, 2) }}</td>
-            </tr>
-        @endif
-        @if(($showInternal ?? false) && ($trip->commission_hct_amount ?? 0) > 0)
-            <tr>
-                <td>[Internal] HCT Commission ({{ $trip->commission_hct_percent ?? 0 }}%)</td>
-                <td class="text-right">{{ number_format($trip->commission_hct_amount ?? 0, 2) }}</td>
             </tr>
         @endif
     </tbody>

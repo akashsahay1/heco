@@ -401,14 +401,44 @@
             </div>
         </div>
     </div>
-
-    <div class="d-flex gap-2 mt-3 mb-4">
-        <button type="submit" class="btn btn-success" id="saveBtn">
-            <i class="bi bi-check-lg"></i> Save Changes
-        </button>
-        <a href="{{ route('hct.providers.show', $provider->id) }}" class="btn btn-outline-secondary">Cancel</a>
-    </div>
 </form>
+
+{{-- ===== Services & Pricing — hotel-style inventory for accommodation, rates for everything else ===== --}}
+<div class="card mt-3 mb-3" id="spPricingCard" data-provider-id="{{ $provider->id }}">
+    <div class="card-body">
+        <h6 class="border-bottom pb-2"><i class="bi bi-cash-stack"></i> Services, Rooms &amp; Pricing
+            <span class="text-muted small fw-normal">— Trip Manager pulls these in when this provider is assigned. For Accommodation, each row is a room category + how many rooms of that type.</span>
+        </h6>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle sp-pricing-table">
+                <thead class="table-light">
+                    <tr>
+                        <th class="w-check"><i class="bi bi-check2-square sp-price-selall" role="button" title="Select all"></i></th>
+                        <th class="w-status">Type</th>
+                        <th>Details</th>
+                        <th class="w-rate">Rate</th>
+                        <th class="w-status">Inventory</th>
+                        <th class="w-active">Active</th>
+                        <th class="w-status">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="spPriceBody"><tr><td colspan="7" class="text-center text-muted small">Loading...</td></tr></tbody>
+            </table>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-sm btn-danger d-none" id="spPriceBulkDelete"><i class="bi bi-trash me-1"></i> Delete Selected</button>
+            <button type="button" class="btn btn-sm btn-success" id="spPriceAdd"><i class="bi bi-plus-lg me-1"></i> Add Service / Room</button>
+            <button type="button" class="btn btn-sm btn-outline-success" id="spMultiServiceAdd"><i class="bi bi-collection me-1"></i> Add multiple services at once</button>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex gap-2 mb-4">
+    <button type="submit" form="providerEditForm" class="btn btn-success" id="saveBtn">
+        <i class="bi bi-check-lg"></i> Save Changes
+    </button>
+    <a href="{{ route('hct.providers.show', $provider->id) }}" class="btn btn-outline-secondary">Cancel</a>
+</div>
 
 {{-- ===== Danger zone — Remove / Restore provider ===== --}}
 @php
@@ -449,35 +479,6 @@
     </div>
 </div>
 
-{{-- ===== Services & Pricing — hotel-style inventory for accommodation, rates for everything else ===== --}}
-<div class="card mb-5" id="spPricingCard" data-provider-id="{{ $provider->id }}">
-    <div class="card-body">
-        <h6 class="border-bottom pb-2"><i class="bi bi-cash-stack"></i> Services, Rooms &amp; Pricing
-            <span class="text-muted small fw-normal">— Trip Manager pulls these in when this provider is assigned. For Accommodation, each row is a room category + how many rooms of that type.</span>
-        </h6>
-        <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle sp-pricing-table">
-                <thead class="table-light">
-                    <tr>
-                        <th class="w-check"><i class="bi bi-check2-square sp-price-selall" role="button" title="Select all"></i></th>
-                        <th class="w-status">Type</th>
-                        <th>Details</th>
-                        <th class="w-rate">Rate</th>
-                        <th class="w-status">Inventory</th>
-                        <th class="w-active">Active</th>
-                        <th class="w-status">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="spPriceBody"><tr><td colspan="7" class="text-center text-muted small">Loading...</td></tr></tbody>
-            </table>
-        </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-sm btn-danger d-none" id="spPriceBulkDelete"><i class="bi bi-trash me-1"></i> Delete Selected</button>
-            <button type="button" class="btn btn-sm btn-success" id="spPriceAdd"><i class="bi bi-plus-lg me-1"></i> Add Service / Room</button>
-            <button type="button" class="btn btn-sm btn-outline-success" id="spMultiServiceAdd"><i class="bi bi-collection me-1"></i> Add multiple services at once</button>
-        </div>
-    </div>
-</div>
 
 {{-- ============= DYNAMIC SERVICE-RATE MODAL ============= --}}
 <div class="modal fade" id="spPriceModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">

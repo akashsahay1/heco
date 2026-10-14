@@ -33,6 +33,29 @@ class ServiceProvider extends Model
      */
     protected $appends = ['provider_type'];
 
+    /**
+     * A signup category stands for a service type ("Taxi services" is
+     * Transport), and the Trip Manager only looks at services_offered. On every
+     * save the types the categories stand for are put back in, so the two can
+     * never say different things: Transport goes only by dropping Taxi
+     * services. Types no category covers, such as Activity or Meals, are left
+     * as they were set.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (ServiceProvider $sp) {
+            if (empty($sp->service_categories)) {
+                return;
+            }
+            $mapped = SystemList::where('list_type', 'service_category')
+                ->whereIn('name', $sp->service_categories)
+                ->whereNotNull('maps_to')
+                ->pluck('maps_to');
+            $sp->services_offered = collect((array) $sp->services_offered)
+                ->merge($mapped)->unique()->values()->all();
+        });
+    }
+
     protected function casts(): array
     {
         return [

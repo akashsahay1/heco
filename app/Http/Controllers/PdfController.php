@@ -19,9 +19,7 @@ class PdfController extends Controller
             abort(403);
         }
 
-        // HCT staff see the internal margin breakdown (HRP/HCT); a traveller
-        // downloading their own trip must NOT — those are hidden from travellers.
-        $pdf = app(PdfService::class)->generateTripItinerary($trip, $user->isHct());
+        $pdf = app(PdfService::class)->generateTripItinerary($trip);
         return $pdf->download("trip-" . $trip->trip_id . ".pdf");
     }
 }

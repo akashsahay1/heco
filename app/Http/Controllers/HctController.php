@@ -74,8 +74,10 @@ class HctController extends Controller
             "activity_type"          => "Activity Types",
             "experience_type"        => "Experience Types",
             "payment_mode"           => "Payment Modes",
+            "service_category"       => "Signup Service Categories",
         ];
-        return view("admin.control-panel", compact("settingGroups", "systemListTypes"));
+        $serviceTypeNames = SystemList::ofType("service_type")->pluck("name");
+        return view("admin.control-panel", compact("settingGroups", "systemListTypes", "serviceTypeNames"));
     }
 
     public function leads(\Illuminate\Http\Request $request)
@@ -153,7 +155,8 @@ class HctController extends Controller
             ->orderBy('full_name')
             ->get(['id', 'full_name', 'email']);
 
-        return view('admin.trips', compact('trips', 'status', 'dateFrom', 'dateTo', 'search', 'travellers'));
+        $regions = Region::where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        return view('admin.trips', compact('trips', 'status', 'dateFrom', 'dateTo', 'search', 'travellers', 'regions'));
     }
 
     public function calendar()

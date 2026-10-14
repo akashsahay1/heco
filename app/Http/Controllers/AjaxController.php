@@ -338,6 +338,24 @@ class AjaxController extends Controller
     /**
      * Build timeline response from session itinerary for guests.
      */
+    /**
+     * An experience as a traveller's timeline may see it: its name, its days,
+     * and price_from, which already carries the markup. Not the host's price
+     * or the markup itself.
+     */
+    protected function travellerExperience(?Experience $experience): ?array
+    {
+        if (! $experience) {
+            return null;
+        }
+
+        return $experience->only(['id', 'name', 'type', 'duration_days', 'duration_type', 'price_from']) + [
+            'days' => $experience->days->map->only([
+                'day_number', 'title', 'short_description', 'start_time', 'end_time', 'inclusions',
+            ])->values(),
+        ];
+    }
+
     protected function buildGuestTimeline(array $guestData): array
     {
         $itinerary = $guestData['ai_itinerary'] ?? null;
@@ -377,7 +395,7 @@ class AjaxController extends Controller
                     'notes' => $exp['notes'] ?? null,
                     'cost_per_person' => $costPerPerson,
                     'total_cost' => $costPerPerson * $adults,
-                    'experience' => $expModel ? $expModel->toArray() : null,
+                    'experience' => $this->travellerExperience($expModel),
                 ];
                 $j++;
             }
@@ -648,6 +666,8 @@ class AjaxController extends Controller
         'get_lead_history' => 'hct',
         'create_lead' => 'hct',
         'create_trip_for_traveller' => 'hct',
+        'add_trip_region' => 'hct',
+        'remove_trip_region' => 'hct',
         'get_upcoming_trips' => 'hct',
         'get_trips_by_date_range' => 'hct',
         'update_trip_status' => 'hct',
@@ -950,7 +970,10 @@ class AjaxController extends Controller
         // A per-person line owes the provider its cost times the party, the
         // same figure the traveller was charged for it.
         $peopleFactor = $this->peopleFactorFor($trip);
-        $dayServices = TripDayService::whereHas('tripDay', fn($q) => $q->where('trip_id', $trip->id))
+        // Lines on a custom day are not billed here. HCT wrote and priced that
+        // day by hand, and settles with whoever runs it by hand as well.
+        $dayServices = TripDayService::whereHas('tripDay', fn($q) => $q->where('trip_id', $trip->id)
+                ->where(fn ($q) => $q->whereNull('day_type')->orWhere('day_type', '!=', TripDay::TYPE_CUSTOM)))
             ->whereNotNull('service_provider_id')
             ->where('cost', '>', 0)
             ->get()
@@ -1489,6 +1512,12 @@ class AjaxController extends Controller
             }
             if ($request->has('create_trip_for_traveller')) {
                 return $this->createTripForTraveller($request);
+            }
+            if ($request->has('add_trip_region')) {
+                return $this->addTripRegion($request);
+            }
+            if ($request->has('remove_trip_region')) {
+                return $this->removeTripRegion($request);
             }
             if ($request->has('get_upcoming_trips')) {
                 return $this->getUpcomingTrips($request);
@@ -3053,7 +3082,20 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["days" => []]);
 
-        $days = $trip->tripDays()->with(["experiences.experience.days", "services"])->get();
+        // Only what the two timelines draw. The whole rows went out before, so
+        // a traveller's browser held each service line's raw provider cost and
+        // HCT's notes, and each experience's host price beside its markup.
+        $days = $trip->tripDays()->with(["experiences.experience.days", "services"])->get()
+            ->map(fn (TripDay $day) => $day->only([
+                    "id", "day_number", "date", "title", "description", "day_type", "is_locked",
+                ]) + [
+                    "experiences" => $day->experiences->map(fn ($de) => $de->only([
+                        "id", "experience_id", "start_time", "end_time", "notes",
+                    ]) + ["experience" => $this->travellerExperience($de->experience)])->values(),
+                    "services" => $day->services->map->only([
+                        "id", "service_type", "description", "from_location", "to_location",
+                    ])->values(),
+                ]);
         return response()->json([
             "days" => $days,
             "start_date" => $trip->start_date?->toDateString(),
@@ -3261,13 +3303,55 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $wanted = $onJourney->merge($onDays)->unique()->values()->all();
 
+        // A region HCT chose stays: a trip built from custom days has no
+        // experience to read one from, and wiping it here undid their choice.
         TripRegion::where('trip_id', $trip->id)
+            ->where('added_by', '!=', TripRegion::ADDED_BY_HCT)
             ->when($wanted, fn ($q) => $q->whereNotIn('region_id', $wanted))
             ->delete();
 
         foreach ($wanted as $regionId) {
             TripRegion::firstOrCreate(['trip_id' => $trip->id, 'region_id' => $regionId]);
         }
+    }
+
+    /**
+     * HCT puts a region on a trip by hand, for a trip built from custom days
+     * that has no experience to take one from.
+     */
+    protected function addTripRegion(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'trip_id' => 'required|exists:trips,id',
+            'region_id' => 'required|exists:regions,id',
+        ]);
+
+        // Already there because of an experience: HCT choosing it as well means
+        // it should stay if that experience goes.
+        TripRegion::updateOrCreate(
+            ['trip_id' => $data['trip_id'], 'region_id' => $data['region_id']],
+            ['added_by' => TripRegion::ADDED_BY_HCT],
+        );
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Takes off a region HCT chose. One an experience brought stays while the
+     * experience does, so it is handed back to the sync rather than deleted.
+     */
+    protected function removeTripRegion(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'trip_id' => 'required|exists:trips,id',
+            'region_id' => 'required|exists:regions,id',
+        ]);
+
+        TripRegion::where('trip_id', $data['trip_id'])->where('region_id', $data['region_id'])
+            ->update(['added_by' => TripRegion::ADDED_BY_SYSTEM]);
+        $this->syncTripRegions(Trip::findOrFail($data['trip_id']));
+
+        return response()->json(['success' => true]);
     }
 
     protected function preferExperience(Request $request): JsonResponse
@@ -5172,12 +5256,19 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             'name' => 'required|string|max:150',
             'sort_order' => 'nullable|integer|min:0|max:9999',
             'description' => 'nullable|string|max:1000',
+            // A signup category names the service type it stands for, and that
+            // name is matched exactly against services_offered, so it must be
+            // one of the service types as they are spelled. Rule::in, not
+            // exists: MySQL compares without case and would let 'transport' in.
+            'maps_to' => ['nullable', 'string', Rule::in(SystemList::ofType('service_type')->pluck('name')->all())],
         ], [
             'name.required' => 'Give the item a name.',
             'list_type.required_without' => 'Say which list this belongs to.',
+            'maps_to.exists' => 'Pick one of the service types.',
         ]);
 
-        $data = $request->only(["list_type", "name", "sort_order", "description"]);
+        $data = $request->only(["list_type", "name", "sort_order", "description", "maps_to"]);
+        $data["maps_to"] = $request->input("maps_to") ?: null;
         if ($request->has("is_active")) {
             $data["is_active"] = $request->boolean("is_active");
         }
@@ -5186,6 +5277,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $item->update($data);
         } else {
             $item = SystemList::create($data);
+        }
+        // Partners who already ticked this category take up the service it now
+        // stands for; ServiceProvider's saving hook does the adding.
+        if ($item->list_type === 'service_category' && $item->maps_to) {
+            ServiceProvider::whereJsonContains('service_categories', $item->name)->get()->each->save();
         }
         return response()->json(["success" => true, "item" => $item]);
     }
@@ -6787,6 +6883,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             'adults' => 'nullable|integer|min:1|max:60',
             'children' => 'nullable|integer|min:0|max:60',
             'start_date' => 'nullable|date',
+            'region_id' => 'nullable|exists:regions,id',
         ], [
             'full_name.required_without' => 'Give a name, or pick somebody already on file.',
             'email.required_without' => 'Give an email, or pick somebody already on file.',
@@ -6840,6 +6937,17 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 ->first();
             if ($lead) {
                 $lead->update(['trip_id' => $trip->id, 'user_id' => $traveller->id]);
+            }
+
+            // The trip opens with no experience to take a region from, so it
+            // takes the one HCT picked, or else the one the enquiry named.
+            $regionId = ($data['region_id'] ?? null) ?: $lead?->region_id;
+            if ($regionId) {
+                TripRegion::create([
+                    'trip_id' => $trip->id,
+                    'region_id' => $regionId,
+                    'added_by' => TripRegion::ADDED_BY_HCT,
+                ]);
             }
 
             $this->logActivity('trip_created', 'Trip', $trip->id, [
@@ -10542,6 +10650,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         ]);
         return response()->json(array_filter([
             "success" => true,
+            // The payment may have confirmed the trip. The Trip Manager is not
+            // reloaded, so it is told, or its status box would still say
+            // not_confirmed and the next Save would put that back.
+            "trip_status" => $trip->fresh()->status,
             // A confirm can succeed while the hotel had nothing free. It needs
             // saying here for the same reason it does on the Trips page.
             "rooms_warning" => $unheld

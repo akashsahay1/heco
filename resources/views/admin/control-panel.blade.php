@@ -171,6 +171,15 @@
         <input type="hidden" name="list_type">
         <div class="mb-2"><label class="form-label small">Name</label><input type="text" class="form-control form-control-sm" name="name" required></div>
         <div class="mb-2"><label class="form-label small">Description <span class="text-muted">(what this option means — shown as help-text)</span></label><textarea class="form-control form-control-sm" name="description" rows="3" maxlength="500" placeholder="1-2 lines explaining what this option includes — amenities, price band, who it suits."></textarea></div>
+        <div class="mb-2 d-none" id="cpListMapsToWrap">
+            <label class="form-label small">Counts as service <span class="text-muted">(a partner who ticks this at signup is offered for this service in the Trip Manager)</span></label>
+            <select class="form-select form-select-sm" name="maps_to">
+                <option value="">None</option>
+                @foreach($serviceTypeNames as $st)
+                    <option value="{{ $st }}">{{ $st }}</option>
+                @endforeach
+            </select>
+        </div>
         <div class="mb-2"><label class="form-label small">Sort order</label><input type="number" class="form-control form-control-sm" name="sort_order" value="0" min="0"></div>
         <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" name="is_active" value="1" checked id="cpListActive"><label class="form-check-label small" for="cpListActive">Active</label></div>
         <button type="submit" class="btn btn-sm btn-success w-100">Save</button>
@@ -340,10 +349,10 @@ jQuery(function() {
             var html = '';
             items.forEach(function(item, idx) {
                 var desc = item.description || '';
-                html += '<tr data-id="' + item.id + '" data-name="' + escapeHtml(item.name) + '" data-desc="' + escapeHtml(desc) + '" data-sort="' + (item.sort_order || 0) + '" data-active="' + (item.is_active ? 1 : 0) + '">';
+                html += '<tr data-id="' + item.id + '" data-name="' + escapeHtml(item.name) + '" data-maps-to="' + escapeHtml(item.maps_to || '') + '" data-desc="' + escapeHtml(desc) + '" data-sort="' + (item.sort_order || 0) + '" data-active="' + (item.is_active ? 1 : 0) + '">';
                 html += '<td><i class="bi bi-square cp-list-check" role="button" data-id="' + item.id + '"></i></td>';
                 html += '<td class="text-muted small">' + (idx + 1) + '</td>';
-                html += '<td>' + escapeHtml(item.name) + '</td>';
+                html += '<td>' + escapeHtml(item.name) + (item.maps_to ? ' <span class="badge bg-light text-dark border">' + escapeHtml(item.maps_to) + '</span>' : '') + '</td>';
                 html += '<td class="small text-muted">' + escapeHtml(desc || '—') + '</td>';
                 html += '<td class="small">' + (item.sort_order || 0) + '</td>';
                 html += '<td>' + (item.is_active ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>') + '</td>';
@@ -375,8 +384,15 @@ jQuery(function() {
             ajaxPost({ delete_system_list_item: 1, ids: ids }, function() { loadList(); showAlert('Deleted.', 'success'); });
         });
     });
+    // Only a signup category says which service it stands for.
+    function showMapsTo() {
+        var isCategory = jQuery('#cpListType').val() === 'service_category';
+        jQuery('#cpListMapsToWrap').toggleClass('d-none', !isCategory);
+        jQuery('#cpListForm [name=maps_to]').prop('disabled', !isCategory);
+    }
     jQuery('#cpListAdd').on('click', function() {
         var $f = jQuery('#cpListForm')[0]; $f.reset();
+        showMapsTo();
         jQuery('#cpListForm [name=id]').val('');
         jQuery('#cpListForm [name=list_type]').val(jQuery('#cpListType').val());
         jQuery('#cpListForm [name=is_active]').prop('checked', true);
@@ -388,6 +404,8 @@ jQuery(function() {
         jQuery('#cpListForm [name=list_type]').val(jQuery('#cpListType').val());
         jQuery('#cpListForm [name=name]').val($tr.data('name'));
         jQuery('#cpListForm [name=description]').val($tr.data('desc') || '');
+        jQuery('#cpListForm [name=maps_to]').val($tr.data('maps-to') || '');
+        showMapsTo();
         jQuery('#cpListForm [name=sort_order]').val($tr.data('sort'));
         jQuery('#cpListForm [name=is_active]').prop('checked', String($tr.data('active')) === '1');
         new bootstrap.Modal('#cpListModal').show();
@@ -398,7 +416,7 @@ jQuery(function() {
     jQuery('#cpListForm').on('submit', function(e) {
         e.preventDefault();
         var data = { save_system_list_item: 1 };
-        jQuery(this).find('[name]').each(function() {
+        jQuery(this).find('[name]:enabled').each(function() {
             if (this.type === 'checkbox') data[this.name] = this.checked ? 1 : 0;
             else data[this.name] = jQuery(this).val();
         });

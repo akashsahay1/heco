@@ -63,9 +63,17 @@
                         <input type="hidden" id="newTripStart">
                     </div>
                 </div>
+                <label class="form-label small fw-bold mt-3">Region</label>
+                <select class="form-select form-select-sm custom-select" id="newTripRegion">
+                    <option value="">-- From the enquiry, or none --</option>
+                    @foreach ($regions ?? [] as $r)
+                        <option value="{{ $r->id }}">{{ $r->name }}</option>
+                    @endforeach
+                </select>
                 <div class="form-text mt-2">
                     The trip opens empty. Add its days and experiences in the Trip Manager;
-                    it takes its region and its price from what you put on it.
+                    it takes its price from what you put on it. Left blank, the region
+                    comes from this person's open enquiry, if they have one.
                 </div>
             </div>
             <div class="modal-footer py-2">
@@ -256,6 +264,7 @@ jQuery(function() {
     // ── New Trip
     if (window.buildCustomDropdown) {
         buildCustomDropdown(jQuery('#newTripTraveller')[0]);
+        buildCustomDropdown(jQuery('#newTripRegion')[0]);
     }
 
     // Picking somebody already on file leaves nothing to type.
@@ -284,7 +293,8 @@ jQuery(function() {
             email: jQuery('#newTripEmail').val(),
             adults: jQuery('#newTripAdults').val(),
             children: jQuery('#newTripChildren').val(),
-            start_date: jQuery('#newTripStart').val()
+            start_date: jQuery('#newTripStart').val(),
+            region_id: jQuery('#newTripRegion').val()
         }, function(resp) {
             window.location = '/trip-manager/' + resp.trip_row_id;
         }, function(xhr) {

@@ -228,11 +228,27 @@
                     <div class="card-body py-2">
                         <div class="mb-2">
                             <div class="small fw-bold text-muted">Regions</div>
-                            @forelse($involved['regions'] as $region)
-                                <span class="badge bg-light text-dark border">{{ $region->name }}</span>
+                            {{-- One HCT chose can be taken off here; one an experience
+                                 brought goes when the experience does. --}}
+                            @forelse($trip->tripRegions->filter(fn ($tr) => $tr->region)->unique('region_id') as $tr)
+                                <span class="badge bg-light text-dark border">
+                                    {{ $tr->region->name }}
+                                    @if($tr->added_by === \App\Models\TripRegion::ADDED_BY_HCT)
+                                        <i class="bi bi-x ms-1 tm-region-remove" role="button" title="Remove" data-region-id="{{ $tr->region_id }}"></i>
+                                    @endif
+                                </span>
                             @empty
-                                <span class="small text-muted">No region yet - add an experience.</span>
+                                <span class="small text-muted">No region yet - pick one below or add an experience.</span>
                             @endforelse
+                            <div class="d-flex gap-1 mt-1">
+                                <select class="form-select form-select-sm" id="tmRegionPick">
+                                    <option value="">Add a region...</option>
+                                    @foreach($regions as $r)
+                                        <option value="{{ $r->id }}">{{ $r->name }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="tmRegionAdd">Add</button>
+                            </div>
                         </div>
 
                         <div class="mb-2">
@@ -409,7 +425,10 @@
                         {{-- Add Payment Inline Form --}}
                         <div class="collapse" id="addPaymentCollapse">
                             <div class="p-3 bg-light border-bottom">
-                                <form id="addPaymentForm">
+                                {{-- A div, not a form: this sits inside #tripInfoForm, and a
+                                     form inside a form is dropped by the browser, so Record
+                                     used to submit the trip info instead of the payment. --}}
+                                <div id="addPaymentForm">
                                     <div class="row g-2">
                                         <div class="col-md-4">
                                             <input type="number" class="form-control form-control-sm" name="amount" step="0.01" required>
@@ -432,10 +451,10 @@
                                             <input type="text" class="form-control form-control-sm" name="notes">
                                         </div>
                                         <div class="col-md-4">
-                                            <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-check"></i> Record</button>
+                                            <button type="button" class="btn btn-sm btn-success w-100" id="addPaymentBtn"><i class="bi bi-check"></i> Record</button>
                                         </div>
                                     </div>
-                                </form>
+                                </div>
                             </div>
                         </div>
 
@@ -483,7 +502,8 @@
                         {{-- Add SP Payment Inline Form --}}
                         <div class="collapse" id="addSpPaymentCollapse">
                             <div class="p-3 bg-light border-bottom">
-                                <form id="addSpPaymentForm">
+                                {{-- A div for the same reason as #addPaymentForm. --}}
+                                <div id="addSpPaymentForm">
                                     <div class="row g-2">
                                         <div class="col-md-12">
                                             <label class="form-label small fw-bold mb-1">Service Provider</label>
@@ -515,10 +535,10 @@
                                             <input type="text" class="form-control form-control-sm" name="notes">
                                         </div>
                                         <div class="col-md-4 d-flex align-items-end">
-                                            <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-check"></i> Create</button>
+                                            <button type="button" class="btn btn-sm btn-success w-100" id="addSpPaymentBtn"><i class="bi bi-check"></i> Create</button>
                                         </div>
                                     </div>
-                                </form>
+                                </div>
                             </div>
                         </div>
 

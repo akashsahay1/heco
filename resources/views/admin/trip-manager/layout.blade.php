@@ -8,7 +8,7 @@
         <div>
             <strong class="text-success">{{ $trip->trip_id }}</strong>
             <span class="text-muted ms-2">{{ $trip->trip_name ?? 'Unnamed Trip' }}</span>
-            <span class="badge bg-{{ $trip->status === 'confirmed' ? 'success' : ($trip->status === 'running' ? 'primary' : 'warning text-dark') }} ms-2">{{ ucfirst(str_replace('_', ' ', $trip->status)) }}</span>
+            <span class="badge bg-{{ $trip->status === 'confirmed' ? 'success' : ($trip->status === 'running' ? 'primary' : 'warning text-dark') }} ms-2" id="tmStatusBadge">{{ ucfirst(str_replace('_', ' ', $trip->status)) }}</span>
         </div>
         <div class="d-flex gap-2">
             <span class="text-muted small">{{ $trip->user->full_name ?? $trip->user->email ?? '' }}</span>
@@ -145,6 +145,16 @@ var tripData = @json($trip);
 // Settings percentage). Comes from the same calculator that prices the trip.
 var tripPeopleFactor = {{ json_encode((float) ($peopleFactor ?? 1)) }};
 
+// ── Regions chosen by hand (Trip Info > Who Is On This Trip)
+jQuery(document).on('click', '#tmRegionAdd', function() {
+    var regionId = jQuery('#tmRegionPick').val();
+    if (!regionId) return;
+    ajaxPost({ add_trip_region: 1, trip_id: tripId, region_id: regionId }, function() { location.reload(); });
+});
+jQuery(document).on('click', '.tm-region-remove', function() {
+    ajaxPost({ remove_trip_region: 1, trip_id: tripId, region_id: jQuery(this).data('region-id') }, function() { location.reload(); });
+});
+
 /**
  * What a service line comes to for the whole party, before markup.
  */
@@ -250,7 +260,8 @@ function tmDayDate(raw) {
 $('#tripInfoForm').on('submit', function(e) {
     e.preventDefault();
     var data = { update_trip_info: 1, trip_id: tripId };
-    $(this).find('[name]').each(function() {
+    // The two payment boxes live inside this form; their fields are theirs.
+    $(this).find('[name]').not('#addPaymentForm [name], #addSpPaymentForm [name]').each(function() {
         data[$(this).attr('name')] = $(this).val();
     });
     ajaxPost(data, function(resp) {
@@ -284,18 +295,39 @@ $('#btnSaveNotes').on('click', function() {
     });
 });
 
-$('#addPaymentForm').on('submit', function(e) {
-    e.preventDefault();
+$('#addPaymentBtn').on('click', function() {
+    var $btn = $(this).prop('disabled', true);
     var data = { add_traveller_payment: 1, trip_id: tripId };
-    $(this).find('[name]').each(function() {
+    $('#addPaymentForm').find('[name]').each(function() {
         data[$(this).attr('name')] = $(this).val();
     });
-    ajaxPost(data, function() {
-        showAlert('Payment recorded!');
+    ajaxPost(data, function(resp) {
+        $btn.prop('disabled', false);
         loadTravellerPayments();
-        $('#addPaymentForm')[0].reset();
-        if (window.buildCustomDropdown) buildCustomDropdown($('#addPaymentForm select.custom-select')[0]);
+        $('#addPaymentForm').find('input[name=amount], input[name=notes]').val('');
         $('#addPaymentCollapse').collapse('hide');
+
+        // A payment can confirm the trip. Keep the status box in step, or the
+        // next Save on this tab would undo the confirmation.
+        var $status = $('#tripInfoForm select[name=status]');
+        if (resp && resp.trip_status && $status.val() !== resp.trip_status) {
+            $status.val(resp.trip_status);
+            if (window.buildCustomDropdown) buildCustomDropdown($status[0]);
+            // And the badge beside the trip id, coloured as the server draws it.
+            var badge = resp.trip_status === 'confirmed' ? 'success' : (resp.trip_status === 'running' ? 'primary' : 'warning text-dark');
+            $('#tmStatusBadge').attr('class', 'badge bg-' + badge + ' ms-2')
+                .text(resp.trip_status.charAt(0).toUpperCase() + resp.trip_status.slice(1).replace(/_/g, ' '));
+        }
+
+        if (resp && resp.rooms_warning) {
+            Swal.fire({ text: resp.rooms_warning, icon: 'warning' });
+        } else {
+            showAlert('Payment recorded!');
+        }
+    }, function(xhr) {
+        $btn.prop('disabled', false);
+        var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not record the payment') : 'Could not record the payment';
+        showAlert(msg, 'danger');
     });
 });
 
@@ -324,19 +356,20 @@ function loadTravellerPayments() {
         $('#paymentHistory').html(html);
         var finalPrice = parseFloat(tripData.final_price) || 0;
         var balance = finalPrice - totalPaid;
-        $('#totalPaidDisplay').html('\u20B9' + totalPaid.toLocaleString('en-IN'));
+        // Two decimals, the way Final Price beside them reads.
+        var money = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+        $('#totalPaidDisplay').html('\u20B9' + totalPaid.toLocaleString('en-IN', money));
         $('#balanceDueDisplay')
-            .html('\u20B9' + balance.toLocaleString('en-IN'))
+            .html('\u20B9' + balance.toLocaleString('en-IN', money))
             .toggleClass('text-danger', balance > 0)
             .toggleClass('text-success', balance <= 0);
     });
 }
 loadTravellerPayments();
 
-$('#addSpPaymentForm').on('submit', function(e) {
-    e.preventDefault();
+$('#addSpPaymentBtn').on('click', function() {
     var data = { create_sp_payment: 1, trip_id: tripId };
-    $(this).find('[name]').each(function() {
+    $('#addSpPaymentForm').find('[name]').each(function() {
         data[$(this).attr('name')] = $(this).val();
     });
     ajaxPost(data, function(resp) {
