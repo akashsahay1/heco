@@ -22,7 +22,7 @@
             </div>
             <div class="col-md-5">
                 <label class="form-label small text-muted mb-1">Search</label>
-                <input type="text" name="search" value="{{ $search }}" class="form-control form-control-sm">
+                <input type="text" name="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="Search by name, email or phone...">
             </div>
             <div class="col-md-3 d-flex gap-2">
                 <button type="submit" class="btn btn-primary btn-sm">

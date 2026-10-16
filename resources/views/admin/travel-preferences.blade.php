@@ -48,10 +48,10 @@
                 <div class="pref-add-row">
                     <form class="pref-add-form d-flex flex-wrap gap-2 align-items-end mb-0" data-type="{{ $s['type'] }}">
                         <div class="flex-grow-1 tp-leftcol">
-                            <input type="text" class="form-control form-control-sm pref-new-name" required>
+                            <input type="text" class="form-control form-control-sm pref-new-name" placeholder="Add new option..." required>
                         </div>
                         <div class="tp-rightcol">
-                            <input type="number" class="form-control form-control-sm pref-new-sort" value="0" min="0">
+                            <input type="number" class="form-control form-control-sm pref-new-sort" placeholder="Sort" value="0" min="0">
                         </div>
                         <button type="submit" class="btn btn-sm btn-success">
                             <i class="bi bi-plus-lg me-1"></i> Add

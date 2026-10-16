@@ -341,6 +341,14 @@
             <td class="bold">Total Cost</td>
             <td class="text-right bold">{{ number_format($trip->total_cost ?? 0, 2) }}</td>
         </tr>
+        {{-- The margins, added on top of the trip cost, so the rows add up to the
+             Final Price. One line: HRP and HCT are never shown apart. --}}
+        @if((float) ($trip->subtotal ?? 0) > (float) ($trip->total_cost ?? 0))
+            <tr>
+                <td>Service charges</td>
+                <td class="text-right">{{ number_format((float) $trip->subtotal - (float) $trip->total_cost, 2) }}</td>
+            </tr>
+        @endif
         <tr>
             <td>GST</td>
             <td class="text-right">{{ number_format($trip->gst_amount ?? 0, 2) }}</td>
@@ -352,8 +360,9 @@
         {{-- Informational: the regenerative-project share included in the price
              (not an added charge). The HRP and HCT splits never go on the PDF,
              whoever downloads it: HCT hands this one to the traveller. --}}
+        {{-- Hidden for now on the client's word; RP sits inside Service charges. --}}
         @if(($trip->margin_rp_amount ?? 0) > 0)
-            <tr>
+            <tr style="display: none;">
                 <td>Of which, Regenerative Contribution ({{ $trip->margin_rp_percent ?? 0 }}%)</td>
                 <td class="text-right">{{ number_format($trip->margin_rp_amount ?? 0, 2) }}</td>
             </tr>

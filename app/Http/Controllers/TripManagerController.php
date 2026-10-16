@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Trip;
 use App\Models\Region;
+use App\Models\RegenerativeProject;
 use App\Models\ServiceProvider;
 use App\Services\CostCalculatorService;
 
@@ -32,6 +33,16 @@ class TripManagerController extends Controller
         $providers = ServiceProvider::where("status", "approved")->with("region")->get();
         $involved = $this->whoIsOnThisTrip($trip);
 
+        // A custom-day trip names its regenerative project here. Any project
+        // may go on any trip, whatever its region: every active one, and the
+        // one already chosen even if it has since been switched off.
+        $rpProjects = collect();
+        if ($trip->isHctBuilt()) {
+            $rpProjects = RegenerativeProject::where('is_active', true)
+                ->when($trip->regenerative_project_id, fn ($q) => $q->orWhere('id', $trip->regenerative_project_id))
+                ->orderBy('name')->get();
+        }
+
         // Part of the total, but never stored on the trip, so the panel has to
         // ask for it. Without this its Financial Snapshot silently came up
         // short on every trip where somebody had a room to themselves.
@@ -47,7 +58,7 @@ class TripManagerController extends Controller
         )['people_factor'];
 
         return view("admin.trip-manager.layout",
-            compact("trip", "regions", "providers", "involved", "singleSupplement", "peopleFactor"));
+            compact("trip", "regions", "providers", "involved", "singleSupplement", "peopleFactor", "rpProjects"));
     }
 
     /**

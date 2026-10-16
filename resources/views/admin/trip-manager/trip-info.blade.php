@@ -103,7 +103,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Pickup Time</label>
-                                <input type="text" class="form-control form-control-sm" name="pickup_time" value="{{ $trip->pickup_time }}">
+                                <input type="text" class="form-control form-control-sm" name="pickup_time" placeholder="e.g. 9:00 AM" value="{{ $trip->pickup_time }}">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Drop Location</label>
@@ -111,7 +111,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Drop Time</label>
-                                <input type="text" class="form-control form-control-sm" name="drop_time" value="{{ $trip->drop_time }}">
+                                <input type="text" class="form-control form-control-sm" name="drop_time" placeholder="e.g. 5:00 PM" value="{{ $trip->drop_time }}">
                             </div>
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Operations Notes</label>
@@ -201,7 +201,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Other Preferences</label>
-                                <input type="text" class="form-control form-control-sm" name="other_preferences" value="{{ is_array($trip->other_preferences) ? implode(', ', $trip->other_preferences) : $trip->other_preferences }}">
+                                <input type="text" class="form-control form-control-sm" name="other_preferences" placeholder="Comma separated" value="{{ is_array($trip->other_preferences) ? implode(', ', $trip->other_preferences) : $trip->other_preferences }}">
                             </div>
                         </div>
                     </div>
@@ -313,10 +313,12 @@
                         'trip_day_id', \App\Models\TripDay::where('trip_id', $trip->id)->select('id')
                     )->whereNotNull('service_provider_id')->count();
                     $nothingPinned = $pinnedCount === 0;
-                    $partnerShare  = (float) ($trip->margin_rp_amount ?? 0)
+                    $hctBuilt      = $trip->isHctBuilt();
+                    // A custom-day trip carries an RP margin only with a project named.
+                    $rpOff         = $hctBuilt && ! $trip->regenerative_project_id;
+                    $margins       = (float) ($trip->margin_rp_amount ?? 0)
                                    + (float) ($trip->margin_hrp_amount ?? 0)
                                    + (float) ($trip->commission_hct_amount ?? 0);
-                    $toSuppliers   = (float) ($trip->total_cost ?? 0) - $partnerShare;
                 @endphp
                 <div class="card mb-3">
                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
@@ -353,6 +355,7 @@
                                     </tr>
                                 @endif
                                 <tr class="border-top"><td class="ps-3 small fw-bold">Total Cost</td><td class="text-end pe-3 small fw-bold">&#8377;{{ number_format($trip->total_cost ?? 0, 2) }}</td></tr>
+                                <tr><td class="ps-3 small text-muted">Margins ({{ $rpOff ? '' : 'RP + ' }}HRP + HCT)</td><td class="text-end pe-3 small">&#8377;{{ number_format($margins, 2) }}</td></tr>
                                 <tr><td class="ps-3 small text-muted">GST</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->gst_amount ?? 0, 2) }}</td></tr>
                                 <tr class="border-top bg-success bg-opacity-10">
                                     <td class="ps-3 fw-bold">Final Price</td>
@@ -370,45 +373,46 @@
 
                         <hr class="my-1">
                         <div class="px-3 pt-1 pb-1">
-                            <span class="badge bg-secondary bg-opacity-25 text-body-secondary">WHO THE TOTAL GOES TO</span>
-                            <div class="small text-muted mt-1">Shares of the total above, not charges on top of it.</div>
+                            <span class="badge bg-secondary bg-opacity-25 text-body-secondary">MARGINS</span>
+                            <div class="small text-muted mt-1">Added on top of the Total Cost. Set for this trip.</div>
                         </div>
+                        @if ($hctBuilt)
+                        <div class="px-3 pb-2">
+                            <label class="form-label small text-muted mb-1" for="tmRpProject">Regenerative Project</label>
+                            {{-- No name: saved on its own when picked, not with the form. --}}
+                            <select class="form-select form-select-sm custom-select" id="tmRpProject">
+                                <option value="">None (no RP margin)</option>
+                                @foreach($rpProjects as $rp)
+                                    <option value="{{ $rp->id }}" @selected($trip->regenerative_project_id == $rp->id)>{{ $rp->name }}</option>
+                                @endforeach
+                                <option value="new">+ Create new project</option>
+                            </select>
+                        </div>
+                        @endif
                         <table class="table table-sm table-borderless mb-0">
                             <tbody>
+                                @unless ($rpOff)
                                 <tr>
                                     <td class="ps-3 small text-muted">RP Margin</td>
                                     <td class="text-end pe-3 small">
-                                        <input type="number" class="form-control form-control-sm d-inline-block input-pct" name="margin_rp_percent" value="{{ $trip->margin_rp_percent ?? 0 }}" step="0.01"> %
+                                        <input type="number" class="form-control form-control-sm d-inline-block input-pct" name="margin_rp_percent" value="{{ $trip->margin_rp_percent ?? 0 }}" min="0" step="0.01"> %
                                     </td>
                                     <td class="text-end pe-3 small">&#8377;{{ number_format($trip->margin_rp_amount ?? 0, 2) }}</td>
                                 </tr>
+                                @endunless
                                 <tr>
                                     <td class="ps-3 small text-muted">HRP Margin</td>
                                     <td class="text-end pe-3 small">
-                                        <input type="number" class="form-control form-control-sm d-inline-block input-pct" name="margin_hrp_percent" value="{{ $trip->margin_hrp_percent ?? 0 }}" step="0.01"> %
+                                        <input type="number" class="form-control form-control-sm d-inline-block input-pct" name="margin_hrp_percent" value="{{ $trip->margin_hrp_percent ?? 0 }}" min="0" step="0.01"> %
                                     </td>
                                     <td class="text-end pe-3 small">&#8377;{{ number_format($trip->margin_hrp_amount ?? 0, 2) }}</td>
                                 </tr>
                                 <tr>
                                     <td class="ps-3 small text-muted">HCT Commission</td>
                                     <td class="text-end pe-3 small">
-                                        <input type="number" class="form-control form-control-sm d-inline-block input-pct" name="commission_hct_percent" value="{{ $trip->commission_hct_percent ?? 0 }}" step="0.01"> %
+                                        <input type="number" class="form-control form-control-sm d-inline-block input-pct" name="commission_hct_percent" value="{{ $trip->commission_hct_percent ?? 0 }}" min="0" step="0.01"> %
                                     </td>
                                     <td class="text-end pe-3 small">&#8377;{{ number_format($trip->commission_hct_amount ?? 0, 2) }}</td>
-                                </tr>
-                                {{-- Named "Hosts and providers" at first, which was
-                                     wrong: total_cost already carries HECO's own
-                                     markup, so what is left after the three
-                                     margins is the suppliers' share PLUS that
-                                     markup. It would never have matched the
-                                     invoices on the same page, and somebody would
-                                     have reconciled against it. --}}
-                                <tr class="border-top">
-                                    <td class="ps-3 small text-muted">Left after these
-                                        <i class="bi bi-info-circle" title="What remains of the total once the three shares above are taken. Not the same as what partners are invoiced: the invoices are on the Payments to Service Providers card below."></i>
-                                    </td>
-                                    <td></td>
-                                    <td class="text-end pe-3 small">&#8377;{{ number_format($toSuppliers, 2) }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -427,18 +431,21 @@
                             <div class="p-3 bg-light border-bottom">
                                 {{-- A div, not a form: this sits inside #tripInfoForm, and a
                                      form inside a form is dropped by the browser, so Record
-                                     used to submit the trip info instead of the payment. --}}
+                                     used to submit the trip info instead of the payment.
+                                     No `required` on these fields either: they are part of
+                                     #tripInfoForm, and an empty required box in a closed
+                                     panel silently stopped Save Changes. The server checks. --}}
                                 <div id="addPaymentForm">
                                     <div class="row g-2">
                                         <div class="col-md-4">
-                                            <input type="number" class="form-control form-control-sm" name="amount" step="0.01" required>
+                                            <input type="number" class="form-control form-control-sm" name="amount" placeholder="Amount" step="0.01">
                                         </div>
                                         <div class="col-md-4">
                                             <input type="text" class="form-control form-control-sm" id="addPaymentDateDisplay" readonly autocomplete="off" value="{{ date('d-m-Y') }}">
                                             <input type="hidden" name="payment_date" id="addPaymentDateInput" value="{{ date('Y-m-d') }}">
                                         </div>
                                         <div class="col-md-4">
-                                            <select class="form-select form-select-sm custom-select" name="mode" required>
+                                            <select class="form-select form-select-sm custom-select" name="mode">
                                                 <option value="">-- Mode --</option>
                                                 <option value="bank_transfer">Bank Transfer</option>
                                                 <option value="upi">UPI</option>
@@ -448,7 +455,7 @@
                                             </select>
                                         </div>
                                         <div class="col-md-8">
-                                            <input type="text" class="form-control form-control-sm" name="notes">
+                                            <input type="text" class="form-control form-control-sm" name="notes" placeholder="Notes (optional)">
                                         </div>
                                         <div class="col-md-4">
                                             <button type="button" class="btn btn-sm btn-success w-100" id="addPaymentBtn"><i class="bi bi-check"></i> Record</button>
@@ -507,7 +514,7 @@
                                     <div class="row g-2">
                                         <div class="col-md-12">
                                             <label class="form-label small fw-bold mb-1">Service Provider</label>
-                                            <select class="form-select form-select-sm custom-select" name="service_provider_id" required>
+                                            <select class="form-select form-select-sm custom-select" name="service_provider_id">
                                                 <option value="">-- Select provider --</option>
                                                 @foreach($providers as $sp)
                                                     <option value="{{ $sp->id }}">{{ $sp->name }} ({{ strtoupper($sp->provider_type) }}{{ $sp->region ? ' - ' . $sp->region->name : '' }})</option>
@@ -516,7 +523,7 @@
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label small fw-bold mb-1">Service Type</label>
-                                            <select class="form-select form-select-sm custom-select" name="service_type" required>
+                                            <select class="form-select form-select-sm custom-select" name="service_type">
                                                 <option value="">-- Select --</option>
                                                 <option value="accommodation">Accommodation</option>
                                                 <option value="transport">Transport</option>
@@ -528,11 +535,11 @@
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label small fw-bold mb-1">Amount Due (₹)</label>
-                                            <input type="number" class="form-control form-control-sm" name="amount_due" step="0.01" min="0" required>
+                                            <input type="number" class="form-control form-control-sm" name="amount_due" step="0.01" min="0">
                                         </div>
                                         <div class="col-md-8">
                                             <label class="form-label small fw-bold mb-1">Notes</label>
-                                            <input type="text" class="form-control form-control-sm" name="notes">
+                                            <input type="text" class="form-control form-control-sm" name="notes" placeholder="Notes (optional)">
                                         </div>
                                         <div class="col-md-4 d-flex align-items-end">
                                             <button type="button" class="btn btn-sm btn-success w-100" id="addSpPaymentBtn"><i class="bi bi-check"></i> Create</button>
@@ -608,7 +615,7 @@
                         <button type="button" class="btn btn-sm btn-outline-success" id="btnSaveNotes"><i class="bi bi-check"></i> Save Notes</button>
                     </div>
                     <div class="card-body">
-                        <textarea class="form-control form-control-sm" id="generalNotes" rows="5">{{ $trip->general_notes }}</textarea>
+                        <textarea class="form-control form-control-sm" id="generalNotes" placeholder="Free-text notes about this trip..." rows="5">{{ $trip->general_notes }}</textarea>
                     </div>
                 </div>
 

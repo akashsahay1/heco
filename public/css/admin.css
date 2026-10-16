@@ -1124,6 +1124,12 @@ body.admin-login-page {
 .heco-admin .custom-select-wrap.open .custom-select-trigger {
     border-color: var(--heco-primary-700, #79a09f);
 }
+/* A long option name shortens with "..." instead of running under the caret. */
+.heco-admin .custom-select-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .heco-admin .custom-select-trigger .caret {
     margin-left: 8px;
     font-size: 0.7rem;

@@ -19,7 +19,7 @@
     {{-- SP Payments Tab --}}
     <div class="tab-pane fade show active" id="spPayments">
         <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
-            <input type="text" class="form-control form-control-sm input-trip-search" id="spTripSearch">
+            <input type="text" class="form-control form-control-sm input-trip-search" id="spTripSearch" placeholder="Search by Trip ID...">
             <button class="btn btn-sm btn-outline-primary" id="spSearchBtn"><i class="bi bi-search"></i> Search</button>
             {{-- Month end: one place to settle the bills of trips that were
                  called off, instead of finding them a page at a time. --}}
@@ -172,7 +172,7 @@ function loadSpPayments(page) {
             }
             html += '<h6 class="small fw-bold">Add Payment</h6>';
             html += '<div class="row g-2">';
-            html += '<div class="col-md-3"><input type="number" class="form-control form-control-sm sp-amount" data-id="' + sp.id + '" step="0.01"></div>';
+            html += '<div class="col-md-3"><input type="number" class="form-control form-control-sm sp-amount" placeholder="Amount" data-id="' + sp.id + '" step="0.01"></div>';
             html += '<div class="col-md-3">';
             html += '<input type="text" class="form-control form-control-sm sp-date-display" data-id="' + sp.id + '" readonly autocomplete="off">';
             html += '<input type="hidden" class="sp-date" data-id="' + sp.id + '">';
@@ -185,7 +185,7 @@ function loadSpPayments(page) {
             html += '<option value="remitly">Remitly</option>';
             html += '</select>';
             html += '</div>';
-            html += '<div class="col-md-3"><input type="text" class="form-control form-control-sm sp-notes" data-id="' + sp.id + '"></div>';
+            html += '<div class="col-md-3"><input type="text" class="form-control form-control-sm sp-notes" placeholder="Notes" data-id="' + sp.id + '"></div>';
             html += '</div>';
             html += '<button class="btn btn-sm btn-success mt-2 add-sp-payment" data-id="' + sp.id + '"'
                  + (sp.trip_cancelled ? ' data-cancelled="1"' : '')

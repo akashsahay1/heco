@@ -14,8 +14,11 @@ class ImpactCalculatorService
             return ['total_contribution' => 0, 'projects' => []];
         }
 
+        // A project HCT named on the trip takes all of it.
         $regionIds = $trip->tripRegions()->pluck('region_id')->toArray();
-        $projects = RegenerativeProject::where('is_active', true)
+        $projects = $trip->regenerative_project_id
+            ? RegenerativeProject::whereKey($trip->regenerative_project_id)->get()
+            : RegenerativeProject::where('is_active', true)
             ->where(function ($q) use ($regionIds) {
                 $q->whereIn('region_id', $regionIds)
                     ->orWhere(function ($q2) use ($regionIds) {

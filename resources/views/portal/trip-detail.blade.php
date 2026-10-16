@@ -18,7 +18,7 @@
                     @if($trip->start_date)
                         <span><i class="bi bi-calendar3"></i>{{ $trip->start_date->format('d M Y') }}@if($trip->end_date) - {{ $trip->end_date->format('d M Y') }}@endif</span>
                     @endif
-                    <span><i class="bi bi-people"></i>{{ $trip->adults }} Adults{{ $trip->children ? ', ' . $trip->children . ' Children' : '' }}{{ $trip->infants ? ', ' . $trip->infants . ' Infants' : '' }}</span>
+                    <span><i class="bi bi-people"></i>{{ $trip->adults }} {{ \Illuminate\Support\Str::plural('Adult', (int) $trip->adults) }}{{ $trip->children ? ', ' . $trip->children . ' ' . \Illuminate\Support\Str::plural('Child', (int) $trip->children) : '' }}{{ $trip->infants ? ', ' . $trip->infants . ' ' . \Illuminate\Support\Str::plural('Infant', (int) $trip->infants) : '' }}</span>
                 </div>
                 @if($trip->tripRegions && $trip->tripRegions->count())
                     <div class="mt-2 d-flex flex-wrap gap-1">
@@ -36,9 +36,11 @@
                     $s = $statusMap[$trip->status] ?? ['Unknown', 'open'];
                     $tripHasItinerary = ($trip->tripDays()->exists() || $trip->selectedExperiences->count() > 0);
                     $canConfirm = ($trip->status === 'not_confirmed' && $trip->stage === 'open' && $tripHasItinerary);
+                    // Planned by HECO from custom days: confirmed by paying, not here.
+                    $hctBuilt = $trip->isHctBuilt();
                 @endphp
                 <span class="td-badge td-badge-{{ $s[1] }}">{{ $s[0] }}</span>
-                @if($trip->status === 'not_confirmed' && $trip->stage === 'open')
+                @if($trip->status === 'not_confirmed' && $trip->stage === 'open' && ! $hctBuilt)
                     <div class="mt-2">
                         <button class="btn btn-sm btn-success" id="btnConfirmTrip" data-trip-id="{{ $trip->id }}" @if(!$tripHasItinerary) disabled title="Add at least one experience before confirming" @endif>
                             <i class="bi bi-check2-circle"></i> Confirm Trip
@@ -101,7 +103,15 @@
                             </div>
                         </div>
                     @empty
-                        <p class="text-muted td-small-text">No experiences added.</p>
+                        @if ($hctBuilt)
+                            {{-- The trip itself, under its own name, as on the homepage. --}}
+                            <div class="td-small-text">
+                                <strong>{{ $trip->trip_name }}</strong>
+                                <span class="text-muted td-tiny-text">Planned by HECO &middot; {{ $trip->tripDays()->count() }} {{ \Illuminate\Support\Str::plural('Day', $trip->tripDays()->count()) }}</span>
+                            </div>
+                        @else
+                            <p class="text-muted td-small-text">No experiences added.</p>
+                        @endif
                     @endforelse
                 </div>
             </div>
@@ -292,10 +302,20 @@ jQuery(function() {
         if (Number(p.single_supplement) > 0) {
             html += '<div class="td-pr-row"><span>Single Supplement</span><span>' + fmtCurrency(p.single_supplement) + '</span></div>';
         }
-        html += '<div class="td-pr-row"><span>Subtotal</span><span>' + fmtCurrency(p.subtotal) + '</span></div>';
-        html += '<div class="td-pr-row"><span>RP Contribution</span><span>' + fmtCurrency(p.margin_rp_amount) + '</span></div>';
+        // Trip cost, then the margins added on top of it, then GST: the rows add
+        // up to the Final Price. RP is part of the service charges, so it is
+        // shown after the total as information, not as another charge.
+        var serviceCharges = (Number(p.subtotal) || 0) - (Number(p.total_cost) || 0);
+        html += '<div class="td-pr-row"><span>Trip Cost</span><span>' + fmtCurrency(p.total_cost) + '</span></div>';
+        if (serviceCharges > 0) {
+            html += '<div class="td-pr-row"><span>Service charges</span><span>' + fmtCurrency(serviceCharges) + '</span></div>';
+        }
         html += '<div class="td-pr-row"><span>GST</span><span>' + fmtCurrency(p.gst_amount) + '</span></div>';
         html += '<div class="td-pr-row total"><span>Final Price</span><span>' + fmtCurrency(p.final_price) + '</span></div>';
+        if (Number(p.margin_rp_amount) > 0) {
+            // Hidden for now on the client's word; RP sits inside Service charges.
+            html += '<div class="td-pr-row text-muted" style="display: none;"><span>Of which, regenerative contribution</span><span>' + fmtCurrency(p.margin_rp_amount) + '</span></div>';
+        }
         if (p.total_paid > 0) {
             html += '<div class="td-pr-row paid"><span>Total Paid</span><span>' + fmtCurrency(p.total_paid) + '</span></div>';
         }

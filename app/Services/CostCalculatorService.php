@@ -397,11 +397,9 @@ class CostCalculatorService
         $totalCost = $experienceCost + $singleSupplement + $accommodationCost + $transportCost
             + $guideCost + $activityCost + $otherCost + $extraDayCost;
 
-        // Margins RP/HRP/HCT are computed for INTERNAL payout/reporting ONLY - they are
-        // NOT added to what the traveller pays (req 3.3). The per-provider markup baked
-        // into the lines above is the platform's margin. Downstream: RP is surfaced to
-        // the traveller as an info line ("goes to the regenerative project"); HRP and
-        // HCT stay hidden from the traveller and are used for internal splits.
+        // Margins RP/HRP/HCT are added on top of the trip cost: the client asked
+        // for them as charges, not as shares carved out of the price. Each trip
+        // carries its own percentages, defaulting to Settings.
         //
         // Cast to float first - DB DECIMALs come back as strings ("0.00"), which are
         // truthy, so `?:` would skip the configured default.
@@ -411,9 +409,13 @@ class CostCalculatorService
         // zero, so the boxes could not be set to nothing at all and a regional
         // partner was invoiced a margin that had been taken off the trip.
         // The test is whether a figure was entered, not whether it is above nil.
-        $rpPercent  = $trip->margin_rp_percent === null
+        // A trip HCT built from custom days has no experience to bring a
+        // regenerative project, so it carries an RP margin only once HCT has
+        // named one on it. Its percentage is kept meanwhile, for when one is.
+        $noRpProject = $trip->isHctBuilt() && ! $trip->regenerative_project_id;
+        $rpPercent  = $noRpProject ? 0.0 : ($trip->margin_rp_percent === null
             ? (float) Setting::getValue('default_rp_margin_percent', 5)
-            : (float) $trip->margin_rp_percent;
+            : (float) $trip->margin_rp_percent);
         $hrpPercent = $trip->margin_hrp_percent === null
             ? (float) Setting::getValue('default_hrp_margin_percent', 10)
             : (float) $trip->margin_hrp_percent;
@@ -424,10 +426,12 @@ class CostCalculatorService
         $hrpAmount  = round($totalCost * $hrpPercent / 100, 2);
         $hctAmount  = round($totalCost * $hctPercent / 100, 2);
 
-        // What the traveller actually pays: trip cost + GST. No margins on top.
-        $subtotal   = $totalCost;
+        // What the traveller pays: trip cost + the three margins + GST. GST is
+        // on the trip cost, as it always was; the client asked only for the
+        // margins to be added.
+        $subtotal   = $totalCost + $rpAmount + $hrpAmount + $hctAmount;
         $gstPercent = (float) Setting::getValue('gst_percent', 5);
-        $gstAmount  = round($subtotal * $gstPercent / 100, 2);
+        $gstAmount  = round($totalCost * $gstPercent / 100, 2);
         $finalPrice = $subtotal + $gstAmount;
 
         $data = [
@@ -450,7 +454,7 @@ class CostCalculatorService
             'final_price'             => $finalPrice,
         ];
 
-        $trip->update($data);
+        $trip->update($noRpProject ? array_diff_key($data, ['margin_rp_percent' => true]) : $data);
 
         // Display-only extras for the pricing summary (not persisted).
         $data['gst_percent'] = $gstPercent;

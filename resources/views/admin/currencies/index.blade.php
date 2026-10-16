@@ -25,7 +25,7 @@
             </div>
             <div class="col-md-5">
                 <label class="form-label small mb-1">Search</label>
-                <input type="text" class="form-control form-control-sm" id="filterSearch">
+                <input type="text" class="form-control form-control-sm" id="filterSearch" placeholder="Search by code, name...">
             </div>
             <div class="col-md-2">
                 <button class="btn btn-outline-secondary btn-sm w-100" id="btnReset" title="Reset filters">
@@ -75,26 +75,26 @@
                 <div class="row g-2 mb-3">
                     <div class="col-md-4">
                         <label class="form-label small">Code <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control form-control-sm text-uppercase" id="currencyCode" maxlength="3">
+                        <input type="text" class="form-control form-control-sm text-uppercase" id="currencyCode" placeholder="USD" maxlength="3">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small">Symbol <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control form-control-sm" id="currencySymbol" maxlength="10">
+                        <input type="text" class="form-control form-control-sm" id="currencySymbol" placeholder="$" maxlength="10">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small">Locale</label>
-                        <input type="text" class="form-control form-control-sm" id="currencyLocale">
+                        <input type="text" class="form-control form-control-sm" id="currencyLocale" placeholder="en-US">
                     </div>
                 </div>
                 <div class="row g-2 mb-3">
                     <div class="col-md-8">
                         <label class="form-label small">Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control form-control-sm" id="currencyName">
+                        <input type="text" class="form-control form-control-sm" id="currencyName" placeholder="US Dollar">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small">Flag Code</label>
                         <div class="input-group input-group-sm">
-                            <input type="text" class="form-control form-control-sm" id="currencyFlag" maxlength="5">
+                            <input type="text" class="form-control form-control-sm" id="currencyFlag" placeholder="us" maxlength="5">
                             <span class="input-group-text p-0 px-1" id="flagPreview"></span>
                         </div>
                         <small class="text-muted">2-letter country code (e.g. us, gb, in)</small>
@@ -103,7 +103,7 @@
                 <div class="row g-2 mb-3">
                     <div class="col-md-6">
                         <label class="form-label small">Rate to USD <span class="text-danger">*</span></label>
-                        <input type="number" step="0.000001" class="form-control form-control-sm" id="currencyRate">
+                        <input type="number" step="0.000001" class="form-control form-control-sm" id="currencyRate" placeholder="1.0">
                         <small class="text-muted">How many of this currency per 1 USD</small>
                     </div>
                     <div class="col-md-6">

@@ -116,7 +116,10 @@ $(function() {
             html += '<a href="/trip/' + trip.id + '" class="btn btn-sm btn-outline-success' + (isDraft ? '' : ' flex-fill') + '"><i class="bi bi-eye"></i> View</a>';
             if (isDraft) {
                 html += '<a href="/home?trip_id=' + trip.id + '" class="btn btn-sm btn-success flex-fill"><i class="bi bi-play-fill"></i> Resume</a>';
-                html += '<button class="btn btn-sm btn-outline-danger btn-erase-trip" data-trip-id="' + trip.id + '" data-trip-name="' + tripName + '"><i class="bi bi-trash"></i> Erase</button>';
+                // A trip the HECO team planned is not the traveller's to erase.
+                if (!trip.hct_built) {
+                    html += '<button class="btn btn-sm btn-outline-danger btn-erase-trip" data-trip-id="' + trip.id + '" data-trip-name="' + tripName + '"><i class="bi bi-trash"></i> Erase</button>';
+                }
             }
             html += '</div></div></div>';
         });

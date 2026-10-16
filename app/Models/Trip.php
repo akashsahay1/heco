@@ -18,7 +18,7 @@ class Trip extends Model
         'travel_pace', 'budget_sensitivity', 'budget_notes', 'other_preferences',
         'transport_cost', 'accommodation_cost', 'guide_cost', 'activity_cost', 'extra_day_cost', 'other_cost', 'total_cost', 'experience_cost',
         'margin_rp_percent', 'margin_rp_amount', 'margin_hrp_percent', 'margin_hrp_amount',
-        'commission_hct_percent', 'commission_hct_amount',
+        'commission_hct_percent', 'commission_hct_amount', 'regenerative_project_id',
         'subtotal', 'gst_amount', 'final_price',
         'ai_raw_response', 'general_notes',
     ];
@@ -144,6 +144,12 @@ class Trip extends Model
         return $this->belongsTo(SpPricing::class, 'guide_pricing_id');
     }
 
+    /** Named by HCT on a custom-day trip; it is where the RP margin goes. */
+    public function regenerativeProject()
+    {
+        return $this->belongsTo(RegenerativeProject::class);
+    }
+
     public function tripRegions()
     {
         return $this->hasMany(TripRegion::class);
@@ -157,6 +163,17 @@ class Trip extends Model
     public function tripDays()
     {
         return $this->hasMany(TripDay::class)->orderBy('day_number');
+    }
+
+    /**
+     * HCT wrote at least one of this trip's days by hand (a custom day). The
+     * traveller sees and pays for such a trip but does not rebuild it: adding,
+     * removing or regenerating days, or pinning their own providers, would
+     * undo what HCT priced.
+     */
+    public function isHctBuilt(): bool
+    {
+        return $this->tripDays()->where('day_type', TripDay::TYPE_CUSTOM)->exists();
     }
 
     public function selectedExperiences()

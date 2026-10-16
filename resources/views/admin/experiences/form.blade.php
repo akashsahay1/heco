@@ -141,7 +141,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Slug</label>
-                            <input type="text" class="form-control" name="slug" id="expSlug" value="{{ $e->slug ?? '' }}">
+                            <input type="text" class="form-control" name="slug" placeholder="Auto-generated from name" id="expSlug" value="{{ $e->slug ?? '' }}">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Type <span class="text-danger">*</span></label>
@@ -336,11 +336,11 @@
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label">Start Latitude</label>
-                            <input type="number" class="form-control" name="start_latitude" value="{{ $e->start_latitude ?? '' }}" step="any">
+                            <input type="number" class="form-control" name="start_latitude" placeholder="e.g. 31.1048" value="{{ $e->start_latitude ?? '' }}" step="any">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Start Longitude</label>
-                            <input type="number" class="form-control" name="start_longitude" value="{{ $e->start_longitude ?? '' }}" step="any">
+                            <input type="number" class="form-control" name="start_longitude" placeholder="e.g. 77.1734" value="{{ $e->start_longitude ?? '' }}" step="any">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">End Latitude</label>
@@ -352,7 +352,7 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Area</label>
-                            <input type="text" class="form-control" name="area" value="{{ $e->area ?? '' }}">
+                            <input type="text" class="form-control" name="area" placeholder="e.g. Tirthan Valley" value="{{ $e->area ?? '' }}">
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Altitude Min (m)</label>
@@ -761,23 +761,23 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Traveller Bring List</label>
-                            <textarea class="form-control" name="traveller_bring_list" rows="3">{{ $e->traveller_bring_list ?? '' }}</textarea>
+                            <textarea class="form-control" name="traveller_bring_list" placeholder="List of things travellers should bring..." rows="3">{{ $e->traveller_bring_list ?? '' }}</textarea>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Clothing Recommendations</label>
-                            <textarea class="form-control" name="clothing_recommendations" rows="3">{{ $e->clothing_recommendations ?? '' }}</textarea>
+                            <textarea class="form-control" name="clothing_recommendations" placeholder="Recommended clothing and gear..." rows="3">{{ $e->clothing_recommendations ?? '' }}</textarea>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Health Notes</label>
-                            <textarea class="form-control" name="health_notes" rows="3">{{ $e->health_notes ?? '' }}</textarea>
+                            <textarea class="form-control" name="health_notes" placeholder="Health advisories, vaccinations, altitude sickness..." rows="3">{{ $e->health_notes ?? '' }}</textarea>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Connectivity Notes</label>
-                            <textarea class="form-control" name="connectivity_notes" rows="3">{{ $e->connectivity_notes ?? '' }}</textarea>
+                            <textarea class="form-control" name="connectivity_notes" placeholder="Mobile/internet connectivity info..." rows="3">{{ $e->connectivity_notes ?? '' }}</textarea>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Cultural Etiquette</label>
-                            <textarea class="form-control" name="cultural_etiquette" rows="3">{{ $e->cultural_etiquette ?? '' }}</textarea>
+                            <textarea class="form-control" name="cultural_etiquette" placeholder="Do's and don'ts, local customs..." rows="3">{{ $e->cultural_etiquette ?? '' }}</textarea>
                         </div>
                     </div>
                 </div>
@@ -799,19 +799,19 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Operational Risks</label>
-                            <textarea class="form-control" name="operational_risks" rows="3">{{ $e->operational_risks ?? '' }}</textarea>
+                            <textarea class="form-control" name="operational_risks" placeholder="Known risks and mitigation strategies..." rows="3">{{ $e->operational_risks ?? '' }}</textarea>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Past Issues</label>
-                            <textarea class="form-control" name="past_issues" rows="3">{{ $e->past_issues ?? '' }}</textarea>
+                            <textarea class="form-control" name="past_issues" placeholder="Historical issues, complaints, incidents..." rows="3">{{ $e->past_issues ?? '' }}</textarea>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Backup Options</label>
-                            <textarea class="form-control" name="backup_options" rows="3">{{ $e->backup_options ?? '' }}</textarea>
+                            <textarea class="form-control" name="backup_options" placeholder="Alternative plans if experience cannot run..." rows="3">{{ $e->backup_options ?? '' }}</textarea>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Emergency Notes</label>
-                            <textarea class="form-control" name="emergency_notes" rows="3">{{ $e->emergency_notes ?? '' }}</textarea>
+                            <textarea class="form-control" name="emergency_notes" placeholder="Emergency contacts, nearest hospital, evacuation routes..." rows="3">{{ $e->emergency_notes ?? '' }}</textarea>
                         </div>
                     </div>
                 </div>
@@ -1156,7 +1156,7 @@ function addDayCard(data, removable) {
     card += '<div class="card-header py-2 d-flex align-items-center gap-2 day-card-header">';
     card += '<span class="badge day-number-badge day-card-badge">Day ' + dayNum + '</span>';
     card += '<input type="hidden" class="day-number-input" name="experience_days[' + i + '][day_number]" value="' + dayNum + '">';
-    card += '<input type="text" class="form-control form-control-sm flex-grow-1" name="experience_days[' + i + '][title]" value="' + escAttr(title) + '">';
+    card += '<input type="text" class="form-control form-control-sm flex-grow-1" name="experience_days[' + i + '][title]" placeholder="Title (e.g. Acclimatization Day)" value="' + escAttr(title) + '">';
     if (removable) {
         card += '<button type="button" class="btn btn-outline-danger btn-sm btn-remove-day" title="Remove"><i class="bi bi-x-lg"></i></button>';
     }
@@ -1166,7 +1166,7 @@ function addDayCard(data, removable) {
 
     // Short description
     card += '<div class="col-12">';
-    card += '<textarea class="form-control form-control-sm day-card-textarea" name="experience_days[' + i + '][short_description]" rows="2">' + escHtml(desc) + '</textarea>';
+    card += '<textarea class="form-control form-control-sm day-card-textarea" name="experience_days[' + i + '][short_description]" placeholder="What happens on this day..." rows="2">' + escHtml(desc) + '</textarea>';
     card += '</div>';
 
     // Inclusion checkboxes

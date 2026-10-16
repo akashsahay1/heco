@@ -37,7 +37,7 @@
             </div>
             <div class="col-md-4">
                 <label class="form-label small mb-1">Search</label>
-                <input type="text" class="form-control form-control-sm" id="filterSearch">
+                <input type="text" class="form-control form-control-sm" id="filterSearch" placeholder="Search by name, country...">
             </div>
             <div class="col-md-2">
                 <button class="btn btn-outline-secondary btn-sm w-100" id="btnReset" title="Reset filters">
@@ -122,7 +122,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label small">External URL</label>
-                    <input type="url" class="form-control form-control-sm" id="regionUrl">
+                    <input type="url" class="form-control form-control-sm" id="regionUrl" placeholder="https://...">
                 </div>
                 <div class="mb-3">
                     <label class="form-label small">Region Image</label>

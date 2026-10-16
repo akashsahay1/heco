@@ -4,7 +4,6 @@
 
 @php
     $p = $project ?? null;
-    $regions = $regions ?? \App\Models\Region::where('is_active', 1)->orderBy('name')->get();
     $allRegions = \App\Models\Region::orderBy('name')->get();
 @endphp
 
@@ -28,22 +27,13 @@
                     <label class="form-label">Name <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="name" value="{{ $p->name ?? '' }}" required>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Region <span class="text-danger">*</span></label>
-                    <select class="form-select custom-select" name="region_id" required>
-                        <option value="">Select Region</option>
-                        @foreach($regions as $r)
-                            <option value="{{ $r->id }}" {{ $p && $p->region_id == $r->id ? 'selected' : '' }}>{{ $r->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-md-3">
+                <div class="col-md-6">
                     <label class="form-label">Local Association</label>
                     <input type="text" class="form-control" name="local_association" value="{{ $p->local_association ?? '' }}">
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Action Type <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="action_type" value="{{ $p->action_type ?? '' }}" required>
+                    <input type="text" class="form-control" name="action_type" placeholder="e.g. reforestation, clean energy" value="{{ $p->action_type ?? '' }}" required>
                 </div>
                 <div class="col-md-12">
                     <label class="form-label">Short Description</label>
@@ -63,7 +53,7 @@
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">Impact Unit <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="impact_unit" value="{{ $p->impact_unit ?? '' }}" required>
+                    <input type="text" class="form-control" name="impact_unit" placeholder="e.g. trees planted, kg CO2 offset" value="{{ $p->impact_unit ?? '' }}" required>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Measurement Frequency</label>
@@ -76,7 +66,7 @@
                 </div>
                 <div class="col-md-12">
                     <label class="form-label">Conversion Rules</label>
-                    <textarea class="form-control" name="conversion_rules" rows="3">{{ $p->conversion_rules ?? '' }}</textarea>
+                    <textarea class="form-control" name="conversion_rules" placeholder="Describe how traveller contributions convert to impact units..." rows="3">{{ $p->conversion_rules ?? '' }}</textarea>
                 </div>
             </div>
         </div>
@@ -142,7 +132,7 @@
                 @endforeach
                 <div class="col-md-4">
                     <label class="form-label">Operational Constraints</label>
-                    <textarea class="form-control" name="operational_constraints" rows="3">{{ $p->operational_constraints ?? '' }}</textarea>
+                    <textarea class="form-control" name="operational_constraints" placeholder="Describe any constraints..." rows="3">{{ $p->operational_constraints ?? '' }}</textarea>
                 </div>
             </div>
         </div>

@@ -64,7 +64,7 @@
                 </div>
                 <div id="listItems"></div>
                 <div class="input-group mt-2">
-                    <input type="text" class="form-control form-control-sm" id="newListItem">
+                    <input type="text" class="form-control form-control-sm" id="newListItem" placeholder="Add new item...">
                     <button class="btn btn-sm btn-success" id="addListItem"><i class="bi bi-plus"></i></button>
                 </div>
             </div>

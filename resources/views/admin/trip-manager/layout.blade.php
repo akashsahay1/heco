@@ -64,6 +64,48 @@
     </div>
 </div>
 
+{{-- New regenerative project, from a custom-day trip's Margins. Only what
+     the project cannot be saved without; photos go on its own page later. --}}
+@if ($trip->isHctBuilt())
+<div class="modal fade" id="newRpProjectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">New Regenerative Project</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="newRpProjectForm">
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Name</label>
+                        <input type="text" class="form-control form-control-sm" name="name" maxlength="255" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Action type</label>
+                        <input type="text" class="form-control form-control-sm" name="action_type" maxlength="255" placeholder="e.g. Reforestation" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Short description</label>
+                        <textarea class="form-control form-control-sm" name="short_description" rows="3" required></textarea>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Impact unit</label>
+                            <input type="text" class="form-control form-control-sm" name="impact_unit" maxlength="255" placeholder="e.g. trees" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Cost per impact unit</label>
+                            <input type="number" class="form-control form-control-sm" name="cost_per_impact_unit" min="0" step="0.01">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-check"></i> Create and use for this trip</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 {{-- Edit Service Modal --}}
 <div class="modal fade" id="editServiceModal" tabindex="-1">
     <div class="modal-dialog modal-sm">
@@ -153,6 +195,33 @@ jQuery(document).on('click', '#tmRegionAdd', function() {
 });
 jQuery(document).on('click', '.tm-region-remove', function() {
     ajaxPost({ remove_trip_region: 1, trip_id: tripId, region_id: jQuery(this).data('region-id') }, function() { location.reload(); });
+});
+
+// ── Regenerative project of a custom-day trip (Trip Info > Margins)
+function setTripRpProject(projectId) {
+    ajaxPost({ update_trip_info: 1, trip_id: tripId, regenerative_project_id: projectId }, function() { location.reload(); });
+}
+jQuery(document).on('change', '#tmRpProject', function() {
+    var val = jQuery(this).val();
+    if (val === 'new') {
+        jQuery(this).val(tripData.regenerative_project_id || '');
+        if (window.buildCustomDropdown) buildCustomDropdown(this);
+        jQuery('#newRpProjectModal').modal('show');
+        return;
+    }
+    setTripRpProject(val);
+});
+jQuery(document).on('submit', '#newRpProjectForm', function(e) {
+    e.preventDefault();
+    var $submit = jQuery(this).find('[type=submit]').prop('disabled', true);
+    var data = { save_regenerative_project: 1 };
+    jQuery(this).serializeArray().forEach(function(f) { data[f.name] = f.value; });
+    ajaxPost(data, function(resp) {
+        setTripRpProject(resp.project.id);
+    }, function(xhr) {
+        $submit.prop('disabled', false);
+        showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Could not create the project') : 'Could not create the project', 'danger');
+    });
 });
 
 /**
@@ -757,6 +826,25 @@ $(document).on('click', '.day-block', function(e) {
     selectDay($(this).data('day-id'));
 });
 
+// What each Add Service box is for, said in the box for the type chosen.
+var SERVICE_PLACEHOLDERS = {
+    '':            ['Service name', 'From', 'To'],
+    transport:     ['Service name, e.g. Jeep to the put-in', 'From, e.g. Dehradun airport', 'To, e.g. Rishikesh'],
+    accommodation: ['Service name, e.g. Riverside camp, 1 night', 'Check-in place', 'Check-out place'],
+    activity:      ['Service name, e.g. River rafting (16 km)', 'From (optional)', 'To (optional)'],
+    guide:         ['Service name, e.g. Local guide, half day', 'From (optional)', 'To (optional)'],
+    meal:          ['Service name, e.g. Welcome dinner', 'From (optional)', 'To (optional)'],
+    other:         ['Service name, e.g. Camping and river permit', 'From (optional)', 'To (optional)']
+};
+function setServicePlaceholders() {
+    var $form = $('#addServiceForm');
+    var p = SERVICE_PLACEHOLDERS[$form.find('[name=service_type]').val()] || SERVICE_PLACEHOLDERS[''];
+    $form.find('[name=description]').attr('placeholder', p[0]);
+    $form.find('[name=from_location]').attr('placeholder', p[1]);
+    $form.find('[name=to_location]').attr('placeholder', p[2]);
+}
+$(document).on('change', '#addServiceForm [name=service_type]', setServicePlaceholders);
+
 $('#addServiceForm').on('submit', function(e) {
     e.preventDefault();
     var dayId = $('#serviceDayId').val();
@@ -768,6 +856,7 @@ $('#addServiceForm').on('submit', function(e) {
         loadItinerary();
         $('#addServiceForm')[0].reset();
         if (window.buildCustomDropdown) $('#addServiceForm select.custom-select').each(function() { buildCustomDropdown(this); });
+        setServicePlaceholders();
         $('#addServiceCollapse').collapse('hide');
         // The service was added either way. This only says when the night was
         // already covered by the experience, so the cost stacks.

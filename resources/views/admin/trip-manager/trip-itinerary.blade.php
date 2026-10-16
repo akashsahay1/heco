@@ -5,7 +5,7 @@
         <div class="col-md-3 trip-manager-col tm-sidebar">
             <h6 class="mb-2"><i class="bi bi-search"></i> Search Experiences</h6>
             <div class="mb-2">
-                <input type="text" class="form-control form-control-sm" id="searchExpInput">
+                <input type="text" class="form-control form-control-sm" id="searchExpInput" placeholder="Search by name...">
             </div>
             <div class="mb-2">
                 <select class="form-select form-select-sm custom-select" id="searchExpRegion">
@@ -104,14 +104,14 @@
                             </select>
                         </div>
                         <div class="mb-1">
-                            <input type="text" class="form-control form-control-sm" name="description">
+                            <input type="text" class="form-control form-control-sm" name="description" placeholder="Service name">
                         </div>
                         <div class="row g-1 mb-1">
                             <div class="col-6">
-                                <input type="text" class="form-control form-control-sm" name="from_location">
+                                <input type="text" class="form-control form-control-sm" name="from_location" placeholder="From">
                             </div>
                             <div class="col-6">
-                                <input type="text" class="form-control form-control-sm" name="to_location">
+                                <input type="text" class="form-control form-control-sm" name="to_location" placeholder="To">
                             </div>
                         </div>
                         <div class="row g-1 mb-1">
@@ -140,7 +140,7 @@
                             </div>
                         </div>
                         <div class="mb-1">
-                            <input type="text" class="form-control form-control-sm" name="notes">
+                            <input type="text" class="form-control form-control-sm" name="notes" placeholder="Notes (optional)">
                         </div>
                         <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-plus"></i> Add Service</button>
                     </form>

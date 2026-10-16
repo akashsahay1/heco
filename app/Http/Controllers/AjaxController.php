@@ -293,7 +293,7 @@ class AjaxController extends Controller
 
         $totalCost = $experienceCost + $singleSupplement + $transportCost + $accommodationCost + $guideCost + $activityCost + $otherCost + $extraDayCost;
 
-        // RP/HRP/HCT computed for internal reporting only - NOT added to the total (req 3.3).
+        // RP/HRP/HCT are added on top of the trip cost, the same as for a saved trip.
         $rpPercent = (float) Setting::getValue('default_rp_margin_percent', 5);
         $hrpPercent = (float) Setting::getValue('default_hrp_margin_percent', 10);
         $hctPercent = (float) Setting::getValue('default_hct_commission_percent', 15);
@@ -301,9 +301,9 @@ class AjaxController extends Controller
         $hrpAmount = round($totalCost * $hrpPercent / 100, 2);
         $hctAmount = round($totalCost * $hctPercent / 100, 2);
 
-        $subtotal = $totalCost;
+        $subtotal = $totalCost + $rpAmount + $hrpAmount + $hctAmount;
         $gstPercent = (float) Setting::getValue('gst_percent', 5);
-        $gstAmount = round($subtotal * $gstPercent / 100, 2);
+        $gstAmount = round($totalCost * $gstPercent / 100, 2);
         $finalPrice = $subtotal + $gstAmount;
 
         return [
@@ -826,6 +826,41 @@ class AjaxController extends Controller
     ];
 
     /**
+     * What a traveller may not do to a trip HCT built from custom days.
+     * HCT itself uses other keys (add_trip_day and the like), so it is not
+     * held back by this.
+     */
+    private const HCT_BUILT_TRAVELLER_KEYS = [
+        'add_day_to_trip', 'remove_day_from_trip', 'generate_itinerary', 'update_travel_preferences',
+        'chat_with_ai',
+        'add_experience_to_trip', 'remove_experience_from_trip', 'prefer_experience', 'reorder_experiences',
+        'update_group_details', 'update_trip_start_date', 'save_trip_name', 'reopen_trip',
+        // Erasing would cancel HCT's work with nobody told; confirming without
+        // paying would raise its bills. Payment confirms such a trip.
+        'erase_trip', 'confirm_trip',
+    ];
+
+    private function guardHctBuiltTrip(Request $request): ?JsonResponse
+    {
+        foreach (self::HCT_BUILT_TRAVELLER_KEYS as $key) {
+            if ($request->has($key)) {
+                // Most of these may come without a trip id and then work on the
+                // traveller's open trip, so that is the one to ask about. The
+                // wishlist heart without one only unhearts, on any trip.
+                $trip = $this->resolveTripFromRequest($request)
+                    ?? ($key === 'prefer_experience' ? null : $this->resolveTrip($request));
+                if ($trip && ! Auth::user()?->isHct() && $this->userOwnsTrip($trip) && $trip->isHctBuilt()) {
+                    return response()->json([
+                        'error' => 'This trip was planned for you by the HECO team. Please contact them to change it.',
+                    ], 423);
+                }
+                break;
+            }
+        }
+        return null;
+    }
+
+    /**
      * A trip is locked for editing once its stage is closed or any traveller
      * payment has been received. Confirmed-but-unpaid trips stay editable so HCT
      * can still adjust them before payment.
@@ -1266,6 +1301,10 @@ class AjaxController extends Controller
             // Closed/paid trip lock - no itinerary/price edits after payment.
             if ($locked = $this->guardLockedTrip($request)) {
                 return $locked;
+            }
+            // A trip HCT built by hand is the traveller's to see, not to rebuild.
+            if ($held = $this->guardHctBuiltTrip($request)) {
+                return $held;
             }
 
             // ===== AUTH & USER =====
@@ -4429,11 +4468,19 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     protected function getUserTrips(Request $request): JsonResponse
     {
         $user = Auth::user();
+        // Only what the itineraries cards draw. The whole row went out before,
+        // carrying the HRP and HCT shares, HCT's own notes and the AI's raw reply.
         $trips = Trip::where("user_id", $user->id)
             ->where("status", "!=", "cancelled")
-            ->with(["regions", "tripRegions.region", "selectedExperiences.experience"])
+            ->with("regions")
             ->orderBy("updated_at", "desc")
-            ->get();
+            ->get()
+            ->map(fn (Trip $trip) => $trip->only([
+                "id", "trip_id", "trip_name", "status", "start_date", "end_date", "final_price",
+            ]) + [
+                "regions" => $trip->regions->map->only(["id", "name"])->values(),
+                "hct_built" => $trip->isHctBuilt(),
+            ]);
         return response()->json(["trips" => $trips]);
     }
 
@@ -10357,7 +10404,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $validator = Validator::make($request->all(), [
             "name" => "required|string|max:255",
-            "region_id" => "required|exists:regions,id",
+            // A project belongs to no region; one saved with a region keeps it.
+            "region_id" => "nullable|exists:regions,id",
             "action_type" => "required|string|max:255",
             "short_description" => "required|string",
             "impact_unit" => "required|string|max:255",
@@ -10558,8 +10606,22 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "operations_notes", "accommodation_comfort", "vehicle_comfort",
             "guide_preference", "travel_pace", "budget_sensitivity", "other_preferences",
             "margin_rp_percent", "margin_hrp_percent", "commission_hct_percent",
-            "general_notes",
+            "general_notes", "regenerative_project_id",
         ]);
+        if (! empty($data["regenerative_project_id"]) && ! RegenerativeProject::whereKey($data["regenerative_project_id"])->exists()) {
+            return response()->json(["error" => "That regenerative project does not exist."], 422);
+        }
+        // A margin box left empty means no margin. It arrives as null, which
+        // the column refuses, and the whole save failed with it.
+        foreach (["margin_rp_percent", "margin_hrp_percent", "commission_hct_percent"] as $marginKey) {
+            if (array_key_exists($marginKey, $data) && $data[$marginKey] === null) {
+                $data[$marginKey] = 0;
+            }
+            // A margin below nothing would take money off the traveller's price.
+            if (isset($data[$marginKey]) && (float) $data[$marginKey] < 0) {
+                return response()->json(["error" => "A margin cannot be below 0%."], 422);
+            }
+        }
         // Convert empty date strings to null to avoid MySQL date format errors
         foreach (['start_date', 'end_date'] as $dateKey) {
             if (isset($data[$dateKey]) && $data[$dateKey] === '') {

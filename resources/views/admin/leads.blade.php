@@ -283,7 +283,7 @@ $(document).on('click', '.view-lead', function() {
         });
         html += '</select></div>';
         html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Log Interaction</label><select class="form-select form-select-sm custom-select" id="leadInteraction"><option value="">— None —</option><option value="call">Call</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></div>';
-        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Notes</label><textarea class="form-control form-control-sm" id="leadNotes" rows="2">' + (l.notes || '') + '</textarea></div>';
+        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Notes</label><textarea class="form-control form-control-sm" id="leadNotes" placeholder="Notes..." rows="2">' + (l.notes || '') + '</textarea></div>';
         html += '<button class="btn btn-sm btn-success" onclick="updateLead(' + l.id + ')">Save</button>';
         html += '</div></div>';
         $('#leadModalBody').html(html);

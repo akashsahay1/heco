@@ -37,7 +37,7 @@
                 @endforeach
             </select>
         </div>
-        <input type="text" class="form-control form-control-sm heco-filter-lg" id="providerSearch">
+        <input type="text" class="form-control form-control-sm heco-filter-lg" id="providerSearch" placeholder="Search...">
         <button type="button" class="btn btn-sm btn-danger d-none" id="providersBulkRemove">
             <i class="bi bi-trash me-1"></i> Delete <span id="providersBulkCount">0</span>
         </button>

@@ -21,6 +21,16 @@ if ($trip) {
     $preferredExpIds = [];
 }
 $hasTrip = $trip || ($tripId === 'guest');
+// A trip HCT wrote by hand (custom days): the traveller sees it, but does not
+// rebuild it, and its length and region come from its days, not experiences.
+$hctBuilt = $trip && $trip->isHctBuilt();
+$hctSummary = $hctBuilt ? [
+    // Shown to this traveller as the one experience on their journey. It is the
+    // trip's own name, not a catalogue listing, so nobody else ever sees it.
+    'name' => $trip->trip_name,
+    'days' => $trip->tripDays()->count(),
+    'regions' => $trip->tripRegions()->with('region')->get()->pluck('region.name')->filter()->unique()->implode(', '),
+] : null;
 // Get the region of currently selected experiences (single-region constraint)
 $tripRegionId = null;
 $tripRegionName = null;
@@ -97,8 +107,9 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                 <div class="discover-layout">
                     {{-- LEFT: Filter button + Experience Cards --}}
                     <div class="discover-cards-panel">
-                        {{-- AI Chat Panel (always visible) --}}
-                        <div class="chat-collapse-outer">
+                        {{-- AI Chat Panel. Not on a trip HCT built by hand: the
+                             assistant adds and removes days, and the server refuses it. --}}
+                        <div class="chat-collapse-outer {{ $hctBuilt ? 'd-none' : '' }}">
                         <div class="chat-collapse-panel">
                             <div class="chatbot-popup-header" id="chatCollapseToggle">
                                 <div class="chatbot-popup-title">
@@ -260,7 +271,8 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                     </div>
                     @endguest
                     {{-- AI Chat inside Journey tab (collapsible) --}}
-                    <div class="chat-collapse-outer journey-chat-collapse-outer">
+                    {{-- Hidden on a trip HCT built by hand, like the chat on the Discover tab. --}}
+                    <div class="chat-collapse-outer journey-chat-collapse-outer {{ $hctBuilt ? 'd-none' : '' }}">
                     <div class="chat-collapse-panel journey-chat-collapse-panel">
                         <div class="chatbot-popup-header" id="journeyChatCollapseToggle">
                             <div class="chatbot-popup-title">
@@ -319,9 +331,11 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="journey-panel-header">
                                 <h6 class="journey-panel-title"><i class="bi bi-calendar3"></i> Trip Timeline</h6>
                                 <div class="d-flex gap-2">
+                                    @unless ($hctBuilt)
                                     <button class="btn btn-sm btn-regenerate-itinerary" id="btnRegenerateItinerary">
                                         <i class="bi bi-arrow-clockwise me-1"></i>Regenerate
                                     </button>
+                                    @endunless
                                 </div>
                             </div>
                             <div class="timeline-container" id="timelineContainer">
@@ -334,7 +348,10 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-body">
                                     <label class="form-label">Trip Name</label>
-                                    <input type="text" class="form-control" id="tripName" value="{{ $trip->trip_name ?? ($guestTripData['trip_name'] ?? '') }}">
+                                    <input type="text" class="form-control" id="tripName" value="{{ $trip->trip_name ?? ($guestTripData['trip_name'] ?? '') }}" @readonly($hctBuilt)>
+                                    @if ($hctBuilt)
+                                    <small class="text-muted d-block mt-1">Planned for you by the HECO team. To change anything, please contact them.</small>
+                                    @endif
                                 </div>
                             </div>
 
@@ -368,22 +385,24 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     <div class="row g-2">
                                         <div class="col-4">
                                             <label class="form-label">Adults</label>
-                                            <input type="number" class="form-control group-input" id="grpAdults" min="1" max="20" value="{{ $trip->adults ?? ($guestTripData['adults'] ?? 2) }}">
+                                            <input type="number" class="form-control group-input" id="grpAdults" min="1" max="20" value="{{ $trip->adults ?? ($guestTripData['adults'] ?? 2) }}" @disabled($hctBuilt)>
                                         </div>
                                         <div class="col-4">
                                             <label class="form-label">Children</label>
-                                            <input type="number" class="form-control group-input" id="grpChildren" min="0" max="10" value="{{ $trip->children ?? ($guestTripData['children'] ?? 0) }}">
+                                            <input type="number" class="form-control group-input" id="grpChildren" min="0" max="10" value="{{ $trip->children ?? ($guestTripData['children'] ?? 0) }}" @disabled($hctBuilt)>
                                         </div>
                                         <div class="col-4">
                                             <label class="form-label">Infants</label>
-                                            <input type="number" class="form-control group-input" id="grpInfants" min="0" max="5" value="{{ $trip->infants ?? ($guestTripData['infants'] ?? 0) }}">
+                                            <input type="number" class="form-control group-input" id="grpInfants" min="0" max="5" value="{{ $trip->infants ?? ($guestTripData['infants'] ?? 0) }}" @disabled($hctBuilt)>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {{-- Travel Preferences --}}
-                            <div class="detail-card">
+                            {{-- Travel Preferences. Not on a trip HCT built by hand:
+                                 HCT already chose what is on it, and a provider picked
+                                 here would be charged on top. --}}
+                            <div class="detail-card {{ $hctBuilt ? 'd-none' : '' }}">
                                 <div class="detail-card-header"><i class="bi bi-sliders"></i> Travel Preferences</div>
                                 <div class="detail-card-body">
                                     <div class="mb-3">
@@ -435,7 +454,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                          Rendered by loadPricing(). --}}
                                     <div id="prExperiences"></div>
                                     <div class="pricing-row" id="prRowAccommodation"><span>Accommodation <small class="text-muted price-detail">hotel</small></span><span id="prAccommodation"></span></div>
-                                    <div class="pricing-row" id="prRowTransport"><span>Transport <small class="text-muted price-detail">airport/station ↔ hotel</small></span><span id="prTransport"></span></div>
+                                    <div class="pricing-row" id="prRowTransport"><span>Transport @unless ($hctBuilt)<small class="text-muted price-detail">airport/station ↔ hotel</small>@endunless</span><span id="prTransport"></span></div>
                                     <div class="pricing-row" id="prRowGuide"><span>Guide</span><span id="prGuide"></span></div>
                                     <div class="pricing-row" id="prRowActivities"><span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span><span id="prActivities"></span></div>
                                     <div class="pricing-row" id="prRowExtraDays"><span>Extra Days <small class="text-muted price-detail" id="prExtraDaysNote"></small></span><span id="prExtraDays"></span></div>
@@ -443,11 +462,13 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                     {{-- Only appears when somebody has no one to share a room with. --}}
                                     <div class="pricing-row" id="prRowSingleSupplement"><span>Single Supplement <small class="text-muted price-detail" id="prSingleSupplementNote"></small></span><span id="prSingleSupplement"></span></div>
                                     <div class="pricing-row pricing-subtotal"><span><strong>Trip Cost</strong></span><span id="prTripCost"></span></div>
+                                    <div class="pricing-row" id="prRowServiceCharges"><span>Service charges</span><span id="prServiceCharges"></span></div>
                                     <div class="pricing-row"><span>GST <small class="text-muted price-detail" id="prGSTNote"></small></span><span id="prGST"></span></div>
                                     <div class="pricing-row total"><span>Final Price</span><span id="prFinal"></span></div>
                                     {{-- Informational only: the share of the price that supports
                                          the regenerative project. Not an added charge. --}}
-                                    <div class="pricing-row rp-info" id="prRowRP"><span class="text-muted"><i class="bi bi-tree"></i> Regenerative contribution <small class="price-detail" id="prRPNote"></small></span><span id="prRP" class="text-muted"></span></div>
+                                    {{-- Hidden for now on the client's word; RP sits inside Service charges. --}}
+                                    <div class="pricing-row rp-info" id="prRowRP" style="display: none;"><span class="text-muted"><i class="bi bi-tree"></i> Regenerative contribution <small class="price-detail" id="prRPNote"></small></span><span id="prRP" class="text-muted"></span></div>
                                 </div>
                             </div>
 
@@ -662,6 +683,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
 jQuery(function() {
     var isLoggedIn = {{ auth()->check() ? 'true' : 'false' }};
     var tripId = {!! json_encode($tripId) !!};
+    var hctSummary = {!! json_encode($hctSummary) !!};
     window.tripId = tripId;
     // Keep window.tripId (read by the separate Razorpay <script> block) in sync with
     // the local tripId so payment and the post-payment redirect target the right trip.
@@ -1114,8 +1136,10 @@ jQuery(function() {
     }
 
     function updateJourneyBadge() {
-        jQuery('#journeyCount').text(selectedExpIds.length);
-        jQuery('#expListCount').text(selectedExpIds.length);
+        // A trip HCT built by hand counts as one experience: the trip itself.
+        var count = selectedExpIds.length + (hctSummary ? 1 : 0);
+        jQuery('#journeyCount').text(count);
+        jQuery('#expListCount').text(count);
     }
 
     updateJourneyBadge();
@@ -1698,9 +1722,21 @@ jQuery(function() {
 
             if (items.length === 0) {
                 jQuery('#selectedExpList').empty();
-                jQuery('#tripDuration').text('');
-                jQuery('#tripRegions').text('');
-                jQuery('#tripExpCount').text('');
+                // A trip HCT built by hand has no catalogue experiences, but it
+                // still has days and a region of its own, and is shown as one
+                // experience under its own name. Nothing to drag or remove.
+                if (hctSummary) {
+                    var daysLabel = hctSummary.days + (hctSummary.days === 1 ? ' Day' : ' Days');
+                    jQuery('#selectedExpList').html(
+                        '<div class="journey-exp-item"><div class="exp-info">' +
+                        '<span class="exp-name">' + jQuery('<div>').text(hctSummary.name || 'Your trip').html() + '</span>' +
+                        '<span class="exp-id">Planned by HECO &middot; ' + daysLabel + '</span>' +
+                        '</div></div>'
+                    );
+                }
+                jQuery('#tripDuration').text(hctSummary ? hctSummary.days + (hctSummary.days === 1 ? ' Day' : ' Days') : '');
+                jQuery('#tripRegions').text(hctSummary ? hctSummary.regions : '');
+                jQuery('#tripExpCount').text(hctSummary ? '1' : '');
                 return;
             }
             var html = '';
@@ -1856,8 +1892,8 @@ jQuery(function() {
 
         var shownExpGroupNames = {}; // track experience names shown as group headers across all days
         days.forEach(function(day, index) {
-            // Insert-day button between days
-            if (index > 0) {
+            // Insert-day button between days (not on a trip HCT built by hand)
+            if (index > 0 && !hctSummary) {
                 var prevDay = days[index - 1];
                 html += '<div class="timeline-add-day-row">';
                 html += '<div></div>';
@@ -1901,6 +1937,10 @@ jQuery(function() {
                     if (matchedDay && matchedDay.title) dayTitle = matchedDay.title;
                 }
             }
+            // A day HCT wrote by hand has no experience to take a title from.
+            // An empty one already shows its title in the empty-day block below.
+            var handWritten = (!day.experiences || !day.experiences.length) && day.services && day.services.length;
+            if (handWritten && day.title) dayTitle = day.title;
 
             // Format date as "2 Mar 2026"
             var formattedDate = '';
@@ -1981,7 +2021,7 @@ jQuery(function() {
             html += '<div class="heco-day-meta-row">';
             if (dayTime) html += '<span class="timeline-day-time"><i class="bi bi-clock"></i> ' + dayTime + '</span>';
             if (day.is_locked) html += '<i class="bi bi-lock heco-icon-warn-13" title="Locked"></i>';
-            if (!day.experiences || !day.experiences.length) {
+            if ((!day.experiences || !day.experiences.length) && !hctSummary) {
                 html += '<button class="btn-remove btn-remove-day" data-day-id="' + day.id + '" title="Remove Day"><i class="bi bi-trash"></i></button>';
             }
             html += '</div>';
@@ -2022,6 +2062,21 @@ jQuery(function() {
                 });
             }
 
+            // What HCT put on a hand-written day (a custom day): its notes and the
+            // name of each line. Names only - the pricing panel carries the money.
+            if (handWritten) {
+                if (day.description) html += '<div class="heco-day-text">' + toBulletHtml(day.description) + '</div>';
+                day.services.forEach(function(s) {
+                    if (!s.description) return;
+                    html += '<div class="timeline-exp-item"><div class="timeline-exp-details">';
+                    html += '<span class="timeline-exp-name">' + s.description + '</span>';
+                    if (s.from_location || s.to_location) {
+                        html += ' <span class="text-muted">(' + (s.from_location || '') + (s.to_location ? ' &rarr; ' + s.to_location : '') + ')</span>';
+                    }
+                    html += '</div></div>';
+                });
+            }
+
             // Day services (icons shown in left column)
 
             if ((!day.experiences || !day.experiences.length) && (!day.services || !day.services.length)) {
@@ -2047,7 +2102,7 @@ jQuery(function() {
         });
 
         // Add-day button after the last day
-        if (days.length > 0) {
+        if (days.length > 0 && !hctSummary) {
             var lastDay = days[days.length - 1];
             html += '<div class="timeline-add-day-row">';
             html += '<div></div>';
@@ -2142,11 +2197,13 @@ jQuery(function() {
                     ? '(' + p.single_supplement_people + ' travelling without a room-mate)' : ''
             );
             jQuery('#prTripCost').text(fmtPriceRow(p.total_cost));
+            // The margins, added on top of the trip cost.
+            setRow('prRowServiceCharges', 'prServiceCharges', (parseFloat(p.subtotal) || 0) - (parseFloat(p.total_cost) || 0));
             jQuery('#prGST').text(fmtPriceRow(p.gst_amount));
             jQuery('#prFinal').text(fmtPriceRow(p.final_price));
 
-            // RP is informational only - the share of the price supporting the
-            // regenerative project (NOT an extra charge). HRP/HCT are never shown.
+            // RP is informational: the part of the service charges above that goes
+            // to the regenerative project. HRP/HCT are never shown on their own.
             setRow('prRowRP', 'prRP', p.margin_rp_amount);
             jQuery('#prRPNote').text(fmtPct(p.margin_rp_percent));
 
@@ -2575,7 +2632,8 @@ jQuery(function() {
     // Start Date - Air Datepicker on a readonly text input.
     // Stored on window so the AI sync handlers (further down) can call
     // .selectDate() without re-querying.
-    window.tripStartDatepicker = new AirDatepicker('#tripStartDateDisplay', {
+    // A trip the HECO team planned keeps its date; they change it.
+    if (!hctSummary) window.tripStartDatepicker = new AirDatepicker('#tripStartDateDisplay', {
         locale: window.airDatepickerEn,
         dateFormat: 'dd MMM yyyy',
         autoClose: true,
@@ -2667,7 +2725,8 @@ jQuery(function() {
             var html = '';
             impacts.forEach(function(imp) {
                 html += '<div class="impact-card">';
-                html += '<div class="impact-card-region"><i class="bi bi-geo-alt-fill"></i> ' + (imp.region_name || 'Unknown Region') + '</div>';
+                // A project need not belong to a region; then there is none to show.
+                if (imp.region_name) html += '<div class="impact-card-region"><i class="bi bi-geo-alt-fill"></i> ' + imp.region_name + '</div>';
                 html += '<div class="impact-card-project">' + (imp.project_name || 'Regenerative Project') + '</div>';
                 html += '<span class="impact-card-type">' + (imp.action_type || 'Conservation') + '</span>';
                 html += '<div class="impact-card-stats">';
