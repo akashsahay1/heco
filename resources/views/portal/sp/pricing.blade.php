@@ -58,6 +58,7 @@
     </div>
     <div class="modal-body"><form id="spPriceForm">
         <input type="hidden" name="id">
+        <div class="alert alert-warning small py-2 d-none" id="spPendingNotice"></div>
 
         <div class="mb-3">
             <label class="form-label fw-bold">Service type <span class="text-danger">*</span></label>
@@ -178,6 +179,22 @@
                         <button type="button" class="btn btn-sm btn-outline-danger bulk-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
                     </div>
                 </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Occupancy</label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="default_occupancy" data-list-type="room_occupancy">
+                            <option value="">Pick...</option>
+                            @foreach($roomOccupancies as $o)
+                                <option value="{{ $o->name }}">{{ $o->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Total guests</label>
+                        <input type="number" min="1" max="2000" class="form-control form-control-sm bulk-field guests-field" data-field="guest_capacity" placeholder="auto">
+                    </div>
+                    <div class="col-md-7 small text-muted align-self-end">Total guests = rooms &times; occupancy, e.g. 2 double rooms = 4. Fills itself; change it if a room takes more.</div>
+                </div>
             </div>
         </template>
 
@@ -233,77 +250,7 @@
              per row. To list 4 tiers × 2 room types, the SP adds 8 rows
              (the Quick-tier helper and "All tiers" matrix make this fast). --}}
         <div class="svc-fields" data-svc="accommodation">
-            <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-7">
-                    <label class="form-label small">Comfort Tier <span class="text-danger">*</span></label>
-                    <select class="form-select form-select-sm custom-select" name="comfort_tier" data-list-type="accommodation_category">
-                        <option value="">Select tier...</option>
-                        @foreach($accommodationCategories as $c)
-                            <option value="{{ $c->name }}" data-desc="{{ $c->description }}">{{ $c->name }}</option>
-                        @endforeach
-                    </select>
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-                <div class="col-md-5">
-                    <label class="form-label small">Room Category <span class="text-danger">*</span></label>
-                    <select class="form-select form-select-sm custom-select" name="room_category" data-list-type="room_category">
-                        <option value="">Select category...</option>
-                        @foreach($roomCategories as $r)
-                            <option value="{{ $r->name }}" data-desc="{{ $r->description }}">{{ $r->name }}</option>
-                        @endforeach
-                    </select>
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-            </div>
-            <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-5">
-                    <label class="form-label small">Total Rooms <span class="text-danger">*</span></label>
-                    <input type="number" min="1" max="500" class="form-control form-control-sm" name="total_rooms" placeholder="e.g. 4">
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-                <div class="col-md-7">
-                    <label class="form-label small">Rate per night (₹) <span class="text-danger">*</span></label>
-                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_accommodation" placeholder="e.g. 2500">
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-            </div>
-            <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-12">
-                    <label class="form-label small">Meal Plan</label>
-                    <select class="form-select form-select-sm custom-select" name="meal_plan" data-list-type="meal_plan">
-                        <option value="">— no meals (room only) —</option>
-                        @foreach($mealPlans as $m)
-                            <option value="{{ $m->name }}" data-desc="{{ $m->description }}">{{ $m->name }}</option>
-                        @endforeach
-                    </select>
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-            </div>
-            {{-- A hotel is a place before it is a rate. Optional, because a
-                 provider adding a second room type has already told us once. --}}
-            <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-4">
-                    <label class="form-label small">Latitude</label>
-                    <input type="number" step="0.0000001" min="-90" max="90" class="form-control form-control-sm"
-                           name="latitude" placeholder="e.g. 31.6234567">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label small">Longitude</label>
-                    <input type="number" step="0.0000001" min="-180" max="180" class="form-control form-control-sm"
-                           name="longitude" placeholder="e.g. 77.3456789">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label small">Guests it sleeps</label>
-                    <input type="number" min="1" max="2000" class="form-control form-control-sm"
-                           name="guest_capacity" placeholder="e.g. 14">
-                </div>
-            </div>
-            <div class="mb-2">
-                <label class="form-label small">Seasonality</label>
-                <input type="text" maxlength="1000" class="form-control form-control-sm"
-                       name="seasonality_notes" placeholder="e.g. Closed in January; best April to June">
-            </div>
-            <input type="hidden" name="unit_accommodation" value="per night">
+            @include('partials.rate-rooms')
         </div>
 
         {{-- TRANSPORT --}}
@@ -626,6 +573,7 @@
                 ['svc' => 'transport',     'id' => 'multiSvcTransport','label' => '🚙 Transport',                              'addLabel' => 'Add another vehicle'],
                 ['svc' => 'guide',         'id' => 'multiSvcGuide',    'label' => '👤 Guide',                                  'addLabel' => 'Add another guide'],
                 ['svc' => 'activity',      'id' => 'multiSvcActivity', 'label' => '🏔 Activity',                               'addLabel' => 'Add another activity'],
+                ['svc' => 'rental',        'id' => 'multiSvcRental',   'label' => '🎒 Rental',                                 'addLabel' => 'Add another item'],
                 ['svc' => 'other',         'id' => 'multiSvcOther',    'label' => '📦 Other (permits, fees, equipment, etc.)', 'addLabel' => 'Add another item'],
             ];
         @endphp
@@ -638,6 +586,12 @@
                     </div>
                 </div>
                 <div class="card-body multi-svc-body d-none">
+                    @if($s['svc'] === 'accommodation')
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">Property name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="multiAccomPropertyName" maxlength="100" placeholder="e.g. Tirthan Riverside Homestay">
+                        </div>
+                    @endif
                     <div class="multi-svc-rows mb-2" data-svc="{{ $s['svc'] }}"></div>
                     <button type="button" class="btn btn-sm btn-outline-success multi-svc-add-row" data-svc="{{ $s['svc'] }}">
                         <i class="bi bi-plus-lg me-1"></i> {{ $s['addLabel'] }}
@@ -689,6 +643,22 @@
                     <div class="col-md-1 text-end">
                         <button type="button" class="btn btn-sm btn-outline-danger multi-svc-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
                     </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Occupancy</label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="default_occupancy" data-list-type="room_occupancy">
+                            <option value="">Pick...</option>
+                            @foreach($roomOccupancies as $o)
+                                <option value="{{ $o->name }}">{{ $o->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Total guests</label>
+                        <input type="number" min="1" max="2000" class="form-control form-control-sm bulk-field guests-field" data-field="guest_capacity" placeholder="auto">
+                    </div>
+                    <div class="col-md-7 small text-muted align-self-end">Total guests = rooms &times; occupancy, e.g. 2 double rooms = 4. Fills itself; change it if a room takes more.</div>
                 </div>
             </div>
         </template>
@@ -792,6 +762,34 @@
             </div>
         </template>
 
+        {{-- The same boxes as the single rental form: the item, its daily
+             charge, the deposit held against damage, and anything else. --}}
+        <template id="multiSvcRowTpl-rental">
+            <div class="bulk-row card border p-2 mb-2">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">Item on rent <span class="text-danger">*</span></label>
+                        <input type="text" maxlength="150" class="form-control form-control-sm bulk-field" data-field="rental_item" placeholder="e.g. Trekking tent (2 person)">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Per day ₹ <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="400">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Deposit ₹</label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="security_deposit" placeholder="optional">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Other details</label>
+                        <input type="text" class="form-control form-control-sm bulk-field" data-field="notes" placeholder="optional">
+                    </div>
+                    <div class="col-md-1 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger multi-svc-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
         <template id="multiSvcRowTpl-other">
             <div class="bulk-row card border p-2 mb-2">
                 <div class="row g-2 align-items-end">
@@ -825,11 +823,12 @@
 @endsection
 
 @section('js')
+<script src="{{ url('js/rate-rooms.js') }}?v={{ filemtime(public_path('js/rate-rooms.js')) }}"></script>
 <script>
 jQuery(function() {
     var providerId = jQuery('#spPricingCard').data('provider-id');
     var priceCache = {};
-    var typeIcons = { accommodation: '🛏', transport: '🚙', guide: '👤', activity: '🏔', other: '📦' };
+    var typeIcons = { accommodation: '🛏', transport: '🚙', guide: '👤', activity: '🏔', rental: '🎒', other: '📦' };
 
     function spEscape(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
@@ -851,10 +850,15 @@ jQuery(function() {
             // active rows is a mistake — different rooms at the same tier
             // should each have their own row (and that's fine), but two rows
             // for the same room at the same tier means the SP saved twice.
+            // The property is part of the key, as on the server: the same room
+            // in two different homestays is two rooms.
+            var pairKeyOf = function(r) {
+                return (r.category || '') + '|' + (r.comfort_tier || '') + '|' + (r.room_category || r.category || '');
+            };
             var pairCounts = {};
             rows.forEach(function(r) {
                 if (r.service_type !== 'accommodation' || !r.is_active || !r.comfort_tier) return;
-                var key = r.comfort_tier + '|' + (r.room_category || r.category || '');
+                var key = pairKeyOf(r);
                 pairCounts[key] = (pairCounts[key] || 0) + 1;
             });
             // ── Cell builders shared by grouped + flat rows ──
@@ -863,12 +867,38 @@ jQuery(function() {
                     return '<span class="badge bg-secondary ms-1" title="Not sent for review yet — only you can see this"><i class="bi bi-pencil-square me-1"></i>draft</span>';
                 }
                 if (r.approval_status === 'pending') {
-                    var label = r.pending_for_id ? 'pending edit' : 'pending review';
-                    return '<span class="badge bg-warning text-dark ms-1" title="Awaiting HCT admin approval — not yet visible to travellers"><i class="bi bi-hourglass-split me-1"></i>' + label + '</span>';
+                    return '<span class="badge bg-warning text-dark ms-1" title="Awaiting HCT admin approval — not yet visible to travellers"><i class="bi bi-hourglass-split me-1"></i>pending review</span>';
                 }
                 if (r.approval_status === 'rejected') {
                     var rejTitle = r.rejection_reason ? 'Rejected: ' + r.rejection_reason : 'Rejected by admin';
                     return '<span class="badge bg-danger ms-1" title="' + spEscape(rejTitle) + '"><i class="bi bi-x-circle me-1"></i>rejected</span>';
+                }
+                // A change to a live rate travels on the rate itself
+                // (getSpPricing folds the staged row in), so pending_for_id
+                // never reaches this list any more and the badge it keyed on
+                // could not appear.
+                if (r.pending_change) {
+                    return '<span class="badge bg-warning text-dark ms-1" title="Your change is with HECO for review. Travellers still see the current rate."><i class="bi bi-hourglass-split me-1"></i>edit pending</span>';
+                }
+                if (r.rejected_change) {
+                    return '<span class="badge bg-danger ms-1"><i class="bi bi-x-circle me-1"></i>change rejected</span>';
+                }
+                return '';
+            }
+            // What is waiting, or why it was refused, said in the row rather
+            // than only in a tooltip: the reason lives on the staged row and
+            // was shown nowhere at all.
+            function changeNote(r) {
+                if (r.pending_change) {
+                    return '<div class="small text-warning-emphasis mt-1"><i class="bi bi-hourglass-split me-1"></i>Change under review: '
+                        + rateCell(r.pending_change) + '</div>';
+                }
+                if (r.rejected_change) {
+                    return '<div class="small text-danger mt-1"><i class="bi bi-x-circle me-1"></i>Your last change was not accepted'
+                        + (r.rejected_change_reason ? ': ' + spEscape(r.rejected_change_reason) : '.') + '</div>';
+                }
+                if (r.approval_status === 'rejected' && r.rejection_reason) {
+                    return '<div class="small text-danger mt-1"><i class="bi bi-x-circle me-1"></i>Not accepted: ' + spEscape(r.rejection_reason) + '</div>';
                 }
                 return '';
             }
@@ -886,9 +916,6 @@ jQuery(function() {
             }
             function actionsCell(r) {
                 var h = '';
-                if (r.service_type === 'accommodation' && r.room_category) {
-                    h += '  <button class="btn btn-sm btn-outline-success sp-price-tier-matrix me-1" title="Set prices for all tiers of this room"><i class="bi bi-grid-3x3-gap"></i></button>';
-                }
                 h += '  <button class="btn btn-sm btn-outline-primary sp-price-edit me-1" title="Edit this row only"><i class="bi bi-pencil"></i></button>';
                 h += '  <button class="btn btn-sm btn-outline-danger sp-price-delete" title="Delete"><i class="bi bi-trash"></i></button>';
                 return h;
@@ -899,8 +926,7 @@ jQuery(function() {
             function detailsCell(r, hideTier) {
                 var parts = [];
                 if (r.service_type === 'accommodation') {
-                    var pairKey = (r.comfort_tier || '') + '|' + (r.room_category || r.category || '');
-                    var isDupTier = r.comfort_tier && pairCounts[pairKey] > 1;
+                    var isDupTier = r.comfort_tier && pairCounts[pairKeyOf(r)] > 1;
                     var rooms = r.room_category || r.category || '';
                     if (!hideTier && r.comfort_tier) parts.push('<strong>' + spEscape(r.comfort_tier) + '</strong>');
                     if (rooms) parts.push(hideTier
@@ -919,12 +945,17 @@ jQuery(function() {
                     if (r.category) parts.push('<strong>' + spEscape(r.category) + '</strong>');
                     if (r.min_group || r.max_group) parts.push('<small class="text-muted">' + ((r.min_group || '?') + '–' + (r.max_group || '?') + ' pax') + '</small>');
                     if (r.specialties) parts.push('<small class="text-muted">' + spEscape(r.specialties) + '</small>');
+                } else if (r.service_type === 'rental') {
+                    // The item is what a rental is; it has no category, so the
+                    // fallback below read a dash.
+                    parts.push('<strong>' + spEscape(r.rental_item || '-') + '</strong>');
+                    if (r.security_deposit) parts.push('<small class="text-muted">₹' + Number(r.security_deposit).toLocaleString('en-IN') + ' deposit</small>');
                 } else {
                     parts.push('<strong>' + spEscape(r.category || '—') + '</strong>');
                 }
                 var d = parts.join(' · ');
                 if (r.description) d += '<div class="small text-muted">' + spEscape(r.description) + '</div>';
-                return d;
+                return d + changeNote(r);
             }
             // Flat <tr> for non-accommodation service types (unchanged layout).
             function flatRow(r) {
@@ -966,7 +997,7 @@ jQuery(function() {
                     var gRows = groups[tier];
                     var totalRooms = gRows.reduce(function(s, r) { return s + (parseInt(r.total_rooms, 10) || 0); }, 0);
                     var gid = 'tier-' + tier.replace(/[^A-Za-z0-9]+/g, '-');
-                    var anyPending = gRows.some(function(r) { return r.approval_status === 'pending'; });
+                    var anyPending = gRows.some(function(r) { return r.approval_status === 'pending' || r.pending_change; });
 
                     html += '<tr class="sp-tier-group table-light" data-tier-group="' + spEscape(gid) + '" style="cursor:pointer;">';
                     html += '<td colspan="6">'
@@ -1019,9 +1050,30 @@ jQuery(function() {
     }
     jQuery('#spServiceType').on('change', function() { showServiceFields(this.value); });
 
+    // A rate with a change under review opens on that change, not on the live
+    // values: reopened from the live ones, saving replaced the staged change
+    // with the old figures and the member's edit was lost without a word. The
+    // id stays the live rate's, which is what a further edit is filed against.
+    function withPendingChange(r) {
+        if (!r || !r.pending_change) return r;
+        return jQuery.extend({}, r.pending_change, {
+            id: r.id,
+            approval_status: r.approval_status,
+            pending_change: r.pending_change,
+        });
+    }
+
     function fillPriceForm(r) {
         var $f = jQuery('#spPriceForm');
         $f[0].reset();
+        var $notice = jQuery('#spPendingNotice').addClass('d-none').empty();
+        if (r && r.pending_change) {
+            $notice.removeClass('d-none').text('A change to this rate is waiting for HECO to review it. You are editing that change; travellers still see the current rate until it is approved.');
+        } else if (r && r.rejected_change) {
+            $notice.removeClass('d-none').text('Your last change to this rate was not accepted'
+                + (r.rejected_change_reason ? ': ' + r.rejected_change_reason : '.') + ' The form shows the current rate.');
+        }
+        r = withPendingChange(r);
         // A rate that is already live cannot be taken back to a draft - that
         // would withdraw it from every trip being priced - so the button is
         // not offered for one. The server refuses it too; this is so nobody
@@ -1031,7 +1083,14 @@ jQuery(function() {
         var t = r ? r.service_type : 'accommodation';
         $f.find('[name=service_type]').val(t);
         $f.find('[name=description]').val(r ? (r.description || '') : '');
-        $f.find('[name=is_active]').prop('checked', r ? !!r.is_active : true);
+        // A rate under review is held switched off whatever was chosen, and the
+        // choice waits in requested_active. Read off is_active, the switch
+        // showed Off and the next save asked for exactly that.
+        var activeChoice = r && (r.approval_status !== 'approved' || r.pending_change)
+            ? (r.requested_active === null || r.requested_active === undefined ? true : !!r.requested_active)
+            : (r ? !!r.is_active : true);
+        $f.find('[name=is_active]').prop('checked', activeChoice);
+        RateRooms.fill(r && r.service_type === 'accommodation' ? r : null);
 
         // For legacy data where room_category may carry a comma-list, pick the
         // first value so the single-select dropdown has a valid match.
@@ -1041,6 +1100,8 @@ jQuery(function() {
         $f.find('[name=comfort_tier]').val(r ? (r.comfort_tier || '') : '');
         $f.find('[name=total_rooms]').val(r ? (r.total_rooms || '') : '');
         $f.find('[name=meal_plan]').val(r ? (r.meal_plan || '') : '');
+        $f.find('[name=default_occupancy]').val(r ? (r.default_occupancy || '') : '');
+        $f.find('.guests-field').data('touched', !!(r && r.guest_capacity));
         $f.find('[name=price_accommodation]').val(r && r.service_type === 'accommodation' ? r.price : '');
 
         $f.find('[name=vehicle_type]').val(r ? (r.vehicle_type || '') : '');
@@ -1108,7 +1169,7 @@ jQuery(function() {
     }
 
     // ─── Bulk Add mode (Accommodation + Transport only, Add not Edit) ───
-    var bulkEligibleTypes = ['accommodation', 'transport'];
+    var bulkEligibleTypes = ['transport'];
     var currentAddMode = 'single';
 
     function setAddMode(mode) {
@@ -1228,6 +1289,26 @@ jQuery(function() {
         });
     });
 
+    // Guests for a room type: rooms x the people its occupancy seats (a double
+    // is 2). Filled in until the member types a figure of their own, which
+    // then stands: a double with an extra bed sleeps three.
+    function seatsOf(occupancy) {
+        var m = String(occupancy || '').toLowerCase().match(/single|double|twin|triple|quad/);
+        return m ? { single: 1, double: 2, twin: 2, triple: 3, quad: 4 }[m[0]] : null;
+    }
+    function fillGuests($scope) {
+        var $guests = $scope.find('.guests-field');
+        if (!$guests.length || $guests.data('touched')) return;
+        var rooms = parseInt($scope.find('[data-field=total_rooms], [name=total_rooms]').val(), 10);
+        var seats = seatsOf($scope.find('[data-field=default_occupancy], [name=default_occupancy]').val());
+        if (rooms > 0 && seats) $guests.val(rooms * seats);
+    }
+    jQuery(document).on('input change', '[data-field=total_rooms], [data-field=default_occupancy], [name=total_rooms], [name=default_occupancy]', function() {
+        var $row = jQuery(this).closest('.bulk-row');
+        fillGuests($row.length ? $row : jQuery(this).closest('.svc-fields'));
+    });
+    jQuery(document).on('input', '.guests-field', function() { jQuery(this).data('touched', true); });
+
     jQuery(document).on('click', '.bulk-row-remove', function() {
         var $rows = jQuery('#bulkRowsContainer .bulk-row');
         if ($rows.length <= 1) {
@@ -1339,6 +1420,7 @@ jQuery(function() {
                     transport:     ['vehicle_type', 'price', 'unit'],
                     guide:         ['category', 'price'],
                     activity:      ['category', 'price', 'unit'],
+                    rental:        ['rental_item', 'price'],
                     other:         ['category', 'price', 'unit'],
                 }[svc] || [];
                 var missing = required.filter(function(k) { return !row[k]; });
@@ -1346,8 +1428,15 @@ jQuery(function() {
                     errors.push(svc + ' row ' + rowIdx + ': missing ' + missing.join(', '));
                     return;
                 }
-                if (svc === 'accommodation') { row.unit = 'per night'; row.category = row.room_category; }
-                else if (svc === 'guide')    { row.unit = 'per day'; }
+                if (svc === 'accommodation') {
+                    row.unit = 'per night';
+                    row.category = jQuery('#multiAccomPropertyName').val().trim();
+                    if (!row.category) {
+                        errors.push('accommodation: give the property a name');
+                        return;
+                    }
+                }
+                else if (svc === 'guide' || svc === 'rental') { row.unit = 'per day'; }
                 payloads.push(row);
             });
         });
@@ -1366,27 +1455,16 @@ jQuery(function() {
             return;
         }
         $btn.prop('disabled', true).html('<i class="bi bi-hourglass-split me-1"></i> Saving...');
-        var saved = 0, failed = 0, errs = [];
-        function saveNext(i) {
-            if (i >= result.payloads.length) {
-                $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Selected');
-                if (failed) {
-                    window.showError && window.showError(saved + ' saved, ' + failed + ' failed: ' + errs.join('; '));
-                } else {
-                    showAlert(saved + ' service rate(s) submitted — awaiting admin approval.', 'success');
-                    bootstrap.Modal.getInstance(jQuery('#spMultiServiceModal')[0]).hide();
-                    loadPricing();
-                }
-                return;
-            }
-            var payload = jQuery.extend({ save_sp_pricing: 1, provider_id: providerId, is_active: 1 }, result.payloads[i]);
-            ajaxPost(payload, function() { saved++; saveNext(i + 1); }, function(xhr) {
-                failed++;
-                errs.push(payload.service_type + ': ' + ((xhr.responseJSON || {}).error || 'failed'));
-                saveNext(i + 1);
-            });
-        }
-        saveNext(0);
+        // All of them in one call: saved together or not at all.
+        ajaxPost({ save_sp_pricing_rows: 1, provider_id: providerId, is_active: 1, rows: result.payloads }, function() {
+            $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Selected');
+            showAlert(result.payloads.length + ' service rate(s) saved.', 'success');
+            bootstrap.Modal.getInstance(jQuery('#spMultiServiceModal')[0]).hide();
+            loadPricing();
+        }, function(xhr) {
+            $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Selected');
+            window.showError && window.showError((xhr.responseJSON || {}).error || 'Nothing was saved.');
+        });
     });
     jQuery(document).on('click', '.sp-price-edit', function() {
         fillPriceForm(priceCache[jQuery(this).closest('tr').data('id')]);
@@ -1431,6 +1509,8 @@ jQuery(function() {
                 $row.find('.bulk-field[data-field=total_rooms]').val(existing.total_rooms || '');
                 $row.find('.bulk-field[data-field=price]').val(existing.price || '');
                 $row.find('.bulk-field[data-field=meal_plan]').val(existing.meal_plan || '');
+                $row.find('.bulk-field[data-field=default_occupancy]').val(existing.default_occupancy || '');
+                $row.find('.bulk-field[data-field=guest_capacity]').val(existing.guest_capacity || '').data('touched', !!existing.guest_capacity);
             }
         });
         jQuery('#bulkRowsContainer .custom-select').each(function() {
@@ -1479,35 +1559,68 @@ jQuery(function() {
             }
             var $btn = jQuery('#spPriceSaveBtn');
             $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Saving ' + rows.length + ' rows...');
-            var saved = 0, failed = 0, errors = [];
-            function saveNext(i) {
-                if (i >= rows.length) {
-                    $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Rows');
-                    bootstrap.Modal.getInstance(jQuery('#spPriceModal')[0]).hide();
-                    loadPricing();
-                    var msg = saved + ' saved' + (failed ? ', ' + failed + ' failed: ' + errors.join('; ') : '.');
-                    showAlert(msg, failed ? 'warning' : 'success');
-                    return;
-                }
-                var row = rows[i];
-                var payload = jQuery.extend({ save_sp_pricing: 1, provider_id: providerId, is_active: 1 }, row);
-                if (type === 'accommodation') {
-                    payload.category = payload.room_category;
-                    payload.unit = 'per night';
-                }
-                ajaxPost(payload, function() { saved++; saveNext(i + 1); },
-                    function(xhr) {
-                        failed++;
-                        errors.push(xhr.responseJSON ? (xhr.responseJSON.error || 'row ' + (i+1)) : 'row ' + (i+1));
-                        saveNext(i + 1);
-                    });
-            }
-            saveNext(0);
+            // One call for every row: all are saved or none are, and the
+            // answer names the row that stopped it. Saved one at a time, a
+            // fault in the third row left the first two filed and the rest
+            // guessing which.
+            var bulkPayload = {
+                save_sp_pricing_rows: 1,
+                provider_id: providerId,
+                is_active: 1,
+                rows: rows.map(function(row) {
+                    if (type === 'accommodation') {
+                        row.category = row.room_category;
+                        row.unit = 'per night';
+                    }
+                    return row;
+                }),
+            };
+            ajaxPost(bulkPayload, function() {
+                $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Rows');
+                bootstrap.Modal.getInstance(jQuery('#spPriceModal')[0]).hide();
+                loadPricing();
+                showAlert(rows.length + ' saved.', 'success');
+            }, function(xhr) {
+                $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Rows');
+                showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Nothing was saved.') : 'Nothing was saved.', 'danger');
+            });
             return;
         }
 
         // SINGLE MODE (unchanged).
         var type = jQuery('#spServiceType').val();
+        // A stay is the shared form's: the property once, each room its own
+        // rate, and several rooms saved together, as the app does it.
+        if (type === 'accommodation') {
+            var $save = jQuery('#spPriceSaveBtn').prop('disabled', true);
+            RateRooms.save({
+                providerId: providerId,
+                id: jQuery(this).find('[name=id]').val() || '',
+                asDraft: asDraft,
+                isActive: jQuery(this).find('[name=is_active]').is(':checked'),
+                description: jQuery(this).find('[name=description]').val() || '',
+                done: function(resp, rooms) {
+                    $save.prop('disabled', false);
+                    bootstrap.Modal.getInstance(jQuery('#spPriceModal')[0]).hide();
+                    loadPricing();
+                    if (resp && resp.draft) {
+                        showAlert('Saved as a draft. Nobody else can see it yet.'
+                            + (resp.missing && resp.missing.length
+                                ? ' Before it can go for review: ' + resp.missing.join(', ') + '.'
+                                : ' Everything needed is filled in, so you can submit it whenever you like.'),
+                            'info');
+                        return;
+                    }
+                    showAlert(rooms > 1 ? rooms + ' rooms saved.' : 'Saved.', 'success');
+                },
+                fail: function(message) {
+                    $save.prop('disabled', false);
+                    showAlert(message, 'danger');
+                },
+            });
+            return;
+        }
+
         var data = {
             save_sp_pricing: 1,
             provider_id: providerId,
@@ -1522,6 +1635,7 @@ jQuery(function() {
             data.comfort_tier  = jQuery(this).find('[name=comfort_tier]').val();
             data.total_rooms   = jQuery(this).find('[name=total_rooms]').val();
             data.meal_plan     = jQuery(this).find('[name=meal_plan]').val();
+            data.default_occupancy = jQuery(this).find('[name=default_occupancy]').val();
             data.price         = jQuery(this).find('[name=price_accommodation]').val();
             data.unit          = jQuery(this).find('[name=unit_accommodation]').val();
             data.category      = data.room_category;
@@ -1550,9 +1664,11 @@ jQuery(function() {
             data.specialties = jQuery(this).find('[name=specialties_guide]').val();
             data.price       = jQuery(this).find('[name=price_guide]').val();
             data.unit        = jQuery(this).find('[name=unit_guide]').val();
-            // An empty array still has to reach the server as a stated answer,
-            // or clearing every language would read as "no answer given".
-            data.languages      = jQuery(this).find('[name="languages[]"]').val() || [];
+            // An empty list still has to reach the server as a stated answer,
+            // or clearing every language would read as "no answer given". A
+            // form post drops an empty array outright, so none is sent blank.
+            var languages = jQuery(this).find('[name="languages[]"]').val() || [];
+            data.languages      = languages.length ? languages : '';
             data.wage_multi_day = jQuery(this).find('[name=wage_multi_day]').val();
             data.speaks_english = jQuery(this).find('[name=speaks_english]').is(':checked') ? 1 : 0;
             data.is_certified   = jQuery(this).find('[name=is_certified]').is(':checked') ? 1 : 0;

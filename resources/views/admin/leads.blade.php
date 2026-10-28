@@ -265,44 +265,172 @@ $(document).on('click', '.mark-lost', function() {
         });
     });
 });
+// The regions the enquiry can name, for the edit form below.
+var leadRegions = @json($regions->map(fn ($r) => ['id' => $r->id, 'name' => $r->name . ' (' . $r->country . ')'])->values());
+
+function leadEsc(v) {
+    return jQuery('<div>').text(v === null || v === undefined ? '' : String(v)).html();
+}
+
+// A stored moment, in the reader's own clock. The server keeps UTC; shown
+// raw it read "2026-10-28T06:01:53.000000Z".
+function leadWhen(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d)) return '';
+    var p = function(n) { return String(n).padStart(2, '0'); };
+    var h = d.getHours(), ap = h < 12 ? 'am' : 'pm';
+    return p(d.getDate()) + '-' + p(d.getMonth() + 1) + '-' + d.getFullYear() + ', ' + p(h % 12 || 12) + ':' + p(d.getMinutes()) + ' ' + ap;
+}
+
+// A plain day for the datepicker's box, and back.
+function leadDay(ymd) {
+    if (!ymd) return '';
+    var x = ymd.split('-');
+    return x[2] + '-' + x[1] + '-' + x[0];
+}
+function leadIso(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 $(document).on('click', '.view-lead', function() {
     ajaxPost({ get_lead_history: 1, lead_id: $(this).data('id') }, function(resp) {
-        var l = resp.lead;
-        var html = '<div class="row"><div class="col-md-6">';
-        html += '<h6>Traveller: ' + (l.user ? l.user.full_name || l.user.email : '') + '</h6>';
-        html += '<p>Stage: <strong>' + l.stage + '</strong></p>';
-        html += '<p>Enquiry: ' + (l.enquiry_date || '') + '</p>';
-        html += '<p>Last Contact: ' + (l.last_interaction_date || 'Never') + '</p>';
-        html += '<p>Notes: ' + (l.notes || '-') + '</p>';
+        var l = resp.lead, shown = resp.shown || {};
+        // Once a trip stands on this address, the address is the traveller's.
+        var emailLocked = !!l.trip_id;
+        var html = '<div class="alert alert-danger py-2 small d-none" id="leadEditError"></div>';
+        html += '<div class="row"><div class="col-md-6">';
+        html += '<h6>Enquiry</h6>';
+        html += '<p class="small text-muted mb-2">Stage: <strong>' + leadEsc(l.stage.replace('_', ' ')) + '</strong>'
+            + ' &middot; Enquiry: ' + (leadWhen(l.enquiry_date) || '-')
+            + ' &middot; Last contact: ' + (leadWhen(l.last_interaction_date) || 'Never') + '</p>';
+        html += '<div class="row g-2 mb-2">'
+            + '<div class="col-md-6"><label class="form-label small text-muted mb-1">Name <span class="text-danger">*</span></label>'
+            + '<input type="text" class="form-control form-control-sm" id="editLeadName" value="' + leadEsc(shown.name === '-' ? '' : shown.name) + '"></div>'
+            + '<div class="col-md-6"><label class="form-label small text-muted mb-1">Phone</label>'
+            + '<input type="text" class="form-control form-control-sm" id="editLeadMobile" value="' + leadEsc(l.mobile) + '"></div>'
+            + '<div class="col-12"><label class="form-label small text-muted mb-1">Email <span class="text-danger">*</span></label>'
+            + '<input type="email" class="form-control form-control-sm" id="editLeadEmail" value="' + leadEsc(shown.email) + '"' + (emailLocked ? ' readonly' : '') + '>'
+            + (emailLocked ? '<div class="form-text">This lead already has a trip, so the email is the traveller\'s. Change it on the Travelers page.</div>' : '')
+            + '</div></div>';
+        html += '<div class="row g-2 mb-2">'
+            + '<div class="col-md-6"><label class="form-label small text-muted mb-1">Region</label>'
+            + '<select class="form-select form-select-sm custom-select" id="editLeadRegion"><option value="">Not said yet</option>';
+        leadRegions.forEach(function(r) {
+            html += '<option value="' + r.id + '"' + (l.region_id == r.id ? ' selected' : '') + '>' + leadEsc(r.name) + '</option>';
+        });
+        html += '</select></div>'
+            + '<div class="col-md-3"><label class="form-label small text-muted mb-1">Adults</label>'
+            + '<input type="number" class="form-control form-control-sm" id="editLeadAdults" min="1" max="60" value="' + leadEsc(l.adults) + '"></div>'
+            + '<div class="col-md-3"><label class="form-label small text-muted mb-1">Children</label>'
+            + '<input type="number" class="form-control form-control-sm" id="editLeadChildren" min="0" max="60" value="' + leadEsc(l.children) + '"></div>'
+            + '</div>';
+        html += '<div class="row g-2 mb-2">'
+            + '<div class="col-md-6"><label class="form-label small text-muted mb-1">From</label>'
+            + '<input type="text" class="form-control form-control-sm" id="editLeadStartDisplay" placeholder="dd-mm-yyyy" autocomplete="off" value="' + leadDay(shown.start_date) + '">'
+            + '<input type="hidden" id="editLeadStart" value="' + leadEsc(shown.start_date) + '"></div>'
+            + '<div class="col-md-6"><label class="form-label small text-muted mb-1">To</label>'
+            + '<input type="text" class="form-control form-control-sm" id="editLeadEndDisplay" placeholder="dd-mm-yyyy" autocomplete="off" value="' + leadDay(shown.end_date) + '">'
+            + '<input type="hidden" id="editLeadEnd" value="' + leadEsc(shown.end_date) + '"></div>'
+            + '</div>';
         html += '</div><div class="col-md-6">';
-        html += '<h6>Update Lead</h6>';
+        html += '<h6>Follow-up</h6>';
         html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Assigned HCT</label><select class="form-select form-select-sm custom-select" id="leadAssignedHct"><option value="">— Unassigned —</option>';
         hctUsers.forEach(function(u) {
             var sel = (l.assigned_hct_id == u.id) ? ' selected' : '';
-            html += '<option value="' + u.id + '"' + sel + '>' + (u.full_name || u.email) + '</option>';
+            html += '<option value="' + u.id + '"' + sel + '>' + leadEsc(u.full_name || u.email) + '</option>';
         });
         html += '</select></div>';
         html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Log Interaction</label><select class="form-select form-select-sm custom-select" id="leadInteraction"><option value="">— None —</option><option value="call">Call</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></div>';
-        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Notes</label><textarea class="form-control form-control-sm" id="leadNotes" placeholder="Notes..." rows="2">' + (l.notes || '') + '</textarea></div>';
-        html += '<button class="btn btn-sm btn-success" onclick="updateLead(' + l.id + ')">Save</button>';
+        html += '<div class="mb-2"><label class="form-label small text-muted mb-1">Notes</label><textarea class="form-control form-control-sm" id="leadNotes" placeholder="Notes..." rows="4">' + leadEsc(l.notes) + '</textarea></div>';
+        html += '<div class="d-flex gap-2">';
+        html += '<button class="btn btn-sm btn-success" id="leadSaveBtn" onclick="updateLead(' + l.id + ')">Save</button>';
+        // The journey for this enquiry, started from what is written above, so
+        // the trip manager never types the name and email in a second time.
+        if (l.trip_id) {
+            html += '<a class="btn btn-sm btn-outline-primary" href="/trip-manager/' + l.trip_id + '" target="_blank"><i class="bi bi-box-arrow-up-right"></i> Open Trip</a>';
+        } else if (l.stage === 'follow_up') {
+            html += '<button class="btn btn-sm btn-primary" id="leadTripBtn" onclick="createTripFromLead(' + l.id + ')"><i class="bi bi-plus-lg"></i> Create Trip</button>';
+        }
+        html += '</div>';
         html += '</div></div>';
         $('#leadModalBody').html(html);
         if (window.buildCustomDropdown) {
+            buildCustomDropdown($('#editLeadRegion')[0]);
             buildCustomDropdown($('#leadAssignedHct')[0]);
             buildCustomDropdown($('#leadInteraction')[0]);
         }
+        [['#editLeadStartDisplay', '#editLeadStart'], ['#editLeadEndDisplay', '#editLeadEnd']].forEach(function(pair) {
+            new AirDatepicker(pair[0], {
+                locale: window.airDatepickerEn,
+                dateFormat: 'dd-MM-yyyy',
+                autoClose: true,
+                position: 'bottom left',
+                selectedDates: $(pair[1]).val() ? [new Date($(pair[1]).val() + 'T00:00:00')] : [],
+                onSelect: function(o) { $(pair[1]).val(o.date ? leadIso(o.date) : ''); }
+            });
+        });
         new bootstrap.Modal(jQuery('#leadModal')[0]).show();
     });
 });
 
-function updateLead(id) {
-    var data = { update_lead: 1, lead_id: id, notes: $('#leadNotes').val(), assigned_hct_id: $('#leadAssignedHct').val() };
+function updateLead(id, then) {
+    var data = {
+        update_lead: 1,
+        lead_id: id,
+        full_name: $('#editLeadName').val().trim(),
+        email: $('#editLeadEmail').val().trim(),
+        mobile: $('#editLeadMobile').val().trim(),
+        region_id: $('#editLeadRegion').val(),
+        adults: $('#editLeadAdults').val(),
+        children: $('#editLeadChildren').val(),
+        start_date: $('#editLeadStart').val(),
+        end_date: $('#editLeadEnd').val(),
+        notes: $('#leadNotes').val(),
+        assigned_hct_id: $('#leadAssignedHct').val()
+    };
     var mode = $('#leadInteraction').val();
     if (mode) data.interaction_mode = mode;
+    var $btns = $('#leadSaveBtn, #leadTripBtn').prop('disabled', true);
+    $('#leadEditError').addClass('d-none').text('');
+    // Its own error line inside the popup, rather than the page-wide alert
+    // that sits behind it.
     ajaxPost(data, function() {
+        if (then) return then(data, $btns);
         bootstrap.Modal.getInstance(jQuery('#leadModal')[0]).hide();
         showAlert('Lead updated.', 'success');
         location.reload();
+    }, function(xhr) {
+        $btns.prop('disabled', false);
+        leadEditFailed(xhr, 'The lead could not be saved.');
+    });
+}
+
+function leadEditFailed(xhr, fallback) {
+    var j = xhr.responseJSON || {};
+    var msg = j.error || (j.errors ? Object.values(j.errors)[0][0] : j.message) || fallback;
+    $('#leadEditError').removeClass('d-none').text(msg);
+}
+
+// Saved first, so whatever was just corrected is what the trip is made from,
+// then opened in the trip manager to build its days.
+function createTripFromLead(id) {
+    updateLead(id, function(saved, $btns) {
+        ajaxPost({
+            create_trip_for_traveller: 1,
+            lead_id: id,
+            full_name: saved.full_name,
+            email: saved.email,
+            adults: saved.adults,
+            children: saved.children,
+            start_date: saved.start_date,
+            region_id: saved.region_id
+        }, function(resp) {
+            window.location = '/trip-manager/' + resp.trip_row_id;
+        }, function(xhr) {
+            $btns.prop('disabled', false);
+            leadEditFailed(xhr, 'The trip could not be created.');
+        });
     });
 }
 // Filing an enquiry that came in by phone or WhatsApp. It builds the same

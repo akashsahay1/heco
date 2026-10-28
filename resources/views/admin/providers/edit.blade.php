@@ -48,8 +48,9 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Region</label>
+                            {{-- No blank choice: every provider belongs to a region,
+                                 and the column cannot hold none. --}}
                             <select name="region_id" class="form-select form-select-sm custom-select">
-                                <option value="">-- None --</option>
                                 @foreach($regions as $r)
                                     <option value="{{ $r->id }}" @selected($provider->region_id == $r->id)>{{ $r->name }}</option>
                                 @endforeach
@@ -73,16 +74,16 @@
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Email</label>
-                            <input type="email" name="email" class="form-control form-control-sm" value="{{ $provider->email }}">
+                            <input type="email" name="email" class="form-control form-control-sm" value="{{ $provider->email }}" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Phone 1</label>
-                            <input type="text" name="phone_1" class="form-control form-control-sm" value="{{ $provider->phone_1 }}">
+                            <input type="text" name="phone_1" class="form-control form-control-sm" value="{{ $provider->phone_1 }}" maxlength="20" required>
                         </div>
                     </div>
                     <div class="mb-2">
                         <label class="form-label small text-muted">Phone 2</label>
-                        <input type="text" name="phone_2" class="form-control form-control-sm" value="{{ $provider->phone_2 }}">
+                        <input type="text" name="phone_2" class="form-control form-control-sm" value="{{ $provider->phone_2 }}" maxlength="20">
                     </div>
                     <div class="mb-2">
                         <label class="form-label small text-muted">Address</label>
@@ -139,22 +140,45 @@
                 </div>
             </div>
 
-            <div class="card mb-3">
+            {{-- Shown for the roles it belongs to, and kept in step with the
+                 Types boxes as they are ticked: a host is not asked about
+                 rates, a supplier not about experiences, and only a regional
+                 partner about their background. --}}
+            @php
+                $roles = $provider->types();
+                $forRoles = fn (string ...$r) => array_intersect($r, $roles) ? '' : ' d-none';
+            @endphp
+            <div class="card mb-3{{ $forRoles('hrp') }}" data-roles="hrp">
                 <div class="card-body">
                     <h6 class="border-bottom pb-2"><i class="bi bi-mortarboard"></i> Regional Partner Background</h6>
+                    {{-- The same lists the partner picks from at signup and on
+                         their profile. Typed freely here, a value showed blank
+                         in their select and was wiped on their next save. A
+                         stored answer no longer on the list stays offered, so
+                         opening this page never changes it. --}}
+                    @php
+                        $competences = [
+                            ['name' => 'education_level', 'label' => 'Education Level', 'options' => $educationLevels],
+                            ['name' => 'english_level', 'label' => 'English Level', 'options' => $englishLevels],
+                            ['name' => 'computer_skill_level', 'label' => 'Computer Skill Level', 'options' => $computerSkillLevels],
+                        ];
+                    @endphp
                     <div class="row g-2 mb-2">
-                        <div class="col-md-4">
-                            <label class="form-label small text-muted">Education Level</label>
-                            <input type="text" name="education_level" class="form-control form-control-sm" value="{{ $provider->education_level }}">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small text-muted">English Level</label>
-                            <input type="text" name="english_level" class="form-control form-control-sm" value="{{ $provider->english_level }}">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small text-muted">Computer Skill Level</label>
-                            <input type="text" name="computer_skill_level" class="form-control form-control-sm" value="{{ $provider->computer_skill_level }}">
-                        </div>
+                        @foreach($competences as $competence)
+                            @php $stored = $provider->{$competence['name']}; @endphp
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">{{ $competence['label'] }}</label>
+                                <select name="{{ $competence['name'] }}" class="form-select form-select-sm">
+                                    <option value="">Select...</option>
+                                    @foreach($competence['options'] as $opt)
+                                        <option value="{{ $opt->name }}" @selected($stored === $opt->name)>{{ $opt->name }}</option>
+                                    @endforeach
+                                    @if(filled($stored) && ! $competence['options']->contains('name', $stored))
+                                        <option value="{{ $stored }}" selected>{{ $stored }} (not on the list)</option>
+                                    @endif
+                                </select>
+                            </div>
+                        @endforeach
                     </div>
                     <div class="mb-2">
                         <label class="form-label small text-muted">Education Notes</label>
@@ -191,7 +215,7 @@
                         </small>
                     </div>
                     <div class="mb-0">
-                        <label class="form-label small text-muted">Internal Notes</label>
+                        <label class="form-label small text-muted">About you</label>
                         <textarea name="notes" class="form-control form-control-sm" rows="3">{{ $provider->notes }}</textarea>
                     </div>
                 </div>
@@ -240,12 +264,12 @@
                                 <option value="0" @selected($provider->has_business === false)>No</option>
                             </select>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-6 business-detail{{ $provider->has_business === true ? '' : ' d-none' }}">
                             <label class="form-label small text-muted">Business Type</label>
                             <input type="text" name="business_type" class="form-control form-control-sm" value="{{ $provider->business_type }}">
                         </div>
                     </div>
-                    <div class="row g-2 mb-0">
+                    <div class="row g-2 mb-0 business-detail{{ $provider->has_business === true ? '' : ' d-none' }}">
                         <div class="col-md-7">
                             <label class="form-label small text-muted">Registration Number</label>
                             <input type="text" name="registration_number" class="form-control form-control-sm" value="{{ $provider->registration_number }}">
@@ -258,19 +282,20 @@
                 </div>
             </div>
 
-            <div class="card mb-3">
+            <div class="card mb-3{{ $forRoles('hlh', 'osp') }}" data-roles="hlh osp">
                 <div class="card-body">
                     <h6 class="border-bottom pb-2"><i class="bi bi-box-seam"></i> What They Offer</h6>
+                    <div class="small fw-semibold text-muted mb-2">Told us at signup</div>
 
                     @php
                         $offers = [
-                            ['name' => 'experience_categories', 'label' => 'Experience Categories', 'options' => $experienceCategories, 'current' => $provider->experience_categories ?? []],
-                            ['name' => 'service_categories',    'label' => 'Service Categories',    'options' => $serviceCategories,    'current' => $provider->service_categories ?? []],
+                            ['name' => 'experience_categories', 'label' => 'Experience Categories', 'options' => $experienceCategories, 'current' => $provider->experience_categories ?? [], 'roles' => 'hlh'],
+                            ['name' => 'service_categories',    'label' => 'Service Categories',    'options' => $serviceCategories,    'current' => $provider->service_categories ?? [], 'roles' => 'osp'],
                         ];
                     @endphp
 
                     @foreach($offers as $offer)
-                        <div class="mb-2">
+                        <div class="mb-2{{ $forRoles($offer['roles']) }}" data-roles="{{ $offer['roles'] }}">
                             <label class="form-label small text-muted">{{ $offer['label'] }}</label>
                             <div class="ms-dropdown" data-name="{{ $offer['name'] }}">
                                 <button type="button" class="form-select form-select-sm text-start ms-trigger">
@@ -291,9 +316,45 @@
                         </div>
                     @endforeach
 
-                    <div class="mb-0">
+                    <div class="mb-0{{ $forRoles('osp') }}" data-roles="osp">
                         <label class="form-label small text-muted">Other Services</label>
                         <textarea name="other_services" class="form-control form-control-sm" rows="2">{{ $provider->other_services }}</textarea>
+                    </div>
+
+                    {{-- What their rate card shows, beside what they said they do:
+                         a partner who signed up for taxi services and has filed no
+                         rate yet reads "None yet" here, and that difference is the
+                         point of showing both in one place. --}}
+                    <div class="{{ $forRoles('osp') }} mt-3 pt-2 border-top" data-roles="osp">
+                        <div class="small fw-semibold text-muted mb-2">From their rates <span class="badge bg-light text-dark border ms-1 auto-pill">auto</span></div>
+
+                        {{-- Read off the rate card, never typed: only rates HCT has
+                             approved and that are switched on (ServiceProvider::
+                             syncOfferings). Typed here as well, they said one thing
+                             beside rates that said another. Re-drawn by the script
+                             each time the rate list reloads. --}}
+                        @php
+                            $caps = [
+                                ['key' => 'services', 'label' => 'Services Offered', 'values' => $provider->services_offered ?? []],
+                                ['key' => 'tiers', 'label' => 'Comfort Tiers Offered', 'values' => $provider->accommodation_categories ?? []],
+                                ['key' => 'vehicles', 'label' => 'Vehicle Types', 'values' => $provider->vehicle_types ?? []],
+                                ['key' => 'guides', 'label' => 'Guide Types', 'values' => $provider->guide_types ?? []],
+                                ['key' => 'activities', 'label' => 'Activity Types', 'values' => $provider->activity_types ?? []],
+                            ];
+                        @endphp
+                        @foreach($caps as $cap)
+                            <div class="mb-2">
+                                <label class="form-label small text-muted">{{ $cap['label'] }} <span class="badge bg-light text-dark border ms-1 auto-pill">auto</span></label>
+                                <div class="form-control form-control-sm bg-light" data-cap="{{ $cap['key'] }}">
+                                    @forelse($cap['values'] as $value)
+                                        <span class="badge bg-secondary me-1">{{ $value }}</span>
+                                    @empty
+                                        <span class="text-muted small">None yet</span>
+                                    @endforelse
+                                </div>
+                            </div>
+                        @endforeach
+                        <small class="text-muted d-block"><i class="bi bi-info-circle me-1"></i>Taken from this provider's approved, active rates below. Add or change a rate to change these.</small>
                     </div>
                 </div>
             </div>
@@ -332,79 +393,12 @@
                 </div>
             </div>
 
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="border-bottom pb-2"><i class="bi bi-gear"></i> Capabilities</h6>
-
-                    @php
-                        // Comfort tiers are now per-row on sp_pricing.comfort_tier;
-                        // derive a read-only summary from the provider's current rows.
-                        $derivedComfortTiers = \App\Models\SpPricing::where('service_provider_id', $provider->id)
-                            ->where('service_type', 'accommodation')
-                            ->where('is_active', true)
-                            ->whereNotNull('comfort_tier')
-                            ->where('comfort_tier', '!=', '')
-                            ->pluck('comfort_tier')
-                            ->unique()
-                            ->values()
-                            ->all();
-
-                        $caps = [
-                            ['name' => 'services_offered',         'label' => 'Services Offered',         'help' => null,                                                                                       'options' => $serviceTypes,            'current' => $provider->services_offered ?? []],
-                            ['name' => 'vehicle_types',            'label' => 'Vehicle Types',            'help' => null,                                                                                       'options' => $vehicleTypes,            'current' => $provider->vehicle_types ?? []],
-                            ['name' => 'guide_types',              'label' => 'Guide Types',              'help' => null,                                                                                       'options' => $guideTypes,              'current' => $provider->guide_types ?? []],
-                            ['name' => 'activity_types',           'label' => 'Activity Types',           'help' => null,                                                                                       'options' => $activityTypes,           'current' => $provider->activity_types ?? []],
-                        ];
-                    @endphp
-
-                    {{-- Read-only comfort-tier summary, auto-derived from sp_pricing rows.
-                         The badges inside #comfortTierBadges are re-rendered by JS each
-                         time the pricing list reloads, so admins see live updates after
-                         adding/removing rows without needing to refresh the page. --}}
-                    <div class="mb-2">
-                        <label class="form-label small text-muted">Comfort Tiers Offered <span class="badge bg-light text-dark border ms-1 auto-pill">auto</span></label>
-                        <div class="form-control form-control-sm bg-light comfort-tier-summary" id="comfortTierBadges">
-                            @forelse($derivedComfortTiers as $tier)
-                                <span class="badge bg-secondary me-1">{{ $tier }}</span>
-                            @empty
-                                <span class="text-muted small">No accommodation rows yet — set per row under Services, Rooms & Pricing.</span>
-                            @endforelse
-                        </div>
-                        <small class="text-muted d-block mt-1"><i class="bi bi-info-circle me-1"></i>Derived from each accommodation row's Comfort Tier. Edit under Services, Rooms & Pricing to change.</small>
-                    </div>
-
-                    @foreach($caps as $idx => $cap)
-                        <div class="{{ $idx === count($caps) - 1 ? 'mb-0' : 'mb-2' }}">
-                            <label class="form-label small text-muted">{{ $cap['label'] }}</label>
-                            <div class="ms-dropdown" data-name="{{ $cap['name'] }}">
-                                <button type="button" class="form-select form-select-sm text-start ms-trigger">
-                                    <span class="ms-label text-muted">Select options...</span>
-                                </button>
-                                <div class="ms-panel d-none">
-                                    @forelse($cap['options'] as $opt)
-                                        <label class="ms-option">
-                                            <input type="checkbox" value="{{ $opt->name }}"
-                                                   {{ in_array($opt->name, $cap['current'] ?: [], true) ? 'checked' : '' }}>
-                                            <span>{{ $opt->name }}</span>
-                                        </label>
-                                    @empty
-                                        <div class="ms-empty">No options available. Add them under <a href="{{ url('/travel-preferences') }}">Travel Preferences</a> or the matching system list.</div>
-                                    @endforelse
-                                </div>
-                            </div>
-                            @if(!empty($cap['help']))
-                                <small class="text-muted d-block mt-1"><i class="bi bi-info-circle me-1"></i>{{ $cap['help'] }}</small>
-                            @endif
-                        </div>
-                    @endforeach
-                </div>
-            </div>
         </div>
     </div>
 </form>
 
 {{-- ===== Services & Pricing — hotel-style inventory for accommodation, rates for everything else ===== --}}
-<div class="card mt-3 mb-3" id="spPricingCard" data-provider-id="{{ $provider->id }}">
+<div class="card mt-3 mb-3{{ in_array('osp', $provider->types(), true) ? '' : ' d-none' }}" id="spPricingCard" data-provider-id="{{ $provider->id }}" data-roles="osp">
     <div class="card-body">
         <h6 class="border-bottom pb-2"><i class="bi bi-cash-stack"></i> Services, Rooms &amp; Pricing
             <span class="text-muted small fw-normal">— Trip Manager pulls these in when this provider is assigned. For Accommodation, each row is a room category + how many rooms of that type.</span>
@@ -497,6 +491,7 @@
                 <option value="transport">🚙 Transport</option>
                 <option value="guide">👤 Guide</option>
                 <option value="activity">🏔 Activity</option>
+                <option value="rental">🎒 Rental</option>
                 <option value="other">📦 Other</option>
             </select>
         </div>
@@ -582,6 +577,22 @@
                         <button type="button" class="btn btn-sm btn-outline-danger bulk-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
                     </div>
                 </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Occupancy</label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="default_occupancy" data-list-type="room_occupancy">
+                            <option value="">Pick...</option>
+                            @foreach($roomOccupancies as $o)
+                                <option value="{{ $o->name }}">{{ $o->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Total guests</label>
+                        <input type="number" min="1" max="2000" class="form-control form-control-sm bulk-field guests-field" data-field="guest_capacity" placeholder="auto">
+                    </div>
+                    <div class="col-md-7 small text-muted align-self-end">Total guests = rooms &times; occupancy, e.g. 2 double rooms = 4. Fills itself; change it if a room takes more.</div>
+                </div>
             </div>
         </template>
 
@@ -637,56 +648,7 @@
              ₹4500) vs Cat A Double (3 rooms @ ₹5500). Both fields required;
              Comfort Tier is the primary visual axis. --}}
         <div class="svc-fields" data-svc="accommodation">
-            <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-7">
-                    <label class="form-label small">Comfort Tier <span class="text-danger">*</span></label>
-                    <select class="form-select form-select-sm custom-select" name="comfort_tier" data-list-type="accommodation_category" data-required-for="accommodation">
-                        <option value="">Select tier...</option>
-                        @foreach($accommodationCategories as $c)
-                            <option value="{{ $c->name }}" data-desc="{{ $c->description }}">{{ $c->name }}</option>
-                        @endforeach
-                    </select>
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-                <div class="col-md-5">
-                    <label class="form-label small">Room Category <span class="text-danger">*</span></label>
-                    <select class="form-select form-select-sm custom-select" name="room_category" data-list-type="room_category" data-required-for="accommodation">
-                        <option value="">Select category...</option>
-                        @foreach($roomCategories as $r)
-                            <option value="{{ $r->name }}" data-desc="{{ $r->description }}">{{ $r->name }}</option>
-                        @endforeach
-                    </select>
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-            </div>
-
-            <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-5">
-                    <label class="form-label small">Total Rooms <span class="text-danger">*</span></label>
-                    <input type="number" min="1" max="500" class="form-control form-control-sm" name="total_rooms" placeholder="e.g. 4" data-required-for="accommodation">
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-                <div class="col-md-7">
-                    <label class="form-label small">Rate per night (₹) <span class="text-danger">*</span></label>
-                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="price_accommodation" placeholder="e.g. 2500" data-price-for="accommodation">
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-            </div>
-
-            <div class="row g-2 mb-2 sp-field-row">
-                <div class="col-md-12">
-                    <label class="form-label small">Meal Plan</label>
-                    <select class="form-select form-select-sm custom-select" name="meal_plan" data-list-type="meal_plan">
-                        <option value="">— no meals (room only) —</option>
-                        @foreach($mealPlans as $m)
-                            <option value="{{ $m->name }}" data-desc="{{ $m->description }}">{{ $m->name }}</option>
-                        @endforeach
-                    </select>
-                    <small class="form-help-text text-muted d-block mt-1"></small>
-                </div>
-            </div>
-
-            <input type="hidden" name="unit_accommodation" value="per night">
+            @include('partials.rate-rooms')
         </div>
 
         {{-- ============= TRANSPORT FIELDS ============= --}}
@@ -814,6 +776,38 @@
             </div>
         </div>
 
+        {{-- ============= RENTAL FIELDS =============
+             Box for box the partner's own rental form, so a rental filed
+             there can be opened and corrected here. --}}
+        <div class="svc-fields d-none" data-svc="rental">
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-7">
+                    <label class="form-label small">Item on rent <span class="text-danger">*</span></label>
+                    <input type="text" maxlength="150" class="form-control form-control-sm"
+                           name="rental_item" placeholder="e.g. Trekking tent (2 person), Mountain bike" data-required-for="rental">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label small">Charges per day (₹) <span class="text-danger">*</span></label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                           name="price_rental" placeholder="e.g. 400" data-price-for="rental">
+                </div>
+            </div>
+            <div class="row g-2 mb-2 sp-field-row">
+                <div class="col-md-5">
+                    {{-- Held against damage and returned, so it is not income. --}}
+                    <label class="form-label small">Security deposit (₹)</label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                           name="security_deposit" placeholder="optional">
+                </div>
+                <div class="col-md-7">
+                    <label class="form-label small">Other details</label>
+                    <input type="text" class="form-control form-control-sm"
+                           name="notes_rental" placeholder="e.g. Sizes S to XL, returned by 6 pm">
+                </div>
+            </div>
+            <input type="hidden" name="unit_rental" value="per day">
+        </div>
+
         {{-- ============= OTHER FIELDS ============= --}}
         <div class="svc-fields d-none" data-svc="other">
             <div class="row g-2 mb-2 sp-field-row">
@@ -874,6 +868,7 @@
                 ['svc' => 'transport',     'id' => 'multiSvcTransport','label' => '🚙 Transport',                              'addLabel' => 'Add another vehicle'],
                 ['svc' => 'guide',         'id' => 'multiSvcGuide',    'label' => '👤 Guide',                                  'addLabel' => 'Add another guide'],
                 ['svc' => 'activity',      'id' => 'multiSvcActivity', 'label' => '🏔 Activity',                               'addLabel' => 'Add another activity'],
+                ['svc' => 'rental',        'id' => 'multiSvcRental',   'label' => '🎒 Rental',                                 'addLabel' => 'Add another item'],
                 ['svc' => 'other',         'id' => 'multiSvcOther',    'label' => '📦 Other (permits, fees, equipment, etc.)', 'addLabel' => 'Add another item'],
             ];
         @endphp
@@ -886,6 +881,12 @@
                     </div>
                 </div>
                 <div class="card-body multi-svc-body d-none">
+                    @if($s['svc'] === 'accommodation')
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">Property name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="multiAccomPropertyName" maxlength="100" placeholder="e.g. Tirthan Riverside Homestay">
+                        </div>
+                    @endif
                     <div class="multi-svc-rows mb-2" data-svc="{{ $s['svc'] }}"></div>
                     <button type="button" class="btn btn-sm btn-outline-success multi-svc-add-row" data-svc="{{ $s['svc'] }}">
                         <i class="bi bi-plus-lg me-1"></i> {{ $s['addLabel'] }}
@@ -937,6 +938,22 @@
                     <div class="col-md-1 text-end">
                         <button type="button" class="btn btn-sm btn-outline-danger multi-svc-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
                     </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Occupancy</label>
+                        <select class="form-select form-select-sm custom-select bulk-field" data-field="default_occupancy" data-list-type="room_occupancy">
+                            <option value="">Pick...</option>
+                            @foreach($roomOccupancies as $o)
+                                <option value="{{ $o->name }}">{{ $o->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Total guests</label>
+                        <input type="number" min="1" max="2000" class="form-control form-control-sm bulk-field guests-field" data-field="guest_capacity" placeholder="auto">
+                    </div>
+                    <div class="col-md-7 small text-muted align-self-end">Total guests = rooms &times; occupancy, e.g. 2 double rooms = 4. Fills itself; change it if a room takes more.</div>
                 </div>
             </div>
         </template>
@@ -1041,6 +1058,34 @@
             </div>
         </template>
 
+        {{-- The same boxes as the single rental form: the item, its daily
+             charge, the deposit held against damage, and anything else. --}}
+        <template id="multiSvcRowTpl-rental">
+            <div class="bulk-row card border p-2 mb-2">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">Item on rent <span class="text-danger">*</span></label>
+                        <input type="text" maxlength="150" class="form-control form-control-sm bulk-field" data-field="rental_item" placeholder="e.g. Trekking tent (2 person)">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Per day ₹ <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="price" placeholder="400">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">Deposit ₹</label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-sm bulk-field" data-field="security_deposit" placeholder="optional">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Other details</label>
+                        <input type="text" class="form-control form-control-sm bulk-field" data-field="notes" placeholder="optional">
+                    </div>
+                    <div class="col-md-1 text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger multi-svc-row-remove" title="Remove this row"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
         <template id="multiSvcRowTpl-other">
             <div class="bulk-row card border p-2 mb-2">
                 <div class="row g-2 align-items-end">
@@ -1075,6 +1120,25 @@
 @endsection
 
 @section('js')
+<script>
+jQuery(function () {
+    // Each section shows for the roles it belongs to, as the Types are ticked.
+    function showForRoles() {
+        var ticked = jQuery('input[name="provider_types[]"]:checked').map(function () { return this.value; }).get();
+        jQuery('[data-roles]').each(function () {
+            var mine = String(jQuery(this).data('roles')).split(' ');
+            jQuery(this).toggleClass('d-none', !mine.some(function (r) { return ticked.indexOf(r) !== -1; }));
+        });
+    }
+    jQuery(document).on('change', 'input[name="provider_types[]"]', showForRoles);
+
+    // A business's type, registration and year belong to a registered one.
+    jQuery(document).on('change', 'select[name="has_business"]', function () {
+        jQuery('.business-detail').toggleClass('d-none', jQuery(this).val() !== '1');
+    });
+});
+</script>
+<script src="{{ url('js/rate-rooms.js') }}?v={{ filemtime(public_path('js/rate-rooms.js')) }}"></script>
 <script>
 // === Multi-select dropdown ===
 function updateMsLabel($dd) {
@@ -1166,17 +1230,15 @@ jQuery('#providerEditForm').on('submit', function(e) {
     var btn = jQuery('#saveBtn');
     btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Saving...');
 
+    // A form post drops an empty list altogether, which the server read as
+    // "not mentioned" and kept the old picks. A blank says "none" instead.
+    var listOrNone = function(values) { return values.length ? values : ''; };
     var data = {
         edit_provider: 1,
-        services_offered:         getDdValues('services_offered'),
-        vehicle_types:            getDdValues('vehicle_types'),
-        guide_types:              getDdValues('guide_types'),
-        activity_types:           getDdValues('activity_types'),
-        experience_categories:    getDdValues('experience_categories'),
-        service_categories:       getDdValues('service_categories')
-        // accommodation_categories: now per-row on sp_pricing.comfort_tier;
-        // do NOT send so the AjaxController preserves whatever legacy value
-        // is already on the provider row.
+        // Services offered, tiers, vehicle, guide and activity types are read
+        // off the rate card, so they are not sent from here.
+        experience_categories:    listOrNone(getDdValues('experience_categories')),
+        service_categories:       listOrNone(getDdValues('service_categories'))
     };
     var $form = jQuery(this);
 
@@ -1197,9 +1259,11 @@ jQuery('#providerEditForm').on('submit', function(e) {
 
     ajaxPost(data, function() {
         window.location.href = '{{ route('hct.providers.show', $provider->id) }}';
-    }, function() {
+    }, function(xhr) {
         btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Save Changes');
-        alert('Failed to save. Please try again.');
+        // The server says what is wrong (a blank phone, an email in use);
+        // a generic "try again" left the admin retrying the same mistake.
+        showAlert((xhr.responseJSON || {}).error || 'Failed to save. Please try again.', 'danger');
     });
 });
 
@@ -1217,30 +1281,35 @@ jQuery(function() {
         jQuery('#spPriceBulkDelete').toggleClass('d-none', jQuery('.sp-price-check.sp-price-checked').length === 0);
     }
     var typeIcons = {
-        accommodation: '🛏', transport: '🚙', guide: '👤', activity: '🏔', other: '📦'
+        accommodation: '🛏', transport: '🚙', guide: '👤', activity: '🏔', rental: '🎒', other: '📦'
     };
 
-    // Rebuild the read-only "Comfort Tiers Offered" badge list from the live
-    // pricing rows so the summary stays in sync without a page reload.
+    // Re-draw the read-only Capabilities from the live rate list, by the same
+    // rule as the server: approved, switched-on rates only.
+    var serviceLabels = { accommodation: 'Accommodation', transport: 'Transport', guide: 'Guide', activity: 'Activity', meal: 'Meals', rental: 'Rental', other: 'Other' };
     function refreshComfortTierBadges(rows) {
-        var $box = jQuery('#comfortTierBadges');
-        if (!$box.length) return;
-        var seen = {};
-        var tiers = [];
-        (rows || []).forEach(function(r) {
-            if (r.service_type !== 'accommodation' || !r.is_active || !r.comfort_tier) return;
-            if (!seen[r.comfort_tier]) {
-                seen[r.comfort_tier] = true;
-                tiers.push(r.comfort_tier);
-            }
+        var live = (rows || []).filter(function(r) { return r.is_active && r.approval_status === 'approved'; });
+        var pick = function(type, column) {
+            var out = [];
+            live.forEach(function(r) {
+                var v = type ? (r.service_type === type ? r[column] : null) : serviceLabels[r.service_type];
+                if (v && out.indexOf(v) === -1) out.push(v);
+            });
+            return out;
+        };
+        var caps = {
+            services: pick(null),
+            tiers: pick('accommodation', 'comfort_tier'),
+            vehicles: pick('transport', 'vehicle_type'),
+            guides: pick('guide', 'category'),
+            activities: pick('activity', 'category'),
+        };
+        Object.keys(caps).forEach(function(key) {
+            var $box = jQuery('[data-cap="' + key + '"]');
+            $box.html(caps[key].length
+                ? caps[key].map(function(t) { return '<span class="badge bg-secondary me-1">' + spEscape(t) + '</span>'; }).join('')
+                : '<span class="text-muted small">None yet</span>');
         });
-        if (!tiers.length) {
-            $box.html('<span class="text-muted small">No accommodation rows yet — set per row under Services, Rooms &amp; Pricing.</span>');
-            return;
-        }
-        $box.html(tiers.map(function(t) {
-            return '<span class="badge bg-secondary me-1">' + spEscape(t) + '</span>';
-        }).join(''));
     }
 
     function loadPricing() {
@@ -1257,20 +1326,24 @@ jQuery(function() {
             // accommodation rows so we can flag duplicate combinations. Multiple
             // room categories at the same tier is fine (Cat A Single + Cat A
             // Double); the same room at the same tier saved twice is the bug.
+            // The property is part of the key, as on the server: the same room
+            // in two different homestays is two rooms.
+            var pairKeyOf = function(r) {
+                return (r.category || '') + '|' + (r.comfort_tier || '') + '|' + (r.room_category || r.category || '');
+            };
             var pairCounts = {};
             rows.forEach(function(r) {
                 if (r.service_type !== 'accommodation' || !r.is_active || !r.comfort_tier) return;
-                var key = r.comfort_tier + '|' + (r.room_category || r.category || '');
+                var key = pairKeyOf(r);
                 pairCounts[key] = (pairCounts[key] || 0) + 1;
             });
 
             var html = '';
             rows.forEach(function(r) {
                 priceCache[r.id] = r;
-                var pairKey = (r.comfort_tier || '') + '|' + (r.room_category || r.category || '');
                 var isDupTier = r.service_type === 'accommodation'
                     && r.comfort_tier
-                    && pairCounts[pairKey] > 1;
+                    && pairCounts[pairKeyOf(r)] > 1;
 
                 // Build a service-type-specific "Details" cell
                 var details = '';
@@ -1310,6 +1383,12 @@ jQuery(function() {
                     }
                     if (r.specialties) parts.push('<small class="text-muted">' + spEscape(r.specialties) + '</small>');
                     details = parts.join(' · ');
+                } else if (r.service_type === 'rental') {
+                    // The item is what a rental is; it has no category, so the
+                    // fallback below read a dash.
+                    var parts = ['<strong>' + spEscape(r.rental_item || '-') + '</strong>'];
+                    if (r.security_deposit) parts.push('<small class="text-muted">₹' + Number(r.security_deposit).toLocaleString('en-IN') + ' deposit</small>');
+                    details = parts.join(' · ');
                 } else {
                     details = '<strong>' + spEscape(r.category || '—') + '</strong>';
                 }
@@ -1348,9 +1427,6 @@ jQuery(function() {
                 html += '<td>' + inventory + '</td>';
                 html += '<td>' + (r.is_active ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>') + '</td>';
                 html += '<td>';
-                if (r.service_type === 'accommodation' && r.room_category) {
-                    html += '<button class="btn btn-sm btn-outline-success sp-price-tier-matrix me-1" title="Set prices for all tiers of this room"><i class="bi bi-grid-3x3-gap"></i></button>';
-                }
                 html += '<button class="btn btn-sm btn-outline-primary sp-price-edit" title="Edit this row only"><i class="bi bi-pencil"></i></button>';
                 html += '</td>';
                 html += '</tr>';
@@ -1410,6 +1486,7 @@ jQuery(function() {
         // Common
         $f.find('[name=description]').val(r ? (r.description || '') : '');
         $f.find('[name=is_active]').prop('checked', r ? !!r.is_active : true);
+        RateRooms.fill(r && r.service_type === 'accommodation' ? r : null);
 
         // Accommodation — legacy data may have a comma-list under room_category;
         // pick the first value so the single-select dropdown has a valid match.
@@ -1419,6 +1496,9 @@ jQuery(function() {
         $f.find('[name=comfort_tier]').val(r ? (r.comfort_tier || '') : '');
         $f.find('[name=total_rooms]').val(r ? (r.total_rooms || '') : '');
         $f.find('[name=meal_plan]').val(r ? (r.meal_plan || '') : '');
+        $f.find('[name=default_occupancy]').val(r ? (r.default_occupancy || '') : '');
+        $f.find('.guests-field').data('touched', !!(r && r.guest_capacity));
+        $f.find('[name=guest_capacity]').val(r ? (r.guest_capacity || '') : '');
         $f.find('[name=price_accommodation]').val(r && r.service_type === 'accommodation' ? r.price : '');
 
         // Transport
@@ -1442,6 +1522,12 @@ jQuery(function() {
         $f.find('[name=price_activity]').val(r && r.service_type === 'activity' ? r.price : '');
         $f.find('[name=unit_activity]').val(r && r.service_type === 'activity' ? (r.unit || '') : '');
 
+        // Rental
+        $f.find('[name=rental_item]').val(r && r.service_type === 'rental' ? (r.rental_item || '') : '');
+        $f.find('[name=security_deposit]').val(r && r.service_type === 'rental' ? (r.security_deposit || '') : '');
+        $f.find('[name=price_rental]').val(r && r.service_type === 'rental' ? r.price : '');
+        $f.find('[name=notes_rental]').val(r && r.service_type === 'rental' ? (r.notes || '') : '');
+
         // Other
         $f.find('[name=category_other]').val(r && r.service_type === 'other' ? (r.category || '') : '');
         $f.find('[name=price_other]').val(r && r.service_type === 'other' ? r.price : '');
@@ -1462,7 +1548,7 @@ jQuery(function() {
     // Bulk Add mode — Accommodation + Transport only.
     // Edit mode always uses single-entry; bulk is "Add" only.
     // ─────────────────────────────────────────────────────────────────────
-    var bulkEligibleTypes = ['accommodation', 'transport'];
+    var bulkEligibleTypes = ['transport'];
     var currentAddMode = 'single';
 
     function setAddMode(mode) {
@@ -1568,6 +1654,26 @@ jQuery(function() {
         });
     });
 
+    // Guests for a room type: rooms x the people its occupancy seats (a double
+    // is 2). Filled in until the member types a figure of their own, which
+    // then stands: a double with an extra bed sleeps three.
+    function seatsOf(occupancy) {
+        var m = String(occupancy || '').toLowerCase().match(/single|double|twin|triple|quad/);
+        return m ? { single: 1, double: 2, twin: 2, triple: 3, quad: 4 }[m[0]] : null;
+    }
+    function fillGuests($scope) {
+        var $guests = $scope.find('.guests-field');
+        if (!$guests.length || $guests.data('touched')) return;
+        var rooms = parseInt($scope.find('[data-field=total_rooms], [name=total_rooms]').val(), 10);
+        var seats = seatsOf($scope.find('[data-field=default_occupancy], [name=default_occupancy]').val());
+        if (rooms > 0 && seats) $guests.val(rooms * seats);
+    }
+    jQuery(document).on('input change', '[data-field=total_rooms], [data-field=default_occupancy], [name=total_rooms], [name=default_occupancy]', function() {
+        var $row = jQuery(this).closest('.bulk-row');
+        fillGuests($row.length ? $row : jQuery(this).closest('.svc-fields'));
+    });
+    jQuery(document).on('input', '.guests-field', function() { jQuery(this).data('touched', true); });
+
     jQuery(document).on('click', '.bulk-row-remove', function() {
         var $rows = jQuery('#bulkRowsContainer .bulk-row');
         if ($rows.length <= 1) {
@@ -1656,6 +1762,7 @@ jQuery(function() {
                     transport:     ['vehicle_type', 'price', 'unit'],
                     guide:         ['category', 'price'],
                     activity:      ['category', 'price', 'unit'],
+                    rental:        ['rental_item', 'price'],
                     other:         ['category', 'price', 'unit'],
                 }[svc] || [];
                 var missing = required.filter(function(k) { return !row[k]; });
@@ -1663,8 +1770,15 @@ jQuery(function() {
                     errors.push(svc + ' row ' + rowIdx + ': missing ' + missing.join(', '));
                     return;
                 }
-                if (svc === 'accommodation') { row.unit = 'per night'; row.category = row.room_category; }
-                else if (svc === 'guide')    { row.unit = 'per day'; }
+                if (svc === 'accommodation') {
+                    row.unit = 'per night';
+                    row.category = jQuery('#multiAccomPropertyName').val().trim();
+                    if (!row.category) {
+                        errors.push('accommodation: give the property a name');
+                        return;
+                    }
+                }
+                else if (svc === 'guide' || svc === 'rental') { row.unit = 'per day'; }
                 payloads.push(row);
             });
         });
@@ -1682,27 +1796,16 @@ jQuery(function() {
             return;
         }
         $btn.prop('disabled', true).html('<i class="bi bi-hourglass-split me-1"></i> Saving...');
-        var saved = 0, failed = 0, errs = [];
-        function saveNext(i) {
-            if (i >= result.payloads.length) {
-                $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Selected');
-                if (failed) {
-                    window.showError && window.showError(saved + ' saved, ' + failed + ' failed: ' + errs.join('; '));
-                } else {
-                    showAlert(saved + ' service rate(s) saved.', 'success');
-                    bootstrap.Modal.getInstance(jQuery('#spMultiServiceModal')[0]).hide();
-                    loadPricing();
-                }
-                return;
-            }
-            var payload = jQuery.extend({ save_sp_pricing: 1, provider_id: providerId, is_active: 1 }, result.payloads[i]);
-            ajaxPost(payload, function() { saved++; saveNext(i + 1); }, function(xhr) {
-                failed++;
-                errs.push(payload.service_type + ': ' + ((xhr.responseJSON || {}).error || 'failed'));
-                saveNext(i + 1);
-            });
-        }
-        saveNext(0);
+        // All of them in one call: saved together or not at all.
+        ajaxPost({ save_sp_pricing_rows: 1, provider_id: providerId, is_active: 1, rows: result.payloads }, function() {
+            $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Selected');
+            showAlert(result.payloads.length + ' service rate(s) saved.', 'success');
+            bootstrap.Modal.getInstance(jQuery('#spMultiServiceModal')[0]).hide();
+            loadPricing();
+        }, function(xhr) {
+            $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Selected');
+            window.showError && window.showError((xhr.responseJSON || {}).error || 'Nothing was saved.');
+        });
     });
 
     jQuery('#spPriceAdd').on('click', function() {
@@ -1750,6 +1853,8 @@ jQuery(function() {
                 $row.find('.bulk-field[data-field=total_rooms]').val(existing.total_rooms || '');
                 $row.find('.bulk-field[data-field=price]').val(existing.price || '');
                 $row.find('.bulk-field[data-field=meal_plan]').val(existing.meal_plan || '');
+                $row.find('.bulk-field[data-field=default_occupancy]').val(existing.default_occupancy || '');
+                $row.find('.bulk-field[data-field=guest_capacity]').val(existing.guest_capacity || '').data('touched', !!existing.guest_capacity);
             }
         });
         jQuery('#bulkRowsContainer .custom-select').each(function() {
@@ -1773,46 +1878,68 @@ jQuery(function() {
             }
             var $btn = jQuery('#spPriceSaveBtn');
             $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Saving ' + rows.length + ' rows...');
-
-            // Save sequentially so a 422 on one row doesn't lose the others.
-            var saved = 0, failed = 0, errors = [];
-            function saveNext(i) {
-                if (i >= rows.length) {
-                    $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Rows');
-                    bootstrap.Modal.getInstance(jQuery('#spPriceModal')[0]).hide();
-                    loadPricing();
-                    var msg = saved + ' saved' + (failed ? ', ' + failed + ' failed: ' + errors.join('; ') : '.');
-                    showAlert(msg, failed ? 'warning' : 'success');
-                    return;
-                }
-                var row = rows[i];
-                var payload = jQuery.extend({
-                    save_sp_pricing: 1,
-                    provider_id: providerId,
-                    is_active: 1,
-                }, row);
-                if (type === 'accommodation') {
-                    // Mirror room_category → category for backward compat;
-                    // unit is implicit "per night".
-                    payload.category = payload.room_category;
-                    payload.unit = 'per night';
-                }
-                ajaxPost(payload, function() {
-                    saved++;
-                    saveNext(i + 1);
-                }, function(xhr) {
-                    failed++;
-                    var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'row ' + (i+1) + ' failed') : 'row ' + (i+1) + ' failed';
-                    errors.push(msg);
-                    saveNext(i + 1);
-                });
-            }
-            saveNext(0);
+            // One call for every row: all are saved or none are, and the
+            // answer names the row that stopped it. Saved one at a time, a
+            // fault in the third row left the first two filed and the rest
+            // guessing which.
+            var bulkPayload = {
+                save_sp_pricing_rows: 1,
+                provider_id: providerId,
+                is_active: 1,
+                rows: rows.map(function(row) {
+                    if (type === 'accommodation') {
+                        row.category = row.room_category;
+                        row.unit = 'per night';
+                    }
+                    return row;
+                }),
+            };
+            ajaxPost(bulkPayload, function() {
+                $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Rows');
+                bootstrap.Modal.getInstance(jQuery('#spPriceModal')[0]).hide();
+                loadPricing();
+                showAlert(rows.length + ' saved.', 'success');
+            }, function(xhr) {
+                $btn.prop('disabled', false).html('<i class="bi bi-check-lg me-1"></i> Save All Rows');
+                showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Nothing was saved.') : 'Nothing was saved.', 'danger');
+            });
             return;
         }
 
         // SINGLE MODE — original logic.
         var type = jQuery('#spServiceType').val();
+        // A stay is the shared form's: the property once, each room its own
+        // rate, and several rooms saved together, as the app does it.
+        if (type === 'accommodation') {
+            var $save = jQuery('#spPriceSaveBtn').prop('disabled', true);
+            RateRooms.save({
+                providerId: providerId,
+                id: jQuery(this).find('[name=id]').val() || '',
+                asDraft: false,
+                isActive: jQuery(this).find('[name=is_active]').is(':checked'),
+                description: jQuery(this).find('[name=description]').val() || '',
+                done: function(resp, rooms) {
+                    $save.prop('disabled', false);
+                    bootstrap.Modal.getInstance(jQuery('#spPriceModal')[0]).hide();
+                    loadPricing();
+                    if (resp && resp.draft) {
+                        showAlert('Saved as a draft. Nobody else can see it yet.'
+                            + (resp.missing && resp.missing.length
+                                ? ' Before it can go for review: ' + resp.missing.join(', ') + '.'
+                                : ' Everything needed is filled in, so you can submit it whenever you like.'),
+                            'info');
+                        return;
+                    }
+                    showAlert(rooms > 1 ? rooms + ' rooms saved.' : 'Saved.', 'success');
+                },
+                fail: function(message) {
+                    $save.prop('disabled', false);
+                    showAlert(message, 'danger');
+                },
+            });
+            return;
+        }
+
         var data = {
             save_sp_pricing: 1,
             provider_id: providerId,
@@ -1827,6 +1954,8 @@ jQuery(function() {
             data.comfort_tier     = jQuery(this).find('[name=comfort_tier]').val();
             data.total_rooms      = jQuery(this).find('[name=total_rooms]').val();
             data.meal_plan        = jQuery(this).find('[name=meal_plan]').val();
+            data.default_occupancy = jQuery(this).find('[name=default_occupancy]').val();
+            data.guest_capacity = jQuery(this).find('[name=guest_capacity]').val();
             data.price            = jQuery(this).find('[name=price_accommodation]').val();
             data.unit             = jQuery(this).find('[name=unit_accommodation]').val();
             data.category         = data.room_category;
@@ -1849,6 +1978,12 @@ jQuery(function() {
             data.specialties      = jQuery(this).find('[name=specialties_activity]').val();
             data.price            = jQuery(this).find('[name=price_activity]').val();
             data.unit             = jQuery(this).find('[name=unit_activity]').val();
+        } else if (type === 'rental') {
+            data.rental_item      = jQuery(this).find('[name=rental_item]').val();
+            data.price            = jQuery(this).find('[name=price_rental]').val();
+            data.unit             = jQuery(this).find('[name=unit_rental]').val();
+            data.security_deposit = jQuery(this).find('[name=security_deposit]').val();
+            data.notes            = jQuery(this).find('[name=notes_rental]').val();
         } else {
             data.category         = jQuery(this).find('[name=category_other]').val();
             data.price            = jQuery(this).find('[name=price_other]').val();

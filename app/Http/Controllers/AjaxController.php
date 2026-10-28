@@ -648,6 +648,7 @@ class AjaxController extends Controller
         'set_subscriber_status' => 'hct',
         'get_sp_pricing' => 'sp_or_hct',
         'save_sp_pricing' => 'sp_or_hct',
+        'save_sp_pricing_rows' => 'sp_or_hct',
         'delete_sp_pricing' => 'sp_or_hct',
         'get_pending_pricing' => 'hct',
         'approve_pricing' => 'hct',
@@ -1497,6 +1498,9 @@ class AjaxController extends Controller
             }
             if ($request->has('get_sp_pricing')) {
                 return $this->getSpPricing($request);
+            }
+            if ($request->has('save_sp_pricing_rows')) {
+                return $this->saveSpPricingRows($request);
             }
             if ($request->has('save_sp_pricing')) {
                 return $this->saveSpPricing($request);
@@ -5686,6 +5690,101 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         return response()->json(["rows" => $rows]);
     }
 
+    /** Rates waiting to be announced until the rows saved with them are all in. */
+    private ?array $heldAnnouncements = null;
+
+    /**
+     * Several rates saved as one: a stay's tiers, each its own row.
+     *
+     * A homestay with a Cat A double, a Cat B triple and a dormitory bed is
+     * three rates. Filled one at a time, the member typed the property's name,
+     * place and photos three times; the portal's bulk rows saved each on its
+     * own, so a fault in the third left the first two filed and the member
+     * guessing which. Here every row goes through saveSpPricing() exactly as a
+     * single rate does, inside one transaction: all of them are saved or none
+     * are, and the answer names the row that stopped it.
+     *
+     * What is sent beside `rows` is shared by every row (the property's name,
+     * place, notes, add-ons). Photos are uploaded once and every row keeps the
+     * same paths.
+     */
+    protected function saveSpPricingRows(Request $request): JsonResponse
+    {
+        // The photos are checked here, before any is written to disk. Each row
+        // is validated by saveSpPricing, but the files are stored once up
+        // front and the rows only carry their paths, so the image and size
+        // rules there never saw a file on this path. Same rules as a single
+        // stay's.
+        $validator = Validator::make($request->all(), [
+            'rows'          => 'required|array|min:1|max:30',
+            'rows.*'        => 'array',
+            'photos'        => 'nullable|array|max:8',
+            'photos.*'      => 'image|max:10240',
+            'photos_keep'   => 'nullable|array|max:8',
+            'photos_keep.*' => 'nullable|string|max:255',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        $kept =array_values(array_filter((array) $request->input('photos_keep', []), 'is_string'));
+        $photos = $this->storeServicePhotos($request);
+        $uploaded = $photos === null ? [] : array_values(array_diff($photos, $kept));
+
+        $shared = $request->except(['rows', 'save_sp_pricing_rows', 'photos', 'photos_keep']);
+        if ($photos !== null) {
+            $shared['photos_keep'] = $photos;
+        }
+
+        $this->heldAnnouncements = [];
+        $saved = [];
+        DB::beginTransaction();
+        try {
+            foreach (array_values((array) $request->input('rows')) as $i => $row) {
+                $sub = Request::create('/ajax', 'POST', array_merge($shared, (array) $row, ['save_sp_pricing' => 1]));
+                $sub->setUserResolver(fn () => Auth::user());
+                $answer = $this->saveSpPricing($sub);
+
+                if ($answer->getStatusCode() >= 400) {
+                    DB::rollBack();
+                    foreach ($uploaded as $path) {
+                        \App\Services\ImageUploadService::deleteLocal($path);
+                    }
+                    $this->heldAnnouncements = null;
+
+                    return response()->json([
+                        'error' => 'Row ' . ($i + 1) . ': ' . ($answer->getData(true)['error'] ?? 'could not be saved') . ' Nothing was saved.',
+                        'row' => $i + 1,
+                    ], $answer->getStatusCode());
+                }
+
+                $saved[] = $answer->getData(true);
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            foreach ($uploaded as $path) {
+                \App\Services\ImageUploadService::deleteLocal($path);
+            }
+            $this->heldAnnouncements = null;
+            throw $e;
+        }
+
+        $held = $this->heldAnnouncements;
+        $this->heldAnnouncements = null;
+        foreach ($held as $row) {
+            $this->announcePricing($row);
+        }
+
+        return response()->json([
+            'success' => true,
+            'rows'    => array_column($saved, 'row'),
+            'pending' => in_array(true, array_column($saved, 'pending'), true),
+            'draft'   => in_array(true, array_column($saved, 'draft'), true),
+            'missing' => array_values(array_unique(array_merge([], ...array_column($saved, 'missing')))),
+        ]);
+    }
+
     protected function saveSpPricing(Request $request): JsonResponse
     {
         // Resolve and enforce ownership. SP can only save against own id.
@@ -5781,7 +5880,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 "photos"            => "nullable|array|max:8",
                 "photos.*"          => "image|max:10240",
                 "photos_keep"       => "nullable|array|max:8",
-                "photos_keep.*"     => "string|max:255",
+                // A blank entry is passed over by storeServicePhotos, never
+                // stored, so it is not worth refusing the save for.
+                "photos_keep.*"     => "nullable|string|max:255",
             ],
             'transport' => [
                 // A per-km taxi states the plains rate instead of a flat price,
@@ -5956,9 +6057,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $this->applyServiceTypeFields($request, $serviceType, $data);
 
         if ($serviceType === 'transport') {
-            $data["vehicle_make_model"]      = $request->input("vehicle_make_model") ?: null;
-            $data["vehicle_registration_no"] = $request->input("vehicle_registration_no") ?: null;
-            $data["vehicle_year"]            = $request->filled("vehicle_year") ? (int) $request->vehicle_year : null;
+            // The vehicle's make, registration and year by the same has() rule
+            // as everything above. HCT's rate form never shows them, so
+            // writing them unconditionally blanked all three on every admin
+            // edit of a taxi.
+            $text('vehicle_make_model');
+            $text('vehicle_registration_no');
+            $whole('vehicle_year');
             // Only overwrite a stated answer - a form that omits the toggles
             // (e.g. the bulk rows) must not silently clear what was set before.
             foreach (['driver_included', 'fuel_tolls_extra'] as $flag) {
@@ -6000,6 +6105,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         if ($request->filled("id")) {
             $existing = SpPricing::findOrFail($request->id);
+            // The property this room belonged to before the save, by the name
+            // its rooms share: a rename has to find the rooms by the old one.
+            $propertyName = $existing->category;
 
             // A rate that is already live is not drafted. An edit to it goes
             // to review as it always did: taking a published rate back into a
@@ -6018,6 +6126,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 $row = $existing;
                 $row->update($isAdmin ? $data : array_merge($data, [
                     'is_active'       => false,
+                    // Their Active switch waits beside the row until approval
+                    // applies it; a save that never showed it keeps the last.
+                    'requested_active' => $data['is_active'] ?? $existing->requested_active,
                     'approval_status' => $asDraft ? 'draft' : 'pending',
                     // A draft has not been submitted, so it carries no date
                     // for it. Submitting the same row later fills this in.
@@ -6046,6 +6157,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                         $data,
                         [
                             'is_active'        => false,
+                            // Switching a live rate off is part of the edit, so
+                            // it lands on approval with the rest of it.
+                            'requested_active' => $data['is_active'] ?? $existing->is_active,
                             'approval_status'  => 'pending',
                             'pending_for_id'   => $existing->id,
                             'submitted_at'     => now(),
@@ -6068,6 +6182,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             } else {
                 $row = SpPricing::create(array_merge($data, [
                     'is_active'        => false,
+                    'requested_active' => $data['is_active'] ?? true,
                     'approval_status'  => $asDraft ? 'draft' : 'pending',
                     'submitted_at'     => $asDraft ? null : now(),
                     'submitted_by'     => $user->id,
@@ -6075,6 +6190,19 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
         }
         $this->applyRateAddons($request, $row);
+
+        if (isset($propertyName) && $row->service_type === 'accommodation') {
+            $this->shareProperty($request, $row, $existing, $propertyName, $isAdmin, $user);
+
+            // A stay's name went live above; if that was the whole edit, there
+            // is nothing left for anyone to review.
+            $live = $row->pending_for_id ? SpPricing::find($row->pending_for_id) : null;
+            if ($live && $this->sameOffer($row, $live)) {
+                $row->addons()->delete();
+                $row->delete();
+                $row = $live->fresh();
+            }
+        }
 
         // An admin's own row is live the moment it is written, so there is
         // nothing to tell anyone. A member's is not: it waits on a review, and
@@ -6094,6 +6222,117 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 ? $this->whatARateStillNeeds($row)
                 : [],
         ]);
+    }
+
+    /**
+     * Carry a stay's property details from the room just saved to the other
+     * rooms of the same property.
+     *
+     * A hotel or homestay is one place with several rooms, and each room is
+     * its own rate holding a copy of the property's name, place, season,
+     * photos and extras. Edited one room at a time, the copies drifted apart:
+     * a new photo on the Double never reached the Triple. Only what the save
+     * actually sent is carried, and each sibling takes it the way any edit
+     * would: an admin's lands at once, a member's lands in place on a room
+     * not yet live and goes to review for a live one.
+     */
+    protected function shareProperty(Request $request, SpPricing $row, SpPricing $existing, string $propertyName, bool $isAdmin, $user): void
+    {
+        $changes = $row->only(array_values(array_filter(
+            ['latitude', 'longitude', 'seasonality_notes'],
+            fn ($field) => $request->has($field),
+        )));
+        if ($request->has('photos_keep') || $request->hasFile('photos')) {
+            $changes['photos'] = $row->photos;
+        }
+        $addons = $request->has('addons');
+        $rename = $request->has('category') && $row->category !== $propertyName ? $row->category : null;
+        if (! $changes && ! $addons && $rename === null) {
+            return;
+        }
+
+        // The property's name is the member's to change without review, so it
+        // lands on every room at once, the live ones included. The room just
+        // saved is one of them: its edit may still be waiting, its name is not.
+        if ($rename !== null && $row->pending_for_id) {
+            SpPricing::find($row->pending_for_id)?->update(['category' => $rename]);
+        }
+
+        // The room's own family (its live row and its staged edit) is the one
+        // just saved, never a sibling of itself.
+        $own = array_filter([$row->id, $row->pending_for_id, $existing->id]);
+        $families = SpPricing::where('service_provider_id', $row->service_provider_id)
+            ->where('service_type', 'accommodation')
+            ->whereNotIn('id', $own)
+            ->where(fn ($q) => $q->whereNull('pending_for_id')->orWhereNotIn('pending_for_id', $own))
+            ->get()
+            ->groupBy(fn ($r) => $r->pending_for_id ?: $r->id)
+            ->filter(fn ($rooms) => $rooms->contains('category', $propertyName));
+
+        foreach ($families as $rooms) {
+            if ($rename !== null) {
+                foreach ($rooms as $room) {
+                    $room->update(['category' => $rename]);
+                }
+            }
+            if (! $changes && ! $addons) {
+                continue;
+            }
+
+            $staged = $rooms->first(fn ($r) => $r->approval_status !== 'approved');
+
+            if ($isAdmin || $staged) {
+                foreach ($isAdmin ? $rooms : [$staged] as $room) {
+                    $room->update($changes);
+                    if ($addons) {
+                        $this->replaceRateAddons($room, $row);
+                    }
+                }
+                continue;
+            }
+
+            // A live room changes through review, like any edit to it. Not
+            // while the room saved is only a draft: nothing has been sent yet,
+            // and sending it carries the details here again.
+            if ($row->approval_status === 'draft') {
+                continue;
+            }
+            $live = $rooms->first();
+            $copy = SpPricing::create(array_merge($this->copyableAttributes($live), $changes, [
+                'is_active'        => false,
+                'requested_active' => $live->is_active,
+                'approval_status'  => 'pending',
+                'pending_for_id'   => $live->id,
+                'submitted_at'     => now(),
+                'submitted_by'     => $user->id,
+            ]));
+            $this->replaceRateAddons($copy, $addons ? $row : $live);
+            // The forms send every box on every save, so a save that changed
+            // only the name would otherwise queue a review of nothing.
+            if ($this->sameOffer($copy, $live)) {
+                $copy->addons()->delete();
+                $copy->delete();
+                continue;
+            }
+            $this->announcePricing($copy);
+        }
+    }
+
+    /**
+     * Whether a staged edit would change nothing on the live rate it is for:
+     * the same offer column for column, the same extras and the same switch.
+     */
+    protected function sameOffer(SpPricing $edit, SpPricing $live): bool
+    {
+        $edit->refresh();
+        $live->refresh();
+        $extras = fn (SpPricing $r) => $r->addons()->orderBy('sort_order')->get()
+            ->map(fn ($a) => [$a->name, $a->description, $a->price === null ? null : (float) $a->price, $a->price_unit, (bool) $a->is_active])
+            ->all();
+
+        return $this->copyableAttributes($edit) == $this->copyableAttributes($live)
+            && $extras($edit) === $extras($live)
+            && (bool) ($edit->requested_active ?? $live->is_active) === (bool) $live->is_active;
     }
 
     /**
@@ -6144,6 +6383,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     /** Tell HCT a rate is waiting on them. */
     private function announcePricing(SpPricing $row): void
     {
+        // Several rows saved as one are announced once they are all in.
+        if ($this->heldAnnouncements !== null) {
+            $this->heldAnnouncements[] = $row;
+            return;
+        }
+
         $provider = ServiceProvider::find($row->service_provider_id);
         if (! $provider) {
             return;
@@ -6187,7 +6432,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     protected function duplicateRate(Request $request, int $providerId, array $data): ?JsonResponse
     {
         $identity = match ($data['service_type'] ?? null) {
-            'accommodation' => ['comfort_tier', 'room_category', 'default_occupancy', 'meal_plan'],
+            // The property (`category`) is part of what a room is: a partner
+            // with two homestays offers a Cat B double in each, and was told
+            // the second was a repeat of the first.
+            'accommodation' => ['category', 'comfort_tier', 'room_category', 'default_occupancy', 'meal_plan'],
             'transport' => filled($data['vehicle_registration_no'] ?? null)
                 ? ['vehicle_registration_no']
                 : ['vehicle_type', 'category'],
@@ -6313,7 +6561,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 'approval_status', 'pending_for_id',
                 'submitted_at', 'submitted_by',
                 'approved_at', 'approved_by', 'rejection_reason',
-                'is_active',
+                // Whether a rate is switched on is decided where it lands:
+                // approvePricing applies the member's requested_active.
+                'is_active', 'requested_active',
             ])
             // getAttributes() hands back what is stored, so a JSON column
             // arrives as its encoded text - and writing that text back through
@@ -6438,14 +6688,20 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      */
     protected function storeServicePhotos(Request $request): ?array
     {
-        $keep = $request->input('photos_keep');
         $files = array_filter((array) $request->file('photos', []));
 
-        if ($keep === null && !$files) {
+        // Present is what counts, not filled. A form that removed every photo
+        // sends the key blank, since a post cannot carry an empty list; read
+        // as "said nothing", the last photo could never be taken off.
+        if (! $request->has('photos_keep') && ! $files) {
             return null;
         }
 
-        $paths = array_values(array_filter((array) $keep, 'is_string'));
+        // A blank marker is not a path, and must never be stored as one.
+        $paths = array_values(array_filter(
+            (array) $request->input('photos_keep'),
+            fn ($path) => is_string($path) && $path !== '',
+        ));
         foreach ($files as $file) {
             $stored = \App\Services\ImageUploadService::storeUploadedImage($file, 'services', 1200);
             if ($stored) {
@@ -6512,6 +6768,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 // been told was approved silently kept its old numbers with no
                 // copy of what they actually submitted.
                 $target->update($this->copyableAttributes($pending) + [
+                    // The Active switch as the member left it on the edit.
+                    // Never copied, a live rate could not be switched off.
+                    'is_active'   => $pending->requested_active ?? $target->is_active,
                     'approved_at' => now(),
                     'approved_by' => Auth::id(),
                 ]);
@@ -6534,7 +6793,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // New row → activate in place.
         $pending->update([
             'approval_status' => 'approved',
-            'is_active'       => true,
+            // On only if the member asked for it on. Approval used to switch
+            // every new rate on, whatever their Active switch said.
+            'is_active'       => $pending->requested_active ?? true,
+            'requested_active' => null,
             'approved_at'     => now(),
             'approved_by'     => Auth::id(),
         ]);
@@ -6642,6 +6904,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             SpPricing::whereIn('pending_for_id', $ids)->delete();
             SpPricing::whereIn('id', $ids)->delete();
         });
+        // A query delete passes no model events, so the provider's offerings,
+        // read off the rate card, are brought up to date here.
+        ServiceProvider::find($providerId)?->syncOfferings();
 
         return response()->json(["success" => true, "deleted" => $rows->count()]);
     }
@@ -6790,6 +7055,45 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $lead = Lead::findOrFail($request->lead_id);
         $data = $request->only(["stage", "assigned_hct_id", "interaction_mode", "reminder_delay_days", "notes"]);
 
+        // The enquiry's own details, sent from Lead Details. Once filed they
+        // could not be corrected at all: a mistyped email stayed mistyped, and
+        // it is the one thing the lead is later won by.
+        if ($request->has('full_name')) {
+            $details = $request->validate([
+                'full_name' => 'required|string|max:150',
+                'email' => 'required|email|max:150',
+                'mobile' => 'nullable|string|max:30',
+                'region_id' => 'nullable|exists:regions,id',
+                'adults' => 'nullable|integer|min:1|max:60',
+                'children' => 'nullable|integer|min:0|max:60',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+            ], [
+                'full_name.required' => 'Give the enquiry a name.',
+                'email.required' => 'Give an email. It is what the enquiry is later matched to a traveller by.',
+                'end_date.after_or_equal' => 'The trip cannot end before it starts.',
+            ]);
+            $details['email'] = strtolower(trim($details['email']));
+
+            if ($details['email'] !== strtolower((string) $lead->email)) {
+                // A trip already stands on the old address: its traveller's
+                // account is that email, and the lead is won when that account
+                // pays. Changing it here alone would cut the two apart.
+                if ($lead->trip_id) {
+                    return response()->json(['error' => "This lead already has a trip, so its email is the traveller's. Change it on the Travelers page."], 422);
+                }
+                // Two open enquiries for one address are one person waiting
+                // for a call twice.
+                if (Lead::where('email', $details['email'])->where('stage', 'follow_up')->whereKeyNot($lead->id)->exists()) {
+                    return response()->json(['error' => 'Another open lead already has this email.'], 422);
+                }
+                // The account the lead points at follows the address.
+                $details['user_id'] = User::where('email', $details['email'])->where('user_role', 'traveller')->value('id');
+            }
+
+            $data += $details;
+        }
+
         // Empty assigned_hct_id from the "Unassigned" option means clear it.
         if (array_key_exists("assigned_hct_id", $data) && ($data["assigned_hct_id"] === "" || $data["assigned_hct_id"] === null)) {
             $data["assigned_hct_id"] = null;
@@ -6931,10 +7235,17 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             'children' => 'nullable|integer|min:0|max:60',
             'start_date' => 'nullable|date',
             'region_id' => 'nullable|exists:regions,id',
+            // Started from Lead Details: the trip answers that enquiry and no
+            // other, whatever else is on file for the address.
+            'lead_id' => 'nullable|exists:leads,id',
         ], [
             'full_name.required_without' => 'Give a name, or pick somebody already on file.',
             'email.required_without' => 'Give an email, or pick somebody already on file.',
         ]);
+
+        if (! empty($data['lead_id']) && Lead::whereKey($data['lead_id'])->whereNotNull('trip_id')->exists()) {
+            return response()->json(['error' => 'This lead already has a trip.'], 422);
+        }
 
         return DB::transaction(function () use ($data) {
             $traveller = ! empty($data['traveller_id'])
@@ -6978,10 +7289,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // is the answer to it. Tie the two together so the leads page stops
             // showing a loose note with no journey against it. The enquiry is
             // not won here: it is won when they pay.
-            $lead = Lead::where('stage', 'follow_up')
-                ->whereNull('trip_id')
-                ->whereRaw('LOWER(email) = ?', [strtolower($traveller->email)])
-                ->first();
+            $lead = ! empty($data['lead_id'])
+                ? Lead::find($data['lead_id'])
+                : Lead::where('stage', 'follow_up')
+                    ->whereNull('trip_id')
+                    ->whereRaw('LOWER(email) = ?', [strtolower($traveller->email)])
+                    ->first();
             if ($lead) {
                 $lead->update(['trip_id' => $trip->id, 'user_id' => $traveller->id]);
             }
@@ -7016,7 +7329,20 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $lead = Lead::with(["user", "trip.travellerPayments", "assignedHct"])->findOrFail($request->lead_id);
         $conversations = AiConversation::where("trip_id", $lead->trip_id)->orderBy("created_at")->get();
-        return response()->json(["lead" => $lead, "conversations" => $conversations]);
+        return response()->json([
+            "lead" => $lead,
+            "conversations" => $conversations,
+            // Ready to put in the form. The name is read the way the list
+            // reads it (an older lead keeps it on the account), and the trip
+            // dates as plain days: serialised, a date-only column arrives as
+            // a UTC midnight stamp.
+            "shown" => [
+                "name" => $lead->travellerName(),
+                "email" => $lead->travellerEmail(),
+                "start_date" => $lead->start_date?->format('Y-m-d'),
+                "end_date" => $lead->end_date?->format('Y-m-d'),
+            ],
+        ]);
     }
 
     protected function getUpcomingTrips(Request $request): JsonResponse
@@ -7710,6 +8036,37 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         return response()->json(["success" => true, "provider_id" => $provider->id]);
     }
 
+    /**
+     * The rules a provider's name and contact details answer to, whoever edits
+     * them: HCT on the provider page or the partner on their own profile.
+     *
+     * Each is checked only when the save carries it, so a form that sends a
+     * subset (the status box on the provider page, the app's profile screen)
+     * is not refused for what it never showed. Sent blank is refused: the
+     * columns cannot be empty, and phones are bounded by their 20-character
+     * columns rather than by a looser figure that let the INSERT fail.
+     *
+     * @return array{0: array<string, mixed>, 1: array<string, string>}
+     */
+    protected function providerDetailRules(ServiceProvider $provider): array
+    {
+        return [[
+            'name' => 'sometimes|required|string|max:255',
+            'email' => ['sometimes', 'required', 'email', 'max:255',
+                Rule::unique('service_providers', 'email')->ignore($provider->id)],
+            'phone_1' => 'sometimes|required|string|max:20',
+            'phone_2' => 'nullable|string|max:20',
+        ], [
+            'name.required' => 'The provider name cannot be empty.',
+            'email.required' => 'An email address is needed.',
+            'email.email' => 'That email address does not look right.',
+            'email.unique' => 'Another provider already uses this email address.',
+            'phone_1.required' => 'A phone number is needed.',
+            'phone_1.max' => 'A phone number can be at most 20 characters.',
+            'phone_2.max' => 'A phone number can be at most 20 characters.',
+        ]];
+    }
+
     protected function editProvider(Request $request): JsonResponse
     {
         // Hard gate - status (and every other admin-controlled field) can only be
@@ -7733,6 +8090,32 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
         }
 
+        // Everything else was written as sent, so a blank name or phone, an
+        // email another provider already holds, or a year that is not a year
+        // reached the database and came back as a 500 instead of a sentence.
+        [$rules, $messages] = $this->providerDetailRules($provider);
+        $validator = Validator::make($request->all(), $rules + [
+            'contact_person' => 'nullable|string|max:255',
+            'postal_code' => 'nullable|string|max:20',
+            'bank_ifsc' => 'nullable|string|max:20',
+            'bank_account_number' => 'nullable|string|max:50',
+            'business_type' => 'nullable|string|max:255',
+            'registration_number' => 'nullable|string|max:255',
+            'year_established' => 'nullable|integer|between:1800,' . date('Y'),
+            'region_id' => 'sometimes|required|exists:regions,id',
+            'experience_categories' => 'nullable|array',
+            'experience_categories.*' => 'nullable|string|max:120',
+            'service_categories' => 'nullable|array',
+            'service_categories.*' => 'nullable|string|max:120',
+            'other_services' => 'nullable|string|max:255',
+        ], $messages + [
+            'year_established.*' => 'Year established has to be a year between 1800 and ' . date('Y') . '.',
+            'region_id.*' => 'Pick the region this provider works in.',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
         $data = $request->only([
             "name", "contact_person", "email", "phone_1", "phone_2",
             "address", "city", "postal_code", "country",
@@ -7748,8 +8131,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "education_level", "education_notes", "english_level",
             "computer_skill_level", "causes_note", "community_note",
             "bank_name", "bank_ifsc", "bank_account_name",
-            "bank_account_number", "upi", "services_offered",
-            "accommodation_categories", "vehicle_types", "guide_types", "activity_types",
+            "bank_account_number", "upi",
+            // Services offered, comfort tiers, vehicle, guide and activity
+            // types are not written here: they are read off the rate card
+            // (ServiceProvider::syncOfferings).
             "notes", "status",
         ]);
 
@@ -7793,6 +8178,44 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
 
             $data['provider_types'] = array_values(array_unique($request->input('provider_types')));
+
+            // A role taken away takes its answers with it, as signup never
+            // stores them for a role that was not ticked (AuthService::
+            // createProvider). Left behind, a former host still carried
+            // experience picks and a former regional partner a background
+            // nobody would read again, and ticking the role back on later
+            // brought stale answers back as though they were current.
+            $types = $data['provider_types'];
+            if (! in_array('hlh', $types, true)) {
+                $data['experience_categories'] = null;
+            }
+            if (! in_array('osp', $types, true)) {
+                $data['service_categories'] = null;
+                $data['other_services'] = null;
+            }
+            if (! in_array('hrp', $types, true)) {
+                foreach (['education_level', 'english_level', 'computer_skill_level', 'education_notes',
+                          'causes_note', 'community_note', 'work_experience'] as $field) {
+                    $data[$field] = null;
+                }
+            }
+        }
+
+        // Every category unticked arrives as a blank marker, because a form
+        // post drops an empty list altogether and the old picks then stood.
+        // Present and empty means none.
+        foreach (['experience_categories', 'service_categories'] as $list) {
+            if (array_key_exists($list, $data) && $data[$list] !== null) {
+                $data[$list] = array_values(array_filter((array) $data[$list], 'filled')) ?: null;
+            }
+        }
+
+        // "No" to a registered business is the answer that skips its details
+        // at signup, so they go here too rather than outliving the business.
+        if (($data['has_business'] ?? null) === false) {
+            $data['business_type'] = null;
+            $data['registration_number'] = null;
+            $data['year_established'] = null;
         }
 
         $data['last_updated_by'] = Auth::id();
@@ -8075,12 +8498,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         if ($err) return $err;
         $user = Auth::user();
 
-        $validator = Validator::make($request->all(), [
+        // Name, email and phones by the same rules HCT edits them under. The
+        // email and phone were nullable and the phones allowed 30 characters
+        // against 20-character columns, so a blank or long one was a 500.
+        [$detailRules, $detailMessages] = $this->providerDetailRules($provider);
+        $validator = Validator::make($request->all(), array_merge($detailRules, [
             "name" => "required|string|max:255",
             "contact_person" => "nullable|string|max:255",
-            "email" => "nullable|email|max:255",
-            "phone_1" => "nullable|string|max:30",
-            "phone_2" => "nullable|string|max:30",
             "address" => "nullable|string|max:500",
             "bank_name" => "nullable|string|max:255",
             "bank_ifsc" => "nullable|string|max:20",
@@ -8109,7 +8533,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "work_experience.*.description" => "nullable|string|max:1000",
             "causes_note" => "nullable|string|max:2000",
             "community_note" => "nullable|string|max:2000",
-        ]);
+        ]), $detailMessages);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
@@ -8118,8 +8542,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $data = $request->only([
             "name", "contact_person", "email", "phone_1", "phone_2",
             "address", "bank_name", "bank_ifsc", "bank_account_name",
-            "bank_account_number", "upi", "services_offered",
-            "accommodation_categories", "vehicle_types", "guide_types", "activity_types",
+            "bank_account_number", "upi",
+            // What they offer is read off their rate card, not typed here
+            // (ServiceProvider::syncOfferings).
         ]);
 
         // Competences belong to a regional partner. Silently dropping them for
@@ -9068,6 +9493,30 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             return $err;
         }
 
+        // An empty set of boxes has to be sayable. A form with none ticked
+        // posts nothing at all, which reads as "not sent" and keeps what was
+        // stored, so the forms send one blank entry instead. The blanks go
+        // here, before validation, so the month rules judge real months only
+        // and what is left - an empty list - is what gets written.
+        foreach (['best_seasons', 'available_months', 'restricted_months', 'unavailable_months', 'osp_services'] as $list) {
+            if (is_array($request->input($list))) {
+                $request->merge([$list => array_values(array_filter(
+                    $request->input($list),
+                    fn ($value) => $value !== null && $value !== '',
+                ))]);
+            }
+        }
+
+        // Which category the stay rules below judge. A save that does not
+        // mention it - the admin form before it had the box, or any partial
+        // update - means the listing is still what it was, and reading the
+        // request alone took every such stay for an outing and refused it for
+        // having no per-person price.
+        $category = $request->has('category')
+            ? $request->input('category')
+            : ($request->filled('id') ? Experience::whereKey($request->input('id'))->value('category') : null);
+        $isStay = $category === Experience::CATEGORY_STAY;
+
         // A draft is a half-finished listing kept for later - the client's
         // reason being that "many users won't have all the information or
         // photos ready in one session". Demanding a full field set in order to
@@ -9107,7 +9556,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // section out for this category. Demanding it here meant a stay
             // could be filled in completely and still be refused for a field
             // nobody was shown, which no member could act on.
-            "duration_type"     => $request->input('category') === Experience::CATEGORY_STAY
+            "duration_type"     => $isStay
                 ? "nullable|in:less_than_day,single_day,multi_day"
                 : $unlessDraft("required|in:less_than_day,single_day,multi_day"),
             // Capacity of an experiential stay - the client's "no of rooms, no
@@ -9153,6 +9602,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // for decimal(10,2), or a season list longer than the varchar(255)
             // it is encoded into, all reached the driver and came back as a
             // crash the member could make no sense of.
+            // The four grades every form offers. The column is a varchar, so
+            // anything else was stored as written and then matched no filter.
+            "difficulty_level"  => "nullable|in:easy,moderate,challenging,extreme",
             "start_time"        => "nullable|date_format:H:i,H:i:s",
             "end_time"          => "nullable|date_format:H:i,H:i:s",
             "accommodation_category" => "nullable|string|max:50",
@@ -9220,7 +9672,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         //
         // Drafts are exempt: a draft is a half-finished thing by definition,
         // and a price is one of the things somebody comes back to add.
-        $validator->after(function ($v) use ($request, $isDraft) {
+        $validator->after(function ($v) use ($request, $isDraft, $isStay) {
             if ($isDraft) {
                 return;
             }
@@ -9229,11 +9681,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // the occupancy x meal-plan grid and nowhere else - it has no
             // per-person figure at all, and asking it for one refused every
             // stay a host tried to publish.
-            $isStay = $request->input('category') === Experience::CATEGORY_STAY;
             if ($isStay) {
                 $priced = collect((array) $request->input('room_rates', []))
                     ->contains(fn ($row) => is_array($row) && (float) ($row['price'] ?? 0) > 0);
-                if (! $priced && $request->filled('id')) {
+                // The stored rates count only when this save leaves them
+                // alone. A save that sends the list replaces it, so an emptied
+                // list published a stay whose every rate it was deleting.
+                if (! $priced && ! $request->has('room_rates') && $request->filled('id')) {
                     $priced = ExperienceRoomRate::where('experience_id', $request->input('id'))
                         ->where('price', '>', 0)->exists();
                 }
@@ -9416,20 +9870,24 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $data['cost_guide'] ?? null, $data['cost_activities'] ?? null,
             $data['cost_other'] ?? null,
         ]);
+        $componentSum = (float) ($data["cost_accommodation"] ?? 0)
+            + (float) ($data["cost_logistics"] ?? 0)
+            + (float) ($data["cost_guide"] ?? 0)
+            + (float) ($data["cost_activities"] ?? 0)
+            + (float) ($data["cost_other"] ?? 0);
 
         if (!empty($slabs)) {
             $data["base_cost_per_person"] = min($slabs);
         } elseif ($request->has('price_slabs') && $existingSlabs) {
-            // The slabs were sent and cleared out - the price goes with them.
-            $data["base_cost_per_person"] = 0;
+            // The slabs were sent and cleared out - the price goes with them,
+            // down to the components where the same save priced it that way.
+            // A flat zero here took a listing the validator had just accepted
+            // for its components off sale at nothing.
+            $data["base_cost_per_person"] = $componentSum;
         } elseif ($existingSlabs) {
             $data["base_cost_per_person"] = min(array_map('floatval', $existingSlabs));
         } elseif ($sendsCosts || !$request->filled('id')) {
-            $data["base_cost_per_person"] = (float) ($data["cost_accommodation"] ?? 0)
-                + (float) ($data["cost_logistics"] ?? 0)
-                + (float) ($data["cost_guide"] ?? 0)
-                + (float) ($data["cost_activities"] ?? 0)
-                + (float) ($data["cost_other"] ?? 0);
+            $data["base_cost_per_person"] = $componentSum;
         }
 
         // A box left alone is not an instruction to store nothing.
@@ -10622,6 +11080,31 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 return response()->json(["error" => "A margin cannot be below 0%."], 422);
             }
         }
+        // A time column takes 09:00 and nothing else. The box asked for
+        // "e.g. 9:00 AM", and typing exactly that failed the whole save with a
+        // 500, taking every other box on the form down with it. The clock face
+        // is read either way now, and what cannot be read is said plainly.
+        foreach (['pickup_time' => 'pickup', 'drop_time' => 'drop'] as $timeKey => $what) {
+            if (! array_key_exists($timeKey, $data)) {
+                continue;
+            }
+            $raw = trim((string) $data[$timeKey]);
+            if ($raw === '') {
+                $data[$timeKey] = null;
+                continue;
+            }
+            if (! preg_match('/^(\d{1,2})(?:[:.](\d{2}))?(?::\d{2})?\s*([ap])?\.?\s*m?\.?$/i', $raw, $m)
+                || ($hour = (int) $m[1]) > (empty($m[3]) ? 23 : 12)
+                || (! empty($m[3]) && $hour === 0)
+                || ($minute = (int) ($m[2] ?? 0)) > 59) {
+                return response()->json(["error" => "Give the {$what} time like 09:00 or 9:00 AM."], 422);
+            }
+            if (! empty($m[3])) {
+                $hour = $hour % 12 + (strtolower($m[3]) === 'p' ? 12 : 0);
+            }
+            $data[$timeKey] = sprintf('%02d:%02d:00', $hour, $minute);
+        }
+
         // Convert empty date strings to null to avoid MySQL date format errors
         foreach (['start_date', 'end_date'] as $dateKey) {
             if (isset($data[$dateKey]) && $data[$dateKey] === '') {

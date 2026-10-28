@@ -7,7 +7,8 @@ use App\Services\GroqService;
 use App\Services\VoiceAssistantService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Auth;
+
 use Illuminate\Support\Facades\Cache;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Log;
@@ -29,6 +30,13 @@ use Illuminate\Support\Facades\Validator;
  */
 class VoiceController extends Controller
 {
+    /**
+     * What a tap answers when it is not a box: "shall we start?" and "shall I
+     * stop?". Neither can be a field name, which all start with a letter.
+     */
+    private const READY = '_ready';
+    private const STOP = '_stop';
+
     public function __construct(
         private VoiceAssistantService $assistant,
         private GroqService $groq,
@@ -48,17 +56,30 @@ class VoiceController extends Controller
      * could be kept.
      *
      * A provider holds a set of types, so an OSP that is also an HLH passes.
+     *
+     * A rate card is the same rule the other way round: it belongs to a
+     * supplier, and resolveSpPricingProviderId refuses anyone else with a 403.
+     * Only the experience was checked here, so a host or a regional partner
+     * could be talked through a whole rate and then told at the save that it
+     * could not be kept.
      */
     private function refuseForm(\App\Models\ServiceProvider $provider, ?string $form): ?JsonResponse
     {
-        if ($form !== 'experience' || $provider->isHost()) {
-            return null;
+        if ($form === 'experience' && ! $provider->isHost()) {
+            return response()->json([
+                'error' => 'Experiences are authored by homestay and lodge hosts. '
+                    . 'Your rate card is the form for what you offer.',
+            ], 403);
         }
 
-        return response()->json([
-            'error' => 'Experiences are authored by homestay and lodge hosts. '
-                . 'Your rate card is the form for what you offer.',
-        ], 403);
+        if ($form === 'rate' && ! $provider->suppliesServices()) {
+            return response()->json([
+                'error' => 'Rates are kept by members who supply services, such as rooms, transport or guiding. '
+                    . 'Ask HECO to add that to your account if you would like to offer one.',
+            ], 403);
+        }
+
+        return null;
     }
 
     /**
@@ -118,6 +139,12 @@ class VoiceController extends Controller
             // to answer, and their answer - whatever it is - is what settles
             // which language the rest of this is held in.
             'ready' => $opening[1],
+            // The ready line can be answered by a tap too, which says which
+            // language to go on in just as a spoken answer would.
+            'ready_choices' => [
+                ['label' => 'हिंदी में शुरू करें', 'value' => 'hi'],
+                ['label' => 'Start in English', 'value' => 'en'],
+            ],
             // Sent for the app that is already on somebody's phone.
             //
             // A build that predates the ready line reads this field and
@@ -265,6 +292,26 @@ class VoiceController extends Controller
         }
 
         $language = $request->input('language') === 'en' ? 'en' : 'hi';
+        $known = (array) $request->input('known', []);
+        $skipped = (array) $request->input('skipped', []);
+        $form = $request->input('form');
+
+        // Two questions are not about a box. "Shall we start?" is answered
+        // with the language to go on in, and "shall I stop?" with a yes or a
+        // no; a tap on either goes where the spoken answer goes.
+        if ($request->input('field') === self::READY) {
+            return $this->readyAnswered($form, $known, $skipped, $request->input('value') === 'en' ? 'en' : 'hi', null);
+        }
+        if ($request->input('field') === self::STOP) {
+            return $this->stopAnswered(
+                $request->input('value') === 'yes',
+                $form,
+                $known,
+                $this->assistant->nextField($form, $known, $skipped),
+                $language,
+                null,
+            );
+        }
 
         $chosen = $request->input('value');
         if (! is_array($chosen) && ! is_string($chosen)) {
@@ -459,8 +506,12 @@ class VoiceController extends Controller
         // Transcription is counted in audio seconds, not in the tokens the
         // day's allowance is made of, so the second reading costs nothing
         // that anybody else needs.
+        //
+        // The Latin alphabet counts only as English writes it. Noise has come
+        // back as Norwegian, "Fødselskap", which no member here says and
+        // which passed for an answer because ø is a Latin letter.
         $foreign = fn (string $t) => (bool) preg_match(
-            '/[^\p{Latin}\p{Devanagari}\p{Common}\p{Inherited}]/u', $t);
+            '/[^\x00-\x7F\p{Devanagari}\p{Common}\p{Inherited}]/u', $t);
 
         if ($text !== '' && $foreign($text)) {
             $again = $this->groq->transcribe($audio, $name, ['language' => 'hi']);
@@ -485,6 +536,27 @@ class VoiceController extends Controller
                     'error' => 'That did not come through. Say it again, or fill this in yourself.',
                     'transcript' => null,
                 ], 422);
+            }
+        }
+
+        // A word or two of English in a conversation held in Hindi is usually
+        // Hindi misheard. Asked cold, Whisper wrote a member's "नहीं" as
+        // "Night.", the assistant could make nothing of it, and the question
+        // came round again. Read once more as Hindi, it comes back as the
+        // word they said; an English word they really said ("Innova", "AC")
+        // comes back in Devanagari, which the assistant reads just as well.
+        if ($request->input('language') === 'hi' && $text !== '' && ! preg_match('/\p{Devanagari}/u', $text)
+            && count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: []) <= 2) {
+            $again = $this->groq->transcribe($audio, $name, ['language' => 'hi']);
+            $rescued = trim((string) ($again['text'] ?? ''));
+
+            Log::info('[voice] read again as Hindi', [
+                'kept' => preg_match('/\p{Devanagari}/u', $rescued) ? 'the second reading' : 'the first',
+            ]);
+
+            if (preg_match('/\p{Devanagari}/u', $rescued) && ! $foreign($rescued)) {
+                $heard = $again;
+                $text = $rescued;
             }
         }
 
@@ -557,61 +629,8 @@ class VoiceController extends Controller
         $standing = $asked;
 
         // "Shall I stop?" has just been asked, and this is the answer to it.
-        //
-        // Read here rather than sent to a model: a yes is a yes in both
-        // tongues, nothing about the form turns on it, and a member who has
-        // said they want to leave should not wait three seconds to be let go.
         if ($request->boolean('confirm_stop')) {
-            $yes = $this->assistant->saidYes($text);
-
-            if ($yes === true) {
-                return response()->json([
-                    'success' => true,
-                    'transcript' => $text,
-                    'language' => $language,
-                    'fields' => (object) [],
-                    'reply' => $language === 'hi'
-                        ? 'ठीक है, मैं बंद कर रही हूँ। जो भर चुका है वह फ़ॉर्म में है। जब भी लिस्टिंग करनी हो, माइक दबा दीजिए।'
-                        : 'All right, I am stopping. What we filled in is on the form. '
-                            . 'Whenever you want to carry on with the listing, tap the microphone.',
-                    'asked' => $standing,
-                    'label' => $standing === null ? null : $this->assistant->labelFor($form, $standing, $known),
-                    'choices' => null,
-                    'multiple' => false,
-                    'skippable' => true,
-                    'guidance' => [],
-                    'passed' => [],
-                    'rejected' => [],
-                    'note' => null,
-                    'stage' => 'form',
-                    'stopped' => true,
-                    'done' => false,
-                ]);
-            }
-
-            // Anything that is not a yes carries on. "नहीं", "carry on", or a
-            // word that was neither - all of them mean the form is still open,
-            // and the question that was standing is put again.
-            return response()->json([
-                'success' => true,
-                'transcript' => $text,
-                'language' => $language,
-                'fields' => (object) [],
-                'reply' => trim(($language === 'hi' ? 'ठीक है, चलते हैं। ' : 'Right, carrying on. ')
-                    . ($standing === null ? '' : (string) $this->assistant->questionFor($form, $standing, $language, $known))),
-                'asked' => $standing,
-                'label' => $standing === null ? null : $this->assistant->labelFor($form, $standing, $known),
-                'choices' => $standing === null ? null : $this->assistant->choiceOptionsFor($form, $standing, $known, $language),
-                'multiple' => $standing !== null && $this->assistant->takesSeveral($form, $standing, $known),
-                'skippable' => $standing === null || $this->assistant->skippable($form, $standing, $known),
-                'guidance' => [],
-                'passed' => [],
-                'rejected' => [],
-                'note' => null,
-                'stage' => 'form',
-                'stopped' => false,
-                'done' => false,
-            ]);
+            return $this->stopAnswered($this->assistant->saidYes($text) === true, $form, $known, $standing, $language, $text);
         }
 
         // A member saying they will do this another time, or asking it to
@@ -629,7 +648,9 @@ class VoiceController extends Controller
                     : 'Shall I stop here? Say yes and I will.',
                 'asked' => $standing,
                 'label' => $standing === null ? null : $this->assistant->labelFor($form, $standing, $known),
-                'choices' => null,
+                // Tappable as well as said. The app sends the tap back as the
+                // answer to this question, not as a value for the box.
+                'choices' => $this->yesNo($language),
                 'multiple' => false,
                 'skippable' => true,
                 'guidance' => [],
@@ -642,31 +663,9 @@ class VoiceController extends Controller
             ]);
         }
 
-        // They were answering "shall we start?", so this settles the language
-        // and nothing else. No model is called and nothing is written: the
-        // first question simply comes back in the tongue they used.
+        // They were answering "shall we start?", in the tongue they used.
         if ($request->boolean('ready')) {
-            $ahead = $this->assistant->walk($form, $known, (array) $request->input('skipped', []), $language);
-            $next = $ahead['next'];
-
-            return response()->json([
-                'success' => true,
-                'transcript' => $text,
-                'language' => $language,
-                'fields' => (object) [],
-                'reply' => $next === null ? null : $this->assistant->questionFor($form, $next, $language, $known),
-                'asked' => $next,
-                'label' => $next === null ? null : $this->assistant->labelFor($form, $next, $known),
-                'choices' => $next === null ? null : $this->assistant->choiceOptionsFor($form, $next, $known, $language),
-                'multiple' => $next !== null && $this->assistant->takesSeveral($form, $next, $known),
-                'skippable' => $next === null || $this->assistant->skippable($form, $next, $known),
-                'guidance' => $ahead['guidance'],
-                'passed' => $ahead['passed'],
-                'rejected' => [],
-                'note' => null,
-                'stage' => 'form',
-                'done' => $next === null,
-            ]);
+            return $this->readyAnswered($form, $known, (array) $request->input('skipped', []), $language, $text);
         }
 
         $result = $this->assistant->turn(
@@ -744,5 +743,104 @@ class VoiceController extends Controller
             'reopened' => $result['reopened'] ?? null,
             'done' => $result['done'],
         ]);
+    }
+
+    /**
+     * "Shall we start?" answered, by voice or by a tap. It settles the
+     * language and nothing else: no model is called and nothing is written,
+     * and the first question comes back in that language.
+     */
+    private function readyAnswered(string $form, array $known, array $skipped, string $language, ?string $transcript): JsonResponse
+    {
+        $ahead = $this->assistant->walk($form, $known, $skipped, $language);
+        $next = $ahead['next'];
+
+        return response()->json([
+            'success' => true,
+            'transcript' => $transcript,
+            'language' => $language,
+            'fields' => (object) [],
+            'reply' => $next === null ? null : $this->assistant->questionFor($form, $next, $language, $known),
+            'asked' => $next,
+            'label' => $next === null ? null : $this->assistant->labelFor($form, $next, $known),
+            'choices' => $next === null ? null : $this->assistant->choiceOptionsFor($form, $next, $known, $language),
+            'multiple' => $next !== null && $this->assistant->takesSeveral($form, $next, $known),
+            'skippable' => $next === null || $this->assistant->skippable($form, $next, $known),
+            'guidance' => $ahead['guidance'],
+            'passed' => $ahead['passed'],
+            'rejected' => [],
+            'note' => null,
+            'stage' => 'form',
+            'done' => $next === null,
+        ]);
+    }
+
+    /**
+     * "Shall I stop?" answered, by voice or by a tap.
+     *
+     * Read here rather than sent to a model: a yes is a yes in both tongues,
+     * nothing about the form turns on it, and a member who has said they want
+     * to leave should not wait three seconds to be let go. Anything that is
+     * not a yes carries on, and the question that was standing is put again.
+     */
+    private function stopAnswered(bool $yes, string $form, array $known, ?string $standing, string $language, ?string $transcript): JsonResponse
+    {
+        if ($yes) {
+            return response()->json([
+                'success' => true,
+                'transcript' => $transcript,
+                'language' => $language,
+                'fields' => (object) [],
+                'reply' => $language === 'hi'
+                    ? 'ठीक है, मैं बंद कर रही हूँ। जो भर चुका है वह फ़ॉर्म में है। जब भी लिस्टिंग करनी हो, माइक दबा दीजिए।'
+                    : 'All right, I am stopping. What we filled in is on the form. '
+                        . 'Whenever you want to carry on with the listing, tap the microphone.',
+                'asked' => $standing,
+                'label' => $standing === null ? null : $this->assistant->labelFor($form, $standing, $known),
+                'choices' => null,
+                'multiple' => false,
+                'skippable' => true,
+                'guidance' => [],
+                'passed' => [],
+                'rejected' => [],
+                'note' => null,
+                'stage' => 'form',
+                'stopped' => true,
+                'done' => false,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'transcript' => $transcript,
+            'language' => $language,
+            'fields' => (object) [],
+            'reply' => trim(($language === 'hi' ? 'ठीक है, चलते हैं। ' : 'Right, carrying on. ')
+                . ($standing === null ? '' : (string) $this->assistant->questionFor($form, $standing, $language, $known))),
+            'asked' => $standing,
+            'label' => $standing === null ? null : $this->assistant->labelFor($form, $standing, $known),
+            'choices' => $standing === null ? null : $this->assistant->choiceOptionsFor($form, $standing, $known, $language),
+            'multiple' => $standing !== null && $this->assistant->takesSeveral($form, $standing, $known),
+            'skippable' => $standing === null || $this->assistant->skippable($form, $standing, $known),
+            'guidance' => [],
+            'passed' => [],
+            'rejected' => [],
+            'note' => null,
+            'stage' => 'form',
+            'stopped' => false,
+            'done' => false,
+        ]);
+    }
+
+    /**
+     * Yes and no as chips, sent back as `yes` and `no`.
+     *
+     * @return array<int, array{label: string, value: string}>
+     */
+    private function yesNo(string $language): array
+    {
+        return $language === 'hi'
+            ? [['label' => 'हाँ', 'value' => 'yes'], ['label' => 'नहीं', 'value' => 'no']]
+            : [['label' => 'Yes', 'value' => 'yes'], ['label' => 'No', 'value' => 'no']];
     }
 }

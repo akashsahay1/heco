@@ -27,12 +27,21 @@ class SpPricing extends Model
         'rental_item', 'security_deposit',
         // standard accommodation — a place before it is a rate
         'latitude', 'longitude', 'guest_capacity', 'seasonality_notes', 'photos',
-        // approval workflow
-        'approval_status', 'pending_for_id',
+        // approval workflow; requested_active is the member's Active switch,
+        // held while the row is under review and applied on approval
+        'requested_active', 'approval_status', 'pending_for_id',
         'submitted_at', 'submitted_by',
         'approved_at', 'approved_by',
         'rejection_reason',
     ];
+
+    /** Its provider's offerings are read off the rate card, so they follow every change to it. */
+    protected static function booted(): void
+    {
+        $sync = fn (SpPricing $row) => ServiceProvider::find($row->service_provider_id)?->syncOfferings();
+        static::saved($sync);
+        static::deleted($sync);
+    }
 
     protected function casts(): array
     {
@@ -64,6 +73,7 @@ class SpPricing extends Model
             'guest_capacity' => 'integer',
             'photos' => 'array',
             'is_active' => 'boolean',
+            'requested_active' => 'boolean',
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',
         ];

@@ -54,6 +54,9 @@ class VoiceAssistantService
      */
     private const STAY = 'Experiential accommodation';
 
+    /** The one category whose form has no add-ons: the app shows them on stays and guided activities. */
+    private const WORKSHOP = 'Workshops, Handicrafts, Local Knowledge & Storytelling';
+
     /**
      * The forms this can fill, and what each field is.
      *
@@ -149,7 +152,7 @@ class VoiceAssistantService
                     'label' => 'Add-ons',
                     'more' => [
                         'q' => [
-                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं: जैसे एक गद्दा, या स्टेशन से लिवाना?',
+                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं: जैसे एक अतिरिक्त गद्दा, या स्टेशन से लिवाना?',
                             'en' => 'Do you sell anything alongside this: an extra mattress, a pickup from the station?',
                         ],
                         'q_more' => [
@@ -170,7 +173,7 @@ class VoiceAssistantService
                         ],
                     ],
                 ],
-                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
+                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one: only what they say that no other box holds, never the words of an answer that has gone into another box', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
             ],
             'transport' => [
                 'category' => ['label' => 'Vehicle name', 'ask' => 'what to call this vehicle on their rate card', 'q' => ['hi' => 'इस गाड़ी को रेट कार्ड पर क्या नाम दें?', 'en' => 'What should this vehicle be called on your rate card?'], 'type' => 'string'],
@@ -249,32 +252,7 @@ class VoiceAssistantService
                     ],
                 ],
                 'ac_extra_cost' => ['label' => 'Extra cost for AC (Rs)', 'ask' => 'what air conditioning costs on top, if anything', 'q' => ['hi' => 'एसी का अलग से कितना लगता है?', 'en' => 'What does air conditioning cost on top?'], 'type' => 'number'],
-                'addons' => [
-                    'label' => 'Add-ons',
-                    'more' => [
-                        'q' => [
-                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं: जैसे एक गद्दा, या स्टेशन से लिवाना?',
-                            'en' => 'Do you sell anything alongside this: an extra mattress, a pickup from the station?',
-                        ],
-                        'q_more' => [
-                            'hi' => 'और कोई चीज़?',
-                            'en' => 'Anything else?',
-                        ],
-                    ],
-                    'row' => [
-                        'name' => [
-                            'ask' => 'what that extra is called',
-                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
-                            'type' => 'string',
-                        ],
-                        'price' => [
-                            'ask' => 'what that extra costs',
-                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
-                            'type' => 'number',
-                        ],
-                    ],
-                ],
-                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
+                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one: only what they say that no other box holds, never the words of an answer that has gone into another box', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
             ],
             'guide' => [
                 // The form's own control here is a picker over HCT's guide
@@ -300,32 +278,7 @@ class VoiceAssistantService
                 'speaks_english' => ['label' => 'Speaks English', 'ask' => 'whether they speak English', 'q' => ['hi' => 'क्या आप अंग्रेज़ी बोल लेते हैं?', 'en' => 'Do you speak English?'], 'type' => 'bool'],
                 'is_certified' => ['label' => 'Certified guide', 'ask' => 'whether they hold a guiding certificate', 'q' => ['hi' => 'क्या आपके पास गाइड का कोई सर्टिफिकेट है?', 'en' => 'Do you hold a guiding certificate?'], 'type' => 'bool'],
                 'has_first_aid' => ['label' => 'First-aid trained', 'ask' => 'whether they are trained in first aid', 'q' => ['hi' => 'क्या आपने फर्स्ट-एड की ट्रेनिंग ली है?', 'en' => 'Have you had first-aid training?'], 'type' => 'bool'],
-                'addons' => [
-                    'label' => 'Add-ons',
-                    'more' => [
-                        'q' => [
-                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं: जैसे एक गद्दा, या स्टेशन से लिवाना?',
-                            'en' => 'Do you sell anything alongside this: an extra mattress, a pickup from the station?',
-                        ],
-                        'q_more' => [
-                            'hi' => 'और कोई चीज़?',
-                            'en' => 'Anything else?',
-                        ],
-                    ],
-                    'row' => [
-                        'name' => [
-                            'ask' => 'what that extra is called',
-                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
-                            'type' => 'string',
-                        ],
-                        'price' => [
-                            'ask' => 'what that extra costs',
-                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
-                            'type' => 'number',
-                        ],
-                    ],
-                ],
-                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
+                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one: only what they say that no other box holds, never the words of an answer that has gone into another box', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
             ],
             'activity' => [
                 // Also a picker in the form, over HCT's activity types.
@@ -336,32 +289,7 @@ class VoiceAssistantService
                 'min_group' => ['label' => 'Min group size', 'ask' => 'the smallest group they will take', 'q' => ['hi' => 'कम से कम कितने लोगों का समूह ले सकते हैं?', 'en' => 'What is the smallest group you will take?'], 'type' => 'int'],
                 'max_group' => ['label' => 'Max group size', 'ask' => 'the largest group they will take', 'q' => ['hi' => 'ज़्यादा से ज़्यादा कितने लोगों का समूह ले सकते हैं?', 'en' => 'What is the largest group you will take?'], 'type' => 'int'],
                 'specialties' => ['label' => 'Specialties', 'ask' => 'what the activity involves', 'q' => ['hi' => 'आप किस चीज़ के बारे में बताते हैं?', 'en' => 'What is it that you show people?'], 'type' => 'string', 'accrues' => true],
-                'addons' => [
-                    'label' => 'Add-ons',
-                    'more' => [
-                        'q' => [
-                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं: जैसे एक गद्दा, या स्टेशन से लिवाना?',
-                            'en' => 'Do you sell anything alongside this: an extra mattress, a pickup from the station?',
-                        ],
-                        'q_more' => [
-                            'hi' => 'और कोई चीज़?',
-                            'en' => 'Anything else?',
-                        ],
-                    ],
-                    'row' => [
-                        'name' => [
-                            'ask' => 'what that extra is called',
-                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
-                            'type' => 'string',
-                        ],
-                        'price' => [
-                            'ask' => 'what that extra costs',
-                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
-                            'type' => 'number',
-                        ],
-                    ],
-                ],
-                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
+                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one: only what they say that no other box holds, never the words of an answer that has gone into another box', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
             ],
             // The form offers this too, and without an arm of its own the
             // schema held nothing but service_type — which `known` already
@@ -371,63 +299,13 @@ class VoiceAssistantService
                 'category' => ['label' => 'Service name', 'ask' => 'what to call this service', 'q' => ['hi' => 'इस सेवा को क्या नाम दें?', 'en' => 'What should this service be called?'], 'type' => 'string'],
                 'price' => ['label' => 'Rate (Rs)', 'ask' => 'what they charge', 'q' => ['hi' => 'इसका दाम कितना है?', 'en' => 'What does it cost?'], 'type' => 'number', 'needed_to_send' => true],
                 'unit' => ['label' => 'Unit', 'ask' => 'what that price is for: per person, per day, per piece, whatever they charge by', 'q' => ['hi' => 'यह दाम किस हिसाब से है?', 'en' => 'What is that price for?'], 'type' => 'string', 'needed_to_send' => true],
-                'addons' => [
-                    'label' => 'Add-ons',
-                    'more' => [
-                        'q' => [
-                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं: जैसे एक गद्दा, या स्टेशन से लिवाना?',
-                            'en' => 'Do you sell anything alongside this: an extra mattress, a pickup from the station?',
-                        ],
-                        'q_more' => [
-                            'hi' => 'और कोई चीज़?',
-                            'en' => 'Anything else?',
-                        ],
-                    ],
-                    'row' => [
-                        'name' => [
-                            'ask' => 'what that extra is called',
-                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
-                            'type' => 'string',
-                        ],
-                        'price' => [
-                            'ask' => 'what that extra costs',
-                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
-                            'type' => 'number',
-                        ],
-                    ],
-                ],
-                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
+                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one: only what they say that no other box holds, never the words of an answer that has gone into another box', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
             ],
             'rental' => [
                 'rental_item' => ['label' => 'Item on rent', 'ask' => 'what they rent out', 'q' => ['hi' => 'आप किराये पर क्या देते हैं?', 'en' => 'What do you rent out?'], 'type' => 'string', 'needed_to_send' => true],
                 'price' => ['label' => 'Charges per day (Rs)', 'ask' => 'what it costs to rent for a day', 'q' => ['hi' => 'एक दिन का किराया कितना है?', 'en' => 'What does it cost to rent for a day?'], 'type' => 'number', 'needed_to_send' => true],
                                 'security_deposit' => ['label' => 'Security deposit (Rs)', 'ask' => 'what deposit they hold, if any', 'q' => ['hi' => 'कितनी रकम जमानत के तौर पर रखते हैं?', 'en' => 'What deposit do you hold?'], 'type' => 'number'],
-                'addons' => [
-                    'label' => 'Add-ons',
-                    'more' => [
-                        'q' => [
-                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं: जैसे एक गद्दा, या स्टेशन से लिवाना?',
-                            'en' => 'Do you sell anything alongside this: an extra mattress, a pickup from the station?',
-                        ],
-                        'q_more' => [
-                            'hi' => 'और कोई चीज़?',
-                            'en' => 'Anything else?',
-                        ],
-                    ],
-                    'row' => [
-                        'name' => [
-                            'ask' => 'what that extra is called',
-                            'q' => ['hi' => 'उस चीज़ का नाम क्या है?', 'en' => 'What is that one called?'],
-                            'type' => 'string',
-                        ],
-                        'price' => [
-                            'ask' => 'what that extra costs',
-                            'q' => ['hi' => 'उसका दाम कितना है?', 'en' => 'What does it cost?'],
-                            'type' => 'number',
-                        ],
-                    ],
-                ],
-                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
+                'description' => ['label' => 'Internal note', 'ask' => 'a note for HECO about this rate, if they want to leave one: only what they say that no other box holds, never the words of an answer that has gone into another box', 'q' => ['hi' => 'HECO के लिए कोई नोट लिखना चाहेंगे?', 'en' => 'Any note you would like to leave for HECO?'], 'type' => 'string', 'accrues' => true],
             ],
             default => [],
         };
@@ -498,8 +376,11 @@ class VoiceAssistantService
             ],
             default => [],
         } + [
-            'start_time' => ['label' => 'Start time', 'ask' => 'what time of day it starts', 'q' => ['hi' => 'दिन में किस समय शुरू होता है?', 'en' => 'What time of day does it start?'], 'type' => 'string'],
-            'end_time' => ['label' => 'End time', 'ask' => 'what time it finishes', 'q' => ['hi' => 'किस समय ख़त्म होता है?', 'en' => 'What time does it finish?'], 'type' => 'string'],
+            // A clock time, not a description. The save takes HH:MM only, and
+            // "early morning" written into the box failed the whole listing at
+            // the end with a message about a field the member never typed in.
+            'start_time' => ['label' => 'Start time', 'ask' => 'the clock time it starts, such as 9 in the morning', 'q' => ['hi' => 'यह कितने बजे शुरू होता है? जैसे सुबह 9 बजे।', 'en' => 'What time does it start? For example, 9 in the morning.'], 'type' => 'time'],
+            'end_time' => ['label' => 'End time', 'ask' => 'the clock time it finishes, such as 5 in the evening', 'q' => ['hi' => 'यह कितने बजे ख़त्म होता है? जैसे शाम 5 बजे।', 'en' => 'What time does it finish? For example, 5 in the evening.'], 'type' => 'time'],
         ];
 
         // Inclusions. The comfort tier only matters once a bed is part of it.
@@ -610,8 +491,8 @@ class VoiceAssistantService
                     'label' => 'Add-ons',
                     'more' => [
                         'q' => [
-                            'hi' => 'इसके साथ कोई अलग चीज़ भी बेचते हैं: जैसे एक गद्दा, या स्टेशन से लिवाना?',
-                            'en' => 'Do you sell anything alongside this: an extra mattress, a pickup from the station?',
+                            'hi' => 'इसके साथ कोई और अनुभव भी अलग से देते हैं: जैसे गाँव की सैर, खाना बनाना सिखाना, या पक्षी देखना?',
+                            'en' => 'Do you offer anything alongside this as an extra: a village walk, a cooking class, birdwatching?',
                         ],
                         'q_more' => [
                             'hi' => 'और कोई चीज़?',
@@ -636,6 +517,13 @@ class VoiceAssistantService
                 'en' => 'Photos you will need to add yourself, one for the card and the rest in the gallery. A microphone does not take pictures, and they are the first thing a traveller looks at.',
             ]],
         ];
+
+        // Asked only where the form has the box. The app shows add-ons on a
+        // stay and a guided activity, never on a workshop, and an answer to a
+        // question with no box behind it is simply lost.
+        if (($known['category'] ?? null) === self::WORKSHOP) {
+            unset($byHand['addons']);
+        }
 
         // Practical information, then operational notes: the last two sections
         // of the form, and both plain prose.
@@ -697,7 +585,10 @@ class VoiceAssistantService
                         ],
                     ],
                 ],
-            ] + $byHand + $practical + $operational;
+            // No day plan and no operational notes: the app's stay form hides
+            // both sections and leaves the itinerary out of what it saves, so
+            // anything spoken into them had no box to land in.
+            ] + array_diff_key($byHand, ['experience_days' => true]) + $practical;
         }
 
         return $basic + $duration + $inclusions + $location + $requirements + $seasonality + [
@@ -940,6 +831,7 @@ class VoiceAssistantService
                     'int' => 'a whole number, digits only',
                     'number' => 'a number, digits only',
                     'bool' => 'true or false',
+                    'time' => 'a clock time in 24-hour HH:MM, so 9 in the morning is 09:00 and 6 in the evening is 18:00',
                     // Several of the allowed values at once, as a JSON array.
                     // Told it held text, the model wrote "Hindi and English"
                     // into a box that takes a list, and the whole answer was
@@ -2255,7 +2147,11 @@ class VoiceAssistantService
         $table = explode('.', $field, 2)[0];
         $rows = $known[$table] ?? [];
 
-        return is_array($rows) ? array_values($rows) : [];
+        // A row just opened has nothing in it, and a form post cannot carry
+        // an empty list: it arrives as an empty value, and is still a row.
+        return is_array($rows)
+            ? array_map(fn ($row) => is_array($row) ? $row : [], array_values($rows))
+            : [];
     }
 
     /**
@@ -2662,6 +2558,7 @@ class VoiceAssistantService
                 'int' => 'a whole number, digits only',
                 'number' => 'a number, digits only',
                 'bool' => 'true or false',
+                'time' => 'a 24-hour clock time, HH:MM',
                 'multi' => 'a JSON array of one or more',
                 'months' => 'the month numbers, 1 to 12',
                 default => 'text, in English',
@@ -3077,6 +2974,11 @@ class VoiceAssistantService
 
         $spec = $this->specFor($form, $field, $known);
 
+        // A month box holds numbers; a member hears the month.
+        if (($spec['type'] ?? '') === 'months' && (int) $value >= 1 && (int) $value <= 12) {
+            return $this->monthNames($tongue)[(int) $value - 1];
+        }
+
         // What the FORM shows, not how the question was put. The question asks
         // conversationally — "a place to stay", "गाड़ी" — and that is right for
         // asking. But a member who says "I have a homestay" and is told "I have
@@ -3173,6 +3075,15 @@ class VoiceAssistantService
                 : [['label' => 'Yes', 'value' => 'yes'], ['label' => 'No', 'value' => 'no']];
         }
 
+        // The twelve months, which a month box holds as numbers.
+        if (($spec['type'] ?? '') === 'months') {
+            return array_map(
+                fn ($name, $i) => ['label' => $name, 'value' => (string) ($i + 1)],
+                $this->monthNames($tongue),
+                array_keys($this->monthNames($tongue)),
+            );
+        }
+
         if (! isset($spec['only'])) {
             return null;
         }
@@ -3205,7 +3116,20 @@ class VoiceAssistantService
      */
     public function takesSeveral(string $form, string $field, array $known = []): bool
     {
-        return ($this->specFor($form, $field, $known)['type'] ?? '') === 'multi';
+        // The month boxes too: an experience runs in more than one month.
+        return in_array($this->specFor($form, $field, $known)['type'] ?? '', ['multi', 'months'], true);
+    }
+
+    /**
+     * January to December, in the language being spoken.
+     *
+     * @return array<int,string>
+     */
+    private function monthNames(string $tongue): array
+    {
+        return $tongue === 'hi'
+            ? ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर']
+            : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     }
 
     /**
@@ -3234,22 +3158,30 @@ class VoiceAssistantService
             return ['ok' => false];
         }
 
-        $filled = $checked['fields'] + $known;
-
         // The same sentence a spoken answer earns. A member who taps has just
         // as much right to be told what went into which box, and hearing it
         // the same way both times is how the two stop being two things.
         $wrote = $this->wroteItDown(
             $language === 'hi'
-                ? $this->labelFor($form, $field, $filled) . ' में '
-                    . $this->spokenValue($form, $field, $checked['fields'][$field], $language, $filled)
-                : $this->spokenValue($form, $field, $checked['fields'][$field], $language, $filled)
-                    . ' into ' . $this->labelFor($form, $field, $filled),
+                ? $this->labelFor($form, $field, $known) . ' में '
+                    . $this->spokenValue($form, $field, $checked['fields'][$field], $language, $known)
+                : $this->spokenValue($form, $field, $checked['fields'][$field], $language, $known)
+                    . ' into ' . $this->labelFor($form, $field, $known),
             $language,
             count($known),
         );
 
-        $ahead = $this->walk($form, $filled, $skipped, $language);
+        // A table's yes or no, or one of its cells, goes into the row it
+        // belongs to, exactly as a spoken answer does. Written straight into
+        // the form instead, "addons.more" was a key nothing reads, and the
+        // same "one more?" came back after every tap.
+        $rows = $this->assembleRows($form, $known, $checked['fields'], $field);
+        $checked['fields'] = $rows['fields'];
+        $finished = $rows['finished'] === null ? [] : [$rows['finished']];
+
+        $filled = $checked['fields'] + $known;
+
+        $ahead = $this->walk($form, $filled, array_merge($skipped, $finished), $language);
         $next = $ahead['next'];
 
         // Asked as it is written, not reworded by a model.
@@ -3275,7 +3207,9 @@ class VoiceAssistantService
             'multiple' => $next !== null && $this->takesSeveral($form, $next, $filled),
             'skippable' => $next === null || $this->skippable($form, $next, $filled),
             'guidance' => $ahead['guidance'],
-            'passed' => $ahead['passed'],
+            // A table closed with "no more" is one the app must remember, or
+            // the next turn offers another row.
+            'passed' => array_merge($finished, $ahead['passed']),
             'done' => $next === null,
         ];
     }
@@ -3328,7 +3262,16 @@ class VoiceAssistantService
             // I say my place was called", the model could only repeat the
             // question back — it had been told which boxes were full and
             // nothing about what was in them.
-            $shown = is_array($value) ? implode(', ', $value) : (is_bool($value) ? ($value ? 'yes' : 'no') : $value);
+            // A table is a list of rows, and a row can hold a list of its own
+            // (what a day includes), so each level is joined in turn.
+            $flat = function ($v) use (&$flat) {
+                return is_array($v)
+                    ? implode(', ', array_map($flat, array_filter($v, fn ($one) => $one !== null && $one !== '' && $one !== [])))
+                    : (is_bool($v) ? ($v ? 'yes' : 'no') : (string) $v);
+            };
+            $shown = is_array($value) && array_filter($value, 'is_array') !== []
+                ? implode('; ', array_map($flat, $value))
+                : $flat($value);
             $labels[] = $field['label'] . ': ' . $shown;
         }
 
@@ -4192,6 +4135,7 @@ class VoiceAssistantService
         }
 
         return match ($type) {
+            'time' => $this->clockTime($value),
             'int' => is_numeric($value) ? (int) $value : null,
             // Whole where it is whole. A price handed back as 2000.0 was
             // written into a digits-only box as "2000.0"; the moment the member
@@ -4218,6 +4162,54 @@ class VoiceAssistantService
                 )))) ?: null)
                 : (is_scalar($value) ? ($this->tidy((string) $value) ?: null) : null),
         };
+    }
+
+    /**
+     * A spoken time as the save wants it: 24-hour HH:MM, or null.
+     *
+     * "9 AM", "सुबह 9 बजे", "शाम 6 बजे" and "21:30" all name a clock time; the
+     * part of the day said around the number decides which half it is in.
+     * Anything with no hour in it - "soon", "early" - is not a time, and null
+     * leaves the box empty so the question is asked again rather than the
+     * listing failing on save for a field the member never typed in.
+     */
+    private function clockTime(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $said = mb_strtolower(strtr((string) $value, array_combine(
+            ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९'],
+            ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+        )));
+
+        if (! preg_match('/(\d{1,2})(?:\s*[:.]\s*(\d{2}))?/u', $said, $m)) {
+            return null;
+        }
+
+        $hour = (int) $m[1];
+        $minute = (int) ($m[2] ?? 0);
+        // "साढ़े 9" is half past nine.
+        if (! isset($m[2]) && str_contains($said, 'साढ़े')) {
+            $minute = 30;
+        }
+
+        // Not \b before the letters: "9pm" has no word boundary between the
+        // digit and the p.
+        $later = preg_match('/(?<![a-z])p\.?\s?m\b|evening|night|afternoon|शाम|रात|दोपहर/u', $said);
+        $earlier = preg_match('/(?<![a-z])a\.?\s?m\b|morning|सुबह/u', $said);
+        if ($later && $hour < 12) {
+            $hour += 12;
+        } elseif ($earlier && $hour === 12) {
+            $hour = 0;
+        }
+
+        if ($hour > 23 || $minute > 59) {
+            return null;
+        }
+
+        return \Carbon\Carbon::createFromTime($hour, $minute)->format('H:i');
     }
 
     /**

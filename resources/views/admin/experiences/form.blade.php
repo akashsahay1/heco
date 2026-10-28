@@ -29,8 +29,45 @@
         $experienceTypes = $experienceTypes->push($e->type);
     }
 
+    // Which of the three structural categories this is, from the same list the
+    // partner form and the app choose from. Without the box an admin save sent
+    // no category, so a stay was judged as an outing and refused for having no
+    // per-person price. A stored value off the list stays on it, as above.
+    $experienceCategories = collect($experienceCategories ?? \App\Models\SystemList::ofType('experience_category')->pluck('name'));
+    if ($e && $e->category && ! $experienceCategories->contains($e->category)) {
+        $experienceCategories = $experienceCategories->push($e->category);
+    }
+    // Which sections each category uses, the way the partner form gates them:
+    // a stay has rooms instead of a duration, requirements, per-person costing,
+    // an itinerary or operational notes, and a workshop has no add-ons.
+    $catStay = \App\Models\Experience::CATEGORY_STAY;
+    $catGuided = 'Guided Cultural & Outdoor Activities';
+    $catWorkshop = 'Workshops, Handicrafts, Local Knowledge & Storytelling';
+    $forScheduled = "$catGuided|$catWorkshop";
+    $forAddons = "$catStay|$catGuided";
+
+    // The comfort grades HCT keeps. The form used to offer six words of its
+    // own (budget, premium, homestay...) that matched none of them, so opening
+    // a listing filed as "Cat A - Premium/Luxury" showed "Select" and the next
+    // save wiped it.
+    $accommodationCategories = \App\Models\SystemList::ofType('accommodation_category')->pluck('name');
+    if ($e && $e->accommodation_category && ! $accommodationCategories->contains($e->accommodation_category)) {
+        $accommodationCategories = $accommodationCategories->push($e->accommodation_category);
+    }
+
+    // A stay's rooms and the extras on offer, with any room type or meal plan
+    // since taken off its list kept selectable on the rows that use it.
+    $roomRates = $e ? $e->roomRates : collect();
+    $addons = $e ? $e->addons : collect();
+    $roomCategories = \App\Models\SystemList::ofType('room_category')->pluck('name')
+        ->merge($roomRates->pluck('occupancy'))->filter()->unique()->values();
+    $mealPlans = \App\Models\SystemList::ofType('meal_plan')->pluck('name')
+        ->merge($roomRates->pluck('meal_plan'))->filter()->unique()->values();
+
     $months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     $bestSeasons = $e && $e->best_seasons ? $e->best_seasons : [];
+    $bestSeasonOptions = \App\Models\SystemList::ofType('best_season')->pluck('name')
+        ->merge($bestSeasons)->unique()->values();
     $availableMonths = $e && $e->available_months ? $e->available_months : [];
     $restrictedMonths = $e && $e->restricted_months ? $e->restricted_months : [];
     $unavailableMonths = $e && $e->unavailable_months ? $e->unavailable_months : [];
@@ -135,6 +172,19 @@
             <div id="sectionBasic" class="accordion-collapse collapse show" data-bs-parent="#experienceAccordion">
                 <div class="accordion-body">
                     <div class="row g-3">
+                        {{-- Chosen first, as on the partner form: it decides
+                             which sections below apply. Optional, because
+                             listings filed before categories existed have none
+                             and must still be savable. --}}
+                        <div class="col-md-12">
+                            <label class="form-label">Category</label>
+                            <select class="form-select custom-select" name="category" id="expCategory">
+                                <option value="">Not set</option>
+                                @foreach($experienceCategories as $c)
+                                    <option value="{{ $c }}" {{ $e && $e->category === $c ? 'selected' : '' }}>{{ $c }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                         <div class="col-md-6">
                             <label class="form-label">Name <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" name="name" id="expName" value="{{ $e->name ?? '' }}" required>
@@ -204,7 +254,7 @@
         </div>
 
         {{-- Section 2: Duration & Schedule --}}
-        <div class="accordion-item">
+        <div class="accordion-item" data-exp-categories="{{ $forScheduled }}">
             <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sectionDuration">
                     <i class="bi bi-clock me-2"></i> Duration & Schedule
@@ -284,8 +334,8 @@
                             <label class="form-label">Accommodation Category</label>
                             <select class="form-select custom-select" name="accommodation_category">
                                 <option value="">Select</option>
-                                @foreach(['budget','standard','premium','luxury','camping','homestay'] as $ac)
-                                    <option value="{{ $ac }}" {{ $e && $e->accommodation_category === $ac ? 'selected' : '' }}>{{ ucfirst($ac) }}</option>
+                                @foreach($accommodationCategories as $ac)
+                                    <option value="{{ $ac }}" {{ $e && $e->accommodation_category === $ac ? 'selected' : '' }}>{{ $ac }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -380,7 +430,7 @@
         </div>
 
         {{-- Section 5: Requirements & Constraints --}}
-        <div class="accordion-item">
+        <div class="accordion-item" data-exp-categories="{{ $forScheduled }}">
             <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sectionRequirements">
                     <i class="bi bi-shield-check me-2"></i> Requirements & Constraints
@@ -454,7 +504,7 @@
                         <div class="col-md-6">
                             <label class="form-label">Best Seasons</label>
                             <div class="d-flex flex-wrap gap-2">
-                                @foreach(['spring','summer','monsoon','autumn','winter'] as $season)
+                                @foreach($bestSeasonOptions as $season)
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" name="best_seasons[]" value="{{ $season }}" id="season_{{ $season }}"
                                             {{ in_array($season, $bestSeasons) ? 'checked' : '' }}>
@@ -528,42 +578,46 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Cost Accommodation</label>
+                        <div class="col-md-3" data-exp-categories="{{ $forScheduled }}">
+                            <label class="form-label">CostAccommodation</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
                                 <input type="number" class="form-control cost-component" name="cost_accommodation" value="{{ $e->cost_accommodation ?? '' }}" step="0.01" min="0">
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Cost Logistics</label>
+                        <div class="col-md-3" data-exp-categories="{{ $forScheduled }}">
+                            <label class="form-label">CostLogistics</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
                                 <input type="number" class="form-control cost-component" name="cost_logistics" value="{{ $e->cost_logistics ?? '' }}" step="0.01" min="0">
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Cost Guide</label>
+                        <div class="col-md-3" data-exp-categories="{{ $forScheduled }}">
+                            <label class="form-label">CostGuide</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
                                 <input type="number" class="form-control cost-component" name="cost_guide" value="{{ $e->cost_guide ?? '' }}" step="0.01" min="0">
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Cost Activities</label>
+                        <div class="col-md-3" data-exp-categories="{{ $forScheduled }}">
+                            <label class="form-label">CostActivities</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
                                 <input type="number" class="form-control cost-component" name="cost_activities" value="{{ $e->cost_activities ?? '' }}" step="0.01" min="0">
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Cost Other</label>
+                        <div class="col-md-3" data-exp-categories="{{ $forScheduled }}">
+                            <label class="form-label">CostOther</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
                                 <input type="number" class="form-control cost-component" name="cost_other" value="{{ $e->cost_other ?? '' }}" step="0.01" min="0">
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        {{-- Everything per person in this section is for the
+                             two scheduled categories. A stay is priced by the
+                             room below, and keeps only the currency and the
+                             markup, which apply to its room prices too. --}}
+                        <div class="col-md-6" data-exp-categories="{{ $forScheduled }}">
                             <label class="form-label">Total Cost Per Person <span class="text-muted small">(auto)</span></label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">{{ isset($e) && $e->price_currency ? \App\Models\Currency::where('code', $e->price_currency)->value('symbol') ?? '₹' : '₹' }}</span>
@@ -593,7 +647,7 @@
                              margin that never applied. This says, in the same terms
                              the traveller is quoted in, exactly what the save will
                              produce. Computed the way the server computes it. --}}
-                        <div class="col-md-12">
+                        <div class="col-md-12" data-exp-categories="{{ $forScheduled }}">
                             <div class="border rounded p-2 bg-light" id="travellerPricePanel">
                                 <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
                                     <strong class="small mb-0">What the traveller pays</strong>
@@ -602,33 +656,53 @@
                                 <div class="small mt-1" id="travellerPriceRows"></div>
                             </div>
                         </div>
-                        <div class="col-md-12">
+                        {{-- Rows the admin adds, as on the partner form. This was
+                             a fixed grid of 1 to 6, and the save replaces every
+                             tier with what the grid sent - so a host's tier for
+                             8 or 10 people was deleted by any admin save. --}}
+                        <div class="col-md-12" data-exp-categories="{{ $forScheduled }}">
                             <label class="form-label mb-1">Per-Person Price by Group Size</label>
-                            <p class="text-muted small mb-2">The experience is priced per person, varying with the number of travellers (fewer travellers usually cost more each). The last row ("6+") applies to that many travellers or more. Leave a row blank to skip it. Traveller pays this price × number of travellers.</p>
+                            <p class="text-muted small mb-2">The experience is priced per person, varying with the number of travellers (fewer travellers usually cost more each). Each row applies from that many travellers up to the next row; the last applies to that many or more. Traveller pays this price × number of travellers.</p>
                             <div class="table-responsive">
                                 <table class="table table-sm align-middle exp-slab-table">
-                                    <thead><tr><th class="exp-slab-col">Travellers</th><th>Price / person</th></tr></thead>
-                                    <tbody>
-                                        @php
-                                            $existingSlabs = isset($e) ? $e->priceSlabs->pluck('price_per_person', 'min_persons')->toArray() : [];
-                                            $slabRows = [1 => '1 person', 2 => '2 persons', 3 => '3 persons', 4 => '4 persons', 5 => '5 persons', 6 => '6+ persons'];
-                                        @endphp
-                                        @foreach ($slabRows as $n => $label)
-                                        <tr>
-                                            <td>{{ $label }}<input type="hidden" name="price_slabs[{{ $loop->index }}][min_persons]" value="{{ $n }}"></td>
+                                    <thead><tr><th class="exp-slab-col">From travellers</th><th>Price / person</th><th style="width:48px;"></th></tr></thead>
+                                    <tbody id="slabRows" data-next="{{ $e ? $e->priceSlabs->count() : 0 }}">
+                                        @foreach (($e ? $e->priceSlabs : collect()) as $slab)
+                                        <tr class="repeater-row">
+                                            <td><input type="number" class="form-control" name="price_slabs[{{ $loop->index }}][min_persons]" value="{{ $slab->min_persons }}" min="1"></td>
                                             <td>
                                                 <div class="input-group">
                                                     <span class="input-group-text cost-symbol">₹</span>
-                                                    <input type="number" class="form-control" name="price_slabs[{{ $loop->index }}][price_per_person]" value="{{ isset($existingSlabs[$n]) ? (float) $existingSlabs[$n] : '' }}" step="0.01" min="0" placeholder="—">
+                                                    <input type="number" class="form-control" name="price_slabs[{{ $loop->index }}][price_per_person]" value="{{ (float) $slab->price_per_person }}" step="0.01" min="0">
                                                 </div>
+                                            </td>
+                                            <td class="text-center">
+                                                <button type="button" class="btn btn-sm btn-outline-danger repeater-remove" title="Remove"><i class="bi bi-x-lg"></i></button>
                                             </td>
                                         </tr>
                                         @endforeach
                                     </tbody>
                                 </table>
                             </div>
+                            <button type="button" class="btn btn-sm btn-outline-success repeater-add" data-list="#slabRows" data-tpl="#slabRowTpl">
+                                <i class="bi bi-plus-lg me-1"></i> Add tier
+                            </button>
+                            <template id="slabRowTpl">
+                                <tr class="repeater-row">
+                                    <td><input type="number" class="form-control" name="price_slabs[__IDX__][min_persons]" min="1" placeholder="e.g. 4"></td>
+                                    <td>
+                                        <div class="input-group">
+                                            <span class="input-group-text cost-symbol">₹</span>
+                                            <input type="number" class="form-control" name="price_slabs[__IDX__][price_per_person]" step="0.01" min="0">
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger repeater-remove" title="Remove"><i class="bi bi-x-lg"></i></button>
+                                    </td>
+                                </tr>
+                            </template>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-3" data-exp-categories="{{ $forScheduled }}">
                             <label class="form-label">Single Supplement</label>
                             <div class="input-group">
                                 <span class="input-group-text cost-symbol">₹</span>
@@ -636,7 +710,7 @@
                             </div>
                             <small class="text-muted">Charged once, for the whole experience, to a traveller left without a room-mate. Only applies where the experience houses people.</small>
                         </div>
-                        <div class="col-md-12">
+                        <div class="col-md-12" data-exp-categories="{{ $forScheduled }}">
                             <label class="form-label">Seasonal Price Variation</label>
                             <p class="text-muted small mb-2">
                                 Charge more (or less) in certain seasons. Name the period and set how much the
@@ -719,6 +793,134 @@
             </div>
         </div>
 
+        {{-- Rooms & Pricing: a stay only. It charges by room and board rather
+             than per head, and the save refuses a stay with no room priced -
+             a refusal this form had no way to answer until these rows were
+             here. Same fields and save keys as the partner form. --}}
+        <div class="accordion-item" data-exp-categories="{{ $catStay }}">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sectionRooms">
+                    <i class="bi bi-door-open me-2"></i> Rooms & Pricing
+                </button>
+            </h2>
+            <div id="sectionRooms" class="accordion-collapse collapse" data-bs-parent="#experienceAccordion">
+                <div class="accordion-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Number of Rooms</label>
+                            <input type="number" class="form-control" name="total_rooms" value="{{ $e->total_rooms ?? '' }}" min="1">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Guests It Sleeps</label>
+                            <input type="number" class="form-control" name="total_guests" value="{{ $e->total_guests ?? '' }}" min="1">
+                        </div>
+                    </div>
+                    <label class="form-label mb-1">Room Prices</label>
+                    <p class="text-muted small mb-2">One row for each price: the room type, the meal plan, and what it costs a night.</p>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead><tr><th>Room type</th><th>Meal plan</th><th style="width:200px;">Price / night</th><th style="width:48px;"></th></tr></thead>
+                            <tbody id="roomRateRows" data-next="{{ $roomRates->count() }}">
+                                @foreach ($roomRates as $rate)
+                                <tr class="repeater-row">
+                                    <td>
+                                        <select class="form-select custom-select" name="room_rates[{{ $loop->index }}][occupancy]">
+                                            <option value="">Room type...</option>
+                                            @foreach ($roomCategories as $rc)
+                                                <option value="{{ $rc }}" {{ $rate->occupancy === $rc ? 'selected' : '' }}>{{ $rc }}</option>
+                                            @endforeach
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <select class="form-select custom-select" name="room_rates[{{ $loop->index }}][meal_plan]">
+                                            <option value="">Meal plan...</option>
+                                            @foreach ($mealPlans as $mp)
+                                                <option value="{{ $mp }}" {{ $rate->meal_plan === $mp ? 'selected' : '' }}>{{ $mp }}</option>
+                                            @endforeach
+                                        </select>
+                                    </td>
+                                    <td><input type="number" class="form-control" name="room_rates[{{ $loop->index }}][price]" value="{{ (float) $rate->price }}" step="0.01" min="0"></td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger repeater-remove" title="Remove"><i class="bi bi-x-lg"></i></button>
+                                    </td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-success repeater-add" data-list="#roomRateRows" data-tpl="#roomRateTpl">
+                        <i class="bi bi-plus-lg me-1"></i> Add a price
+                    </button>
+                    <template id="roomRateTpl">
+                        <tr class="repeater-row">
+                            <td>
+                                <select class="form-select custom-select" name="room_rates[__IDX__][occupancy]">
+                                    <option value="">Room type...</option>
+                                    @foreach ($roomCategories as $rc)
+                                        <option value="{{ $rc }}">{{ $rc }}</option>
+                                    @endforeach
+                                </select>
+                            </td>
+                            <td>
+                                <select class="form-select custom-select" name="room_rates[__IDX__][meal_plan]">
+                                    <option value="">Meal plan...</option>
+                                    @foreach ($mealPlans as $mp)
+                                        <option value="{{ $mp }}">{{ $mp }}</option>
+                                    @endforeach
+                                </select>
+                            </td>
+                            <td><input type="number" class="form-control" name="room_rates[__IDX__][price]" step="0.01" min="0"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-outline-danger repeater-remove" title="Remove"><i class="bi bi-x-lg"></i></button>
+                            </td>
+                        </tr>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        {{-- Add-ons: optional extras hung off the listing. Offered on a stay and
+             a guided activity, never a workshop, as on the partner form. --}}
+        <div class="accordion-item" data-exp-categories="{{ $forAddons }}">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sectionAddons">
+                    <i class="bi bi-plus-square me-2"></i> Add-ons
+                </button>
+            </h2>
+            <div id="sectionAddons" class="accordion-collapse collapse" data-bs-parent="#experienceAccordion">
+                <div class="accordion-body">
+                    <p class="text-muted small mb-2">Extras a traveller can add, such as a village walk or a cooking class. Leave the price blank if it is included.</p>
+                    <div id="addonRows" data-next="{{ $addons->count() }}">
+                        @foreach ($addons as $addon)
+                        <div class="border rounded p-2 mb-2 repeater-row">
+                            <div class="row g-2">
+                                <div class="col-md-5"><input type="text" class="form-control" name="addons[{{ $loop->index }}][name]" value="{{ $addon->name }}" placeholder="Name"></div>
+                                <div class="col-md-3"><input type="number" class="form-control" name="addons[{{ $loop->index }}][price]" value="{{ $addon->price === null ? '' : (float) $addon->price }}" step="0.01" min="0" placeholder="Price (optional)"></div>
+                                <div class="col-md-3"><input type="text" class="form-control" name="addons[{{ $loop->index }}][price_unit]" value="{{ $addon->price_unit }}" placeholder="per person"></div>
+                                <div class="col-md-1"><button type="button" class="btn btn-sm btn-outline-danger w-100 repeater-remove" title="Remove"><i class="bi bi-x-lg"></i></button></div>
+                                <div class="col-12"><textarea class="form-control" name="addons[{{ $loop->index }}][description]" rows="2" placeholder="What it involves (optional)">{{ $addon->description }}</textarea></div>
+                            </div>
+                        </div>
+                        @endforeach
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-success repeater-add" data-list="#addonRows" data-tpl="#addonTpl">
+                        <i class="bi bi-plus-lg me-1"></i> Add an extra
+                    </button>
+                    <template id="addonTpl">
+                        <div class="border rounded p-2 mb-2 repeater-row">
+                            <div class="row g-2">
+                                <div class="col-md-5"><input type="text" class="form-control" name="addons[__IDX__][name]" placeholder="Name"></div>
+                                <div class="col-md-3"><input type="number" class="form-control" name="addons[__IDX__][price]" step="0.01" min="0" placeholder="Price (optional)"></div>
+                                <div class="col-md-3"><input type="text" class="form-control" name="addons[__IDX__][price_unit]" placeholder="per person"></div>
+                                <div class="col-md-1"><button type="button" class="btn btn-sm btn-outline-danger w-100 repeater-remove" title="Remove"><i class="bi bi-x-lg"></i></button></div>
+                                <div class="col-12"><textarea class="form-control" name="addons[__IDX__][description]" rows="2" placeholder="What it involves (optional)"></textarea></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
         {{-- Section 8: OSP & Practical Info --}}
         <div class="accordion-item">
             <h2 class="accordion-header">
@@ -785,7 +987,7 @@
         </div>
 
         {{-- Section 9: Operational (HCT Internal) --}}
-        <div class="accordion-item">
+        <div class="accordion-item" data-exp-categories="{{ $forScheduled }}">
             <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sectionOperational">
                     <i class="bi bi-lock me-2"></i> Operational (HCT Internal)
@@ -975,6 +1177,27 @@ var dayCounter = 0;
 jQuery(function() {
     toggleDurationFields();
     toggleAccommodationCategory();
+    // After the day cards are built, so a stay's hidden itinerary is disabled
+    // along with the rest of its section.
+    applyCategory();
+    jQuery('#expCategory').on('change', applyCategory);
+
+    // ── Repeaters: price tiers, room prices and add-ons ──
+    // Each list numbers its own rows; a new one takes the next free index so
+    // it never shares a name with a row already on the page.
+    jQuery(document).on('click', '.repeater-add', function() {
+        var list = jQuery(jQuery(this).data('list'));
+        var idx = parseInt(list.attr('data-next'), 10) || 0;
+        list.attr('data-next', idx + 1);
+        var row = jQuery(jQuery(jQuery(this).data('tpl')).html().replace(/__IDX__/g, idx));
+        row.find('.cost-symbol').text(jQuery('#priceCurrency').find(':selected').data('symbol') || '₹');
+        list.append(row);
+        row.find('select.custom-select').each(function() { window.buildCustomDropdown(this); });
+    });
+    jQuery(document).on('click', '.repeater-remove', function() {
+        jQuery(this).closest('.repeater-row').remove();
+        recomputeBaseCost();
+    });
 
     // ── Seasonal price variation: friendly add/remove rows (no JSON typing) ──
     var seasonalIdx = jQuery('#seasonalRows .seasonal-row').length;
@@ -1220,12 +1443,32 @@ jQuery('#includesAccommodation').on('change', function() {
     toggleAccommodationCategory();
 });
 
+// toggleClass, not show(): the group starts hidden with d-none, which is
+// display:none !important and beats the inline style show() writes, so
+// ticking Accommodation on a listing that had none never showed the grade.
 function toggleAccommodationCategory() {
-    if (jQuery('#includesAccommodation').is(':checked')) {
-        jQuery('#accommodationCategoryGroup').show();
-    } else {
-        jQuery('#accommodationCategoryGroup').hide();
-    }
+    jQuery('#accommodationCategoryGroup').toggleClass('d-none', !jQuery('#includesAccommodation').is(':checked'));
+}
+
+/**
+ * The category decides which sections apply, as on the partner form.
+ *
+ * Hidden, never removed, so switching back loses nothing typed. Their fields
+ * are disabled while hidden, and a disabled field is not posted - the server
+ * only replaces what it is sent, so a stay saved here leaves an itinerary or
+ * a price grid it has no place for exactly as it was, and posts no blank day
+ * card. With no category chosen every section shows, for listings filed
+ * before there were categories.
+ */
+function applyCategory() {
+    var chosen = jQuery('#expCategory').val();
+    jQuery('#experienceForm [data-exp-categories]').each(function() {
+        var el = jQuery(this);
+        var applies = !chosen || String(el.data('exp-categories')).split('|').indexOf(chosen) !== -1;
+        el.toggleClass('d-none', !applies);
+        el.find('input, select, textarea').prop('disabled', !applies);
+        if (!applies) el.find('.accordion-collapse').removeClass('show');
+    });
 }
 
 // Card image preview
@@ -1394,6 +1637,22 @@ jQuery('#experienceForm').on('submit', function(ev) {
     booleanFields.forEach(function(field) {
         if (!formData.get(field)) {
             formData.set(field, '0');
+        }
+    });
+
+    // A set of boxes with none ticked posts nothing, which the server reads
+    // as "not sent" and so kept the old ticks. One blank entry says "none";
+    // the server drops blanks before it checks the rest.
+    ['best_seasons', 'available_months', 'restricted_months', 'unavailable_months', 'osp_services'].forEach(function(key) {
+        var boxes = jQuery(form).find('[name="' + key + '[]"]:enabled');
+        if (boxes.length && !boxes.filter(':checked').length) formData.append(key + '[]', '');
+    });
+    // The same for a list whose last row was removed. A list in a section
+    // this category hides is disabled and says nothing, so it is left alone.
+    [['price_slabs', '#slabRows'], ['room_rates', '#roomRateRows'], ['addons', '#addonRows']].forEach(function(list) {
+        var rows = jQuery(list[1]);
+        if (!rows.closest('[data-exp-categories].d-none').length && !rows.find('.repeater-row').length) {
+            formData.append(list[0] + '[0]', '');
         }
     });
 

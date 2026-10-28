@@ -34,26 +34,36 @@ class ServiceProvider extends Model
     protected $appends = ['provider_type'];
 
     /**
-     * A signup category stands for a service type ("Taxi services" is
-     * Transport), and the Trip Manager only looks at services_offered. On every
-     * save the types the categories stand for are put back in, so the two can
-     * never say different things: Transport goes only by dropping Taxi
-     * services. Types no category covers, such as Activity or Meals, are left
-     * as they were set.
+     * What a provider offers is what they have put on their rate card.
+     *
+     * Services offered, the comfort tiers, vehicle, guide and activity types
+     * used to be boxes of their own, filled at signup and again by hand on the
+     * admin page and the app's profile, beside the rates that said the same
+     * thing. Two places for one fact drift apart: the Trip Manager matched a
+     * provider by one and priced them by the other. They are read off the
+     * rates now, and only rates HCT has approved and that are switched on, so
+     * nothing is offered that cannot be quoted. Called whenever a rate is
+     * written or removed.
      */
-    protected static function booted(): void
+    public function syncOfferings(): void
     {
-        static::saving(function (ServiceProvider $sp) {
-            if (empty($sp->service_categories)) {
-                return;
-            }
-            $mapped = SystemList::where('list_type', 'service_category')
-                ->whereIn('name', $sp->service_categories)
-                ->whereNotNull('maps_to')
-                ->pluck('maps_to');
-            $sp->services_offered = collect((array) $sp->services_offered)
-                ->merge($mapped)->unique()->values()->all();
-        });
+        $rows = SpPricing::where('service_provider_id', $this->id)
+            ->where('approval_status', 'approved')
+            ->where('is_active', true)
+            ->get(['service_type', 'comfort_tier', 'vehicle_type', 'category']);
+
+        $of = fn (string $type, string $column) => $rows->where('service_type', $type)
+            ->pluck($column)->filter(fn ($v) => filled($v))->unique()->values()->all();
+
+        $this->forceFill([
+            'services_offered' => $rows->pluck('service_type')
+                ->map(fn ($t) => \App\Services\SpMatchingService::serviceOfferedLabel($t))
+                ->filter()->unique()->values()->all(),
+            'accommodation_categories' => $of('accommodation', 'comfort_tier'),
+            'vehicle_types' => $of('transport', 'vehicle_type'),
+            'guide_types' => $of('guide', 'category'),
+            'activity_types' => $of('activity', 'category'),
+        ])->saveQuietly();
     }
 
     protected function casts(): array

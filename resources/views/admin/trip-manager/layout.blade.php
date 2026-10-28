@@ -54,7 +54,7 @@
                         <input type="text" class="form-control form-control-sm" id="editDayTitle" maxlength="255" placeholder="e.g. Village walk and local lunch">
                     </div>
                     <div class="mb-2">
-                        <label class="form-label small fw-bold">Notes for the traveller</label>
+                        <label class="form-label small fw-bold">Description</label>
                         <textarea class="form-control form-control-sm" id="editDayDescription" rows="4" maxlength="2000" placeholder="What happens on this day"></textarea>
                     </div>
                     <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-check"></i> Save Day</button>
@@ -199,7 +199,12 @@ jQuery(document).on('click', '.tm-region-remove', function() {
 
 // ── Regenerative project of a custom-day trip (Trip Info > Margins)
 function setTripRpProject(projectId) {
-    ajaxPost({ update_trip_info: 1, trip_id: tripId, regenerative_project_id: projectId }, function() { location.reload(); });
+    ajaxPost({ update_trip_info: 1, trip_id: tripId, regenerative_project_id: projectId }, function() { location.reload(); }, function(xhr) {
+        // Refused (a paid trip is locked): show the project that is saved, not the one picked.
+        var $sel = jQuery('#tmRpProject').val(tripData.regenerative_project_id || '');
+        if (window.buildCustomDropdown) buildCustomDropdown($sel[0]);
+        showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Could not set the project') : 'Could not set the project', 'danger');
+    });
 }
 jQuery(document).on('change', '#tmRpProject', function() {
     var val = jQuery(this).val();
@@ -715,6 +720,22 @@ function loadDayServices(dayId) {
 }
 
 $('a[href="#tripItineraryTab"]').on('shown.bs.tab', function() { loadItinerary(); });
+
+// The tab being worked in survives a reload. Adding a day reloads the page,
+// and it always came back on Trip Info, so HCT had to reopen the itinerary
+// after every day they added. Kept per trip, for this browser tab only.
+(function () {
+    var key = 'tm-tab-' + tripId;
+    $('#tmTabs a[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+        try { sessionStorage.setItem(key, $(this).attr('href')); } catch (e) {}
+    });
+    var saved = null;
+    try { saved = sessionStorage.getItem(key); } catch (e) {}
+    if (saved && saved !== '#tripInfoTab') {
+        var link = $('#tmTabs a[href="' + saved + '"]')[0];
+        if (link && window.bootstrap) bootstrap.Tab.getOrCreateInstance(link).show();
+    }
+})();
 
 $('#searchExpBtn').on('click', function() {
     ajaxPost({

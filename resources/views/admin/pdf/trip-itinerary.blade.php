@@ -194,12 +194,30 @@
             <td class="label">Start Location</td>
             <td class="value">{{ $trip->start_location ?? '-' }}</td>
         </tr>
+        {{-- What was asked for, so the reader knows the standard of stay and
+             vehicle even on a day whose lines name none. --}}
+        @if($trip->accommodation_comfort || $trip->vehicle_comfort)
+            <tr>
+                <td class="label">Accommodation</td>
+                <td class="value">{{ $trip->accommodation_comfort ?: '-' }}</td>
+                <td class="label">Vehicle</td>
+                <td class="value">{{ $trip->vehicle_comfort ?: '-' }}</td>
+            </tr>
+        @endif
+        @if($trip->guide_preference || $trip->travel_pace)
+            <tr>
+                <td class="label">Guide</td>
+                <td class="value">{{ $trip->guide_preference ?: '-' }}</td>
+                <td class="label">Travel Pace</td>
+                <td class="value">{{ $trip->travel_pace ?: '-' }}</td>
+            </tr>
+        @endif
         @if($trip->pickup_location || $trip->drop_location)
             <tr>
                 <td class="label">Pickup</td>
-                <td class="value">{{ $trip->pickup_location ?? '-' }}{{ $trip->pickup_time ? ' at ' . $trip->pickup_time : '' }}</td>
+                <td class="value">{{ $trip->pickup_location ?? '-' }}{{ $trip->pickup_time ? ' at ' . substr($trip->pickup_time, 0, 5) : '' }}</td>
                 <td class="label">Drop</td>
-                <td class="value">{{ $trip->drop_location ?? '-' }}{{ $trip->drop_time ? ' at ' . $trip->drop_time : '' }}</td>
+                <td class="value">{{ $trip->drop_location ?? '-' }}{{ $trip->drop_time ? ' at ' . substr($trip->drop_time, 0, 5) : '' }}</td>
             </tr>
         @endif
     </table>
@@ -232,10 +250,7 @@
                         <div class="exp-row">
                             <span class="exp-name">{{ $dayExp->experience->name ?? 'Experience' }}</span>
                             @if($dayExp->start_time)
-                                <span class="text-muted" style="margin-left: 8px;">{{ $dayExp->start_time }}@if($dayExp->end_time) - {{ $dayExp->end_time }}@endif</span>
-                            @endif
-                            @if($dayExp->total_cost > 0)
-                                <span style="float: right;" class="text-success bold">&#8377;{{ number_format($dayExp->total_cost, 2) }}</span>
+                                <span class="text-muted" style="margin-left: 8px;">{{ substr($dayExp->start_time, 0, 5) }}@if($dayExp->end_time) - {{ substr($dayExp->end_time, 0, 5) }}@endif</span>
                             @endif
                             @if($dayExp->experience && $dayExp->experience->short_description)
                                 <br><span class="text-muted" style="font-size: 10px;">{{ Str::limit($dayExp->experience->short_description, 150) }}</span>
@@ -259,23 +274,52 @@
                                         @default &#8226;
                                     @endswitch
                                 </span>
+                                @php
+                                    // What is being given: the rate it is booked on,
+                                    // read as the provider filed it (the room's tier
+                                    // and kind, the vehicle), then the line's own name.
+                                    // A line that names nothing falls back on what the
+                                    // traveller asked for, so "Transport" is never
+                                    // left bare.
+                                    $rate = $service->spPricing;
+                                    $what = array_filter(match ($service->service_type) {
+                                        'accommodation' => [
+                                            $rate?->category, $rate?->comfort_tier, $rate?->room_category,
+                                            $service->room_quantity > 1 ? $service->room_quantity . ' rooms' : null,
+                                        ],
+                                        'transport' => [
+                                            $rate?->vehicle_type, $rate?->vehicle_make_model,
+                                            $rate?->ac_available ? 'AC' : null,
+                                        ],
+                                        default => [$rate?->category],
+                                    });
+                                    if ($service->description) {
+                                        array_unshift($what, $service->description);
+                                    }
+                                    // A part of an experience on the same day. Its
+                                    // placeholder name ("Guide service", "Other") says
+                                    // nothing; what it is, is part of the experience.
+                                    if ($service->is_included) {
+                                        $what = array_values(array_diff($what, ['Guide service', 'Other', 'Logistics / Transport']));
+                                        $what[] = 'included with the experience';
+                                    }
+                                    if (! $what) {
+                                        $what = array_filter([match ($service->service_type) {
+                                            'accommodation' => $trip->accommodation_comfort,
+                                            'transport' => $trip->vehicle_comfort,
+                                            'guide' => $trip->guide_preference,
+                                            default => null,
+                                        }]);
+                                    }
+                                @endphp
                                 <span style="text-transform: capitalize;">{{ $service->service_type }}</span>:
-                                {{ $service->description ?? '' }}
+                                {{ implode(' · ', array_unique($what)) }}
                                 @if($service->serviceProvider)
                                     <span class="text-muted">({{ $service->serviceProvider->name }})</span>
                                 @endif
                                 @if($service->from_location || $service->to_location)
                                     <span class="text-muted">
-                                        {{ $service->from_location ?? '' }}{{ $service->to_location ? ' &rarr; ' . $service->to_location : '' }}
-                                    </span>
-                                @endif
-                                @if($service->cost > 0)
-                                    @php $pf = (float) ($peopleFactor ?? 1); @endphp
-                                    <span style="float: right;">
-                                        @if($service->isPerPerson())
-                                            <span class="text-muted">&#8377;{{ number_format($service->cost, 2) }} &times; {{ rtrim(rtrim(number_format($pf, 2), '0'), '.') }} pax =</span>
-                                        @endif
-                                        &#8377;{{ number_format($service->groupCost($pf), 2) }}
+                                        {{ $service->from_location ?? '' }}{{ $service->to_location ? ' → ' . $service->to_location : '' }}
                                     </span>
                                 @endif
                             </div>
@@ -297,6 +341,8 @@
 {{-- 4. Financial Summary --}}
 <div class="section-title">Financial Summary</div>
 
+{{-- Three figures and no breakdown: what each part of the trip costs is
+     HECO's working, not the traveller's. The rows add up to the Final Price. --}}
 <table class="financial-table">
     <thead>
         <tr>
@@ -305,50 +351,10 @@
         </tr>
     </thead>
     <tbody>
-        @if(($trip->experience_cost ?? 0) > 0)
-            <tr>
-                <td>Experiences</td>
-                <td class="text-right">{{ number_format($trip->experience_cost ?? 0, 2) }}</td>
-            </tr>
-        @endif
         <tr>
-            <td>Accommodation Cost</td>
-            <td class="text-right">{{ number_format($trip->accommodation_cost ?? 0, 2) }}</td>
+            <td>Price</td>
+            <td class="text-right">{{ number_format((float) ($trip->final_price ?? 0) - (float) ($trip->gst_amount ?? 0), 2) }}</td>
         </tr>
-        <tr>
-            <td>Transport Cost</td>
-            <td class="text-right">{{ number_format($trip->transport_cost ?? 0, 2) }}</td>
-        </tr>
-        <tr>
-            <td>Guide Cost</td>
-            <td class="text-right">{{ number_format($trip->guide_cost ?? 0, 2) }}</td>
-        </tr>
-        <tr>
-            <td>Activity Cost</td>
-            <td class="text-right">{{ number_format($trip->activity_cost ?? 0, 2) }}</td>
-        </tr>
-        @if(($trip->extra_day_cost ?? 0) > 0)
-            <tr>
-                <td>Extra Days</td>
-                <td class="text-right">{{ number_format($trip->extra_day_cost ?? 0, 2) }}</td>
-            </tr>
-        @endif
-        <tr>
-            <td>Other Cost</td>
-            <td class="text-right">{{ number_format($trip->other_cost ?? 0, 2) }}</td>
-        </tr>
-        <tr style="background: #f8f9fa;">
-            <td class="bold">Total Cost</td>
-            <td class="text-right bold">{{ number_format($trip->total_cost ?? 0, 2) }}</td>
-        </tr>
-        {{-- The margins, added on top of the trip cost, so the rows add up to the
-             Final Price. One line: HRP and HCT are never shown apart. --}}
-        @if((float) ($trip->subtotal ?? 0) > (float) ($trip->total_cost ?? 0))
-            <tr>
-                <td>Service charges</td>
-                <td class="text-right">{{ number_format((float) $trip->subtotal - (float) $trip->total_cost, 2) }}</td>
-            </tr>
-        @endif
         <tr>
             <td>GST</td>
             <td class="text-right">{{ number_format($trip->gst_amount ?? 0, 2) }}</td>
@@ -357,16 +363,6 @@
             <td class="bold" style="font-size: 13px;">Final Price</td>
             <td class="text-right bold" style="font-size: 13px;">&#8377;{{ number_format($trip->final_price ?? 0, 2) }}</td>
         </tr>
-        {{-- Informational: the regenerative-project share included in the price
-             (not an added charge). The HRP and HCT splits never go on the PDF,
-             whoever downloads it: HCT hands this one to the traveller. --}}
-        {{-- Hidden for now on the client's word; RP sits inside Service charges. --}}
-        @if(($trip->margin_rp_amount ?? 0) > 0)
-            <tr style="display: none;">
-                <td>Of which, Regenerative Contribution ({{ $trip->margin_rp_percent ?? 0 }}%)</td>
-                <td class="text-right">{{ number_format($trip->margin_rp_amount ?? 0, 2) }}</td>
-            </tr>
-        @endif
     </tbody>
 </table>
 

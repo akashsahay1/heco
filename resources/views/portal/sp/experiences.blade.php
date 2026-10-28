@@ -453,13 +453,10 @@
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="spSlabAdd">
                             <i class="bi bi-plus-lg"></i> Add tier
                         </button>
-
-                        <div class="mt-3">
-                            <label class="form-label small">Seasonal Price Variation</label>
-                            <textarea class="form-control form-control-sm" name="seasonal_price_variation" rows="3"
-                                      placeholder='e.g. [{"season":"peak","months":[5,6],"adjust_percent":15}]'></textarea>
-                            <small class="text-muted">Optional JSON list of seasonal adjustments.</small>
-                        </div>
+                        {{-- No seasonal price box here. It asked for JSON in
+                             keys the server does not keep, so what a host typed
+                             was thrown away; seasonal pricing is HECO's to set,
+                             on its own form. --}}
                     </div>
                 </div>
             </div>
@@ -624,11 +621,22 @@
                                     </label>
                                 </div>
                             </div>
-                            <div class="col-md-12">
-                                <label class="form-label small">OSP Services</label>
-                                <textarea class="form-control form-control-sm" name="osp_services" rows="2"
-                                          placeholder='e.g. ["Transport from Aut", "Camping equipment"]'></textarea>
-                                <small class="text-muted">Optional JSON list of what other providers cover.</small>
+                            {{-- Was a textarea asking for a hand-written JSON
+                                 list, and anything that was not JSON was stored
+                                 as nothing. Now the same service types the app
+                                 offers as chips and HCT's form as checkboxes,
+                                 asked only once others are said to be involved. --}}
+                            <div class="col-md-12 d-none" id="spOspServicesGroup">
+                                <label class="form-label small">What they provide</label>
+                                <div class="d-flex flex-wrap gap-3" id="spOspServices">
+                                    @foreach($serviceTypes as $st)
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="osp_services[]"
+                                                   value="{{ $st->name }}" id="spOspService{{ $loop->index }}">
+                                            <label class="form-check-label small" for="spOspService{{ $loop->index }}">{{ $st->name }}</label>
+                                        </div>
+                                    @endforeach
+                                </div>
                             </div>
                             @foreach([
                                 'traveller_bring_list' => 'What travellers should bring',
@@ -936,9 +944,12 @@ function spAddSlabRow(slab) {
 // Category decides which sections apply.
 //
 // Sections are hidden, never removed: switching category back must not lose
-// what was already typed, and hidden fields are skipped on submit rather than
-// posted - so the server, which only replaces a section it was actually sent,
-// leaves the rest of the record alone.
+// what was already typed. Their fields are disabled while hidden, and a
+// disabled field is neither posted nor checked by the browser - so the server,
+// which only replaces a section it was actually sent, leaves the rest of the
+// record alone, and a stay is not held up by a required difficulty it never
+// showed. Deleting names from the FormData instead missed every name ending
+// in [], so a stay still posted the hidden itinerary's day inclusions.
 function spApplyCategory() {
     var chosen = jQuery('#spExpCategory').val();
 
@@ -947,12 +958,26 @@ function spApplyCategory() {
         var applies = !chosen ||
             item.data('exp-categories').split('|').indexOf(chosen) !== -1;
         item.toggleClass('d-none', !applies);
+        item.find('input, select, textarea').prop('disabled', !applies);
         if (!applies) item.find('.accordion-collapse').removeClass('show');
     });
 
     jQuery('#spExpCategoryHint').text(chosen
         ? 'The form below now asks only what this kind of experience needs.'
         : 'Choose one and we will only ask what it needs.');
+
+    // After the sections, which have just re-enabled everything they show.
+    spToggleOspServices();
+}
+
+// What the others provide is asked only once others are said to be involved,
+// as the app does. Hidden means not posted, so unticking the switch does not
+// wipe the services already recorded.
+function spToggleOspServices() {
+    var practicalShown = !jQuery('#spSecPractical').closest('.accordion-item').hasClass('d-none');
+    var shown = practicalShown && jQuery('#spOspsInvolved').is(':checked');
+    jQuery('#spOspServicesGroup').toggleClass('d-none', !shown)
+        .find('input').prop('disabled', !shown);
 }
 
 // ── Modal ───────────────────────────────────────────────────────────────
@@ -962,6 +987,8 @@ function spOpenExperience(row) {
     jQuery('#spSlabRows').empty();
     jQuery('#spRoomRates').empty();
     jQuery('#spAddons').empty();
+    // Boxes kept for the last listing's retired service types are its own.
+    jQuery('#spOspServices .sp-osp-retired').remove();
     spSlabCounter = 0;
     jQuery('#spExpRejected').addClass('d-none');
     jQuery('#spExpLiveEdit').addClass('d-none');
@@ -986,7 +1013,24 @@ function spOpenExperience(row) {
             }
         });
 
-        jQuery.each(['best_seasons', 'available_months', 'restricted_months'], function(n, key) {
+        // A service type HCT has since taken off the list is still this
+        // listing's: it gets a box of its own so it shows ticked, and saving
+        // does not drop it unseen.
+        jQuery.each(row.osp_services || [], function(n, service) {
+            var known = jQuery('#spOspServices input').filter(function() {
+                return this.value === String(service);
+            }).length;
+            if (known) return;
+            var id = 'spOspRetired' + n;
+            jQuery('#spOspServices').append(
+                '<div class="form-check sp-osp-retired">' +
+                    '<input class="form-check-input" type="checkbox" name="osp_services[]" value="' + spEsc(service) + '" id="' + id + '">' +
+                    '<label class="form-check-label small" for="' + id + '">' + spEsc(service) + '</label>' +
+                '</div>'
+            );
+        });
+
+        jQuery.each(['best_seasons', 'available_months', 'restricted_months', 'unavailable_months', 'osp_services'], function(n, key) {
             var values = row[key] || [];
             jQuery('#spExpForm [name="' + key + '[]"]').each(function() {
                 jQuery(this).prop('checked', jQuery.inArray(jQuery(this).val(), values.map(String)) !== -1);
@@ -1011,15 +1055,6 @@ function spOpenExperience(row) {
             el.find('[data-key=price]').val(addon.price);
             el.find('[data-key=price_unit]').val(addon.price_unit);
             jQuery('#spAddons').append(el);
-        });
-
-        // These two are stored as JSON, so the raw value would render as
-        // "[object Object]" through the generic field loop above.
-        jQuery.each(['osp_services', 'seasonal_price_variation'], function(n, key) {
-            var value = row[key];
-            jQuery('#spExpForm [name="' + key + '"]').val(
-                value ? JSON.stringify(value, null, 2) : ''
-            );
         });
 
         // File inputs cannot be pre-filled - show what is already stored so the
@@ -1122,6 +1157,7 @@ jQuery(function() {
     });
 
     jQuery(document).on('change', '#spExpCategory', spApplyCategory);
+    jQuery(document).on('change', '#spOspsInvolved', spToggleOspServices);
 
     // ── Repeaters: room prices and add-ons ──────────────────────────────
     function spAddRow(listSel, tplSel) {
@@ -1217,13 +1253,24 @@ jQuery(function() {
         if (asDraft) data.append('save_as_draft', 1);
         spAppendPhotoChoices(data);
 
-        // Drop anything belonging to a section this category does not use. The
-        // server leaves untouched whatever it is not sent, so a stay never
-        // destroys an itinerary it simply has no place for.
-        jQuery('#spExpAccordion .accordion-item.d-none').find('[name]').each(function() {
-            var name = jQuery(this).attr('name');
-            if (name) data.delete(name.replace('[]', ''));
+        // Sections this category does not use are already out of the FormData:
+        // spApplyCategory disables their fields. The server leaves untouched
+        // whatever it is not sent, so a stay never destroys an itinerary it
+        // simply has no place for.
+
+        // A set of boxes with none ticked posts nothing, which the server
+        // reads as "not sent" and so kept the old ticks. One blank entry says
+        // "none" instead; the server drops blanks before it checks the rest.
+        jQuery.each(['best_seasons', 'available_months', 'restricted_months', 'unavailable_months', 'osp_services'], function(n, key) {
+            var boxes = jQuery('#spExpForm [name="' + key + '[]"]:enabled');
+            if (boxes.length && !boxes.filter(':checked').length) data.append(key + '[]', '');
         });
+        // The same for a list left with no rows. Price tiers are plain inputs,
+        // so an emptied list is simply absent.
+        if (!jQuery('#spSecCost').closest('.accordion-item').hasClass('d-none')
+            && !jQuery('#spSlabRows .sp-slab-row').length) {
+            data.append('price_slabs[0]', '');
+        }
 
         // Unchecked boxes post nothing; send an explicit 0 so clearing sticks.
         jQuery('#spExpForm input[type=checkbox]').each(function() {
@@ -1235,20 +1282,26 @@ jQuery(function() {
 
         // Repeaters are not plain inputs, so they are gathered by hand - and
         // only when their section applies.
+        // A shown list with nothing in it goes up as one blank entry, so that
+        // removing the last row removes it on the server too.
         if (!jQuery('#spSecRooms').closest('.accordion-item').hasClass('d-none')) {
-            spRepeaterRows('.sp-room-rate', 'price').forEach(function(r, i) {
+            var rates = spRepeaterRows('.sp-room-rate', 'price');
+            rates.forEach(function(r, i) {
                 data.append('room_rates[' + i + '][occupancy]', r.occupancy || '');
                 data.append('room_rates[' + i + '][meal_plan]', r.meal_plan || '');
                 data.append('room_rates[' + i + '][price]', r.price || '');
             });
+            if (!rates.length) data.append('room_rates[0]', '');
         }
         if (!jQuery('#spSecAddons').closest('.accordion-item').hasClass('d-none')) {
-            spRepeaterRows('.sp-addon', 'name').forEach(function(r, i) {
+            var addons = spRepeaterRows('.sp-addon', 'name');
+            addons.forEach(function(r, i) {
                 data.append('addons[' + i + '][name]', r.name || '');
                 data.append('addons[' + i + '][description]', r.description || '');
                 data.append('addons[' + i + '][price]', r.price || '');
                 data.append('addons[' + i + '][price_unit]', r.price_unit || '');
             });
+            if (!addons.length) data.append('addons[0]', '');
         }
 
         jQuery.ajax({

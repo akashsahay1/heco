@@ -73,11 +73,15 @@ class ProviderController extends Controller
         $result = $this->ajax('update_sp_profile', $this->only($request, [
             'name', 'contact_person', 'email', 'phone_1', 'phone_2', 'address',
             'bank_name', 'bank_ifsc', 'bank_account_name', 'bank_account_number', 'upi',
-            'services_offered', 'accommodation_categories', 'vehicle_types',
-            'guide_types', 'activity_types',
+            // What they offer is read off their rate card, not sent from here.
             // The picture itself travels in the file bag, not here; this is the
             // flag that clears one.
             'remove_photo',
+            // A regional partner's competences. The handler keeps them only
+            // for an HRP, and work experience only when the save carries it,
+            // so a save that leaves them out changes nothing.
+            'education_level', 'education_notes', 'english_level',
+            'computer_skill_level', 'work_experience', 'causes_note', 'community_note',
         ]), $request);
 
         if ($result->getStatusCode() !== 200) {
@@ -121,33 +125,45 @@ class ProviderController extends Controller
 
     public function savePricing(Request $request): JsonResponse
     {
-        return $this->ajax('save_sp_pricing', $this->only($request, [
-            'id', 'service_type', 'category', 'description', 'unit', 'price', 'notes',
-            'room_category', 'comfort_tier', 'total_rooms', 'default_occupancy', 'meal_plan',
-            'vehicle_type', 'vehicle_capacity', 'driver_allowance', 'distance_km',
-            'vehicle_make_model', 'vehicle_registration_no', 'vehicle_year',
-            'vehicle_photos_keep', 'driver_included', 'fuel_tolls_extra',
-            'min_group', 'max_group', 'specialties', 'is_active',
-            // The fields the client's service forms ask for. Anything not
-            // listed here is dropped in silence, so a rate saved from the app
-            // came back with every one of these empty.
-            'ac_available', 'ac_extra_cost', 'vehicle_count',
-            'price_per_km_plains', 'price_per_km_hills',
-            'speaks_english', 'languages', 'wage_multi_day',
-            'is_certified', 'has_first_aid',
-            'rental_item', 'security_deposit',
-            'latitude', 'longitude', 'guest_capacity', 'seasonality_notes',
-            'photos_keep',
-            // Optional extras alongside the rate — an extra bed, an airport
-            // pickup. Uploaded files travel outside this list.
-            'addons',
-            // Keeps a rate the member has not finished: no review, no
-            // trip can quote it, and the boxes it still wants come back
-            // in the answer. Not in this list it was dropped in silence
-            // and every draft from the app saved as a submission.
-            'as_draft',
-        ]), $request); // forward uploaded `vehicle_photos[]` files
+        return $this->ajax('save_sp_pricing', $this->only($request, self::RATE_FIELDS), $request); // forward uploaded `vehicle_photos[]` files
     }
+
+    /**
+     * Several rates in one go, all saved or none: a stay's tiers, each its own
+     * row. What travels beside `rows` is shared by every row.
+     */
+    public function savePricingRows(Request $request): JsonResponse
+    {
+        return $this->ajax('save_sp_pricing_rows', $this->only($request, [...self::RATE_FIELDS, 'rows']), $request);
+    }
+
+    /** What a rate may carry from the app. */
+    private const RATE_FIELDS = [
+        'id', 'service_type', 'category', 'description', 'unit', 'price', 'notes',
+        'room_category', 'comfort_tier', 'total_rooms', 'default_occupancy', 'meal_plan',
+        'vehicle_type', 'vehicle_capacity', 'driver_allowance', 'distance_km',
+        'vehicle_make_model', 'vehicle_registration_no', 'vehicle_year',
+        'vehicle_photos_keep', 'driver_included', 'fuel_tolls_extra',
+        'min_group', 'max_group', 'specialties', 'is_active',
+        // The fields the client's service forms ask for. Anything not
+        // listed here is dropped in silence, so a rate saved from the app
+        // came back with every one of these empty.
+        'ac_available', 'ac_extra_cost', 'vehicle_count',
+        'price_per_km_plains', 'price_per_km_hills',
+        'speaks_english', 'languages', 'wage_multi_day',
+        'is_certified', 'has_first_aid',
+        'rental_item', 'security_deposit',
+        'latitude', 'longitude', 'guest_capacity', 'seasonality_notes',
+        'photos_keep',
+        // Optional extras alongside the rate — an extra bed, an airport
+        // pickup. Uploaded files travel outside this list.
+        'addons',
+        // Keeps a rate the member has not finished: no review, no
+        // trip can quote it, and the boxes it still wants come back
+        // in the answer. Not in this list it was dropped in silence
+        // and every draft from the app saved as a submission.
+        'as_draft',
+    ];
 
     public function deletePricing(int $id): JsonResponse
     {

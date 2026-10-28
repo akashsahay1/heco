@@ -215,12 +215,18 @@ class HctController extends Controller
         $activityUnits           = SystemList::ofType("activity_unit")->get();
         $mealPlans               = SystemList::ofType("meal_plan")->get();
         $roomCategories          = SystemList::ofType("room_category")->get();
+        // A regional partner's competences, from the same lists signup and the
+        // partner's own profile offer, so a value set here is one they can see.
+        $educationLevels         = SystemList::ofType("education_level")->get();
+        $englishLevels           = SystemList::ofType("english_level")->get();
+        $computerSkillLevels     = SystemList::ofType("computer_skill_level")->get();
         return view("admin.providers.edit", compact(
             "provider", "regions",
             "serviceTypes", "accommodationCategories", "vehicleTypes", "guideTypes", "activityTypes",
             "experienceCategories", "serviceCategories",
             "occupancyUnits", "roomOccupancies", "transportUnits", "activityUnits",
-            "mealPlans", "roomCategories"
+            "mealPlans", "roomCategories",
+            "educationLevels", "englishLevels", "computerSkillLevels"
         ));
     }
 

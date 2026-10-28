@@ -292,14 +292,17 @@
                 <div class="row g-3">
                     <div class="col-md-3">
                         <label class="form-label small text-muted">Status</label>
+                        {{-- Every status, as on the edit page. With only three on
+                             offer a banned or hidden provider read as Approved,
+                             and saving the notes quietly lifted the ban. --}}
                         <select class="form-select form-select-sm custom-select" id="editProviderStatus" data-id="{{ $provider->id }}">
-                            <option value="approved" @selected($provider->status === 'approved')>Approved</option>
-                            <option value="pending" @selected($provider->status === 'pending')>Pending</option>
-                            <option value="rejected" @selected($provider->status === 'rejected')>Rejected</option>
+                            @foreach(\App\Models\ServiceProvider::STATUS_LABELS as $value => $label)
+                                <option value="{{ $value }}" @selected($provider->status === $value)>{{ $label }}</option>
+                            @endforeach
                         </select>
                     </div>
                     <div class="col-md-9">
-                        <label class="form-label small text-muted">Internal Notes</label>
+                        <label class="form-label small text-muted">About you</label>
                         <textarea class="form-control form-control-sm" id="editProviderNotes" rows="2">{{ $provider->notes }}</textarea>
                     </div>
                 </div>
@@ -521,9 +524,9 @@ $(document).on('click', '#saveProviderBtn', function() {
         notes: $('#editProviderNotes').val()
     }, function() {
         window.location.reload();
-    }, function() {
+    }, function(xhr) {
         btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Save Changes');
-        alert('Failed to save. Try again.');
+        showAlert((xhr.responseJSON || {}).error || 'Failed to save. Try again.', 'danger');
     });
 });
 

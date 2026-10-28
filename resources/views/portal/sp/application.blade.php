@@ -131,7 +131,9 @@
                             <input type="text" class="form-control" name="name" placeholder="e.g. Tirthan Eco Retreat">
                             <div class="form-text">Left empty, we will use your own name.</div>
                         </div>
-                        <div class="col-md-5">
+                        {{-- Only for a business, like the fields around it. Shown to
+                             someone who said No, it was chosen and then stored. --}}
+                        <div class="col-md-5 js-business-only" hidden>
                             <label class="form-label">Business type</label>
                             <select class="form-select custom-select" name="business_type">
                                 <option value="">Choose a type...</option>
@@ -288,7 +290,7 @@
                 <div class="sp-form-section">
                     <h5>Verify your identity <span class="text-muted fw-normal">(optional)</span></h5>
                     <p class="text-muted small">
-                        Upload clear photos or PDFs. Max 10MB each. You can also add these later.
+                        Upload clear photos or PDFs, up to 2 MB each. You can also add these later.
                     </p>
                     @foreach($documentTypes as $dt)
                         <div class="doc-row" data-label="{{ $dt->name }}">
@@ -297,7 +299,7 @@
                                 <span>{{ $dt->name }}</span>
                             </div>
                             <input type="file" class="form-control js-doc-file"
-                                accept=".pdf,.jpg,.jpeg,.png,.webp">
+                                accept=".pdf,.jpg,.jpeg,.png">
                         </div>
                     @endforeach
                 </div>
@@ -378,7 +380,12 @@ jQuery(function() {
     jQuery(document).on('change', '.js-has-business', function() {
         var yes = jQuery('.js-has-business:checked').val() === '1';
         jQuery('.js-business-only').prop('hidden', !yes);
-        if (!yes) { jQuery('.js-business-only').find('input').val(''); }
+        if (!yes) {
+            jQuery('.js-business-only').find('input, select').val('');
+            jQuery('.js-business-only select.custom-select').each(function() {
+                if (window.buildCustomDropdown) window.buildCustomDropdown(this);
+            });
+        }
     });
 
     jQuery(document).on('click', '#workExpAdd', function() {
@@ -451,6 +458,8 @@ jQuery(function() {
         return rows;
     }
 
+    var DOC_MAX_BYTES = 2 * 1024 * 1024;
+
     function validate(d) {
         jQuery('#sp-alert').empty();
         if (!chosenTypes().length) return warn('Please choose at least one thing you would like to do with HECO.');
@@ -473,6 +482,15 @@ jQuery(function() {
             && !jQuery('input[name="service_categories[]"]:checked').length) {
             return warn('Select at least one service you supply.');
         }
+        // The server takes a document up to 2 MB (AuthService). Checked here as
+        // the app checks it, so a large scan is named before the whole
+        // application is sent and refused.
+        var tooBig = null;
+        jQuery('.doc-row').each(function() {
+            var file = jQuery(this).find('.js-doc-file')[0].files[0];
+            if (!tooBig && file && file.size > DOC_MAX_BYTES) tooBig = jQuery(this).data('label');
+        });
+        if (tooBig) return warn(tooBig + ' is larger than 2 MB. Please choose a smaller photo or PDF.');
         if (!jQuery('#acceptTerms').is(':checked')) return warn('Please accept the partner terms to continue.');
         return true;
     }

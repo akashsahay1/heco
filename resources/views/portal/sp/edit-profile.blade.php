@@ -63,16 +63,16 @@
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
                                 <label class="form-label small text-muted">Email</label>
-                                <input type="email" name="email" class="form-control form-control-sm" value="{{ $provider->email }}">
+                                <input type="email" name="email" class="form-control form-control-sm" value="{{ $provider->email }}" required>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small text-muted">Phone 1</label>
-                                <input type="text" name="phone_1" class="form-control form-control-sm" value="{{ $provider->phone_1 }}">
+                                <input type="text" name="phone_1" class="form-control form-control-sm" value="{{ $provider->phone_1 }}" maxlength="20" required>
                             </div>
                         </div>
                         <div class="mb-2">
                             <label class="form-label small text-muted">Phone 2</label>
-                            <input type="text" name="phone_2" class="form-control form-control-sm" value="{{ $provider->phone_2 }}">
+                            <input type="text" name="phone_2" class="form-control form-control-sm" value="{{ $provider->phone_2 }}" maxlength="20">
                         </div>
                         <div class="mb-2">
                             <label class="form-label small text-muted">Address</label>
@@ -116,44 +116,32 @@
                     </div>
                 </div>
 
-                {{-- Capabilities describe what a provider sells, so a partner who
-                     sells nothing does not need them. --}}
-                @if($provider->isHost() || $provider->suppliesServices())
+                {{-- What a partner offers, read off their rate card: only rates
+                     HCT has approved and that are switched on. Not typed here,
+                     where it used to say one thing beside rates saying another. --}}
+                @if($provider->suppliesServices())
                 <div class="card">
                     <div class="card-body">
-                        <h6 class="border-bottom pb-2"><i class="bi bi-gear"></i> Capabilities</h6>
-
-                        @php
-                            $caps = [
-                                ['name' => 'services_offered',         'label' => 'Services Offered',         'options' => $serviceTypes,            'current' => $provider->services_offered ?? []],
-                                ['name' => 'accommodation_categories', 'label' => 'Accommodation Categories', 'options' => $accommodationCategories, 'current' => $provider->accommodation_categories ?? []],
-                                ['name' => 'vehicle_types',            'label' => 'Vehicle Types',            'options' => $vehicleTypes,            'current' => $provider->vehicle_types ?? []],
-                                ['name' => 'guide_types',              'label' => 'Guide Types',              'options' => $guideTypes,              'current' => $provider->guide_types ?? []],
-                                ['name' => 'activity_types',           'label' => 'Activity Types',           'options' => $activityTypes,           'current' => $provider->activity_types ?? []],
-                            ];
-                        @endphp
-
-                        @foreach($caps as $idx => $cap)
-                            <div class="{{ $idx === count($caps) - 1 ? 'mb-0' : 'mb-2' }}">
-                                <label class="form-label small text-muted">{{ $cap['label'] }}</label>
-                                <div class="ms-dropdown" data-name="{{ $cap['name'] }}">
-                                    <button type="button" class="form-select form-select-sm text-start ms-trigger">
-                                        <span class="ms-label text-muted">Select options...</span>
-                                    </button>
-                                    <div class="ms-panel d-none">
-                                        @forelse($cap['options'] as $opt)
-                                            <label class="ms-option">
-                                                <input type="checkbox" value="{{ $opt->name }}"
-                                                       {{ in_array($opt->name, $cap['current'] ?: [], true) ? 'checked' : '' }}>
-                                                <span>{{ $opt->name }}</span>
-                                            </label>
-                                        @empty
-                                            <div class="ms-empty">No options available — please contact HECO support.</div>
-                                        @endforelse
-                                    </div>
+                        <h6 class="border-bottom pb-2"><i class="bi bi-box-seam"></i> What You Offer</h6>
+                        @foreach([
+                            'Services Offered' => $provider->services_offered ?? [],
+                            'Comfort Tiers Offered' => $provider->accommodation_categories ?? [],
+                            'Vehicle Types' => $provider->vehicle_types ?? [],
+                            'Guide Types' => $provider->guide_types ?? [],
+                            'Activity Types' => $provider->activity_types ?? [],
+                        ] as $label => $values)
+                            <div class="mb-2">
+                                <label class="form-label small text-muted">{{ $label }}</label>
+                                <div class="form-control form-control-sm bg-light">
+                                    @forelse($values as $value)
+                                        <span class="badge bg-secondary me-1">{{ $value }}</span>
+                                    @empty
+                                        <span class="text-muted small">None yet</span>
+                                    @endforelse
                                 </div>
                             </div>
                         @endforeach
+                        <small class="text-muted d-block"><i class="bi bi-info-circle me-1"></i>Taken from your approved rates. Add or change a rate under Services, Rooms &amp; Pricing to change these.</small>
                     </div>
                 </div>
                 @endif
@@ -260,7 +248,7 @@
                                 @foreach((array) $provider->documents as $doc)
                                     <li class="mb-1">
                                         <i class="bi bi-paperclip me-1"></i>
-                                        <a href="{{ $doc['url'] ?? '#' }}" target="_blank" rel="noopener">
+                                        <a href="{{ $doc['path'] ?? '#' }}" target="_blank" rel="noopener">
                                             {{ $doc['label'] ?? ($doc['original_name'] ?? 'Document') }}
                                         </a>
                                     </li>
@@ -385,12 +373,7 @@ jQuery('#spProfileForm').on('submit', function(e) {
     btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Saving...');
 
     var data = {
-        update_sp_profile: 1,
-        services_offered:         getDdValues('services_offered'),
-        accommodation_categories: getDdValues('accommodation_categories'),
-        vehicle_types:            getDdValues('vehicle_types'),
-        guide_types:              getDdValues('guide_types'),
-        activity_types:           getDdValues('activity_types')
+        update_sp_profile: 1
     };
     // `select` belongs here too — the competence levels are dropdowns, and
     // leaving it out silently dropped them from the payload.
@@ -411,7 +394,9 @@ jQuery('#spProfileForm').on('submit', function(e) {
         });
         if (filled) roles.push(row);
     });
-    if (jQuery('#workExpRows').length) data.work_experience = roles;
+    // Every row removed still has to say so: a form post drops an empty list,
+    // and the server read that as "not mentioned" and kept the last row.
+    if (jQuery('#workExpRows').length) data.work_experience = roles.length ? roles : '';
 
     // A chosen photo turns the whole payload into FormData — arrays keep their
     // bracket notation so PHP still reads them as arrays.
@@ -438,36 +423,44 @@ jQuery('#spProfileForm').on('submit', function(e) {
     ajaxPost(data, function() {
         showAlert('Profile updated successfully.', 'success');
         setTimeout(function() { window.location.href = '{{ route("sp.dashboard") }}'; }, 800);
-    }, function() {
+    }, function(xhr) {
         btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Save Changes');
-        showAlert('Failed to save. Please try again.', 'danger');
+        // The server names what is wrong (a blank phone, an email in use).
+        showAlert((xhr.responseJSON || {}).error || 'Failed to save. Please try again.', 'danger');
+    });
+});
+
+/**
+ * One document at a time, the way the app does it. The same add_sp_document
+ * the app calls, so a file filed from either lands in the same place under
+ * the same rules.
+ */
+var SP_DOC_MAX_BYTES = 2 * 1024 * 1024;
+jQuery(document).on('click', '#spDocAdd', function() {
+    var file = jQuery('#spDocFile')[0] && jQuery('#spDocFile')[0].files[0];
+    if (!file) { showAlert('Choose a file first.', 'warning'); return; }
+    // Said before the upload rather than after it: the server refuses
+    // anything over 2 MB, and sending it first only made the member wait
+    // to be told.
+    if (file.size > SP_DOC_MAX_BYTES) {
+        showAlert('That file is ' + (file.size / 1048576).toFixed(1) + ' MB. A document can be up to 2 MB.', 'warning');
+        return;
+    }
+    var fd = new FormData();
+    fd.append('add_sp_document', 1);
+    fd.append('documents[]', file);
+    fd.append('document_labels[]', jQuery('#spDocLabel').val());
+    jQuery.ajax({
+        url: '/ajax', method: 'POST', data: fd,
+        processData: false, contentType: false, skipGlobalError: true,
+        headers: { 'X-CSRF-TOKEN': jQuery('meta[name="csrf-token"]').attr('content') }
+    }).done(function() {
+        showAlert('Document uploaded.', 'success');
+        location.reload();
+    }).fail(function(xhr) {
+        var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not upload it.') : 'Could not upload it.';
+        showAlert(msg, 'danger');
     });
 });
 </script>
-
-    /**
-     * One document at a time, the way the app does it. The same add_sp_document
-     * the app calls, so a file filed from either lands in the same place under
-     * the same rules.
-     */
-    jQuery(document).on('click', '#spDocAdd', function() {
-        var file = jQuery('#spDocFile')[0] && jQuery('#spDocFile')[0].files[0];
-        if (!file) { showAlert('Choose a file first.', 'warning'); return; }
-        var fd = new FormData();
-        fd.append('add_sp_document', 1);
-        fd.append('documents[]', file);
-        fd.append('document_labels[]', jQuery('#spDocLabel').val());
-        jQuery.ajax({
-            url: '/ajax', method: 'POST', data: fd,
-            processData: false, contentType: false,
-            headers: { 'X-CSRF-TOKEN': jQuery('meta[name="csrf-token"]').attr('content') }
-        }).done(function() {
-            showAlert('Document uploaded.', 'success');
-            location.reload();
-        }).fail(function(xhr) {
-            var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not upload it.') : 'Could not upload it.';
-            showAlert(msg, 'danger');
-        });
-    });
-
 @endsection

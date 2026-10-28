@@ -175,26 +175,71 @@ class GroqService
 
         $spoken = [];
         $silent = 0;
+        $kept = [];
+        $dropped = [];
 
         foreach ($segments as $segment) {
-            // Whisper's own threshold for "there was no speech here". Real
-            // speech, even quiet or accented, sits far below it — a phone held
-            // at arm's length in a noisy yard still comes back under 0.2.
-            if ((float) ($segment['no_speech_prob'] ?? 0.0) > 0.6) {
+            $quiet = (float) ($segment['no_speech_prob'] ?? 0.0);
+            $sure = (float) ($segment['avg_logprob'] ?? 0.0);
+            $said = trim((string) ($segment['text'] ?? ''));
+
+            // Whisper's own threshold for "there was no speech here", and the
+            // marks of something it made up rather than heard.
+            //
+            // The numbers alone cannot tell the two apart. A fan came back as
+            // "Thank you for watching." at no_speech 0.13 and confidence -0.52,
+            // and a member saying how many seats their car has, four times
+            // over, came back at no_speech 0.71 to 0.84 and still sure of the
+            // words (-0.37 to -0.8): every one of those was thrown away. So the
+            // numbers decide only as Whisper itself does, silence being BOTH
+            // likely no speech AND words it is unsure of, and the rest is
+            // caught by what invention looks like: a line from the end of a
+            // video, one word said over and over, or no letters at all.
+            // Somebody talking across the room is the app's to leave out.
+            if (($quiet > 0.6 && $sure < -1.0) || $this->madeUp($said)) {
                 $silent++;
+                $dropped[] = [$quiet, $sure];
                 continue;
             }
-            $spoken[] = trim((string) ($segment['text'] ?? ''));
+            $spoken[] = $said;
+            $kept[] = [$quiet, $sure];
         }
 
-        if ($silent > 0) {
-            Log::info('Groq transcription: silence discarded', [
-                'segments' => count($segments),
-                'silent' => $silent,
-            ]);
-        }
+        // Numbers only, never the words: what real phones send, so the line
+        // above can be set from evidence rather than from one test.
+        Log::info('Groq transcription: heard', [
+            'segments' => count($segments),
+            'discarded' => $silent,
+            'kept_no_speech_max' => $kept ? round(max(array_column($kept, 0)), 2) : null,
+            'kept_logprob_min' => $kept ? round(min(array_column($kept, 1)), 2) : null,
+            'dropped' => array_map(fn ($d) => [round($d[0], 2), round($d[1], 2)], $dropped),
+        ]);
 
         return trim(implode(' ', array_filter($spoken)));
+    }
+
+    /**
+     * What Whisper says when there was nothing to hear.
+     *
+     * It was trained on videos, so an empty room comes back as the end of
+     * one, and noise read as Hindi comes back as a single word twice over
+     * ("प्रभाव प्रभाव"). Nobody filling in a listing says either.
+     */
+    private function madeUp(string $said): bool
+    {
+        if (! preg_match('/\p{L}/u', $said)) {
+            return true;
+        }
+
+        $plain = trim(preg_replace('/[^\p{L}\p{M}\s]+/u', ' ', mb_strtolower($said)));
+
+        if (preg_match('/^(thank you|thanks)( so much| very much)? for watching|please subscribe|like and subscribe|see you (in the )?next (time|video)|subtitles by|amara\s*org/u', $plain)) {
+            return true;
+        }
+
+        $words = preg_split('/\s+/u', $plain, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return count($words) >= 2 && count(array_unique($words)) === 1;
     }
 
     /**

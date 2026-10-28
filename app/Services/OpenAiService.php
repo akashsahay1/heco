@@ -86,7 +86,12 @@ class OpenAiService
             'model' => $model,
             'messages' => $messages,
             'temperature' => $options['temperature'] ?? 0.7,
-            'max_completion_tokens' => $options['max_tokens'] ?? 4096,
+            // Never below 4096. This model thinks before it writes and the
+            // thinking is spent out of this budget: the voice prompts ask for
+            // 16 to 1024, sized for Groq, and here the whole of it went on
+            // thinking and the member's answer came back empty. Only what is
+            // used is charged, so the room costs nothing.
+            'max_completion_tokens' => max((int) ($options['max_tokens'] ?? 4096), 4096),
         ];
 
         if (($options['format'] ?? null) === 'json') {

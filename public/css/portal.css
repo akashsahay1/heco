@@ -7727,6 +7727,7 @@
 
 /* SP dashboard: brand badges & buttons */
 .heco-portal .sp-type-badge {
+    white-space: nowrap;
     background: var(--heco-primary-700, #79a09f);
     color: #fff;
     padding: 7px;

@@ -11,7 +11,7 @@ class PdfService
     public function generateTripItinerary(Trip $trip): \Barryvdh\DomPDF\PDF
     {
         $trip->load([
-            'user', 'tripDays.experiences.experience', 'tripDays.services.serviceProvider',
+            'user', 'tripDays.experiences.experience', 'tripDays.services.serviceProvider', 'tripDays.services.spPricing',
             'tripRegions.region', 'travellerPayments',
         ]);
 

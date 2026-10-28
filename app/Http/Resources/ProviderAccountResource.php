@@ -74,6 +74,10 @@ class ProviderAccountResource
             'vehicle_types' => self::list($provider->vehicle_types),
             'guide_types' => self::list($provider->guide_types),
             'activity_types' => self::list($provider->activity_types),
+            // A regional partner's competences: what HCT reads to place them
+            // on a region. Only an HRP keeps them, so anyone else gets them
+            // blank; the keys are always there so the shape never changes.
+            ...self::competences($provider),
             'bank' => [
                 'bank_name' => $provider->bank_name,
                 'bank_ifsc' => $provider->bank_ifsc,
@@ -122,6 +126,21 @@ class ProviderAccountResource
             'url' => $document['path'] ?? null,
             'original_name' => $document['original_name'] ?? null,
         ], $documents));
+    }
+
+    private static function competences(ServiceProvider $provider): array
+    {
+        $hrp = $provider->isRegionalPartner();
+
+        return [
+            'education_level' => $hrp ? $provider->education_level : null,
+            'education_notes' => $hrp ? $provider->education_notes : null,
+            'english_level' => $hrp ? $provider->english_level : null,
+            'computer_skill_level' => $hrp ? $provider->computer_skill_level : null,
+            'work_experience' => $hrp ? self::list($provider->work_experience) : [],
+            'causes_note' => $hrp ? $provider->causes_note : null,
+            'community_note' => $hrp ? $provider->community_note : null,
+        ];
     }
 
     private static function list(mixed $value): array

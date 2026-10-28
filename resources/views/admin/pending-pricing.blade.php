@@ -44,7 +44,7 @@
 @section('js')
 <script>
 jQuery(function() {
-    var typeIcons = { accommodation: '🛏', transport: '🚙', guide: '👤', activity: '🏔', other: '📦' };
+    var typeIcons = { accommodation: '🛏', transport: '🚙', guide: '👤', activity: '🏔', rental: '🎒', other: '📦' };
     var APPROVAL_FIELDS = [
         ['price', 'Rate'],
         ['category', 'Category'],

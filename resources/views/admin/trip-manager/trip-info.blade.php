@@ -103,7 +103,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Pickup Time</label>
-                                <input type="text" class="form-control form-control-sm" name="pickup_time" placeholder="e.g. 9:00 AM" value="{{ $trip->pickup_time }}">
+                                <input type="time" class="form-control form-control-sm" name="pickup_time" value="{{ $trip->pickup_time ? substr($trip->pickup_time, 0, 5) : '' }}">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Drop Location</label>
@@ -111,7 +111,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Drop Time</label>
-                                <input type="text" class="form-control form-control-sm" name="drop_time" placeholder="e.g. 5:00 PM" value="{{ $trip->drop_time }}">
+                                <input type="time" class="form-control form-control-sm" name="drop_time" value="{{ $trip->drop_time ? substr($trip->drop_time, 0, 5) : '' }}">
                             </div>
                             <div class="col-12">
                                 <label class="form-label small fw-bold">Operations Notes</label>
@@ -379,8 +379,10 @@
                         @if ($hctBuilt)
                         <div class="px-3 pb-2">
                             <label class="form-label small text-muted mb-1" for="tmRpProject">Regenerative Project</label>
-                            {{-- No name: saved on its own when picked, not with the form. --}}
-                            <select class="form-select form-select-sm custom-select" id="tmRpProject">
+                            {{-- No name: saved on its own when picked, not with the form.
+                                 autocomplete off: Firefox otherwise refills a pick the
+                                 server refused, and it reads as saved after a refresh. --}}
+                            <select class="form-select form-select-sm custom-select" id="tmRpProject" autocomplete="off">
                                 <option value="">None (no RP margin)</option>
                                 @foreach($rpProjects as $rp)
                                     <option value="{{ $rp->id }}" @selected($trip->regenerative_project_id == $rp->id)>{{ $rp->name }}</option>

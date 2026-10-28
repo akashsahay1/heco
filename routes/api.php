@@ -65,6 +65,7 @@ Route::prefix('v1')->group(function () {
 
             Route::get('pricing', [ProviderController::class, 'pricing']);
             Route::post('pricing', [ProviderController::class, 'savePricing']);
+            Route::post('pricing/rows', [ProviderController::class, 'savePricingRows']);
             Route::delete('pricing/{id}', [ProviderController::class, 'deletePricing'])->whereNumber('id');
 
             Route::get('availability', [ProviderController::class, 'availability']);

@@ -1351,6 +1351,9 @@ body.admin-login-page {
 /* Service-type pill on the SP pricing table. */
 .heco-admin .sp-type-pill {
     display: inline-block;
+    /* Icon and name on one line: "Accommodation" is wider than the column,
+       and wrapping left the icon alone above it. */
+    white-space: nowrap;
     padding: 2px 8px;
     border-radius: 12px;
     background: var(--heco-primary-50, #eef5f5);
