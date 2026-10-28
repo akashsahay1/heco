@@ -227,7 +227,11 @@ class GroqService
      */
     private function madeUp(string $said): bool
     {
-        if (! preg_match('/\p{L}/u', $said)) {
+        // Nothing but marks ("...", a music note) is invention. A number is
+        // not: asked what year the car is, "2018" is the whole answer, in
+        // English and in Hindi alike, and treating a line with no letters as
+        // made up threw every such answer away.
+        if (! preg_match('/[\p{L}\p{N}]/u', $said)) {
             return true;
         }
 
