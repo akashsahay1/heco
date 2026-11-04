@@ -444,31 +444,13 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                             <div class="detail-card">
                                 <div class="detail-card-header"><i class="bi bi-receipt"></i> Pricing Summary</div>
                                 <div class="detail-card-body" id="pricingSummary">
-                                    {{-- Per-experience base price (per person), read-only. Populated by
-                                         loadTripPricing from p.experiences. The amounts are NOT added to the
-                                         total - each experience's cost is already split across the component
-                                         rows below (Accommodation/Transport/Guide/Activities). --}}
-                                    {{-- Experiences bundle (slab-priced) + provider add-on
-                                         lines (hotel / airport↔hotel transport / guide),
-                                         each shown at its marked-up price. Zero rows hide.
-                                         Rendered by loadPricing(). --}}
-                                    <div id="prExperiences"></div>
-                                    <div class="pricing-row" id="prRowAccommodation"><span>Accommodation <small class="text-muted price-detail">hotel</small></span><span id="prAccommodation"></span></div>
-                                    <div class="pricing-row" id="prRowTransport"><span>Transport @unless ($hctBuilt)<small class="text-muted price-detail">airport/station ↔ hotel</small>@endunless</span><span id="prTransport"></span></div>
-                                    <div class="pricing-row" id="prRowGuide"><span>Guide</span><span id="prGuide"></span></div>
-                                    <div class="pricing-row" id="prRowActivities"><span>Activities <small class="text-muted price-detail" id="prActivitiesNote"></small></span><span id="prActivities"></span></div>
-                                    <div class="pricing-row" id="prRowExtraDays"><span>Extra Days <small class="text-muted price-detail" id="prExtraDaysNote"></small></span><span id="prExtraDays"></span></div>
-                                    <div class="pricing-row" id="prRowOther"><span>Other</span><span id="prOther"></span></div>
-                                    {{-- Only appears when somebody has no one to share a room with. --}}
-                                    <div class="pricing-row" id="prRowSingleSupplement"><span>Single Supplement <small class="text-muted price-detail" id="prSingleSupplementNote"></small></span><span id="prSingleSupplement"></span></div>
-                                    <div class="pricing-row pricing-subtotal"><span><strong>Trip Cost</strong></span><span id="prTripCost"></span></div>
-                                    <div class="pricing-row" id="prRowServiceCharges"><span>Service charges</span><span id="prServiceCharges"></span></div>
-                                    <div class="pricing-row"><span>GST <small class="text-muted price-detail" id="prGSTNote"></small></span><span id="prGST"></span></div>
+                                    {{-- Three figures, the same three the PDF carries: what the
+                                         trip costs (service charges included), the GST on it, and the
+                                         two together. What each part costs, and the margins, are
+                                         HECO's working (feedback, 2026-10-28). --}}
+                                    <div class="pricing-row"><span><strong>Trip Cost</strong></span><span id="prTripCost"></span></div>
+                                    <div class="pricing-row"><span>GST</span><span id="prGST"></span></div>
                                     <div class="pricing-row total"><span>Final Price</span><span id="prFinal"></span></div>
-                                    {{-- Informational only: the share of the price that supports
-                                         the regenerative project. Not an added charge. --}}
-                                    {{-- Hidden for now on the client's word; RP sits inside Service charges. --}}
-                                    <div class="pricing-row rp-info" id="prRowRP" style="display: none;"><span class="text-muted"><i class="bi bi-tree"></i> Regenerative contribution <small class="price-detail" id="prRPNote"></small></span><span id="prRP" class="text-muted"></span></div>
                                 </div>
                             </div>
 
@@ -1796,6 +1778,12 @@ jQuery(function() {
     }
 
     function renderTimelineData(resp) {
+        // HECO is still building this trip. Stop here: an empty journey with
+        // experiences on it would otherwise ask the AI to write one.
+        if (resp.hidden) {
+            jQuery('#timelineContainer').html('<p class="text-center heco-tl-empty-text">HECO is preparing your itinerary. It will appear here as soon as it is ready.</p>');
+            return;
+        }
         var days = resp.days || [];
 
         // Filter out truly empty days (keep days with experiences, services, description, title, or a day_type)
@@ -2135,10 +2123,6 @@ jQuery(function() {
             if (!isFinite(m) || m === 1) return '';
             return ' (×' + m.toFixed(m < 1 ? 2 : 1).replace(/\.0+$/, '') + ')';
         }
-        function fmtPct(p) {
-            p = parseFloat(p) || 0;
-            return p > 0 ? '(' + (Math.round(p * 100) / 100) + '%)' : '';
-        }
         function updatePricedOptions($select, base) {
             base = parseFloat(base) || 0;
             $select.find('option').each(function() {
@@ -2157,61 +2141,17 @@ jQuery(function() {
         }
 
         ajaxPost({ get_trip_pricing: 1, trip_id: tripId }, function(resp) {
+            if (resp.hidden) {
+                jQuery('#prTripCost, #prGST, #prFinal').text('-');
+                jQuery('#paymentCard').addClass('d-none');
+                return;
+            }
             var p = resp.pricing || resp;
 
-            // Experiences bundle - one "Experiences" total (the slab-priced bundle),
-            // with each experience listed beneath at its per-person slab price. This
-            // IS a line in the trip cost (not folded into provider rows).
-            var exps = p.experiences || [];
-            var expCost = Number(p.experience_cost) || 0;
-            if (exps.length || expCost > 0) {
-                var eh = '<div class="pricing-row pricing-subtotal"><span><strong>Experiences</strong></span><span>' + fmtPriceRow(expCost) + '</span></div>';
-                exps.forEach(function(ex) {
-                    eh += '<div class="pricing-row pricing-exp-row">'
-                        + '<span class="text-muted">' + escHtml(ex.name) + '</span>'
-                        + '<span class="text-muted price-detail">' + fmtCurrency(ex.price_per_person, ex.currency || 'INR') + ' / person</span>'
-                        + '</div>';
-                });
-                jQuery('#prExperiences').html(eh);
-            } else {
-                jQuery('#prExperiences').empty();
-            }
-
-            // Provider add-on lines (hotel / airport↔hotel transport / guide) and any
-            // day-level activity/other costs - each already marked up server-side. A row
-            // with a zero amount is hidden to keep the summary clean.
-            function setRow(rowId, valId, amount) {
-                var v = Number(amount) || 0;
-                jQuery('#' + valId).text(fmtPriceRow(v));
-                jQuery('#' + rowId).toggleClass('d-none', v <= 0);
-            }
-            setRow('prRowAccommodation', 'prAccommodation', p.accommodation_cost);
-            setRow('prRowTransport', 'prTransport', p.transport_cost);
-            setRow('prRowGuide', 'prGuide', p.guide_cost);
-            setRow('prRowActivities', 'prActivities', p.activity_cost);
-            setRow('prRowExtraDays', 'prExtraDays', p.extra_day_cost);
-            setRow('prRowOther', 'prOther', p.other_cost);
-            setRow('prRowSingleSupplement', 'prSingleSupplement', p.single_supplement);
-            jQuery('#prSingleSupplementNote').text(
-                Number(p.single_supplement_people) > 0
-                    ? '(' + p.single_supplement_people + ' travelling without a room-mate)' : ''
-            );
-            jQuery('#prTripCost').text(fmtPriceRow(p.total_cost));
-            // The margins, added on top of the trip cost.
-            setRow('prRowServiceCharges', 'prServiceCharges', (parseFloat(p.subtotal) || 0) - (parseFloat(p.total_cost) || 0));
+            // Trip Cost is the price before GST, so the three rows add up.
+            jQuery('#prTripCost').text(fmtPriceRow((parseFloat(p.final_price) || 0) - (parseFloat(p.gst_amount) || 0)));
             jQuery('#prGST').text(fmtPriceRow(p.gst_amount));
             jQuery('#prFinal').text(fmtPriceRow(p.final_price));
-
-            // RP is informational: the part of the service charges above that goes
-            // to the regenerative project. HRP/HCT are never shown on their own.
-            setRow('prRowRP', 'prRP', p.margin_rp_amount);
-            jQuery('#prRPNote').text(fmtPct(p.margin_rp_percent));
-
-            // Detail captions - pricing is per-person by group size (no multipliers).
-            var paxLabel = (p.adults || 1) + (p.children > 0 ? ' adults +' + p.children + ' kids @ 50%' : ' adults');
-            jQuery('#prActivitiesNote').text(' (' + paxLabel + ')');
-            jQuery('#prExtraDaysNote').text(parseFloat(p.extra_day_cost) > 0 ? ' (' + paxLabel + ')' : '');
-            jQuery('#prGSTNote').text(fmtPct(p.gst_percent));
 
             // Balance due is computed server-side in getTripPricing; the frontend
             // only renders it and performs no amount math of its own. balance_due is

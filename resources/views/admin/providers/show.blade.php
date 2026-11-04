@@ -70,6 +70,7 @@
                 <h6 class="border-bottom pb-2"><i class="bi bi-info-circle"></i> Provider Information</h6>
                 <table class="table table-sm table-borderless mb-0">
                     <tr><td class="text-muted w-cell-label-md">Name</td><td><strong>{{ $provider->name ?: '-' }}</strong></td></tr>
+                    <tr><td class="text-muted w-cell-label-md">SP ID</td><td>{{ $provider->sp_code ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Contact Person</td><td>{{ $provider->contact_person ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Email</td><td>{{ $provider->email ?: '-' }}</td></tr>
                     <tr><td class="text-muted">Phone 1</td><td>{{ $provider->phone_1 ?: '-' }}</td></tr>

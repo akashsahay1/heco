@@ -4,7 +4,10 @@
 
 @php
     $regions = \App\Models\Region::where('is_active', 1)->orderBy('name')->get();
-    $serviceTypes = \App\Models\SystemList::ofType('service_type')->get();
+    // The same two lists signup asks from, so a provider added by hand is
+    // described exactly as one who signed up.
+    $experienceCategories = \App\Models\SystemList::ofType('experience_category')->get();
+    $serviceCategories = \App\Models\SystemList::ofType('service_category')->get();
 @endphp
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -12,6 +15,9 @@
     <div class="d-flex gap-2">
         <button type="button" class="btn btn-sm btn-success" id="addProviderBtn">
             <i class="bi bi-person-plus"></i> Add Provider
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-success" id="importProvidersBtn">
+            <i class="bi bi-upload"></i> Import CSV
         </button>
         <div class="heco-filter-sm">
             <select class="form-select form-select-sm custom-select" id="providerTypeFilter">
@@ -69,6 +75,34 @@
 </div>
 
 <div id="providersPagination" class="mt-3"></div>
+
+{{-- Import providers from a CSV (HECO's feedback, 2026-10-28) --}}
+<div class="modal fade" id="importProvidersModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upload"></i> Import providers</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <ol class="small mb-3">
+                    <li><a href="{{ route('hct.providers.import-template') }}"><i class="bi bi-download"></i> Download the template</a> and open it in Excel or Google Sheets.</li>
+                    <li>One provider per row. Every column is required: <code>{{ implode(', ', \App\Services\ProviderImportService::COLUMNS) }}</code>.</li>
+                    <li><strong>region</strong> is one of: {{ \App\Models\Region::where('is_active', true)->orderBy('name')->pluck('name')->join(', ') }}.</li>
+                    <li><strong>service_type</strong> is one of: {{ implode(', ', app(\App\Services\ProviderImportService::class)->serviceTypes()) }} (several may be separated by commas).</li>
+                    <li>Save or download it as <strong>CSV</strong> and choose it below.</li>
+                </ol>
+                <p class="small text-muted">They are added as approved Service Providers, ready to be put on a trip. No email is sent to them. A row already in HECO (same SP ID or email) is reported, not added twice.</p>
+                <input type="file" class="form-control form-control-sm mb-2" id="importProvidersFile" accept=".csv,text/csv">
+                <div id="importProvidersResult"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" id="importProvidersGo"><i class="bi bi-upload"></i> Import</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {{-- Add Provider (manual) --}}
 <div class="modal fade" id="addProviderModal" tabindex="-1" aria-hidden="true">
@@ -133,16 +167,36 @@
                         <label class="form-label">Address</label>
                         <textarea class="form-control" id="ap_address" rows="2"></textarea>
                     </div>
-                    <div class="col-12">
-                        <label class="form-label">Services offered</label>
+                    {{-- What they offer, asked the way signup asks it: a host by the
+                         experiences they host, a supplier by the services they supply,
+                         each only when that role is ticked. A regional partner sells
+                         nothing. This replaced a "Services offered" box that wrote a
+                         column their approved rates now fill, so whatever was ticked
+                         here was overwritten by their first rate. --}}
+                    <div class="col-12 ap-offer" data-ap-for="hlh">
+                        <label class="form-label">Experiences they host <small class="text-muted">(Local Host)</small></label>
                         <div class="d-flex flex-wrap gap-3">
-                            @foreach($serviceTypes as $st)
+                            @foreach($experienceCategories as $c)
                                 <label class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="services_offered[]" value="{{ $st->name }}">
-                                    <span class="form-check-label">{{ $st->name }}</span>
+                                    <input class="form-check-input" type="checkbox" name="ap_experience_categories" value="{{ $c->name }}">
+                                    <span class="form-check-label">{{ $c->name }}</span>
                                 </label>
                             @endforeach
                         </div>
+                    </div>
+                    <div class="col-12 ap-offer" data-ap-for="osp">
+                        <label class="form-label">Services they supply <small class="text-muted">(Service Provider)</small></label>
+                        <div class="d-flex flex-wrap gap-3">
+                            @foreach($serviceCategories as $c)
+                                <label class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="ap_service_categories" value="{{ $c->name }}">
+                                    <span class="form-check-label">{{ $c->name }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div class="col-12 small text-muted ap-offer-help">
+                        <span class="ap-help-hlh">Their experiences</span><span class="ap-help-both"> and </span><span class="ap-help-osp">their rates</span> are added afterwards, from their page; this only records what they told you.
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Status</label>
@@ -386,12 +440,65 @@ $('#providersBulkRemove').on('click', function() {
     });
 });
 
+// ── Import providers from a CSV ─────────────────────────────────────────
+var importProvidersModal = new bootstrap.Modal(document.getElementById('importProvidersModal'));
+$('#importProvidersBtn').on('click', function() {
+    $('#importProvidersFile').val('');
+    $('#importProvidersResult').empty();
+    importProvidersModal.show();
+});
+$('#importProvidersGo').on('click', function() {
+    var file = $('#importProvidersFile')[0].files[0];
+    var $out = $('#importProvidersResult');
+    if (!file) { $out.html('<div class="alert alert-warning py-2">Choose the CSV file first.</div>'); return; }
+    var fd = new FormData();
+    fd.append('import_providers', 1);
+    fd.append('file', file);
+    var $btn = $(this).prop('disabled', true);
+    $.ajax({ url: '/ajax', type: 'POST', data: fd, processData: false, contentType: false, skipGlobalError: true })
+        .done(function(resp) {
+            var html = '<div class="alert alert-' + (resp.created ? 'success' : 'warning') + ' py-2 mb-2">'
+                + resp.created + ' provider' + (resp.created === 1 ? '' : 's') + ' added.'
+                + (resp.failed.length ? ' ' + resp.failed.length + ' row' + (resp.failed.length === 1 ? '' : 's') + ' not added; fix them in the file and import it again.' : '')
+                + '</div>';
+            if (resp.failed.length) {
+                html += '<table class="table table-sm small"><thead><tr><th>Line</th><th>What is wrong</th></tr></thead><tbody>';
+                resp.failed.forEach(function(f) {
+                    html += '<tr><td>' + f.line + '</td><td>' + escapeHtml(f.reason) + '</td></tr>';
+                });
+                html += '</tbody></table>';
+            }
+            $out.html(html);
+            if (resp.created) loadProviders();
+        })
+        .fail(function(xhr) {
+            var msg = (xhr.responseJSON && xhr.responseJSON.error) || 'The file could not be imported.';
+            $out.html('<div class="alert alert-danger py-2">' + escapeHtml(msg) + '</div>');
+        })
+        .always(function() { $btn.prop('disabled', false); });
+});
+
 // ── Add Provider (manual) ────────────────────────────────────────────────
 var addProviderModal = new bootstrap.Modal(document.getElementById('addProviderModal'));
+
+// Each "what they offer" list shows only while its role is ticked.
+function apShowOffers() {
+    var types = $('#addProviderForm input[name="ap_types"]:checked').map(function() { return this.value; }).get();
+    $('#addProviderForm .ap-offer').each(function() {
+        $(this).toggleClass('d-none', types.indexOf($(this).data('ap-for')) === -1);
+    });
+    $('#addProviderForm .ap-offer-help').toggleClass('d-none', types.indexOf('hlh') === -1 && types.indexOf('osp') === -1);
+    // Says only what this provider will add: an OSP has no experiences.
+    $('#addProviderForm .ap-help-hlh').toggleClass('d-none', types.indexOf('hlh') === -1);
+    $('#addProviderForm .ap-help-osp').toggleClass('d-none', types.indexOf('osp') === -1);
+    $('#addProviderForm .ap-help-both').toggleClass('d-none', types.indexOf('hlh') === -1 || types.indexOf('osp') === -1);
+}
+$(document).on('change', '#addProviderForm input[name="ap_types"]', apShowOffers);
 
 $('#addProviderBtn').on('click', function() {
     $('#addProviderForm')[0].reset();
     $('#addProviderAlert').empty();
+    apShowOffers();
     addProviderModal.show();
 });
 
@@ -422,7 +529,11 @@ $('#addProviderSave').on('click', function() {
         region_id: $('#ap_region').val(),
         address: $('#ap_address').val().trim(),
         status: $('#ap_status').val(),
-        services_offered: $('#addProviderForm input[name="services_offered[]"]:checked')
+        // Only the lists of the roles ticked: one left ticked under a role that
+        // was then unticked is not theirs.
+        experience_categories: types.indexOf('hlh') === -1 ? [] : $('#addProviderForm input[name="ap_experience_categories"]:checked')
+            .map(function() { return this.value; }).get(),
+        service_categories: types.indexOf('osp') === -1 ? [] : $('#addProviderForm input[name="ap_service_categories"]:checked')
             .map(function() { return this.value; }).get()
     };
 

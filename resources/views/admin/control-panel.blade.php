@@ -6,25 +6,8 @@
     <h5 class="mb-0"><i class="bi bi-sliders"></i> Control Panel</h5>
 </div>
 
-{{-- ===== Operational summary ===== --}}
-<div class="row g-3 mb-4">
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-header bg-warning text-dark"><h6 class="mb-0"><i class="bi bi-bell"></i> Lead Reminders</h6></div>
-            <div class="card-body cp-scroll-box" id="reminders">
-                <p class="text-muted text-center small">Loading...</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-header"><h6 class="mb-0"><i class="bi bi-headset"></i> Support Requests</h6></div>
-            <div class="card-body cp-scroll-box" id="cpSupport">
-                <p class="text-muted text-center small">Loading...</p>
-            </div>
-        </div>
-    </div>
-</div>
+{{-- Lead reminders and support requests are day-to-day work, not settings:
+     they are on the Dashboard (HECO's feedback, 2026-10-28). --}}
 
 {{-- ===== Content shortcuts ===== --}}
 <div class="card mb-4">
@@ -247,40 +230,6 @@ jQuery(function() {
             return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
         });
     }
-
-    // ===== Operational summary =====
-    ajaxPost({ get_lead_reminders: 1 }, function(resp) {
-        var html = '';
-        var rems = resp.reminders || [];
-        if (!rems.length) { html = '<p class="text-muted text-center small mb-0">No reminders due</p>'; }
-        rems.forEach(function(r) {
-            html += '<div class="border-bottom pb-2 mb-2">';
-            html += '<strong class="small">' + escapeHtml(r.user ? (r.user.full_name || r.user.email) : '') + '</strong>';
-            html += '<br><small class="text-muted">Trip: ' + escapeHtml(r.trip ? r.trip.trip_id : '') + '</small>';
-            html += '<br><a href="/leads" class="btn btn-sm btn-outline-warning mt-1">Follow Up</a>';
-            html += '</div>';
-        });
-        jQuery('#reminders').html(html);
-    });
-
-    ajaxPost({ get_support_requests: 1, unresolved_only: 1 }, function(resp) {
-        var html = '';
-        var items = resp.data || [];
-        if (!items.length) { html = '<p class="text-muted text-center small mb-0">No unresolved requests</p>'; }
-        items.forEach(function(r) {
-            html += '<div class="border-bottom pb-2 mb-2">';
-            html += '<strong class="small">' + escapeHtml(r.user ? (r.user.full_name || r.user.email) : '') + '</strong>';
-            html += ' <span class="badge bg-' + (r.traveller_status === 'client' ? 'success' : 'warning text-dark') + '">' + escapeHtml(r.traveller_status) + '</span>';
-            html += '<p class="small mb-1">' + escapeHtml((r.message || '').substring(0, 140)) + '</p>';
-            html += '<button class="btn btn-sm btn-outline-success cp-resolve-sr" data-id="' + r.id + '">Resolve</button>';
-            html += '</div>';
-        });
-        jQuery('#cpSupport').html(html);
-    });
-
-    jQuery(document).on('click', '.cp-resolve-sr', function() {
-        ajaxPost({ resolve_support_request: 1, id: jQuery(this).data('id') }, function() { location.reload(); });
-    });
 
     // ===== Settings =====
     // Settings whose answer is one of a few known words. Everything not

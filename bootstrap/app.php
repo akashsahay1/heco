@@ -34,6 +34,11 @@ return Application::configure(basePath: dirname(__DIR__))
             return route('login');
         });
 
+        // Trips move to Running and Completed by their dates; no cron on the
+        // live host, so the requests themselves carry it.
+        $middleware->web(append: [\App\Http\Middleware\MoveTripsByDate::class]);
+        $middleware->api(append: [\App\Http\Middleware\MoveTripsByDate::class]);
+
         $middleware->alias([
             'hct' => \App\Http\Middleware\HctMiddleware::class,
             // Named for the role it checks. It was registered as 'hct_admin'

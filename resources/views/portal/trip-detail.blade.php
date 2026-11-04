@@ -35,19 +35,13 @@
                     $statusMap = ['not_confirmed' => ['Open', 'open'], 'confirmed' => ['Confirmed', 'confirmed'], 'running' => ['Running', 'running'], 'completed' => ['Completed', 'completed']];
                     $s = $statusMap[$trip->status] ?? ['Unknown', 'open'];
                     $tripHasItinerary = ($trip->tripDays()->exists() || $trip->selectedExperiences->count() > 0);
-                    $canConfirm = ($trip->status === 'not_confirmed' && $trip->stage === 'open' && $tripHasItinerary);
-                    // Planned by HECO from custom days: confirmed by paying, not here.
+                    // Planned by HECO from custom days.
                     $hctBuilt = $trip->isHctBuilt();
                 @endphp
+                {{-- No Confirm button: a trip is confirmed by the traveller's
+                     payment and nothing else (HECO's feedback, 2026-10-28). --}}
                 <span class="td-badge td-badge-{{ $s[1] }}">{{ $s[0] }}</span>
-                @if($trip->status === 'not_confirmed' && $trip->stage === 'open' && ! $hctBuilt)
-                    <div class="mt-2">
-                        <button class="btn btn-sm btn-success" id="btnConfirmTrip" data-trip-id="{{ $trip->id }}" @if(!$tripHasItinerary) disabled title="Add at least one experience before confirming" @endif>
-                            <i class="bi bi-check2-circle"></i> Confirm Trip
-                        </button>
-                    </div>
-                @endif
-                @if($tripHasItinerary)
+                @if($tripHasItinerary && ! $trip->hiddenFrom(auth()->user()))
                     <div class="mt-2">
                         <a href="{{ route('portal.pdf.trip', $trip->id) }}" class="btn btn-sm btn-outline-secondary">
                             <i class="bi bi-download"></i> Download PDF
@@ -133,6 +127,10 @@ jQuery(function() {
 
     // Load pricing
     ajaxPost({ get_trip_pricing: 1, trip_id: tripId }, function(resp) {
+        if (resp.hidden) {
+            jQuery('#pricingContainer').html('<p class="text-muted td-small-text mb-0">The price is shown with your itinerary.</p>');
+            return;
+        }
         renderPricing(resp.pricing || resp);
     });
 
@@ -141,32 +139,14 @@ jQuery(function() {
         renderPayments(resp.payments || []);
     });
 
-    // Confirm Trip
-    jQuery('#btnConfirmTrip').on('click', function() {
-        var btn = jQuery(this);
-        if (btn.prop('disabled')) return;
-        Swal.fire({
-            title: 'Confirm this trip?',
-            text: 'Confirming locks in your itinerary so our team can finalise arrangements. You can still request changes via support.',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, confirm',
-            confirmButtonColor: '#79a09f'
-        }).then(function(res) {
-            if (!res.isConfirmed) return;
-            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Confirming...');
-            ajaxPost({ confirm_trip: 1, trip_id: tripId }, function() {
-                showAlert('Trip confirmed!', 'success');
-                setTimeout(function() { window.location.reload(); }, 800);
-            }, function(xhr) {
-                btn.prop('disabled', false).html('<i class="bi bi-check2-circle"></i> Confirm Trip');
-                var msg = xhr.responseJSON ? xhr.responseJSON.error : 'Could not confirm the trip.';
-                showAlert(msg, 'danger');
-            });
-        });
-    });
+    // HECO is still building it: said once, plainly, in place of the days.
+    var preparingNote = '<p class="text-center text-muted td-small-text">HECO is preparing your itinerary. It will appear here as soon as it is ready.</p>';
 
     function renderTimeline(resp) {
+        if (resp.hidden) {
+            jQuery('#timelineContainer').html(preparingNote);
+            return;
+        }
         var days = resp.days || [];
         if (!days.length) {
             jQuery('#timelineContainer').html('<p class="text-center text-muted td-small-text">No itinerary generated yet.</p>');
@@ -292,30 +272,12 @@ jQuery(function() {
 
     function renderPricing(p) {
         var html = '';
-        html += '<div class="td-pr-row"><span>Transport</span><span>' + fmtCurrency(p.transport_cost) + '</span></div>';
-        html += '<div class="td-pr-row"><span>Accommodation</span><span>' + fmtCurrency(p.accommodation_cost) + '</span></div>';
-        html += '<div class="td-pr-row"><span>Guide</span><span>' + fmtCurrency(p.guide_cost) + '</span></div>';
-        html += '<div class="td-pr-row"><span>Activities</span><span>' + fmtCurrency(p.activity_cost) + '</span></div>';
-        html += '<div class="td-pr-row"><span>Extra Days</span><span>' + fmtCurrency(p.extra_day_cost) + '</span></div>';
-        html += '<div class="td-pr-row"><span>Other</span><span>' + fmtCurrency(p.other_cost) + '</span></div>';
-        // Shown only when somebody on the trip has no one to share a room with.
-        if (Number(p.single_supplement) > 0) {
-            html += '<div class="td-pr-row"><span>Single Supplement</span><span>' + fmtCurrency(p.single_supplement) + '</span></div>';
-        }
-        // Trip cost, then the margins added on top of it, then GST: the rows add
-        // up to the Final Price. RP is part of the service charges, so it is
-        // shown after the total as information, not as another charge.
-        var serviceCharges = (Number(p.subtotal) || 0) - (Number(p.total_cost) || 0);
-        html += '<div class="td-pr-row"><span>Trip Cost</span><span>' + fmtCurrency(p.total_cost) + '</span></div>';
-        if (serviceCharges > 0) {
-            html += '<div class="td-pr-row"><span>Service charges</span><span>' + fmtCurrency(serviceCharges) + '</span></div>';
-        }
+        // Trip Cost, GST and Final Price, as on the trip page and the PDF:
+        // Trip Cost is the price before GST, margins included, so the three
+        // add up (HECO's feedback, 2026-10-28).
+        html += '<div class="td-pr-row"><span>Trip Cost</span><span>' + fmtCurrency((Number(p.final_price) || 0) - (Number(p.gst_amount) || 0)) + '</span></div>';
         html += '<div class="td-pr-row"><span>GST</span><span>' + fmtCurrency(p.gst_amount) + '</span></div>';
         html += '<div class="td-pr-row total"><span>Final Price</span><span>' + fmtCurrency(p.final_price) + '</span></div>';
-        if (Number(p.margin_rp_amount) > 0) {
-            // Hidden for now on the client's word; RP sits inside Service charges.
-            html += '<div class="td-pr-row text-muted" style="display: none;"><span>Of which, regenerative contribution</span><span>' + fmtCurrency(p.margin_rp_amount) + '</span></div>';
-        }
         if (p.total_paid > 0) {
             html += '<div class="td-pr-row paid"><span>Total Paid</span><span>' + fmtCurrency(p.total_paid) + '</span></div>';
         }

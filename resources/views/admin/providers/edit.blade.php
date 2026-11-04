@@ -28,9 +28,16 @@
             <div class="card mb-3">
                 <div class="card-body">
                     <h6 class="border-bottom pb-2"><i class="bi bi-person-vcard"></i> Identity & Contact</h6>
-                    <div class="mb-2">
-                        <label class="form-label small text-muted">Provider Name <span class="text-danger">*</span></label>
-                        <input type="text" name="name" class="form-control form-control-sm" value="{{ $provider->name }}" required>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-8">
+                            <label class="form-label small text-muted">Provider Name <span class="text-danger">*</span></label>
+                            <input type="text" name="name" class="form-control form-control-sm" value="{{ $provider->name }}" required>
+                        </div>
+                        {{-- HECO's own ID for this provider, as in their records and CSV imports. --}}
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">SP ID</label>
+                            <input type="text" name="sp_code" class="form-control form-control-sm" value="{{ $provider->sp_code }}" maxlength="50">
+                        </div>
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">

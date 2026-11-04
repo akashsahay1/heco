@@ -21,21 +21,23 @@
                                 <input type="text" class="form-control form-control-sm" name="trip_name" value="{{ $trip->trip_name }}">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small fw-bold">Status</label>
-                                <select class="form-select form-select-sm custom-select" name="status">
-                                    <option value="not_confirmed" {{ $trip->status === 'not_confirmed' ? 'selected' : '' }}>Not Confirmed</option>
-                                    <option value="confirmed" {{ $trip->status === 'confirmed' ? 'selected' : '' }}>Confirmed</option>
-                                    <option value="running" {{ $trip->status === 'running' ? 'selected' : '' }}>Running</option>
-                                    <option value="completed" {{ $trip->status === 'completed' ? 'selected' : '' }}>Completed</option>
-                                    <option value="cancelled" {{ $trip->status === 'cancelled' ? 'selected' : '' }}>Cancelled</option>
-                                </select>
+                                {{-- Read, not chosen: a payment confirms the trip and its
+                                     dates move it on. Only cancelling is somebody's call. --}}
+                                <label class="form-label small fw-bold d-block">Status</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-{{ ['confirmed' => 'success', 'running' => 'primary', 'completed' => 'secondary', 'cancelled' => 'danger'][$trip->status] ?? 'warning text-dark' }}">{{ \Illuminate\Support\Str::title(str_replace('_', ' ', $trip->status ?? '')) }}</span>
+                                    @if(! in_array($trip->status, ['cancelled', 'completed'], true))
+                                        <button type="button" class="btn btn-sm btn-outline-danger" id="btnCancelTrip"><i class="bi bi-x-circle"></i> Cancel trip</button>
+                                    @endif
+                                </div>
+                                <small class="text-muted">Confirmed by a payment; Running and Completed follow the dates.</small>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small fw-bold">Stage</label>
-                                <select class="form-select form-select-sm custom-select" name="stage">
-                                    <option value="open" {{ ($trip->stage ?? 'open') === 'open' ? 'selected' : '' }}>Open</option>
-                                    <option value="closed" {{ ($trip->stage ?? '') === 'closed' ? 'selected' : '' }}>Closed</option>
-                                </select>
+                                {{-- Read, not chosen: a trip closes by itself once it has run
+                                     and every payment on it is settled. --}}
+                                <label class="form-label small fw-bold d-block">Stage</label>
+                                <span class="badge bg-{{ $trip->stage === 'closed' ? 'secondary' : 'info text-dark' }}">{{ ucfirst($trip->stage ?? 'open') }}</span>
+                                <small class="text-muted d-block">Closes by itself once the trip has run and every payment is settled.</small>
                             </div>
                         </div>
                     </div>
@@ -68,15 +70,21 @@
                                 <label class="form-label small fw-bold">Infants</label>
                                 <input type="number" class="form-control form-control-sm" name="infants" value="{{ $trip->infants ?? 0 }}" min="0">
                             </div>
+                            {{-- The first day's date is the one typed; the end and the
+                                 number of days are read off the itinerary (HECO's
+                                 feedback, 2026-10-28). --}}
                             <div class="col-md-6">
-                                <label class="form-label small fw-bold">Start Date</label>
+                                <label class="form-label small fw-bold">Start Date <span class="text-muted fw-normal">(Day 1)</span></label>
                                 <input type="text" class="form-control form-control-sm" id="startDateDisplay" readonly autocomplete="off" value="{{ $trip->start_date ? $trip->start_date->format('d-m-Y') : '' }}">
                                 <input type="hidden" name="start_date" id="startDateInput" value="{{ $trip->start_date ? $trip->start_date->format('Y-m-d') : '' }}">
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">End Date</label>
-                                <input type="text" class="form-control form-control-sm" id="endDateDisplay" readonly autocomplete="off" value="{{ $trip->end_date ? $trip->end_date->format('d-m-Y') : '' }}">
-                                <input type="hidden" name="end_date" id="endDateInput" value="{{ $trip->end_date ? $trip->end_date->format('Y-m-d') : '' }}">
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold">End Date <span class="text-muted fw-normal">(from the days)</span></label>
+                                <input type="text" class="form-control form-control-sm" id="endDateDisplay" readonly disabled value="{{ $trip->end_date ? $trip->end_date->format('d-m-Y') : '' }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold">Days</label>
+                                <input type="text" class="form-control form-control-sm" readonly disabled value="{{ $trip->tripDays()->count() }}">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Start Location</label>
@@ -323,7 +331,6 @@
                 <div class="card mb-3">
                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
                         <h6 class="mb-0"><i class="bi bi-currency-rupee"></i> Financial Snapshot</h6>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnRecalc"><i class="bi bi-calculator"></i> Recalculate</button>
                     </div>
                     <div class="card-body p-0">
 
@@ -449,11 +456,10 @@
                                         <div class="col-md-4">
                                             <select class="form-select form-select-sm custom-select" name="mode">
                                                 <option value="">-- Mode --</option>
-                                                <option value="bank_transfer">Bank Transfer</option>
-                                                <option value="upi">UPI</option>
-                                                <option value="cash">Cash</option>
-                                                <option value="card">Card</option>
-                                                <option value="other">Other</option>
+                                                {{-- HECO's own list (Control Panel > System Lists), the same the Dashboard offers. --}}
+                                                @foreach(\App\Models\SystemList::ofType('payment_mode')->where('is_active', true)->get() as $m)
+                                                    <option value="{{ \Illuminate\Support\Str::snake(strtolower($m->name)) }}">{{ $m->name }}</option>
+                                                @endforeach
                                             </select>
                                         </div>
                                         <div class="col-md-8">

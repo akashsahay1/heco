@@ -102,7 +102,6 @@
                             <td>
                                 <button class="btn btn-sm btn-outline-primary view-lead" data-id="{{ $l->id }}"><i class="bi bi-eye"></i></button>
                                 @if($l->stage === 'follow_up')
-                                    <button class="btn btn-sm btn-outline-success mark-won" data-id="{{ $l->id }}" title="Mark Won"><i class="bi bi-check"></i></button>
                                     <button class="btn btn-sm btn-outline-danger mark-lost" data-id="{{ $l->id }}" title="Mark Lost"><i class="bi bi-x"></i></button>
                                 @endif
                             </td>
@@ -247,15 +246,6 @@ var hctUsers = @json($hctUsers);
 // Lead-detail modal stays AJAX (read+write inside the modal). The list
 // itself is server-rendered; write actions reload the page to pick up
 // the new state with the current filters preserved.
-$(document).on('click', '.mark-won', function() {
-    var id = $(this).data('id');
-    confirmAction('Mark this lead as Won? This will confirm the trip.', function() {
-        ajaxPost({ update_lead: 1, lead_id: id, stage: 'won' }, function() {
-            showAlert('Lead marked as Won.', 'success');
-            location.reload();
-        });
-    });
-});
 $(document).on('click', '.mark-lost', function() {
     var id = $(this).data('id');
     confirmAction('Mark this lead as Lost?', function() {
@@ -347,12 +337,22 @@ $(document).on('click', '.view-lead', function() {
         html += '<button class="btn btn-sm btn-success" id="leadSaveBtn" onclick="updateLead(' + l.id + ')">Save</button>';
         // The journey for this enquiry, started from what is written above, so
         // the trip manager never types the name and email in a second time.
-        if (l.trip_id) {
-            html += '<a class="btn btn-sm btn-outline-primary" href="/trip-manager/' + l.trip_id + '" target="_blank"><i class="bi bi-box-arrow-up-right"></i> Open Trip</a>';
-        } else if (l.stage === 'follow_up') {
-            html += '<button class="btn btn-sm btn-primary" id="leadTripBtn" onclick="createTripFromLead(' + l.id + ')"><i class="bi bi-plus-lg"></i> Create Trip</button>';
+        if (!l.trip_id && l.stage === 'follow_up') {
+            html += '<button class="btn btn-sm btn-primary" id="leadTripBtn" onclick="createTripFromLead(' + l.id + ', false)"><i class="bi bi-plus-lg"></i> Create Trip</button>';
+        } else if (l.trip_id) {
+            // One person, more than one journey (HECO's feedback, 2026-10-28).
+            html += '<button class="btn btn-sm btn-outline-primary" id="leadTripBtn" onclick="createTripFromLead(' + l.id + ', true)"><i class="bi bi-plus-lg"></i> Create another trip</button>';
         }
         html += '</div>';
+        // Every trip this person has, each opening in the Trip Manager.
+        if ((shown.trips || []).length) {
+            html += '<div class="mt-3"><h6 class="mb-1">Their trips</h6>';
+            shown.trips.forEach(function(t) {
+                html += '<div class="small"><a href="/trip-manager/' + t.id + '" target="_blank">' + leadEsc(t.trip_id) + '</a> &middot; '
+                    + leadEsc(t.trip_name || '') + ' <span class="text-muted">(' + leadEsc((t.status || '').replace('_', ' ')) + ')</span></div>';
+            });
+            html += '</div>';
+        }
         html += '</div></div>';
         $('#leadModalBody').html(html);
         if (window.buildCustomDropdown) {
@@ -414,11 +414,13 @@ function leadEditFailed(xhr, fallback) {
 
 // Saved first, so whatever was just corrected is what the trip is made from,
 // then opened in the trip manager to build its days.
-function createTripFromLead(id) {
+function createTripFromLead(id, another) {
+    if (another && !confirm('Start another trip for this traveller?')) return;
     updateLead(id, function(saved, $btns) {
         ajaxPost({
             create_trip_for_traveller: 1,
             lead_id: id,
+            another: another ? 1 : 0,
             full_name: saved.full_name,
             email: saved.email,
             adults: saved.adults,

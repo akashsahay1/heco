@@ -34,7 +34,10 @@ Route::domain(config('app.admin_domain'))->group(function () {
         Route::get('/calendar', [HctController::class, 'calendar'])->name('hct.calendar');
         Route::get('/payments', [HctController::class, 'payments'])->name('hct.payments');
         Route::get('/gst', [HctController::class, 'gst'])->name('hct.gst');
+        Route::get('/gst/export', [HctController::class, 'gstExport'])->name('hct.gst.export');
         Route::get('/providers', [HctController::class, 'providers'])->name('hct.providers');
+        // Before /providers/{id}, which would otherwise take this path as an id.
+        Route::get('/providers/import-template', [HctController::class, 'providerImportTemplate'])->name('hct.providers.import-template');
         Route::get('/providers/{id}', [HctController::class, 'providerShow'])->name('hct.providers.show');
         Route::get('/providers/{id}/edit', [HctController::class, 'providerEdit'])->name('hct.providers.edit');
         Route::get('/travelers', [HctController::class, 'travelers'])->name('hct.travelers');

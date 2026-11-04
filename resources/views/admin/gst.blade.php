@@ -10,30 +10,21 @@
     <div class="card-body">
         <div class="row g-2 align-items-end">
             <div class="col-auto">
-                <label class="form-label small mb-1">Month</label>
-                <select class="form-select form-select-sm custom-select heco-filter-sm" id="gstMonth">
-                    <option value="1">January</option>
-                    <option value="2">February</option>
-                    <option value="3">March</option>
-                    <option value="4">April</option>
-                    <option value="5">May</option>
-                    <option value="6">June</option>
-                    <option value="7">July</option>
-                    <option value="8">August</option>
-                    <option value="9">September</option>
-                    <option value="10">October</option>
-                    <option value="11">November</option>
-                    <option value="12">December</option>
-                </select>
+                <label class="form-label small mb-1">From</label>
+                <input type="text" class="form-control form-control-sm" id="gstFromDisplay" placeholder="dd-mm-yyyy" autocomplete="off" readonly>
+                <input type="hidden" id="gstFrom">
             </div>
             <div class="col-auto">
-                <label class="form-label small mb-1">Year</label>
-                <input type="number" class="form-control form-control-sm heco-filter-xs" id="gstYear" min="2020" max="2099">
+                <label class="form-label small mb-1">To</label>
+                <input type="text" class="form-control form-control-sm" id="gstToDisplay" placeholder="dd-mm-yyyy" autocomplete="off" readonly>
+                <input type="hidden" id="gstTo">
             </div>
             <div class="col-auto">
                 <button class="btn btn-sm btn-primary" id="generateBtn"><i class="bi bi-arrow-repeat"></i> Generate</button>
+                <button class="btn btn-sm btn-outline-success" id="exportBtn"><i class="bi bi-file-earmark-spreadsheet"></i> Export to Excel</button>
             </div>
         </div>
+        <small class="text-muted d-block mt-1">A trip is counted on the day it was created.</small>
     </div>
 </div>
 
@@ -75,6 +66,7 @@
                 <thead class="table-light">
                     <tr>
                         <th>Trip ID</th>
+                        <th>Created</th>
                         <th>Traveller</th>
                         <th>Trip Dates</th>
                         <th class="text-end">Subtotal</th>
@@ -84,11 +76,11 @@
                     </tr>
                 </thead>
                 <tbody id="gstTable">
-                    <tr><td colspan="7" class="text-center text-muted">Select month/year and click Generate</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted">Choose the dates and click Generate</td></tr>
                 </tbody>
                 <tfoot id="gstTotals" class="table-light d-none">
                     <tr class="fw-bold">
-                        <td colspan="3" class="text-end">Totals:</td>
+                        <td colspan="4" class="text-end">Totals:</td>
                         <td class="text-end" id="footSubtotal">-</td>
                         <td class="text-end">-</td>
                         <td class="text-end" id="footGst">-</td>
@@ -104,19 +96,22 @@
 
 @section('js')
 <script>
+function esc(s) { return $('<div>').text(s == null ? '' : s).html(); }
+
+function gstPeriod() {
+    return { from_date: $('#gstFrom').val(), to_date: $('#gstTo').val() };
+}
+
+// The box shows dd-mm-yyyy; the hidden field keeps yyyy-mm-dd for the server.
+function gstIso(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 function loadGstReport() {
-    var month = $('#gstMonth').val();
-    var year = $('#gstYear').val();
-
-    if (!month || !year) {
-        alert('Please select month and year.');
-        return;
-    }
-
-    $('#gstTable').html('<tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>');
+    $('#gstTable').html('<tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>');
     $('#gstTotals').hide();
 
-    ajaxPost({ get_gst_report: 1, month: parseInt(month), year: parseInt(year) }, function(resp) {
+    ajaxPost($.extend({ get_gst_report: 1 }, gstPeriod()), function(resp) {
         var summary = resp.summary || {};
         var trips = resp.trips || [];
 
@@ -129,7 +124,7 @@ function loadGstReport() {
         var totSubtotal = 0, totGst = 0, totFinal = 0;
 
         if (!trips.length) {
-            html = '<tr><td colspan="7" class="text-center text-muted">No trips found for this period</td></tr>';
+            html = '<tr><td colspan="8" class="text-center text-muted">No trips found for this period</td></tr>';
             $('#gstTotals').hide();
         } else {
             trips.forEach(function(t) {
@@ -141,9 +136,10 @@ function loadGstReport() {
                 totFinal += finalPrice;
 
                 html += '<tr>';
-                html += '<td><a href="/trip-manager/' + (t.id || t.trip_id || '') + '" target="_blank">' + (t.trip_id || '-') + '</a></td>';
-                html += '<td>' + (t.user ? t.user.full_name || '' : '-') + '</td>';
-                html += '<td><small>' + (t.start_date ? t.start_date.substring(0, 10) : '-') + ' &mdash; ' + (t.end_date ? t.end_date.substring(0, 10) : '-') + '</small></td>';
+                html += '<td><a href="/trip-manager/' + (t.id || t.trip_id || '') + '" target="_blank">' + esc(t.trip_id || '-') + '</a></td>';
+                html += '<td><small>' + (t.created_at || '-') + '</small></td>';
+                html += '<td>' + esc(t.user ? t.user.full_name || '' : '-') + '</td>';
+                html += '<td><small>' + (t.start_date ? t.start_date.substring(0, 10) : '-') + ' to ' + (t.end_date ? t.end_date.substring(0, 10) : '-') + '</small></td>';
                 html += '<td class="text-end">₹' + subtotal.toLocaleString() + '</td>';
                 html += '<td class="text-end">' + (t.gst_percent || 0) + '%</td>';
                 html += '<td class="text-end">₹' + gstAmt.toLocaleString() + '</td>';
@@ -161,13 +157,47 @@ function loadGstReport() {
     });
 }
 
+var gstFromPicker, gstToPicker;
+
 $(function() {
+    var pick = function(box, hidden) {
+        return new AirDatepicker(box, {
+            locale: window.airDatepickerEn,
+            dateFormat: 'dd-MM-yyyy',
+            autoClose: true,
+            position: 'bottom left',
+            onSelect: function(o) { $(hidden).val(o.date ? gstIso(o.date) : ''); }
+        });
+    };
+    gstFromPicker = pick('#gstFromDisplay', '#gstFrom');
+    gstToPicker = pick('#gstToDisplay', '#gstTo');
+
+    // Opens on this month, first day to last. The hidden fields are set here
+    // as well: the picker's onSelect fires a tick later, after the first load.
     var now = new Date();
-    $('#gstMonth').val(now.getMonth() + 1);
-    $('#gstYear').val(now.getFullYear());
+    var first = new Date(now.getFullYear(), now.getMonth(), 1);
+    var last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    gstFromPicker.selectDate(first);
+    gstToPicker.selectDate(last);
+    $('#gstFrom').val(gstIso(first));
+    $('#gstTo').val(gstIso(last));
     loadGstReport();
 });
 
 $('#generateBtn').on('click', function() { loadGstReport(); });
+
+// The same months as on screen, as a file Excel opens.
+$('#exportBtn').on('click', function() {
+    var p = gstPeriod();
+    if (!p.from_date || !p.to_date) {
+        showAlert('Pick a From date and a To date.', 'warning');
+        return;
+    }
+    if (p.from_date > p.to_date) {
+        showAlert('From has to come before To.', 'warning');
+        return;
+    }
+    window.location.href = '/gst/export?' + $.param(gstPeriod());
+});
 </script>
 @endsection

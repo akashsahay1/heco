@@ -150,17 +150,14 @@
                     @forelse($trips as $t)
                         @php
                             $regions = $t->regions->pluck('name')->implode(', ');
-                            $allStatuses = ['not_confirmed', 'confirmed', 'running', 'completed', 'cancelled'];
                         @endphp
                         <tr>
                             <td><a href="{{ url('/trip-manager/'.$t->id) }}" target="_blank" class="fw-semibold">{{ $t->trip_id ?: $t->id }}</a></td>
                             <td>{{ $t->user ? ($t->user->full_name ?: $t->user->email) : '-' }}</td>
                             <td>
-                                <select class="form-select form-select-sm custom-select status-change heco-trip-status" data-trip-id="{{ $t->id }}">
-                                    @foreach($allStatuses as $s)
-                                        <option value="{{ $s }}" {{ $t->status === $s ? 'selected' : '' }}>{{ \Illuminate\Support\Str::title(str_replace('_', ' ', $s)) }}</option>
-                                    @endforeach
-                                </select>
+                                {{-- Read, not chosen: a payment confirms a trip and its
+                                     dates move it on (HECO's feedback, 2026-10-28). --}}
+                                <span class="badge bg-{{ ['confirmed' => 'success', 'running' => 'primary', 'completed' => 'secondary', 'cancelled' => 'danger'][$t->status] ?? 'warning text-dark' }}">{{ \Illuminate\Support\Str::title(str_replace('_', ' ', $t->status ?? '')) }}</span>
                             </td>
                             <td>
                                 <small>
@@ -193,9 +190,6 @@
 
 @section('js')
 <script>
-function formatTripStatus(status) {
-    return status ? status.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : '';
-}
 function isoFromDate(d) {
     var pad = function(n) { return String(n).padStart(2, '0'); };
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
@@ -221,44 +215,6 @@ jQuery(function() {
         onSelect: function(o) {
             jQuery('#dateToHidden').val(o.date ? isoFromDate(o.date) : '');
         }
-    });
-
-    // In-table status change → AJAX write + page reload to keep the
-    // server-rendered list in sync with the filter state.
-    jQuery(document).on('change', '.status-change', function() {
-        var sel = jQuery(this);
-        var tripId = sel.data('trip-id');
-        var newStatus = sel.val();
-        Swal.fire({
-            text: 'Change trip status to "' + formatTripStatus(newStatus) + '"?',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#79a09f',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Yes, change it'
-        }).then(function(result) {
-            if (!result.isConfirmed) { location.reload(); return; }
-            ajaxPost({ update_trip_status: 1, trip_id: tripId, status: newStatus }, function(resp) {
-                // A confirm can succeed while the hotel had nothing free. That
-                // used to go to the log alone; it needs saying, and it needs to
-                // stay on screen long enough to be acted on.
-                if (resp && resp.rooms_warning) {
-                    Swal.fire({
-                        icon: 'warning',
-                        title: 'Rooms not reserved',
-                        text: resp.rooms_warning,
-                        confirmButtonColor: '#79a09f'
-                    }).then(function() { location.reload(); });
-                    return;
-                }
-                showAlert('Trip status updated.', 'success');
-                location.reload();
-            }, function(xhr) {
-                var msg = xhr.responseJSON ? (xhr.responseJSON.error || 'Could not update status') : 'Could not update status';
-                showAlert(msg, 'danger');
-                location.reload();
-            });
-        });
     });
 
     // ── New Trip

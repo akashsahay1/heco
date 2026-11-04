@@ -30,7 +30,7 @@ class TripManagerController extends Controller
         })->firstOrFail();
 
         $regions = Region::where("is_active", true)->get();
-        $providers = ServiceProvider::where("status", "approved")->with("region")->get();
+        $providers = ServiceProvider::where("status", "approved")->with("region")->orderBy("name")->get();
         $involved = $this->whoIsOnThisTrip($trip);
 
         // A custom-day trip names its regenerative project here. Any project

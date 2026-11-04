@@ -79,12 +79,12 @@ class LeadService
             return;
         }
 
-        // Lock the trip from further edits when the traveller has paid in full.
-        // Tiny epsilon absorbs decimal rounding (e.g. 8585.99 vs 8586.00).
-        $finalPrice = (float) $trip->final_price;
-        if ($finalPrice > 0 && ($totalPaid + 0.01) >= $finalPrice && $trip->stage === 'open') {
-            $trip->update(['stage' => 'closed']);
-        }
+        // A trip paid in full is NOT closed here any more. Any payment already
+        // locks it against edits (AjaxController::tripIsLocked), and Closed now
+        // means the trip has run and every payment on it, the traveller's and
+        // the providers', is settled (TripStatusClock::closeIfSettled). Closing
+        // on the traveller's last instalment took a trip that had not yet run
+        // off the Calendar and the Dashboard.
 
         // Lead workflow runs as a side-effect — never a precondition for the
         // transitions above (self-service paid trips often have no lead in

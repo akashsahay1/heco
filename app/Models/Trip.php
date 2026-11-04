@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Trip extends Model
 {
     protected $fillable = [
-        'trip_id', 'user_id', 'trip_name', 'status', 'stage', 'traveller_origin',
+        'trip_id', 'user_id', 'trip_name', 'status', 'stage', 'itinerary_hidden', 'traveller_origin',
         'adults', 'children', 'infants', 'start_date', 'end_date',
         'start_location', 'end_location', 'anchor_point', 'pickup_preference',
         'pickup_location', 'pickup_time',
@@ -28,6 +28,7 @@ class Trip extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'itinerary_hidden' => 'boolean',
             'other_preferences' => 'array',
             'transport_cost' => 'decimal:2',
             'accommodation_cost' => 'decimal:2',
@@ -163,6 +164,15 @@ class Trip extends Model
     public function tripDays()
     {
         return $this->hasMany(TripDay::class)->orderBy('day_number');
+    }
+
+    /**
+     * Whether this person may not see the trip's days, price or PDF yet: HCT
+     * is still building it. HCT itself always sees it.
+     */
+    public function hiddenFrom(?User $user): bool
+    {
+        return (bool) $this->itinerary_hidden && ! ($user && $user->isHct());
     }
 
     /**

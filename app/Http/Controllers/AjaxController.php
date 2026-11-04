@@ -627,7 +627,6 @@ class AjaxController extends Controller
         'contact_form' => 'public',
         'get_user_trips' => 'auth',
         'reopen_trip' => 'auth',
-        'confirm_trip' => 'auth',
         'erase_trip' => 'auth',
         // HCT DASHBOARD
         'get_dashboard_stats' => 'hct',
@@ -662,6 +661,7 @@ class AjaxController extends Controller
         'resolve_support_request' => 'hct',
         'chat_with_ai_hct' => 'hct',
         'get_lead_reminders' => 'hct',
+        'get_pending_payments' => 'hct',
         'get_leads' => 'hct',
         'update_lead' => 'hct',
         'get_lead_history' => 'hct',
@@ -671,7 +671,6 @@ class AjaxController extends Controller
         'remove_trip_region' => 'hct',
         'get_upcoming_trips' => 'hct',
         'get_trips_by_date_range' => 'hct',
-        'update_trip_status' => 'hct',
         'get_calendar_trips' => 'hct',
         'get_sp_payments' => 'hct',
         'create_sp_payment' => 'hct',
@@ -682,6 +681,7 @@ class AjaxController extends Controller
         'get_gst_report' => 'hct',
         'get_providers' => 'hct',
         'add_provider' => 'hct',
+        'import_providers' => 'hct',
         'edit_provider' => 'hct',
         'get_provider_trips' => 'hct',
         'get_provider_payment_history' => 'hct',
@@ -730,10 +730,12 @@ class AjaxController extends Controller
         'get_day_services' => 'hct',
         'add_day_service' => 'hct',
         'edit_day_service' => 'hct',
+        'set_service_actual_cost' => 'hct',
+        'cancel_trip' => 'hct',
+        'set_itinerary_visibility' => 'hct',
         'remove_day_service' => 'hct',
         'change_day_service_provider' => 'hct',
         'request_ai_recalculation' => 'hct',
-        'recalculate_trip_cost' => 'hct',
         // SP APPLICATION
         'submit_sp_application' => 'public',
         // SP AVAILABILITY (Portal - service provider)
@@ -819,11 +821,6 @@ class AjaxController extends Controller
         'add_experience_to_trip', 'remove_experience_from_trip',
         'add_day_to_trip', 'remove_day_from_trip',
         'update_group_details', 'update_trip_start_date', 'reorder_experiences',
-        // Working the price out again WRITES it: CostCalculatorService::calculate()
-        // ends in $trip->update(). Every other way of changing a trip was
-        // refused on a paid booking while this one went through, and moved the
-        // stored price of a trip somebody had already paid for.
-        'recalculate_trip_cost',
     ];
 
     /**
@@ -836,9 +833,8 @@ class AjaxController extends Controller
         'chat_with_ai',
         'add_experience_to_trip', 'remove_experience_from_trip', 'prefer_experience', 'reorder_experiences',
         'update_group_details', 'update_trip_start_date', 'save_trip_name', 'reopen_trip',
-        // Erasing would cancel HCT's work with nobody told; confirming without
-        // paying would raise its bills. Payment confirms such a trip.
-        'erase_trip', 'confirm_trip',
+        // Erasing would cancel HCT's work with nobody told.
+        'erase_trip',
     ];
 
     private function guardHctBuiltTrip(Request $request): ?JsonResponse
@@ -850,7 +846,11 @@ class AjaxController extends Controller
                 // wishlist heart without one only unhearts, on any trip.
                 $trip = $this->resolveTripFromRequest($request)
                     ?? ($key === 'prefer_experience' ? null : $this->resolveTrip($request));
-                if ($trip && ! Auth::user()?->isHct() && $this->userOwnsTrip($trip) && $trip->isHctBuilt()) {
+                // A trip HECO is still building and keeping back counts as
+                // theirs too, custom days or not: the traveller's page never
+                // offers these on it, and the AI must not write over it.
+                if ($trip && ! Auth::user()?->isHct() && $this->userOwnsTrip($trip)
+                    && ($trip->isHctBuilt() || $trip->itinerary_hidden)) {
                     return response()->json([
                         'error' => 'This trip was planned for you by the HECO team. Please contact them to change it.',
                     ], 423);
@@ -1001,18 +1001,16 @@ class AjaxController extends Controller
         }
 
         // Day-level assigned providers (trip-manager) - sum each provider's booked
-        // day-service cost per service_type and invoice it too, so nothing that was
+        // day services per service_type and invoice it too, so nothing that was
         // pinned to specific days is left unbilled. Deduped against the pins above.
-        // A per-person line owes the provider its cost times the party, the
-        // same figure the traveller was charged for it.
+        //
+        // From each line's ACTUAL cost (what HECO pays), not the cost the
+        // traveller was priced on. Custom days are billed too: they used to be
+        // left out, "settled by hand", and HECO asked that nobody have to
+        // raise these by hand (feedback, 2026-10-28). A line with no provider
+        // has nobody to bill and stays out.
         $peopleFactor = $this->peopleFactorFor($trip);
-        // Lines on a custom day are not billed here. HCT wrote and priced that
-        // day by hand, and settles with whoever runs it by hand as well.
-        $dayServices = TripDayService::whereHas('tripDay', fn($q) => $q->where('trip_id', $trip->id)
-                ->where(fn ($q) => $q->whereNull('day_type')->orWhere('day_type', '!=', TripDay::TYPE_CUSTOM)))
-            ->whereNotNull('service_provider_id')
-            ->where('cost', '>', 0)
-            ->get()
+        $dayServices = $this->providerDayServices($trip)
             ->groupBy(fn($s) => $s->service_provider_id . '|' . $s->service_type);
         foreach ($dayServices as $group) {
             $first = $group->first();
@@ -1025,7 +1023,7 @@ class AjaxController extends Controller
             if ($already) {
                 continue;
             }
-            $amount = (int) round($group->sum(fn ($s) => $s->groupCost($peopleFactor)));
+            $amount = (int) round($group->sum(fn ($s) => $s->actualGroupCost($peopleFactor)));
             if ($amount <= 0) {
                 continue;
             }
@@ -1036,7 +1034,7 @@ class AjaxController extends Controller
                 'amount_due'          => $amount,
                 'amount_paid'         => 0,
                 'balance'             => $amount,
-                'notes'               => 'Auto-generated on trip confirmation (day services).',
+                'notes'               => 'Auto-generated on trip confirmation (day services, actual cost).',
             ]);
         }
 
@@ -1440,9 +1438,6 @@ class AjaxController extends Controller
             if ($request->has('reopen_trip')) {
                 return $this->reopenTrip($request);
             }
-            if ($request->has('confirm_trip')) {
-                return $this->confirmTrip($request);
-            }
             if ($request->has('erase_trip')) {
                 return $this->eraseTrip($request);
             }
@@ -1538,6 +1533,9 @@ class AjaxController extends Controller
             if ($request->has('chat_with_ai_hct')) {
                 return $this->chatWithAiHct($request);
             }
+            if ($request->has('get_pending_payments')) {
+                return $this->getPendingPayments($request);
+            }
             if ($request->has('get_lead_reminders')) {
                 return $this->getLeadReminders($request);
             }
@@ -1568,9 +1566,6 @@ class AjaxController extends Controller
             if ($request->has('get_trips_by_date_range')) {
                 return $this->getTripsByDateRange($request);
             }
-            if ($request->has('update_trip_status')) {
-                return $this->updateTripStatus($request);
-            }
             if ($request->has('get_calendar_trips')) {
                 return $this->getCalendarTrips($request);
             }
@@ -1597,6 +1592,9 @@ class AjaxController extends Controller
             }
             if ($request->has('get_providers')) {
                 return $this->getProviders($request);
+            }
+            if ($request->has('import_providers')) {
+                return $this->importProviders($request);
             }
             if ($request->has('add_provider')) {
                 return $this->addProvider($request);
@@ -1741,6 +1739,15 @@ class AjaxController extends Controller
             if ($request->has('add_day_service')) {
                 return $this->addDayService($request);
             }
+            if ($request->has('set_itinerary_visibility')) {
+                return $this->setItineraryVisibility($request);
+            }
+            if ($request->has('cancel_trip')) {
+                return $this->cancelTrip($request);
+            }
+            if ($request->has('set_service_actual_cost')) {
+                return $this->setServiceActualCost($request);
+            }
             if ($request->has('edit_day_service')) {
                 return $this->editDayService($request);
             }
@@ -1752,9 +1759,6 @@ class AjaxController extends Controller
             }
             if ($request->has('request_ai_recalculation')) {
                 return $this->requestAiRecalculation($request);
-            }
-            if ($request->has('recalculate_trip_cost')) {
-                return $this->recalculateTripCost($request);
             }
 
             // ===== SP APPLICATION =====
@@ -3104,6 +3108,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["experiences" => []]);
+        if ($trip->hiddenFrom(Auth::user())) {
+            return response()->json(["experiences" => [], "hidden" => true]);
+        }
 
         $experiences = TripSelectedExperience::where("trip_id", $trip->id)
             ->with("experience.region")
@@ -3124,6 +3131,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["days" => []]);
+        // Being built by HECO: nothing of it yet, and a plain flag so the page
+        // says so rather than treating it as empty (an empty journey with
+        // experiences on it asks the AI to write one).
+        if ($trip->hiddenFrom(Auth::user())) {
+            return response()->json(["days" => [], "hidden" => true, "trip_status" => $trip->status]);
+        }
 
         // Only what the two timelines draw. The whole rows went out before, so
         // a traveller's browser held each service line's raw provider cost and
@@ -3696,7 +3709,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 tripDayServiceId: $service->id,
                 date: $date,
                 quantity: $qty,
-                status: $trip->status === 'confirmed' ? 'confirmed' : 'held',
+                // A running trip is a confirmed one (HECO: "running should be understood as Confirmed").
+                status: in_array($trip->status, ['confirmed', 'running'], true) ? 'confirmed' : 'held',
                 source: 'trip_manager',
             );
 
@@ -4156,6 +4170,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $trip = $this->resolveTrip($request);
         if (!$trip) return response()->json(["success" => true, "pricing" => []]);
+        if ($trip->hiddenFrom(Auth::user())) {
+            return response()->json(["success" => true, "pricing" => [], "hidden" => true]);
+        }
 
         $calculator = app(CostCalculatorService::class);
         $pricing = $calculator->calculate($trip);
@@ -4179,17 +4196,18 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     }
 
     /**
-     * Strip the internal HRP margin + HCT commission from a traveller-facing
-     * pricing payload (req 3.3 - only RP is shown to the traveller, as an
-     * informational contribution). HRP/HCT stay server-side for payout/reporting.
+     * The part of a pricing payload a traveller may see. Margins, commissions
+     * and the cost of each line stay on the server for payouts and reporting.
      */
     private function hideInternalMargins(array $pricing): array
     {
-        unset(
-            $pricing['margin_hrp_percent'], $pricing['margin_hrp_amount'],
-            $pricing['commission_hct_percent'], $pricing['commission_hct_amount']
-        );
-        return $pricing;
+        // What the traveller is shown is Trip Cost, GST and Final Price, and
+        // what they have paid (HECO's feedback, 2026-10-28). Only those leave
+        // the server: every margin, the cost of each line and the subtotal
+        // used to travel in this answer and were merely not drawn.
+        return array_intersect_key($pricing, array_flip([
+            'final_price', 'gst_amount', 'gst_percent', 'total_paid', 'balance_due', 'currency',
+        ]));
     }
 
     /**
@@ -4479,12 +4497,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ->with("regions")
             ->orderBy("updated_at", "desc")
             ->get()
-            ->map(fn (Trip $trip) => $trip->only([
+            // array_merge, not +: a later key must replace final_price, which + keeps.
+            ->map(fn (Trip $trip) => array_merge($trip->only([
                 "id", "trip_id", "trip_name", "status", "start_date", "end_date", "final_price",
-            ]) + [
+            ]), [
                 "regions" => $trip->regions->map->only(["id", "name"])->values(),
                 "hct_built" => $trip->isHctBuilt(),
-            ]);
+            ], $trip->hiddenFrom($user) ? ["final_price" => null, "hidden" => true] : []));
         return response()->json(["trips" => $trips]);
     }
 
@@ -4505,67 +4524,6 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
         $trip->update(["stage" => "open"]);
         return response()->json(["success" => true]);
-    }
-
-    protected function confirmTrip(Request $request): JsonResponse
-    {
-        $user = Auth::user();
-        $trip = Trip::where("id", $request->trip_id)->where("user_id", $user->id)->first();
-        if (!$trip) {
-            return response()->json(["error" => "Trip not found"], 404);
-        }
-        if ($trip->status !== 'not_confirmed' || $trip->stage !== 'open') {
-            return response()->json(["error" => "This trip is already confirmed or locked."], 422);
-        }
-        $hasItinerary = $trip->tripDays()->exists() || $trip->selectedExperiences()->exists();
-        if (!$hasItinerary) {
-            return response()->json(["error" => "Add at least one experience to your trip before confirming."], 422);
-        }
-        // Re-verify any pinned provider rates are still valid at confirm time - a
-        // pricing row may have been unapproved or deactivated since it was pinned,
-        // which would otherwise create an orphan booking on confirm (#16).
-        $ratesValid = $this->pinnedRatesValid([
-            [$trip->accommodation_provider_id, $trip->accommodation_pricing_id, 'accommodation'],
-            [$trip->vehicle_provider_id,       $trip->vehicle_pricing_id,       'transport'],
-            [$trip->guide_provider_id,         $trip->guide_pricing_id,         'guide'],
-        ]);
-        if (!$ratesValid) {
-            return response()->json(["error" => "A selected provider rate is no longer available. Please review your Comfort & Partners selections before confirming."], 422);
-        }
-        // And it cannot be confirmed for nothing while it lists a journey. The
-        // same guard applyTripStatus() makes for the two admin doors; this door
-        // is the traveller's own Confirm and needed it just as much. The price
-        // comes from the days, the list beside it from the chosen experiences,
-        // and a trip whose days have been parted from its experiences reads
-        // Rs 75,000 on the panel and totals zero.
-        if ($trip->experienceIds()->isNotEmpty() && (float) $trip->final_price <= 0) {
-            return response()->json([
-                "error" => "Your trip lists experiences but has no price yet. Open it again so the days rebuild, then confirm.",
-            ], 422);
-        }
-        // Confirm the trip but keep the stage open - closing the stage is an
-        // explicit HCT action (matches the C2 guard against silent downgrades).
-        $trip->update(["status" => "confirmed"]);
-        // Promote any held SP room bookings → confirmed.
-        app(\App\Services\RoomAvailabilityService::class)->confirmForTrip($trip->id);
-        // Reserve room inventory for a trip-level accommodation pin (#12).
-        $unheld = array_merge(
-            $this->bookTripLevelAccommodation($trip),
-            $this->bookStayRooms($trip),
-        );
-        // Bill each pinned provider (amount auto-computed as rate × qty) so the
-        // provider actually gets an invoice on confirm (#13).
-        $this->createProviderInvoices($trip);
-
-        return response()->json(array_filter([
-            "success" => true,
-            "status" => "confirmed",
-            // Said, not logged: the traveller is billed for these nights either way.
-            "rooms_warning" => $unheld
-                ? 'Your trip is confirmed, but we could not hold a room for: '
-                    . implode('; ', $unheld) . '. HECO will be in touch about those nights.'
-                : null,
-        ], fn ($v) => $v !== null));
     }
 
     protected function eraseTrip(Request $request): JsonResponse
@@ -7028,6 +6986,78 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         return response()->json(["success" => true, "response" => $responseText]);
     }
 
+    /**
+     * What travellers still owe, for the Dashboard (HECO's feedback, 2026-10-28).
+     *
+     * A trip with a price and nothing paid yet is waiting for its first
+     * payment. Once part is paid it leaves the list, and comes back a set
+     * number of days before the trip starts (the setting
+     * payment_reminder_days_before_trip), so the balance is chased at the
+     * right time. Paid in full, it is gone. A trip still being built out of
+     * the traveller's sight, cancelled or closed is no one's to chase, and
+     * neither is one that never got its first payment and whose dates passed.
+     */
+    protected function getPendingPayments(Request $request): JsonResponse
+    {
+        $days = max(0, (int) Setting::getValue('payment_reminder_days_before_trip', 7));
+        $today = now()->startOfDay();
+
+        // Completed too: a trip that has run with its balance unpaid is the
+        // one most in need of chasing, and it cannot close until it is paid.
+        $trips = Trip::with('user')
+            ->whereIn('status', ['not_confirmed', 'confirmed', 'running', 'completed'])
+            ->where('stage', 'open')
+            ->where('itinerary_hidden', false)
+            ->where('final_price', '>', 0)
+            ->withSum(['travellerPayments as paid' => fn ($q) => $q->where('payment_status', 'paid')], 'amount')
+            ->get();
+
+        $items = [];
+        foreach ($trips as $trip) {
+            $paid = (float) $trip->paid;
+            $balance = round((float) $trip->final_price - $paid, 2);
+            if ($balance <= 0.5) {
+                continue;
+            }
+            $start = $trip->start_date?->copy()->startOfDay();
+
+            if ($paid <= 0 && $trip->status === 'not_confirmed') {
+                // Never taken up: once its dates have passed it is a lapsed
+                // quote, not money owed.
+                if ($start && $start->lt($today)) {
+                    continue;
+                }
+                $why = 'Waiting for the first payment';
+            } else {
+                // Part paid: back on the list from N days before the start. With
+                // no start date there is no "before", so it stays on the list.
+                if ($start && $start->copy()->subDays($days)->gt($today)) {
+                    continue;
+                }
+                $left = $start ? (int) $today->diffInDays($start, false) : null;
+                $why = $left === null ? 'Balance due' : ($trip->status === 'completed' ? 'Balance due; the trip has ended' : null);
+                $why = $why ?? ($left > 0 ? "Balance due; the trip starts in {$left} day" . ($left === 1 ? '' : 's')
+                    : ($left === 0 ? 'Balance due; the trip starts today' : 'Balance due; the trip is under way'));
+            }
+
+            $items[] = [
+                'id' => $trip->id,
+                'trip_id' => $trip->trip_id,
+                'trip_name' => $trip->trip_name,
+                'traveller' => $trip->user?->full_name ?: $trip->user?->email,
+                'start_date' => $trip->start_date?->toDateString(),
+                'status' => $trip->status,
+                'final_price' => (float) $trip->final_price,
+                'paid' => $paid,
+                'balance' => $balance,
+                'why' => $why,
+            ];
+        }
+        usort($items, fn ($a, $b) => strcmp($a['start_date'] ?? '9999', $b['start_date'] ?? '9999'));
+
+        return response()->json(['items' => $items, 'days_before' => $days]);
+    }
+
     protected function getLeadReminders(Request $request): JsonResponse
     {
         $reminders = app(LeadService::class)->getReminders();
@@ -7054,6 +7084,28 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $lead = Lead::findOrFail($request->lead_id);
         $data = $request->only(["stage", "assigned_hct_id", "interaction_mode", "reminder_delay_days", "notes"]);
+
+        // Won is the traveller's payment arriving (LeadService::winLeadsFor),
+        // never somebody's say-so: HECO asked that no lead show as won before
+        // any money has. The two a person may set are follow-up and lost.
+        if ($request->filled('stage')) {
+            $stage = strtolower(trim((string) $request->stage));
+            if ($stage === 'won') {
+                return response()->json(["error" => "A lead is won when the traveller's payment is recorded on its trip."], 422);
+            }
+            if (! in_array($stage, ['follow_up', 'lost'], true)) {
+                return response()->json(["error" => "That is not a stage a lead can be put in."], 422);
+            }
+            if ($stage === 'follow_up' && $lead->stage !== 'follow_up' && $lead->email
+                && Lead::whereRaw('LOWER(email) = ?', [strtolower($lead->email)])
+                    ->where('stage', 'follow_up')->whereKeyNot($lead->id)->exists()) {
+                return response()->json(["error" => "Another open lead already has this email. Follow up on that one."], 422);
+            }
+            $data['stage'] = $stage;
+            $request->merge(['stage' => $stage]);
+        } else {
+            unset($data['stage']);
+        }
 
         // The enquiry's own details, sent from Lead Details. Once filed they
         // could not be corrected at all: a mistyped email stayed mistyped, and
@@ -7107,9 +7159,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $lead->update($data);
 
-        if ($request->stage === "won") {
-            app(LeadService::class)->markWon($lead);
-        } elseif ($request->stage === "lost") {
+        if ($request->stage === "lost") {
             app(LeadService::class)->markLost($lead);
         }
 
@@ -7238,12 +7288,18 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // Started from Lead Details: the trip answers that enquiry and no
             // other, whatever else is on file for the address.
             'lead_id' => 'nullable|exists:leads,id',
+            // A second journey for the same traveller, asked for in so many
+            // words: HECO plans more than one trip for one person (feedback,
+            // 2026-10-28). Without it a lead that has a trip refuses another,
+            // which is what keeps a double click from making two.
+            'another' => 'nullable|boolean',
         ], [
             'full_name.required_without' => 'Give a name, or pick somebody already on file.',
             'email.required_without' => 'Give an email, or pick somebody already on file.',
         ]);
 
-        if (! empty($data['lead_id']) && Lead::whereKey($data['lead_id'])->whereNotNull('trip_id')->exists()) {
+        if (! empty($data['lead_id']) && empty($data['another'])
+            && Lead::whereKey($data['lead_id'])->whereNotNull('trip_id')->exists()) {
             return response()->json(['error' => 'This lead already has a trip.'], 422);
         }
 
@@ -7251,6 +7307,16 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $traveller = ! empty($data['traveller_id'])
                 ? User::where('id', $data['traveller_id'])->where('user_role', 'traveller')->first()
                 : null;
+            // A lead already tied to a traveller starts every further trip on
+            // that same person. Read by email, a lead whose traveller had
+            // changed their address on the Travelers page opened a second
+            // account and moved the lead onto it.
+            if (! $traveller && ! empty($data['lead_id'])) {
+                $leadUserId = Lead::whereKey($data['lead_id'])->value('user_id');
+                $traveller = $leadUserId
+                    ? User::where('id', $leadUserId)->where('user_role', 'traveller')->first()
+                    : null;
+            }
 
             if (! $traveller && ! empty($data['email'])) {
                 $email = strtolower(trim($data['email']));
@@ -7280,6 +7346,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                 'trip_name' => $traveller->full_name . "'s trip",
                 'status' => 'not_confirmed',
                 'stage' => 'open',
+                // Built by HECO, so kept from the traveller until the team
+                // shows it: "build and revise an itinerary privately".
+                'itinerary_hidden' => true,
                 'adults' => $data['adults'] ?? 2,
                 'children' => $data['children'] ?? 0,
                 'start_date' => $data['start_date'] ?? null,
@@ -7295,8 +7364,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                     ->whereNull('trip_id')
                     ->whereRaw('LOWER(email) = ?', [strtolower($traveller->email)])
                     ->first();
+            // The lead stays with its first trip; a further one is the same
+            // person's and is found through them. Any payment on any of them
+            // wins the enquiry, matched by email.
             if ($lead) {
-                $lead->update(['trip_id' => $trip->id, 'user_id' => $traveller->id]);
+                $lead->update(['trip_id' => $lead->trip_id ?: $trip->id, 'user_id' => $traveller->id]);
             }
 
             // The trip opens with no experience to take a region from, so it
@@ -7339,6 +7411,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "shown" => [
                 "name" => $lead->travellerName(),
                 "email" => $lead->travellerEmail(),
+                // Every journey this person has, not only the lead's first: a
+                // traveller can have several.
+                "trips" => $lead->user_id
+                    ? Trip::where('user_id', $lead->user_id)->orderBy('id')->get(['id', 'trip_id', 'trip_name', 'status'])->toArray()
+                    : [],
                 "start_date" => $lead->start_date?->format('Y-m-d'),
                 "end_date" => $lead->end_date?->format('Y-m-d'),
             ],
@@ -7364,9 +7441,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $query->whereDate("start_date", "<=", $request->date_to);
         }
         // Dashboard widget passes within_days to scope to the next N days.
+        // Live work only there: a closed trip (run and settled, or called
+        // off) does not come back on it.
         if ($request->filled("within_days")) {
             $days = (int) $request->within_days;
-            $query->whereNotNull("start_date")
+            $query->where("stage", "!=", "closed")
+                  ->whereNotNull("start_date")
                   ->whereDate("start_date", ">=", now()->toDateString())
                   ->whereDate("start_date", "<=", now()->addDays($days)->toDateString());
         }
@@ -7390,24 +7470,6 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ->orderBy("start_date")
             ->get();
         return response()->json(["trips" => $trips]);
-    }
-
-    protected function updateTripStatus(Request $request): JsonResponse
-    {
-        $trip = Trip::findOrFail($request->trip_id);
-
-        [$error, $unheld] = $this->applyTripStatus($trip, (string) $request->status);
-        if ($error) {
-            return response()->json(["error" => $error], 422);
-        }
-
-        return response()->json(array_filter([
-            "success" => true,
-            "rooms_warning" => $unheld
-                ? 'Confirmed, but these nights could not be reserved: ' . implode('; ', $unheld)
-                    . '. Settle them with the property.'
-                : null,
-        ], fn ($v) => $v !== null));
     }
 
     /**
@@ -7566,7 +7628,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $monthEnd = \Carbon\Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
 
         // Include any trip whose date range overlaps the displayed month, in any non-cancelled-only status.
+        // A closed trip has run and is settled: the calendar shows live work
+        // only (HECO's feedback, 2026-10-28).
         $trips = Trip::whereIn("status", ["not_confirmed", "confirmed", "running", "completed", "cancelled"])
+            ->where("stage", "!=", "closed")
             ->whereNotNull("start_date")
             ->whereNotNull("end_date")
             ->whereDate("start_date", "<=", $monthEnd)
@@ -7676,7 +7741,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                     ->where('service_provider_id', $request->service_provider_id)
                     ->where('service_type', $request->service_type)
                     ->get()
-                    ->sum(fn ($s) => $s->groupCost($peopleFactor));
+                    ->sum(fn ($s) => $s->actualGroupCost($peopleFactor));
             }
         }
 
@@ -7804,6 +7869,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             'amount_paid' => $totalPaid,
             'balance' => max(0, round((float) $spPayment->amount_due - $totalPaid, 2)),
         ]);
+        // The last provider paid on a trip that has run settles it.
+        if ($spPayment->trip) {
+            app(\App\Services\TripStatusClock::class)->closeIfSettled($spPayment->trip);
+        }
     }
 
     protected function editSpPaymentEntry(Request $request): JsonResponse
@@ -7877,53 +7946,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     protected function getGstReport(Request $request): JsonResponse
     {
-        $month = $request->get("month", now()->month);
-        $year = $request->get("year", now()->year);
+        $svc = app(\App\Services\GstReportService::class);
+        $period = $svc->period($request->from_date, $request->to_date);
+        if (is_string($period)) {
+            return response()->json(["error" => $period], 422);
+        }
 
-        $gstPercent = (float) Setting::getValue("gst_percent", 5);
-
-        $trips = Trip::whereIn("status", ["confirmed", "running", "completed"])
-            ->whereMonth("created_at", $month)
-            ->whereYear("created_at", $year)
-            ->with("user")
-            ->orderBy("created_at")
-            ->get()
-            ->map(function ($t) use ($gstPercent) {
-                $subtotal = (float) ($t->subtotal ?? 0);
-                $gstAmount = (float) ($t->gst_amount ?? 0);
-                $finalPrice = (float) ($t->final_price ?? 0);
-                // Derive the effective rate per trip when possible; fall back to the global setting.
-                $effectiveRate = $subtotal > 0 ? round($gstAmount / $subtotal * 100, 2) : $gstPercent;
-                return [
-                    "id" => $t->id,
-                    "trip_id" => $t->trip_id,
-                    "user" => [
-                        "full_name" => $t->user->full_name ?? $t->user->email ?? "-",
-                        "email" => $t->user->email ?? "",
-                    ],
-                    "start_date" => $t->start_date,
-                    "end_date" => $t->end_date,
-                    "subtotal" => $subtotal,
-                    "gst_percent" => $effectiveRate,
-                    "gst_amount" => $gstAmount,
-                    "final_price" => $finalPrice,
-                    "status" => $t->status,
-                ];
-            })->values();
-
-        $totalRevenue = $trips->sum("final_price");
-        $totalGst = $trips->sum("gst_amount");
-        $netRevenue = $trips->sum("subtotal");
-
-        return response()->json([
-            "success" => true,
-            "summary" => [
-                "total_revenue" => $totalRevenue,
-                "total_gst" => $totalGst,
-                "net_revenue" => $netRevenue,
-            ],
-            "trips" => $trips,
-        ]);
+        return response()->json(["success" => true] + $svc->report(...$period));
     }
 
     protected function getProviders(Request $request): JsonResponse
@@ -7961,6 +7990,31 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      * Capability sub-lists / bank details can be filled afterwards on the edit
      * page - this keeps the quick-add form focused.
      */
+    /** Import service providers from a CSV made from the template. */
+    protected function importProviders(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'file' => 'required|file|max:2048|mimes:csv,txt',
+        ], [
+            'file.required' => 'Choose the CSV file to import.',
+            'file.mimes' => 'That is not a CSV file. In Excel or Google Sheets, save or download it as CSV.',
+            'file.max' => 'That file is larger than 2 MB.',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        $result = app(\App\Services\ProviderImportService::class)->import($request->file('file'), Auth::user());
+        if (isset($result['error'])) {
+            return response()->json(['error' => $result['error']], 422);
+        }
+        $this->logActivity('providers_imported', 'ServiceProvider', null, [
+            'created' => $result['created'], 'failed' => count($result['failed']),
+        ]);
+
+        return response()->json(['success' => true] + $result);
+    }
+
     protected function addProvider(Request $request): JsonResponse
     {
         if (!Auth::user()?->isHct()) {
@@ -8014,11 +8068,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "bank_account_name" => $request->bank_account_name,
             "bank_account_number" => $request->bank_account_number,
             "upi" => $request->upi,
-            "services_offered" => $this->applicationArray($request, 'services_offered'),
-            "accommodation_categories" => $this->applicationArray($request, 'accommodation_categories'),
-            "vehicle_types" => $this->applicationArray($request, 'vehicle_types'),
-            "guide_types" => $this->applicationArray($request, 'guide_types'),
-            "activity_types" => $this->applicationArray($request, 'activity_types'),
+            // What they told us they offer, each list kept to its own role, as
+            // signup keeps it. The offerings columns (services, tiers, vehicles,
+            // guide and activity types) are not written here: they are read off
+            // the provider's approved rates (ServiceProvider::syncOfferings).
+            "experience_categories" => in_array('hlh', (array) $request->input('provider_types'), true)
+                ? $this->applicationArray($request, 'experience_categories') : null,
+            "service_categories" => in_array('osp', (array) $request->input('provider_types'), true)
+                ? $this->applicationArray($request, 'service_categories') : null,
             "notes" => $request->input('notes', $request->input('description')),
             "status" => $status,
             "approved_at" => $status === 'approved' ? now() : null,
@@ -8108,7 +8165,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             'service_categories' => 'nullable|array',
             'service_categories.*' => 'nullable|string|max:120',
             'other_services' => 'nullable|string|max:255',
+            'sp_code' => ['nullable', 'string', 'max:50', Rule::unique('service_providers', 'sp_code')->ignore($provider->id)],
         ], $messages + [
+            'sp_code.unique' => 'Another provider already has this SP ID.',
             'year_established.*' => 'Year established has to be a year between 1800 and ' . date('Y') . '.',
             'region_id.*' => 'Pick the region this provider works in.',
         ]);
@@ -8117,7 +8176,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         $data = $request->only([
-            "name", "contact_person", "email", "phone_1", "phone_2",
+            "sp_code", "name", "contact_person", "email", "phone_1", "phone_2",
             "address", "city", "postal_code", "country",
             "business_type", "registration_number", "year_established",
             "region_id",
@@ -11054,11 +11113,64 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         return response()->json(["trip" => $trip]);
     }
 
+    /**
+     * Show a trip to its traveller, or keep it from them while HCT builds it.
+     * Not an edit of the trip (nothing it costs moves), so it is open on a
+     * paid one too.
+     */
+    protected function setItineraryVisibility(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'trip_id' => 'required|exists:trips,id',
+            'hidden' => 'required|boolean',
+        ]);
+        $trip = Trip::findOrFail($data['trip_id']);
+        $trip->update(['itinerary_hidden' => (bool) $data['hidden']]);
+        $this->logActivity($trip->itinerary_hidden ? 'trip_hidden' : 'trip_shown', 'Trip', $trip->id, []);
+
+        return response()->json(['success' => true, 'hidden' => $trip->itinerary_hidden]);
+    }
+
+    /**
+     * Cancel a trip. The one status a person still sets.
+     *
+     * Its own door, apart from the Trip Info save: that form is refused on a
+     * paid trip (LOCK_EDIT_KEYS), and a trip somebody has paid for is exactly
+     * the one that may still have to be called off. applyTripStatus does what
+     * cancelling means (rooms released, an open lead lost); what is owed back
+     * and to whom waits on HECO's rule for cancellations.
+     */
+    protected function cancelTrip(Request $request): JsonResponse
+    {
+        $trip = Trip::findOrFail($request->trip_id);
+        if ($trip->status === 'cancelled') {
+            return response()->json(["error" => "This trip is already cancelled."], 422);
+        }
+        if ($trip->status === 'completed') {
+            return response()->json(["error" => "This trip has already run, so it cannot be cancelled."], 422);
+        }
+
+        [$error] = $this->applyTripStatus($trip, 'cancelled');
+        if ($error) {
+            return response()->json(["error" => $error], 422);
+        }
+        $this->logActivity('trip_cancelled', 'Trip', $trip->id, []);
+
+        return response()->json(["success" => true, "status" => 'cancelled']);
+    }
+
     protected function updateTripInfo(Request $request): JsonResponse
     {
         $trip = Trip::findOrFail($request->trip_id);
+        // No status here. A payment confirms a trip and its dates move it on
+        // (HECO's feedback, 2026-10-28); confirming from this form won the
+        // lead and raised the bills with no money in. Cancelling has its own
+        // door, cancel_trip.
+        // No stage either: Closed follows from a trip having run and every
+        // payment on it being settled. Set by hand, a trip closed early was
+        // locked for good, with nothing on screen able to open it again.
         $data = $request->only([
-            "trip_name", "status", "stage", "traveller_origin", "adults", "children", "infants",
+            "trip_name", "traveller_origin", "adults", "children", "infants",
             "start_date", "end_date", "start_location", "end_location",
             "pickup_location", "pickup_time", "drop_location", "drop_time",
             "operations_notes", "accommodation_comfort", "vehicle_comfort",
@@ -11112,16 +11224,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             }
         }
 
-        // The status and the start date are not fields to be written down. Each
-        // one means a piece of work, and this screen used to skip both: a trip
-        // could be marked confirmed here with no room reserved, nobody invoiced
-        // and its lead still open, and its dates could be moved while every day
-        // of the itinerary stayed where it was.
-        $newStatus = $data['status'] ?? null;
+        // The start date is not a field to be written down: it means a piece
+        // of work. Moved here, every day of the itinerary used to stay where
+        // it was.
         $newStart = array_key_exists('start_date', $data) ? $data['start_date'] : null;
         $moved = array_key_exists('start_date', $data)
             && substr((string) $trip->start_date, 0, 10) !== substr((string) $newStart, 0, 10);
-        unset($data['status'], $data['start_date'], $data['end_date']);
+        unset($data['start_date'], $data['end_date']);
 
         $trip->update($data);
 
@@ -11132,17 +11241,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $outOfSeason = $this->seasonClashesFor($trip);
         }
 
-        if ($newStatus !== null && $newStatus !== $trip->status) {
-            [$error, $statusUnheld] = $this->applyTripStatus($trip, (string) $newStatus);
-            if ($error) {
-                return response()->json(["error" => $error], 422);
-            }
-            $unheld = array_merge($unheld, $statusUnheld);
-        }
-
         // Only recalculate when there's an itinerary - otherwise CostCalculatorService
         // would persist an all-zero breakdown and wipe the trip's cost columns
-        // (same hazard recalculateTripCost() guards against).
+        // (the same hazard repriceTrip() guards against).
         if ($trip->tripDays()->exists() || $trip->selectedExperiences()->exists()) {
             app(CostCalculatorService::class)->calculate($trip);
         }
@@ -11217,6 +11318,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $trip = $this->resolveTrip($request);
             if (!$trip) {
                 return response()->json(["error" => "Trip not found."], 404);
+            }
+            if ($trip->hiddenFrom(Auth::user())) {
+                return response()->json(["error" => "HECO is still preparing this itinerary. You can pay once it is ready."], 423);
             }
 
             // Payment amount is server-authoritative: always charge the full
@@ -11420,18 +11524,20 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         });
 
         $totalPaid = $payments->where("payment_status", "paid")->sum("amount");
-        $finalPrice = $trip ? (float) $trip->final_price : 0;
+        // Still being built by HECO: the price is not the traveller's to see yet.
+        $priceHidden = $trip && $trip->hiddenFrom($user);
+        $finalPrice = $trip && ! $priceHidden ? (float) $trip->final_price : 0;
 
         return response()->json([
             "payments" => $rows,
             "total_paid" => $totalPaid,
-            "total_due" => $finalPrice,
-            "balance" => $finalPrice - $totalPaid,
+            "total_due" => $priceHidden ? null : $finalPrice,
+            "balance" => $priceHidden ? null : $finalPrice - $totalPaid,
             "trip" => $trip ? [
                 "id" => $trip->id,
                 "trip_id" => $trip->trip_id,
                 "trip_name" => $trip->trip_name,
-                "final_price" => $trip->final_price,
+                "final_price" => $priceHidden ? null : $trip->final_price,
             ] : null,
         ]);
     }
@@ -11439,6 +11545,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     protected function editTravellerPayment(Request $request): JsonResponse
     {
         $payment = TravellerPayment::findOrFail($request->payment_id);
+        $validator = Validator::make($request->all(), [
+            "amount" => "sometimes|required|numeric|min:0.01|max:99999999",
+            "payment_date" => "sometimes|required|date",
+            "mode" => "sometimes|required|string|max:50",
+        ], ["amount.min" => "A payment is more than nothing. To take one back, delete it."]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
         $payment->update($request->only(["amount", "payment_date", "mode", "notes"]));
         $this->logActivity('traveller_payment_edited', 'TravellerPayment', $payment->id, [
             'trip_id' => $payment->trip_id, 'amount' => (float) $payment->amount,
@@ -11582,9 +11696,24 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     protected function reorderTripDays(Request $request): JsonResponse
     {
-        $order = $request->get("order", []);
+        $order = array_values((array) $request->get("order", []));
+        // The days of one trip, and all of them: a list mixing two trips
+        // renumbered both as one.
+        $tripIds = TripDay::whereIn('id', $order)->distinct()->pluck('trip_id');
+        if ($order === [] || $tripIds->count() !== 1
+            || TripDay::where('trip_id', $tripIds->first())->count() !== count(array_unique($order))) {
+            return response()->json(["error" => "Send every day of one trip, in their new order."], 422);
+        }
         foreach ($order as $index => $dayId) {
             TripDay::where("id", $dayId)->update(["sort_order" => $index, "day_number" => $index + 1]);
+        }
+        // A day moved to first place is the first day of the trip, and takes
+        // its date: renumbered only, Day 1 kept the date of whatever day it
+        // had been.
+        if ($trip = TripDay::find($order[0] ?? null)?->trip) {
+            $this->redateTripDays($trip);
+            // The rooms held for a night follow the day to its new date.
+            $this->rebookRoomsForTrip($trip->fresh());
         }
         return response()->json(["success" => true]);
     }
@@ -11636,6 +11765,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         ]);
 
         $this->redateTripDays($trip);
+        // An empty day is still a day the traveller is charged for.
+        $this->repriceTrip($trip);
 
         return response()->json(["success" => true, "day" => $day->fresh()]);
     }
@@ -11680,6 +11811,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $day = TripDay::findOrFail($data['day_id']);
         unset($data['day_id']);
+
+        // A day's type is part of its price. On a paid trip the price is the
+        // one the traveller paid, so the type stays; its title and
+        // description are only words and can still be corrected.
+        if (array_key_exists('day_type', $data) && $data['day_type'] !== $day->day_type
+            && $day->trip && $this->tripIsLocked($day->trip)) {
+            return response()->json(['error' => 'This trip is paid or closed, so what a day costs cannot change.'], 423);
+        }
 
         if (array_key_exists('title', $data)) {
             $data['title'] = trim((string) $data['title']) ?: null;
@@ -11753,8 +11892,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         if ($trip) {
             $trip->refresh();
-            // The itinerary is a day shorter, so the dates and the end date move.
+            // The itinerary is a day shorter, so the dates and the end date move,
+            // and the rooms held on them with them.
             $this->redateTripDays($trip);
+            $this->rebookRoomsForTrip($trip->fresh());
             // A region is on a trip because something on the trip goes there.
             $this->syncTripRegions($trip);
             // And the total has to stop counting the day that is gone. Guarded
@@ -11783,11 +11924,17 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $validator = Validator::make($request->all(), [
             "day_id" => "required|integer|exists:trip_days,id",
             "service_type" => "required|in:accommodation,transport,guide,activity,meal,other",
-            "service_provider_id" => "nullable|integer|exists:service_providers,id",
+            // Somebody has to be paid for every line (HECO's feedback,
+            // 2026-10-28): it is what makes a trip's payables complete when it
+            // is confirmed.
+            "service_provider_id" => "required|integer|exists:service_providers,id",
             "sp_pricing_id" => "nullable|integer|exists:sp_pricing,id",
             "room_quantity" => "nullable|integer|min:1|max:500",
             "cost" => "nullable|numeric|min:0",
+            "actual_cost" => "nullable|numeric|min:0|max:99999999",
             "price_basis" => "nullable|in:flat,per_person",
+        ], [
+            "service_provider_id.required" => "Choose the service provider. If they are not in the list, add or import them on the Providers page first.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -11854,11 +12001,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "price_basis" => $request->input('price_basis') ?: TripDayService::BASIS_FLAT,
             "is_included" => $request->boolean("is_included", false),
             "notes" => $request->notes,
+            "actual_cost" => TripDayService::actualOrNull($request->input('actual_cost'), $request->cost ?? 0),
         ]);
 
         // If this accommodation service was tied to a specific room category,
         // allocate held rooms in sp_room_bookings for the day's date.
         $this->allocateRoomsForTripService($service);
+        $this->repriceTrip($service->tripDay?->trip);
 
         return response()->json(array_filter([
             "success" => true,
@@ -11875,12 +12024,157 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         ], fn ($v) => $v !== null));
     }
 
+    /**
+     * The lines on a trip's days that a provider is owed for: one with a
+     * provider that the traveller is charged for. A placeholder an experience
+     * brings costs nothing, because its host is billed for the experience;
+     * an actual cost written on one would bill the host twice.
+     */
+    private function providerDayServices(Trip $trip)
+    {
+        return TripDayService::whereIn('trip_day_id', $trip->tripDays()->select('id'))
+            ->whereNotNull('service_provider_id')
+            ->whereRaw('COALESCE(actual_cost, cost) > 0')
+            ->where(fn ($q) => $q->where('cost', '>', 0)->orWhere('is_included', false))
+            ->get();
+    }
+
+    /**
+     * Record what a service on a trip actually cost, once it is known.
+     *
+     * Its own door, apart from editing the service: a paid trip refuses every
+     * edit (LOCK_EDIT_KEYS), because those move the traveller's price, and the
+     * real figure is usually only known after the traveller has paid. This
+     * touches nothing the traveller is charged, only what the provider is.
+     *
+     * On a trip that has been confirmed the provider's bill follows the new
+     * figure at once, but never below what they have already been paid.
+     */
+    protected function setServiceActualCost(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'service_id' => 'required|integer|exists:trip_day_services,id',
+            'actual_cost' => 'nullable|numeric|min:0|max:99999999',
+        ]);
+
+        $service = TripDayService::with('tripDay.trip')->findOrFail($data['service_id']);
+        $trip = $service->tripDay?->trip;
+        // An experience's own placeholder line: its host is paid for the
+        // experience, so an actual cost here would pay them twice.
+        if ((float) $service->cost <= 0 && $service->is_included) {
+            return response()->json(['error' => 'This line is part of an experience, and its host is paid for the experience.'], 422);
+        }
+        // A provider pinned on the whole trip is billed from their rate, not
+        // line by line, so the figure would be kept and change nothing.
+        $pinnedTripWide = $trip && $service->service_provider_id && (int) match ($service->service_type) {
+            'accommodation' => $trip->accommodation_provider_id,
+            'transport' => $trip->vehicle_provider_id,
+            'guide' => $trip->guide_provider_id,
+            default => null,
+        } === (int) $service->service_provider_id;
+        $actual = TripDayService::actualOrNull($data['actual_cost'] ?? null, $service->cost);
+
+        // The line and its bill move together or not at all: a figure below
+        // what the provider has already been paid is refused, and the line is
+        // left as it was.
+        try {
+            $bill = DB::transaction(function () use ($service, $trip, $actual) {
+                $service->update(['actual_cost' => $actual]);
+
+                if (! $trip || ! $service->service_provider_id
+                    || ! in_array($trip->status, ['confirmed', 'running', 'completed'], true)) {
+                    return null;
+                }
+                $bill = $this->restateDayServiceBill($trip, (int) $service->service_provider_id, (string) $service->service_type);
+                if (is_string($bill)) {
+                    throw new \DomainException($bill);
+                }
+
+                return $bill;
+            });
+        } catch (\DomainException $refused) {
+            return response()->json(['error' => $refused->getMessage()], 422);
+        }
+
+        return response()->json(array_filter([
+            'success' => true,
+            'actual_cost' => $service->fresh()->actual_cost,
+            'bill_due' => $bill?->amount_due,
+            'note' => $pinnedTripWide
+                ? 'Saved. This provider is booked for the whole trip, so their bill comes from their rate, not from this line.'
+                : null,
+        ], fn ($v) => $v !== null));
+    }
+
+    /**
+     * Bring a provider's bill for one kind of service on a trip into line with
+     * the actual costs of their lines.
+     *
+     * Returns the bill, null when there is none to keep (a provider pinned on
+     * the whole trip is billed from their rate instead), or a message when the
+     * new total would fall below what they have already been paid.
+     */
+    private function restateDayServiceBill(Trip $trip, int $providerId, string $serviceType): SpPayment|string|null
+    {
+        $pinned = match ($serviceType) {
+            'accommodation' => $trip->accommodation_provider_id,
+            'transport' => $trip->vehicle_provider_id,
+            'guide' => $trip->guide_provider_id,
+            default => null,
+        };
+        if ((int) $pinned === $providerId) {
+            return null;
+        }
+
+        $peopleFactor = $this->peopleFactorFor($trip);
+        $due = (int) round($this->providerDayServices($trip)
+            ->where('service_provider_id', $providerId)
+            ->where('service_type', $serviceType)
+            ->sum(fn ($s) => $s->actualGroupCost($peopleFactor)));
+
+        $bill = SpPayment::where('trip_id', $trip->id)
+            ->where('service_provider_id', $providerId)
+            ->where('service_type', $serviceType)
+            ->first();
+
+        if (! $bill) {
+            if ($due <= 0) {
+                return null;
+            }
+
+            return SpPayment::create([
+                'trip_id' => $trip->id,
+                'service_provider_id' => $providerId,
+                'service_type' => $serviceType,
+                'amount_due' => $due,
+                'amount_paid' => 0,
+                'balance' => $due,
+                'notes' => 'Auto-generated from the actual cost.',
+            ]);
+        }
+
+        $paid = (float) $bill->amount_paid;
+        if ($due < $paid) {
+            return 'This provider has already been paid Rs ' . number_format($paid, 2) . ' for '
+                . $serviceType . ' on this trip, so what they are owed cannot be set below that.';
+        }
+        $bill->update(['amount_due' => $due, 'balance' => round($due - $paid, 2)]);
+        // Owing again on a trip that had closed: open it, or the debt is out
+        // of sight (closed trips leave the Calendar, the Dashboard and the clock).
+        if ($trip->stage === 'closed' && $trip->status !== 'cancelled' && (float) $bill->balance > 0.5) {
+            $trip->update(['stage' => 'open']);
+        }
+
+        return $bill;
+    }
+
     protected function editDayService(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             "service_id" => "required|integer|exists:trip_day_services,id",
             "service_type" => "nullable|in:accommodation,transport,guide,activity,meal,other",
-            "service_provider_id" => "nullable|integer|exists:service_providers,id",
+            // Present means a provider: a line is never left with none.
+            "service_provider_id" => "sometimes|required|integer|exists:service_providers,id",
             "sp_pricing_id" => "nullable|integer|exists:sp_pricing,id",
             "room_quantity" => "nullable|integer|min:1|max:500",
             "cost" => "nullable|numeric|min:0",
@@ -11920,6 +12214,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             app(\App\Services\RoomAvailabilityService::class)->releaseForTripDayService($service->id);
             $this->allocateRoomsForTripService($service);
         }
+        $this->repriceTrip($service->tripDay?->trip);
 
         return response()->json(["success" => true]);
     }
@@ -11928,7 +12223,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         // Free up any held room bookings before deleting the service.
         app(\App\Services\RoomAvailabilityService::class)->releaseForTripDayService((int) $request->service_id);
+        $trip = TripDayService::find($request->service_id)?->tripDay?->trip;
         TripDayService::destroy($request->service_id);
+        $this->repriceTrip($trip);
         return response()->json(["success" => true]);
     }
 
@@ -11993,7 +12290,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $day = TripDay::with('trip')->find($service->trip_day_id);
         if (!$day || !$day->date) return;
         $tripStatus = $day->trip?->status;
-        $bookingStatus = $tripStatus === 'confirmed' ? 'confirmed' : 'held';
+        // Running is confirmed too: the trip is paid and under way.
+        $bookingStatus = in_array($tripStatus, ['confirmed', 'running'], true) ? 'confirmed' : 'held';
         app(\App\Services\RoomAvailabilityService::class)->book(
             spPricingId: $service->sp_pricing_id,
             tripId: $day->trip_id,
@@ -12009,6 +12307,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $service = TripDayService::with('tripDay.trip')->findOrFail($request->service_id);
         $newSpId = $request->service_provider_id;
+        // A line keeps a provider: one can be swapped for another, never taken off.
+        if (! $newSpId) {
+            return response()->json(['error' => 'Choose the service provider. A service cannot be left without one.'], 422);
+        }
         $date = $service->tripDay->date;
         $trip = $service->tripDay->trip;
 
@@ -12041,7 +12343,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
 
         // Update pricing from SpPricing if available
-        $updateData = ['service_provider_id' => $newSpId];
+        // The actual cost was what the LAST provider was paid; a new one is
+        // paid the cost until their own figure is written.
+        $updateData = ['service_provider_id' => $newSpId, 'actual_cost' => null];
         if ($newSpId) {
             $pricing = SpPricing::where('service_provider_id', $newSpId)
                 ->where('service_type', $service->service_type)
@@ -12089,24 +12393,20 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         return response()->json(["success" => true, "response" => $responseText]);
     }
 
-    protected function recalculateTripCost(Request $request): JsonResponse
+    /**
+     * Price a trip again after something its price is made of has changed.
+     *
+     * The Trip Manager used to leave this to a Recalculate button, so a line
+     * added or taken off showed the old price until somebody remembered to
+     * press it. A trip with no itinerary is left alone, because calculating it
+     * writes every cost column to zero. Nothing here touches a paid trip: the
+     * edits that call this are in LOCK_EDIT_KEYS and refused on one first.
+     */
+    private function repriceTrip(?Trip $trip): void
     {
-        $trip = Trip::findOrFail($request->trip_id);
-
-        // Guard: CostCalculatorService::calculate() PERSISTS the result (it calls
-        // $trip->update($data) at the end), so calling it on a trip with no
-        // itinerary produces an all-zero breakdown and wipes any existing
-        // (seeded or manually-entered) cost columns. Refuse rather than destroy.
-        $hasItinerary = $trip->tripDays()->exists()
-            || $trip->selectedExperiences()->exists();
-        if (!$hasItinerary) {
-            return response()->json([
-                "error" => "This trip has no itinerary yet - add experiences or days before recalculating, otherwise the existing costs would be wiped.",
-            ], 422);
+        if ($trip && ($trip->tripDays()->exists() || $trip->selectedExperiences()->exists())) {
+            app(CostCalculatorService::class)->calculate($trip->fresh());
         }
-
-        $pricing = app(CostCalculatorService::class)->calculate($trip);
-        return response()->json(["success" => true, "pricing" => $pricing]);
     }
 
     // ===========================

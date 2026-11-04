@@ -1239,7 +1239,6 @@ body.admin-login-page {
 .heco-admin .row-checked { color: var(--heco-primary-700, #79a09f); }
 
 /* ---- Trips: inline per-row status dropdown width ---- */
-.heco-admin .heco-trip-status { font-size: 0.75rem; }
 .heco-admin td .custom-select-wrap { width: 150px; }
 
 /* ---- Email test page ---- */

@@ -18,6 +18,10 @@ class PdfController extends Controller
         if (!$user || (!$user->isHct() && (int) $trip->user_id !== (int) $user->id)) {
             abort(403);
         }
+        // Still being built by HECO.
+        if ($trip->hiddenFrom($user)) {
+            abort(403, 'HECO is still preparing this itinerary.');
+        }
 
         $pdf = app(PdfService::class)->generateTripItinerary($trip);
         return $pdf->download("trip-" . $trip->trip_id . ".pdf");

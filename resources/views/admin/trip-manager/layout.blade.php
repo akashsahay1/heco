@@ -12,6 +12,11 @@
         </div>
         <div class="d-flex gap-2">
             <span class="text-muted small">{{ $trip->user->full_name ?? $trip->user->email ?? '' }}</span>
+            {{-- Built in private and shown when ready (HECO's feedback, 2026-10-28). --}}
+            <button type="button" class="btn btn-sm {{ $trip->itinerary_hidden ? 'btn-outline-warning' : 'btn-outline-primary' }}" id="btnTripVisibility" data-hidden="{{ $trip->itinerary_hidden ? 1 : 0 }}"
+                    title="{{ $trip->itinerary_hidden ? 'The traveller cannot see this itinerary yet. Click to show it.' : 'The traveller can see this itinerary. Click to hide it.' }}">
+                <i class="bi {{ $trip->itinerary_hidden ? 'bi-eye-slash' : 'bi-eye' }}"></i> {{ $trip->itinerary_hidden ? 'Hidden from traveller' : 'Visible to traveller' }}
+            </button>
             <a href="{{ url('/pdf/trip/' . $trip->id) }}" class="btn btn-sm btn-outline-success" target="_blank"><i class="bi bi-file-pdf"></i> PDF</a>
             <a href="{{ url('/dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i> Back</a>
         </div>
@@ -129,8 +134,12 @@
                         </select>
                     </div>
                     <div class="mb-2">
-                        <label class="form-label small fw-bold">Description</label>
+                        <label class="form-label small fw-bold">Description for customer</label>
                         <input type="text" class="form-control form-control-sm" id="editServiceDesc">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Notes for team <span class="text-muted fw-normal">(not shown to the traveller)</span></label>
+                        <textarea class="form-control form-control-sm" id="editServiceNotes" rows="2"></textarea>
                     </div>
                     <div class="row g-1 mb-2">
                         <div class="col-6">
@@ -148,7 +157,7 @@
                     <div class="mb-2">
                         <label class="form-label small fw-bold">Service Provider</label>
                         <select class="form-select form-select-sm custom-select" id="editServiceProvider">
-                            <option value="">No Provider</option>
+                            <option value="">Choose a provider</option>
                             @if(isset($providers))
                                 @foreach($providers as $p)
                                     <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->provider_type }})</option>
@@ -278,7 +287,6 @@ function tmInitDatepicker(displayId, hiddenId) {
 }
 $(function() {
     tmInitDatepicker('startDateDisplay', 'startDateInput');
-    tmInitDatepicker('endDateDisplay', 'endDateInput');
     tmInitDatepicker('addPaymentDateDisplay', 'addPaymentDateInput');
 });
 
@@ -331,6 +339,26 @@ function tmDayDate(raw) {
     return parseInt(parts[2], 10) + ' ' + months[m] + ' ' + parts[0];
 }
 
+var tripStatusAtLoad = @json($trip->status);
+
+$('#btnTripVisibility').on('click', function() {
+    var hide = !Number($(this).data('hidden'));
+    confirmAction(hide ? 'Hide this itinerary from the traveller?' : 'Show this itinerary to the traveller now?', function() {
+        ajaxPost({ set_itinerary_visibility: 1, trip_id: tripId, hidden: hide ? 1 : 0 }, function() {
+            location.reload();
+        });
+    });
+});
+
+$('#btnCancelTrip').on('click', function() {
+    confirmAction('Cancel this trip? Held rooms are released and an open lead is marked lost.', function() {
+        ajaxPost({ cancel_trip: 1, trip_id: tripId }, function() {
+            showAlert('Trip cancelled.', 'info');
+            location.reload();
+        });
+    });
+});
+
 $('#tripInfoForm').on('submit', function(e) {
     e.preventDefault();
     var data = { update_trip_info: 1, trip_id: tripId };
@@ -381,16 +409,11 @@ $('#addPaymentBtn').on('click', function() {
         $('#addPaymentForm').find('input[name=amount], input[name=notes]').val('');
         $('#addPaymentCollapse').collapse('hide');
 
-        // A payment can confirm the trip. Keep the status box in step, or the
-        // next Save on this tab would undo the confirmation.
-        var $status = $('#tripInfoForm select[name=status]');
-        if (resp && resp.trip_status && $status.val() !== resp.trip_status) {
-            $status.val(resp.trip_status);
-            if (window.buildCustomDropdown) buildCustomDropdown($status[0]);
-            // And the badge beside the trip id, coloured as the server draws it.
-            var badge = resp.trip_status === 'confirmed' ? 'success' : (resp.trip_status === 'running' ? 'primary' : 'warning text-dark');
-            $('#tmStatusBadge').attr('class', 'badge bg-' + badge + ' ms-2')
-                .text(resp.trip_status.charAt(0).toUpperCase() + resp.trip_status.slice(1).replace(/_/g, ' '));
+        // A payment can confirm the trip, and confirming raises the providers'
+        // bills. Drawn again so the status and those bills are what is shown.
+        if (resp && resp.trip_status && resp.trip_status !== tripStatusAtLoad) {
+            location.reload();
+            return;
         }
 
         if (resp && resp.rooms_warning) {
@@ -525,16 +548,18 @@ $(document).on('change', '.day-type-pick', function() {
     });
 });
 
-$('#btnRecalc').on('click', function() {
-    var $btn = $(this);
-    $btn.prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Calculating...');
-    ajaxPost({ recalculate_trip_cost: 1, trip_id: tripId }, function(resp) {
-        showAlert('Costs recalculated!');
-        $btn.prop('disabled', false).html('<i class="bi bi-calculator"></i> Recalculate');
-        location.reload();
-    }, function() {
-        $btn.prop('disabled', false).html('<i class="bi bi-calculator"></i> Recalculate');
-    });
+// The price is worked out again by the server on every change to the days,
+// services and experiences. Trip Info is drawn with the page, so once any of
+// those has gone through it is drawn again the next time it is opened, rather
+// than showing the price from before.
+var tmPriceChanged = false;
+$(document).ajaxSuccess(function(e, xhr, settings) {
+    if (/(^|&)(add_day_service|edit_day_service|remove_day_service|change_day_service_provider|add_trip_day|remove_trip_day|add_experience_to_day|remove_experience_from_day|update_trip_day)=/.test(settings.data || '')) {
+        tmPriceChanged = true;
+    }
+});
+$('a[href="#tripInfoTab"]').on('shown.bs.tab', function() {
+    if (tmPriceChanged) location.reload();
 });
 
 // ==========================================
@@ -561,6 +586,11 @@ function loadItinerary() {
                 html += '<strong class="small">Day ' + day.day_number;
                 if (day.date) html += ' <span class="text-muted fw-normal">(' + tmDayDate(day.date) + ')</span>';
                 html += '</strong>';
+                // The first day's date is the trip's start; every other day
+                // follows it, so this is the one date that is set by hand.
+                if (Number(day.day_number) === 1) {
+                    html += '<button type="button" class="btn btn-sm btn-link p-0 btn-first-day-date" data-date="' + (day.date ? String(day.date).slice(0, 10) : '') + '" title="Change the first day\'s date; the rest follow"><i class="bi bi-calendar-event"></i></button>';
+                }
                 if (day.title) html += '<span class="text-muted small ms-1">- ' + day.title + '</span>';
                 if (day.added_by === 'traveller') html += '<span class="badge bg-info text-white ms-2 badge-xs">Added by Traveller</span>';
                 html += '</div>';
@@ -703,11 +733,20 @@ function loadDayServices(dayId) {
                 html += '<div class="small fw-bold">' + (s.description || s.service_type) + '</div>';
                 if (s.service_provider) html += '<div class="small text-muted">' + s.service_provider.name + '</div>';
                 if (s.from_location || s.to_location) html += '<div class="small text-muted">' + (s.from_location || '') + (s.to_location ? ' &rarr; ' + s.to_location : '') + '</div>';
+                if (s.notes) html += '<div class="small text-muted fst-italic" title="Notes for team"><i class="bi bi-lock"></i> ' + $('<div>').text(s.notes).html() + '</div>';
                 html += '</div>';
-                if (s.cost > 0) html += '<span class="small text-success fw-bold text-end">' + tmServicePriceHtml(s) + '</span>';
+                if (s.cost > 0) html += '<span class="small text-success fw-bold text-end">' + tmServicePriceHtml(s)
+                    + (s.actual_cost !== null && s.actual_cost !== undefined
+                        ? '<br><span class="text-muted fw-normal" title="What the provider is paid">Actual &#8377;' + Number(s.actual_cost).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + '</span>'
+                        : '')
+                    + '</span>';
                 html += '<div class="d-flex gap-1 ms-1">';
+                // Open on every trip, a paid one too: the real figure usually
+                // arrives after the traveller has paid, and it moves only what
+                // the provider is owed.
+                if (Number(s.cost) > 0) html += '<button class="btn btn-sm btn-outline-secondary btn-actual-cost" data-id="' + s.id + '" data-cost="' + (s.cost || 0) + '" data-actual="' + (s.actual_cost === null || s.actual_cost === undefined ? '' : s.actual_cost) + '" title="Actual cost (what the provider is paid)"><i class="bi bi-cash-coin"></i></button>';
                 var dayDate = $('.day-block[data-day-id="' + dayId + '"]').data('day-date') || '';
-                html += '<button class="btn btn-sm btn-outline-secondary btn-edit-service" data-id="' + s.id + '" data-type="' + s.service_type + '" data-description="' + tmAttr(s.description) + '" data-cost="' + (s.cost || 0) + '" data-price-basis="' + (s.price_basis || 'flat') + '" data-sp-id="' + (s.service_provider_id || '') + '" data-sp-pricing-id="' + (s.sp_pricing_id || '') + '" data-room-qty="' + (s.room_quantity || '') + '" data-day-date="' + dayDate + '" title="Edit"><i class="bi bi-pencil"></i></button>';
+                html += '<button class="btn btn-sm btn-outline-secondary btn-edit-service" data-id="' + s.id + '" data-type="' + s.service_type + '" data-description="' + tmAttr(s.description) + '" data-notes="' + tmAttr(s.notes) + '" data-cost="' + (s.cost || 0) + '" data-price-basis="' + (s.price_basis || 'flat') + '" data-sp-id="' + (s.service_provider_id || '') + '" data-sp-pricing-id="' + (s.sp_pricing_id || '') + '" data-room-qty="' + (s.room_quantity || '') + '" data-day-date="' + dayDate + '" title="Edit"><i class="bi bi-pencil"></i></button>';
                 html += '<button class="btn btn-sm btn-outline-danger rm-service" data-id="' + s.id + '" title="Remove"><i class="bi bi-x"></i></button>';
                 html += '</div>';
                 html += '</div>';
@@ -842,6 +881,29 @@ $(document).on('click', '.btn-move-day-up, .btn-move-day-down', function(e) {
     ajaxPost({ reorder_trip_days: 1, trip_id: tripId, order: dayIds }, function() { loadItinerary(); });
 });
 
+$(document).on('click', '.btn-first-day-date', function(e) {
+    e.stopPropagation();
+    Swal.fire({
+        title: 'First day\'s date',
+        html: '<div class="small text-muted">Every day after it moves with it.</div>',
+        input: 'date',
+        inputValue: $(this).data('date') || '',
+        showCancelButton: true,
+        confirmButtonText: 'Save',
+        confirmButtonColor: '#79a09f'
+    }).then(function(result) {
+        if (!result.isConfirmed || !result.value) return;
+        ajaxPost({ update_trip_info: 1, trip_id: tripId, start_date: result.value }, function(resp) {
+            if (resp && (resp.rooms_warning || resp.season_warning)) {
+                Swal.fire({ icon: 'warning', text: [resp.rooms_warning, resp.season_warning].filter(Boolean).join(' '), confirmButtonColor: '#79a09f' })
+                    .then(function() { location.reload(); });
+                return;
+            }
+            location.reload();
+        });
+    });
+});
+
 $(document).on('click', '.day-block', function(e) {
     if ($(e.target).closest('button').length) return;
     selectDay($(this).data('day-id'));
@@ -849,13 +911,13 @@ $(document).on('click', '.day-block', function(e) {
 
 // What each Add Service box is for, said in the box for the type chosen.
 var SERVICE_PLACEHOLDERS = {
-    '':            ['Service name', 'From', 'To'],
-    transport:     ['Service name, e.g. Jeep to the put-in', 'From, e.g. Dehradun airport', 'To, e.g. Rishikesh'],
-    accommodation: ['Service name, e.g. Riverside camp, 1 night', 'Check-in place', 'Check-out place'],
-    activity:      ['Service name, e.g. River rafting (16 km)', 'From (optional)', 'To (optional)'],
-    guide:         ['Service name, e.g. Local guide, half day', 'From (optional)', 'To (optional)'],
-    meal:          ['Service name, e.g. Welcome dinner', 'From (optional)', 'To (optional)'],
-    other:         ['Service name, e.g. Camping and river permit', 'From (optional)', 'To (optional)']
+    '':            ['Description for customer', 'From', 'To'],
+    transport:     ['Description for customer, e.g. Jeep to the put-in', 'From, e.g. Dehradun airport', 'To, e.g. Rishikesh'],
+    accommodation: ['Description for customer, e.g. Riverside camp, 1 night', 'Check-in place', 'Check-out place'],
+    activity:      ['Description for customer, e.g. River rafting (16 km)', 'From (optional)', 'To (optional)'],
+    guide:         ['Description for customer, e.g. Local guide, half day', 'From (optional)', 'To (optional)'],
+    meal:          ['Description for customer, e.g. Welcome dinner', 'From (optional)', 'To (optional)'],
+    other:         ['Description for customer, e.g. Camping and river permit', 'From (optional)', 'To (optional)']
 };
 function setServicePlaceholders() {
     var $form = $('#addServiceForm');
@@ -865,6 +927,41 @@ function setServicePlaceholders() {
     $form.find('[name=to_location]').attr('placeholder', p[2]);
 }
 $(document).on('change', '#addServiceForm [name=service_type]', setServicePlaceholders);
+
+// Actual cost follows Cost until somebody types a figure of their own into it.
+$(document).on('input', '#addServiceForm [name=cost]', function() {
+    var $actual = $('#addServiceForm [name=actual_cost]');
+    if (!$actual.data('own')) $actual.val($(this).val());
+});
+$(document).on('input', '#addServiceForm [name=actual_cost]', function() {
+    $(this).data('own', $(this).val() !== '' && $(this).val() !== $('#addServiceForm [name=cost]').val());
+});
+
+$(document).on('click', '.btn-actual-cost', function(e) {
+    e.stopPropagation();
+    var $b = $(this);
+    var dayId = $('#serviceDayId').val();
+    Swal.fire({
+        title: 'Actual cost',
+        html: '<div class="small text-muted mb-2">What the provider is paid for this line. The traveller\'s price does not change.<br>Cost: &#8377;'
+            + Number($b.data('cost')).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + '. Leave empty to use the Cost.</div>',
+        input: 'number',
+        inputValue: $b.data('actual') === '' ? $b.data('cost') : $b.data('actual'),
+        inputAttributes: { min: 0, step: '0.01' },
+        showCancelButton: true,
+        confirmButtonText: 'Save',
+        confirmButtonColor: '#79a09f'
+    }).then(function(result) {
+        if (!result.isConfirmed) return;
+        ajaxPost({ set_service_actual_cost: 1, service_id: $b.data('id'), actual_cost: result.value }, function(resp) {
+            loadDayServices(dayId);
+            if (resp && resp.note) { showAlert(resp.note, 'info'); return; }
+            showAlert(resp && resp.bill_due !== undefined
+                ? 'Actual cost saved. The provider\'s bill is now Rs ' + Number(resp.bill_due).toLocaleString('en-IN') + '.'
+                : 'Actual cost saved.');
+        });
+    });
+});
 
 $('#addServiceForm').on('submit', function(e) {
     e.preventDefault();
@@ -876,6 +973,7 @@ $('#addServiceForm').on('submit', function(e) {
         loadDayServices($('#serviceDayId').val());
         loadItinerary();
         $('#addServiceForm')[0].reset();
+        $('#addServiceForm [name=actual_cost]').data('own', false);
         if (window.buildCustomDropdown) $('#addServiceForm select.custom-select').each(function() { buildCustomDropdown(this); });
         setServicePlaceholders();
         $('#addServiceCollapse').collapse('hide');
@@ -899,6 +997,7 @@ $(document).on('click', '.btn-edit-service', function() {
     $('#editServiceId').val($btn.data('id'));
     $('#editServiceType').val($btn.data('type'));
     $('#editServiceDesc').val($btn.data('description'));
+    $('#editServiceNotes').val($btn.data('notes') || '');
     $('#editServiceCost').val($btn.data('cost'));
     $('#editServicePriceBasis').val($btn.data('price-basis') || 'flat');
     $('#editServiceProvider').val(String($btn.data('sp-id') || ''));
@@ -990,6 +1089,12 @@ $('#editServiceForm').on('submit', function(e) {
         showAlert('Service updated!');
     }
 
+    // A line keeps a provider. Said before anything is saved: the server
+    // refuses the change, and the rest of the edit would already be in.
+    if (!newSp && origSp) {
+        showAlert('Choose the service provider. A service cannot be left without one.', 'warning');
+        return;
+    }
     var roomId = $('#editServiceRoom').val();
     var roomQty = $('#editServiceRoomQty').val();
     var serviceType = $('#editServiceType').val();
@@ -998,6 +1103,7 @@ $('#editServiceForm').on('submit', function(e) {
         service_id: serviceId,
         service_type: serviceType,
         description: $('#editServiceDesc').val(),
+        notes: $('#editServiceNotes').val(),
         cost: $('#editServiceCost').val(),
         price_basis: $('#editServicePriceBasis').val() || 'flat',
     };

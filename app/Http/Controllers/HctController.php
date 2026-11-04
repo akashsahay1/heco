@@ -174,6 +174,29 @@ class HctController extends Controller
         return view("admin.gst");
     }
 
+    /** The GST report for the days asked for, as a file Excel opens. */
+    public function gstExport(Request $request)
+    {
+        $svc = app(\App\Services\GstReportService::class);
+        $period = $svc->period($request->from_date, $request->to_date);
+        abort_if(is_string($period), 422, is_string($period) ? $period : '');
+        [$from, $to] = $period;
+
+        return response($svc->csv($from, $to), 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="gst-report-' . $from->format('Y-m-d') . '-to-' . $to->format('Y-m-d') . '.csv"',
+        ]);
+    }
+
+    /** The CSV template for importing providers: its header row. */
+    public function providerImportTemplate()
+    {
+        return response(app(\App\Services\ProviderImportService::class)->template(), 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="heco-providers-template.csv"',
+        ]);
+    }
+
     public function providers()
     {
         $regions = Region::where("is_active", true)->orderBy("name")->get();

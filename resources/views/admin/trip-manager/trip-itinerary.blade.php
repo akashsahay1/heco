@@ -104,7 +104,7 @@
                             </select>
                         </div>
                         <div class="mb-1">
-                            <input type="text" class="form-control form-control-sm" name="description" placeholder="Service name">
+                            <input type="text" class="form-control form-control-sm" name="description" placeholder="Description for customer">
                         </div>
                         <div class="row g-1 mb-1">
                             <div class="col-6">
@@ -114,11 +114,17 @@
                                 <input type="text" class="form-control form-control-sm" name="to_location" placeholder="To">
                             </div>
                         </div>
+                        {{-- Cost prices the trip for the traveller; Actual cost is what
+                             the provider is paid, and what their bill is raised from. It
+                             follows Cost until it is written differently. --}}
                         <div class="row g-1 mb-1">
-                            <div class="col-6">
-                                <input type="number" class="form-control form-control-sm" name="cost" step="0.01" min="0" placeholder="Cost">
+                            <div class="col-4">
+                                <input type="number" class="form-control form-control-sm" name="cost" step="0.01" min="0" placeholder="Cost" title="What the traveller is priced on">
                             </div>
-                            <div class="col-6">
+                            <div class="col-4">
+                                <input type="number" class="form-control form-control-sm" name="actual_cost" step="0.01" min="0" placeholder="Actual cost" title="What the provider is paid. Same as Cost unless changed.">
+                            </div>
+                            <div class="col-4">
                                 {{-- Per head or for the whole party. A rafting ticket is one,
                                      a jeep is the other, and both land on the same day. --}}
                                 <select class="form-select form-select-sm custom-select" name="price_basis" title="Is the cost per person or for the whole group?">
@@ -129,8 +135,8 @@
                         </div>
                         <div class="row g-1 mb-1">
                             <div class="col-12">
-                                <select class="form-select form-select-sm custom-select" name="service_provider_id">
-                                    <option value="">No Provider</option>
+                                <select class="form-select form-select-sm custom-select" name="service_provider_id" required>
+                                    <option value="">Choose a provider *</option>
                                     @if(isset($providers))
                                         @foreach($providers as $p)
                                             <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->provider_type }})</option>
@@ -140,7 +146,9 @@
                             </div>
                         </div>
                         <div class="mb-1">
-                            <input type="text" class="form-control form-control-sm" name="notes" placeholder="Notes (optional)">
+                            {{-- Internal. The traveller is sent a line's description, never
+                                 its notes (getTripTimeline). --}}
+                            <input type="text" class="form-control form-control-sm" name="notes" placeholder="Notes for team (not shown to the traveller)">
                         </div>
                         <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-plus"></i> Add Service</button>
                     </form>

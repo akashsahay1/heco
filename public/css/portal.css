@@ -2903,28 +2903,6 @@
         margin-top: var(--space-1);
     }
 
-    /* Experiences — itemised per-person base price at the top of the pricing
-       summary. Display-only: not added to the total (each experience's cost is
-       already split across the Accommodation/Transport/Guide/Activities rows). */
-    #prExperiences:not(:empty) {
-        border-bottom: 1px dashed var(--color-border, #e5e7eb);
-        margin-bottom: var(--space-1);
-        padding-bottom: var(--space-1);
-    }
-    .pricing-row.pricing-exp-head {
-        padding-bottom: var(--space-1);
-    }
-    .pricing-row.pricing-exp-row {
-        padding: 2px 0 2px var(--space-2);
-        font-size: 0.78rem;
-        color: var(--color-text-muted, #6b7280);
-    }
-    .pricing-row.pricing-exp-row > span:last-child {
-        font-weight: var(--font-bold, 700);
-        color: var(--heco-primary-600, #276749);
-        white-space: nowrap;
-    }
-
     /* Provider picker — vertical master/detail (replaces the provider dropdown).
        Top section lists each provider once; clicking one reveals that provider's
        room pricing in the section below. Everything stacks vertically. */
