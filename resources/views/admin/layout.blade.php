@@ -184,6 +184,25 @@
             headers: { 'X-CSRF-TOKEN': jQuery('meta[name="csrf-token"]').attr('content') }
         });
 
+        // 419 means the login on this page has expired (left open too long, or
+        // the session was cleared). Say so in plain words and reload: the reload
+        // gives a fresh token, or the login page if they are signed out.
+        var sessionExpiredShown = false;
+        jQuery(document).ajaxError(function(event, xhr) {
+            if (xhr.status !== 419 || sessionExpiredShown) return;
+            sessionExpiredShown = true;
+            Swal.fire({
+                title: 'Session expired',
+                text: 'Your session has expired. Please log in again. What you typed was not saved.',
+                icon: 'warning',
+                confirmButtonColor: '#79a09f',
+                confirmButtonText: 'Log in again',
+                allowOutsideClick: false
+            }).then(function() {
+                location.reload();
+            });
+        });
+
         function showAlert(message, type) {
             type = type || 'success';
             var iconMap = { success: 'success', danger: 'error', warning: 'warning', info: 'info' };
