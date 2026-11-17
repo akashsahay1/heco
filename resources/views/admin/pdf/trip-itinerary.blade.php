@@ -212,6 +212,19 @@
                 <td class="value">{{ $trip->travel_pace ?: '-' }}</td>
             </tr>
         @endif
+        {{-- Every Travel Preference is in the PDF (answers, 2026-11-12, Q1). --}}
+        @if($trip->budget_sensitivity)
+            <tr>
+                <td class="label">Budget</td>
+                <td class="value" colspan="3">{{ $trip->budget_sensitivity }}</td>
+            </tr>
+        @endif
+        @if($trip->other_preferences)
+            <tr>
+                <td class="label">Other Preferences</td>
+                <td class="value" colspan="3">{{ is_array($trip->other_preferences) ? implode(', ', $trip->other_preferences) : $trip->other_preferences }}</td>
+            </tr>
+        @endif
         @if($trip->pickup_location || $trip->drop_location)
             <tr>
                 <td class="label">Pickup</td>
@@ -312,7 +325,7 @@
                                         }]);
                                     }
                                 @endphp
-                                <span style="text-transform: capitalize;">{{ $service->service_type }}</span>:
+                                <span style="text-transform: capitalize;">{{ $service->service_type === 'other' ? 'Extra' : $service->service_type }}</span>:
                                 {{ implode(' · ', array_unique($what)) }}
                                 @if($service->serviceProvider)
                                     <span class="text-muted">({{ $service->serviceProvider->name }})</span>
@@ -321,6 +334,11 @@
                                     <span class="text-muted">
                                         {{ $service->from_location ?? '' }}{{ $service->to_location ? ' → ' . $service->to_location : '' }}
                                     </span>
+                                @endif
+                                {{-- Only in the team's copy, and only when they tick
+                                     "Include team notes" (answers, 2026-11-12, Q5). --}}
+                                @if(! empty($teamNotes) && $service->notes)
+                                    <div style="margin-left: 16px; color: #8a5a00;"><strong>Team note:</strong> {{ $service->notes }}</div>
                                 @endif
                             </div>
                         @endforeach
@@ -353,12 +371,18 @@
     <tbody>
         <tr>
             <td>Price</td>
-            <td class="text-right">{{ number_format((float) ($trip->final_price ?? 0) - (float) ($trip->gst_amount ?? 0), 2) }}</td>
+            <td class="text-right">{{ number_format((float) ($trip->final_price ?? 0) + (float) $trip->credit_used - (float) ($trip->gst_amount ?? 0), 2) }}</td>
         </tr>
         <tr>
             <td>GST</td>
             <td class="text-right">{{ number_format($trip->gst_amount ?? 0, 2) }}</td>
         </tr>
+        @if((float) $trip->credit_used > 0)
+            <tr>
+                <td>Credit used</td>
+                <td class="text-right">- {{ number_format((float) $trip->credit_used, 2) }}</td>
+            </tr>
+        @endif
         <tr style="background: #79a09f; color: white;">
             <td class="bold" style="font-size: 13px;">Final Price</td>
             <td class="text-right bold" style="font-size: 13px;">&#8377;{{ number_format($trip->final_price ?? 0, 2) }}</td>

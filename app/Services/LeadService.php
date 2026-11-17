@@ -10,7 +10,7 @@ class LeadService
 {
     public function createOrGetLead(Trip $trip): Lead
     {
-        return Lead::firstOrCreate(
+        return $this->leadForNewTrip($trip) ?? Lead::firstOrCreate(
             ['trip_id' => $trip->id],
             [
                 'user_id' => $trip->user_id,
@@ -18,6 +18,66 @@ class LeadService
                 'enquiry_date' => now(),
             ]
         );
+    }
+
+    /**
+     * Every new trip has a lead (HECO's answers, 2026-11-12, Q6: "each new
+     * trip creates a lead, or attaches to the contact's existing one").
+     *
+     * The existing one is a lead still in follow-up for the same person, found
+     * by account or by email. A lead holds its first trip; a further trip of
+     * the same person is shown on it through the person, so nothing is
+     * written. A lead already won or lost was a sale made or missed, and a new
+     * trip after it is a new enquiry with a lead of its own.
+     *
+     * Called for every trip created (TripObserver), after the creating
+     * transaction commits, so a trip the team ties to a lead by hand is seen
+     * as tied and not given a second one.
+     */
+    public function leadForNewTrip(Trip $trip): ?Lead
+    {
+        $own = Lead::where('trip_id', $trip->id)->first();
+        if ($own) {
+            return $own;
+        }
+
+        $traveller = $trip->user;
+        if (! $traveller || $traveller->user_role !== 'traveller') {
+            return null;
+        }
+        $email = strtolower(trim((string) $traveller->email));
+
+        $open = Lead::where('stage', 'follow_up')
+            ->where(function ($q) use ($traveller, $email) {
+                $q->where('user_id', $traveller->id);
+                if ($email !== '') {
+                    $q->orWhereRaw('LOWER(email) = ?', [$email]);
+                }
+            })
+            ->orderByRaw('trip_id IS NULL DESC')
+            ->orderBy('id')
+            ->first();
+
+        if ($open) {
+            if (! $open->trip_id) {
+                $open->update(['trip_id' => $trip->id, 'user_id' => $traveller->id]);
+            }
+            return $open;
+        }
+
+        return Lead::create([
+            'trip_id' => $trip->id,
+            'user_id' => $traveller->id,
+            'full_name' => $traveller->full_name,
+            'email' => $email ?: null,
+            'mobile' => $traveller->mobile,
+            'adults' => $trip->adults,
+            'children' => $trip->children,
+            'start_date' => $trip->start_date,
+            'end_date' => $trip->end_date,
+            'stage' => 'follow_up',
+            'enquiry_date' => now(),
+        ]);
     }
 
     public function updateInteraction(Lead $lead, string $mode, ?string $notes = null): void

@@ -53,10 +53,11 @@
                                 <th>Total Paid</th>
                                 <th>Balance</th>
                                 <th>Status</th>
+                                <th>Credit</th>
                             </tr>
                         </thead>
                         <tbody id="travellerPaymentsTable">
-                            <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                            <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -142,6 +143,10 @@ function loadSpPayments(page) {
             html += '<span class="small">Due: ₹' + Number(sp.amount_due || 0).toLocaleString() + '</span>';
             html += ' <span class="small ms-2">Paid: ₹' + Number(sp.amount_paid || 0).toLocaleString() + '</span>';
             html += ' <span class="small ms-2 fw-bold ' + balanceClass + '">Bal: ₹' + balance.toLocaleString() + '</span>';
+            var owesBack = Number(sp.owes_back || 0);
+            if (owesBack > 0) {
+                html += ' <span class="small ms-2 fw-bold text-warning">Owes back: ₹' + owesBack.toLocaleString() + '</span>';
+            }
             html += '</div>';
             html += '</div>';
             html += '</button>';
@@ -170,9 +175,18 @@ function loadSpPayments(page) {
                 html += 'because a cancellation often still owes somebody something. Pay it only as a cancellation charge.';
                 html += '</div>';
             }
-            html += '<h6 class="small fw-bold">Add Payment</h6>';
+            // Paid more than the cancellation charge: what comes back is
+            // recorded here, and nothing more is paid on this bill.
+            if (owesBack > 0) {
+                html += '<h6 class="small fw-bold">Money returned</h6>';
+                html += '<p class="small text-muted mb-2">The provider was paid ₹' + Number(sp.amount_paid || 0).toLocaleString()
+                    + ' against a charge of ₹' + Number(sp.amount_due || 0).toLocaleString()
+                    + ', so they owe ₹' + owesBack.toLocaleString() + ' back. Record it here when it arrives.</p>';
+            } else {
+                html += '<h6 class="small fw-bold">Add Payment</h6>';
+            }
             html += '<div class="row g-2">';
-            html += '<div class="col-md-3"><input type="number" class="form-control form-control-sm sp-amount" placeholder="Amount" data-id="' + sp.id + '" step="0.01"></div>';
+            html += '<div class="col-md-3"><input type="number" class="form-control form-control-sm sp-amount" placeholder="Amount" data-id="' + sp.id + '" step="0.01"' + (owesBack > 0 ? ' value="' + owesBack + '"' : '') + '></div>';
             html += '<div class="col-md-3">';
             html += '<input type="text" class="form-control form-control-sm sp-date-display" data-id="' + sp.id + '" readonly autocomplete="off">';
             html += '<input type="hidden" class="sp-date" data-id="' + sp.id + '">';
@@ -187,9 +201,14 @@ function loadSpPayments(page) {
             html += '</div>';
             html += '<div class="col-md-3"><input type="text" class="form-control form-control-sm sp-notes" placeholder="Notes" data-id="' + sp.id + '"></div>';
             html += '</div>';
-            html += '<button class="btn btn-sm btn-success mt-2 add-sp-payment" data-id="' + sp.id + '"'
-                 + (sp.trip_cancelled ? ' data-cancelled="1"' : '')
-                 + '><i class="bi bi-plus-circle"></i> Add Payment</button>';
+            if (owesBack > 0) {
+                html += '<button class="btn btn-sm btn-warning mt-2 add-sp-payment" data-id="' + sp.id + '" data-direction="returned">'
+                     + '<i class="bi bi-arrow-return-left"></i> Record money returned</button>';
+            } else {
+                html += '<button class="btn btn-sm btn-success mt-2 add-sp-payment" data-id="' + sp.id + '"'
+                     + (sp.trip_cancelled ? ' data-cancelled="1"' : '')
+                     + '><i class="bi bi-plus-circle"></i> Add Payment</button>';
+            }
 
             html += '</div>';
             html += '</div>';
@@ -225,11 +244,13 @@ function isoFromDate(d) {
 
 function buildEntryTable(entries) {
     var html = '<div class="table-responsive"><table class="table table-sm table-bordered mb-0">';
-    html += '<thead class="table-light"><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Notes</th></tr></thead><tbody>';
+    html += '<thead class="table-light"><tr><th>Date</th><th>Amount</th><th>Type</th><th>Mode</th><th>Notes</th></tr></thead><tbody>';
     entries.forEach(function(e) {
+        var returned = e.direction === 'returned';
         html += '<tr>';
         html += '<td><small>' + (e.payment_date ? e.payment_date.substring(0, 10) : '-') + '</small></td>';
-        html += '<td>₹' + Number(e.amount || 0).toLocaleString() + '</td>';
+        html += '<td>' + (returned ? '-' : '') + '₹' + Number(e.amount || 0).toLocaleString() + '</td>';
+        html += '<td><small>' + (returned ? '<span class="badge bg-warning text-dark">Returned</span>' : 'Paid') + '</small></td>';
         html += '<td><small>' + (e.mode ? e.mode.replace(/_/g, ' ') : '-') + '</small></td>';
         html += '<td><small>' + (e.notes || '-') + '</small></td>';
         html += '</tr>';
@@ -243,7 +264,7 @@ function loadTravellerPayments() {
         var items = resp.payments || resp.data || [];
         var html = '';
         if (!items.length) {
-            html = '<tr><td colspan="6" class="text-center text-muted">No traveller payments found</td></tr>';
+            html = '<tr><td colspan="7" class="text-center text-muted">No traveller payments found</td></tr>';
         }
         items.forEach(function(p) {
             var balance = Number(p.balance || 0);
@@ -258,6 +279,18 @@ function loadTravellerPayments() {
             html += '<td>₹' + Number(p.total_paid || 0).toLocaleString() + '</td>';
             html += '<td class="fw-bold ' + balanceClass + '">₹' + balance.toLocaleString() + '</td>';
             html += '<td><span class="badge bg-' + statusBadge + '">' + statusLabel + '</span></td>';
+            // Credit from a cancelled or postponed trip, taken off this
+            // trip's Final Price when ticked.
+            var used = Number(p.credit_used || 0), avail = Number(p.credit_available || 0);
+            html += '<td onclick="event.stopPropagation();">';
+            if (used > 0 || avail > 0) {
+                html += '<div class="form-check mb-0 small"><input class="form-check-input use-credit" type="checkbox" id="useCredit' + p.trip.id + '" data-trip="' + p.trip.id + '"' + (used > 0 ? ' checked' : '') + '>'
+                    + '<label class="form-check-label" for="useCredit' + p.trip.id + '">Use credit '
+                    + (used > 0 ? '(&#8377;' + used.toLocaleString() + ' used)' : '(&#8377;' + avail.toLocaleString() + ' available)') + '</label></div>';
+            } else {
+                html += '<span class="text-muted">-</span>';
+            }
+            html += '</td>';
             html += '</tr>';
         });
         $('#travellerPaymentsTable').html(html);
@@ -267,6 +300,19 @@ function loadTravellerPayments() {
 $(function() {
     loadSpPayments();
     loadTravellerPayments();
+});
+
+$(document).on('change', '.use-credit', function() {
+    var $box = $(this).prop('disabled', true);
+    ajaxPost({ apply_trip_credit: 1, trip_id: $box.data('trip'), use: this.checked ? 1 : 0 }, function(resp) {
+        showAlert(resp.credit_used > 0
+            ? 'Credit of ₹' + Number(resp.credit_used).toLocaleString() + ' used. Final price is now ₹' + Number(resp.final_price).toLocaleString() + '.'
+            : 'Credit removed. Final price is now ₹' + Number(resp.final_price).toLocaleString() + '.', 'success');
+        loadTravellerPayments();
+    }, function(xhr) {
+        showAlert((xhr.responseJSON && xhr.responseJSON.error) || 'Could not change the credit.', 'danger');
+        loadTravellerPayments();
+    });
 });
 
 $('#spSearchBtn').on('click', function() { loadSpPayments(); });
@@ -279,6 +325,7 @@ $(document).on('click', '.add-sp-payment', function() {
     var paymentDate = $('.sp-date[data-id="' + id + '"]').val();
     var mode = $('.sp-mode[data-id="' + id + '"]').val();
     var notes = $('.sp-notes[data-id="' + id + '"]').val();
+    var direction = $(this).data('direction') || 'paid';
 
     if (!amount || !paymentDate) {
         showAlert('Please enter amount and date.', 'warning');
@@ -297,10 +344,12 @@ $(document).on('click', '.add-sp-payment', function() {
         add_sp_payment_entry: 1,
         sp_payment_id: id,
         amount: amount,
+        direction: direction,
         payment_date: paymentDate,
         mode: mode,
         notes: notes
     }, function() {
+        if (direction === 'returned') showAlert('Money returned recorded.', 'success');
         loadSpPayments();
     });
 });

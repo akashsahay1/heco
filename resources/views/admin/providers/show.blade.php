@@ -499,7 +499,10 @@ function loadPayments() {
                 ph += '<td>' + (tNum ? '<a href="/trip-manager/' + tNum + '" target="_blank">' + tCode + '</a>' : tCode) + '</td>';
                 ph += '<td class="text-end">' + due.toLocaleString('en-IN') + '</td>';
                 ph += '<td class="text-end">' + paid.toLocaleString('en-IN') + '</td>';
-                ph += '<td class="text-end">' + (bal > 0 ? '<span class="text-danger">' + bal.toLocaleString('en-IN') + '</span>' : bal.toLocaleString('en-IN')) + '</td>';
+                // Paid over a cancellation charge: owed back, shown apart from the balance.
+                var back = Math.round((paid - due) * 100) / 100;
+                ph += '<td class="text-end">' + (bal > 0 ? '<span class="text-danger">' + bal.toLocaleString('en-IN') + '</span>' : bal.toLocaleString('en-IN'))
+                    + (back > 0.5 ? '<div class="small text-warning">owes back ' + back.toLocaleString('en-IN') + '</div>' : '') + '</td>';
                 ph += '</tr>';
             });
             ph += '<tr class="table-light fw-bold">';

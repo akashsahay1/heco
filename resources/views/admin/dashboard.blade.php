@@ -34,14 +34,42 @@
 <div class="row g-3 mb-3">
     <div class="col-lg-7">
         <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0"><i class="bi bi-cash-coin"></i> Pending Payments</h6>
-                <span class="badge bg-warning text-dark" id="pendingCount">0</span>
+            <div class="card-header">
+                <h6 class="mb-2"><i class="bi bi-cash-coin"></i> Pending Payments</h6>
+                {{-- Two lists, money in and money out (answers, 2026-11-12, Q3). --}}
+                <ul class="nav nav-pills nav-sm small" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active py-1 px-2" data-bs-toggle="pill" href="#pendingReceivePane">To receive from travellers <span class="badge bg-warning text-dark" id="pendingCount">0</span></a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link py-1 px-2" data-bs-toggle="pill" href="#pendingPayPane">To pay to providers <span class="badge bg-warning text-dark" id="toPayCount">0</span></a>
+                    </li>
+                    {{-- Money a provider gives back after a cancellation (HECO, 2026-11-14). --}}
+                    <li class="nav-item">
+                        <a class="nav-link py-1 px-2" data-bs-toggle="pill" href="#pendingBackPane">To receive from providers <span class="badge bg-warning text-dark" id="toReceiveCount">0</span></a>
+                    </li>
+                </ul>
             </div>
-            <div class="card-body scroll-panel-md" id="pendingList">
-                <p class="text-muted text-center small">Loading...</p>
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="pendingReceivePane">
+                    <div class="card-body scroll-panel-md" id="pendingList">
+                        <p class="text-muted text-center small">Loading...</p>
+                    </div>
+                    <div class="card-footer small text-muted py-1" id="pendingRule"></div>
+                </div>
+                <div class="tab-pane fade" id="pendingPayPane">
+                    <div class="card-body scroll-panel-md" id="toPayList">
+                        <p class="text-muted text-center small">Loading...</p>
+                    </div>
+                    <div class="card-footer small text-muted py-1">Payments to providers are recorded on the <a href="/payments">Payments</a> page.</div>
+                </div>
+                <div class="tab-pane fade" id="pendingBackPane">
+                    <div class="card-body scroll-panel-md" id="toReceiveList">
+                        <p class="text-muted text-center small">Loading...</p>
+                    </div>
+                    <div class="card-footer small text-muted py-1">Money a provider returns is recorded on the <a href="/payments">Payments</a> page, with Money returned.</div>
+                </div>
             </div>
-            <div class="card-footer small text-muted py-1" id="pendingRule"></div>
         </div>
     </div>
     <div class="col-lg-5">
@@ -179,6 +207,8 @@ function dashMoney(n) { return '&#8377;' + Number(n || 0).toLocaleString('en-IN'
 
 function loadPendingPayments() {
     ajaxPost({ get_pending_payments: 1 }, function(resp) {
+        renderToPay(resp.to_pay || []);
+        renderToReceive(resp.to_receive || []);
         var items = resp.items || [];
         $('#pendingCount').text(items.length);
         $('#pendingRule').text('Fully paid trips leave this list. A part-paid trip comes back ' + resp.days_before
@@ -200,6 +230,45 @@ function loadPendingPayments() {
         });
         $('#pendingList').html(html);
     });
+}
+
+// What HECO still owes its providers, each bill linked to its trip.
+function renderToPay(bills) {
+    $('#toPayCount').text(bills.length);
+    if (!bills.length) {
+        $('#toPayList').html('<p class="text-muted text-center small mb-0">Nothing owed to providers right now.</p>');
+        return;
+    }
+    var html = '';
+    bills.forEach(function(b) {
+        html += '<div class="border-bottom pb-2 mb-2 small">';
+        html += '<strong>' + dashEsc(b.provider) + '</strong> <span class="text-muted">' + dashEsc(b.service_type) + '</span>';
+        html += '<div><a href="/trip-manager/' + b.trip_row_id + '" class="fw-semibold">' + dashEsc(b.trip_id) + '</a>'
+            + (b.start_date ? ' <span class="text-muted">&middot; starts ' + dashEsc(b.start_date) + '</span>' : '')
+            + (b.trip_cancelled ? ' <span class="badge bg-danger">Trip cancelled</span>' : '') + '</div>';
+        html += '<div>Due <strong>' + dashMoney(b.balance) + '</strong> <span class="text-muted">of ' + dashMoney(b.amount_due) + (b.paid > 0 ? ', paid ' + dashMoney(b.paid) : '') + '</span></div>';
+        html += '</div>';
+    });
+    $('#toPayList').html(html);
+}
+
+// What providers owe HECO back after a cancellation, each linked to its trip.
+function renderToReceive(bills) {
+    $('#toReceiveCount').text(bills.length);
+    if (!bills.length) {
+        $('#toReceiveList').html('<p class="text-muted text-center small mb-0">No provider owes anything back right now.</p>');
+        return;
+    }
+    var html = '';
+    bills.forEach(function(b) {
+        html += '<div class="border-bottom pb-2 mb-2 small">';
+        html += '<strong>' + dashEsc(b.provider) + '</strong> <span class="text-muted">' + dashEsc(b.service_type) + '</span>';
+        html += '<div><a href="/trip-manager/' + b.trip_row_id + '" class="fw-semibold">' + dashEsc(b.trip_id) + '</a>'
+            + (b.trip_cancelled ? ' <span class="badge bg-danger">Trip cancelled</span>' : '') + '</div>';
+        html += '<div>Owes back <strong>' + dashMoney(b.owes_back) + '</strong> <span class="text-muted">(paid ' + dashMoney(b.paid) + ', charge ' + dashMoney(b.charge) + ')</span></div>';
+        html += '</div>';
+    });
+    $('#toReceiveList').html(html);
 }
 
 function loadLeadReminders() {

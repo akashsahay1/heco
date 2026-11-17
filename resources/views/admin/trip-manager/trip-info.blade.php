@@ -31,6 +31,16 @@
                                     @endif
                                 </div>
                                 <small class="text-muted">Confirmed by a payment; Running and Completed follow the dates.</small>
+                                {{-- What was said when it was cancelled (answers, 2026-11-12, Q4). --}}
+                                @if($trip->status === 'cancelled' && $trip->cancelled_at)
+                                    <div class="alert alert-secondary py-2 px-2 small mt-2 mb-0">
+                                        <strong>{{ $trip->cancel_type === 'postponed' ? 'Postponed with credit' : 'Cancelled' }}</strong>
+                                        on {{ $trip->cancelled_at->format('j M Y') }}.
+                                        <div>Reason: {{ $trip->cancel_reason }}</div>
+                                        <div>Refunded to the traveller: &#8377;{{ number_format((float) $trip->refund_amount, 2) }}
+                                            &middot; Kept as credit: &#8377;{{ number_format((float) $trip->credit_kept, 2) }}</div>
+                                    </div>
+                                @endif
                             </div>
                             <div class="col-md-6">
                                 {{-- Read, not chosen: a trip closes by itself once it has run
@@ -364,6 +374,9 @@
                                 <tr class="border-top"><td class="ps-3 small fw-bold">Total Cost</td><td class="text-end pe-3 small fw-bold">&#8377;{{ number_format($trip->total_cost ?? 0, 2) }}</td></tr>
                                 <tr><td class="ps-3 small text-muted">Margins ({{ $rpOff ? '' : 'RP + ' }}HRP + HCT)</td><td class="text-end pe-3 small">&#8377;{{ number_format($margins, 2) }}</td></tr>
                                 <tr><td class="ps-3 small text-muted">GST</td><td class="text-end pe-3 small">&#8377;{{ number_format($trip->gst_amount ?? 0, 2) }}</td></tr>
+                                @if((float) $trip->credit_used > 0)
+                                    <tr><td class="ps-3 small text-muted">Credit used</td><td class="text-end pe-3 small">- &#8377;{{ number_format((float) $trip->credit_used, 2) }}</td></tr>
+                                @endif
                                 <tr class="border-top bg-success bg-opacity-10">
                                     <td class="ps-3 fw-bold">Final Price</td>
                                     <td class="text-end pe-3 fw-bold text-success fs-6">&#8377;{{ number_format($trip->final_price ?? 0, 2) }}</td>
@@ -538,7 +551,7 @@
                                                 <option value="guide">Guide</option>
                                                 <option value="activity">Activity</option>
                                                 <option value="meal">Meal</option>
-                                                <option value="other">Other</option>
+                                                <option value="other">Extra</option>
                                             </select>
                                         </div>
                                         <div class="col-md-6">
@@ -583,6 +596,11 @@
                                                 <span class="text-success">Paid: &#8377;{{ number_format($spPayment->amount_paid ?? 0, 2) }}</span>
                                                 <span class="mx-1">|</span>
                                                 <span class="{{ ($spPayment->balance ?? 0) > 0 ? 'text-danger' : 'text-success' }}">Bal: &#8377;{{ number_format($spPayment->balance ?? 0, 2) }}</span>
+                                                @if($spPayment->owesBack() > 0)
+                                                    {{-- Paid more than the cancellation charge (HECO, 2026-11-14). --}}
+                                                    <span class="mx-1">|</span>
+                                                    <span class="text-warning fw-bold">Owes back: &#8377;{{ number_format($spPayment->owesBack(), 2) }}</span>
+                                                @endif
                                                 <i class="bi bi-chevron-down ms-2"></i>
                                             </div>
                                         </div>
@@ -590,13 +608,19 @@
                                             @if($spPayment->entries && $spPayment->entries->count())
                                                 <table class="table table-sm table-bordered mb-0 small">
                                                     <thead class="table-light">
-                                                        <tr><th>Date</th><th>Amount</th><th>Mode</th><th>Notes</th></tr>
+                                                        <tr><th>Date</th><th>Amount</th><th>Type</th><th>Mode</th><th>Notes</th></tr>
                                                     </thead>
                                                     <tbody>
                                                         @foreach($spPayment->entries as $entry)
                                                             <tr>
                                                                 <td>{{ $entry->payment_date ? $entry->payment_date->format('d M Y') : '-' }}</td>
-                                                                <td class="text-success">&#8377;{{ number_format($entry->amount ?? 0, 2) }}</td>
+                                                                @if($entry->direction === 'returned')
+                                                                    <td class="text-warning">-&#8377;{{ number_format($entry->amount ?? 0, 2) }}</td>
+                                                                    <td><span class="badge bg-warning text-dark">Returned</span></td>
+                                                                @else
+                                                                    <td class="text-success">&#8377;{{ number_format($entry->amount ?? 0, 2) }}</td>
+                                                                    <td>Paid</td>
+                                                                @endif
                                                                 <td>{{ $entry->mode ?? '-' }}</td>
                                                                 <td>{{ $entry->notes ?? '' }}</td>
                                                             </tr>

@@ -17,7 +17,13 @@
                     title="{{ $trip->itinerary_hidden ? 'The traveller cannot see this itinerary yet. Click to show it.' : 'The traveller can see this itinerary. Click to hide it.' }}">
                 <i class="bi {{ $trip->itinerary_hidden ? 'bi-eye-slash' : 'bi-eye' }}"></i> {{ $trip->itinerary_hidden ? 'Hidden from traveller' : 'Visible to traveller' }}
             </button>
-            <a href="{{ url('/pdf/trip/' . $trip->id) }}" class="btn btn-sm btn-outline-success" target="_blank"><i class="bi bi-file-pdf"></i> PDF</a>
+            <a href="{{ url('/pdf/trip/' . $trip->id) }}" class="btn btn-sm btn-outline-success" target="_blank" id="tripPdfBtn" data-base="{{ url('/pdf/trip/' . $trip->id) }}"><i class="bi bi-file-pdf"></i> PDF</a>
+            {{-- Off by default: the PDF is the traveller's document unless the
+                 team asks for their notes in it (answers, 2026-11-12, Q5). --}}
+            <div class="form-check form-check-inline small mb-0 ms-1">
+                <input class="form-check-input" type="checkbox" id="pdfTeamNotes">
+                <label class="form-check-label" for="pdfTeamNotes">Include team notes</label>
+            </div>
             <a href="{{ url('/dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i> Back</a>
         </div>
     </div>
@@ -112,6 +118,107 @@
 @endif
 
 {{-- Edit Service Modal --}}
+{{-- A provider not yet in HECO, added without leaving the trip (answers,
+     2026-11-12, Q2). The rest of their record is filled on the Providers page. --}}
+{{-- Cancel with a short dialog (answers, 2026-11-12, Q4). --}}
+<div class="modal fade" id="cancelTripModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title"><i class="bi bi-x-circle"></i> Cancel trip {{ $trip->trip_id }}</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger py-2 small d-none" id="cancelTripError"></div>
+                <div class="mb-2">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="cancelType" id="cancelTypeCancelled" value="cancelled" checked>
+                        <label class="form-check-label small" for="cancelTypeCancelled">Cancelled</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="cancelType" id="cancelTypePostponed" value="postponed">
+                        <label class="form-check-label small" for="cancelTypePostponed">Postponed with credit</label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold mb-1">Reason *</label>
+                    <textarea class="form-control form-control-sm" id="cancelReason" rows="2" maxlength="2000"></textarea>
+                </div>
+                <label class="form-label small fw-bold mb-1">Cancellation charge per provider</label>
+                <div class="small text-muted mb-1">What each provider charges. Starts at 0. It becomes their Actual Cost and their payment. Charged less than they were paid, they owe the rest back.</div>
+                <div id="cancelProviders" class="mb-3"><p class="small text-muted mb-0">Loading...</p></div>
+                <label class="form-label small fw-bold mb-1">The traveller's money</label>
+                <div class="small mb-1">Paid so far: <strong id="cancelPaid">-</strong></div>
+                <div class="row g-2 mb-1">
+                    <div class="col-6">
+                        <label class="form-label small mb-1">Refunded (&#8377;)</label>
+                        <input type="number" class="form-control form-control-sm" id="cancelRefund" min="0" step="0.01" value="0">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small mb-1">Kept as credit (&#8377;)</label>
+                        <input type="number" class="form-control form-control-sm" id="cancelCredit" min="0" step="0.01" value="0">
+                    </div>
+                </div>
+                <div class="small text-muted" id="cancelKeptNote"></div>
+                <div class="small text-muted mt-2">Held rooms are released and the lead is marked Lost. The refund itself is paid by bank; this records how much.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Back</button>
+                <button type="button" class="btn btn-sm btn-danger" id="cancelTripSave"><i class="bi bi-x-circle"></i> Cancel trip</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="quickProviderModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title"><i class="bi bi-person-plus"></i> New provider</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger py-2 small d-none" id="quickProviderError"></div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Name *</label>
+                    <input type="text" class="form-control form-control-sm" id="qpName" maxlength="255">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Phone *</label>
+                    <input type="text" class="form-control form-control-sm" id="qpPhone" maxlength="20">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Email</label>
+                    <input type="email" class="form-control form-control-sm" id="qpEmail" placeholder="Optional">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Region *</label>
+                    <select class="form-select form-select-sm custom-select" id="qpRegion">
+                        <option value="">Choose a region</option>
+                        @foreach($regions as $r)
+                            <option value="{{ $r->id }}" @selected($r->id == $tripRegionId)>{{ $r->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="mb-1">
+                    <label class="form-label small mb-1">What they offer *</label>
+                    <select class="form-select form-select-sm custom-select" id="qpCategory">
+                        <option value="">Choose one</option>
+                        @foreach($serviceCategories as $c)
+                            <option value="{{ $c }}">{{ $c }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <small class="text-muted">Added as an approved provider. No email is sent. The rest of their details can be filled in on the Providers page.</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-success" id="qpSaveBtn"><i class="bi bi-check"></i> Add provider</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="editServiceModal" tabindex="-1">
     <div class="modal-dialog modal-sm">
         <div class="modal-content">
@@ -130,7 +237,7 @@
                             <option value="guide">Guide</option>
                             <option value="activity">Activity</option>
                             <option value="meal">Meal</option>
-                            <option value="other">Other</option>
+                            <option value="other">Extra</option>
                         </select>
                     </div>
                     <div class="mb-2">
@@ -350,12 +457,79 @@ $('#btnTripVisibility').on('click', function() {
     });
 });
 
+// Cancel with a short dialog: reason, a charge per provider, and what
+// happens to the traveller's money (answers, 2026-11-12, Q4).
+var cancelPaid = 0;
+function cancelMoney(n) { return '&#8377;' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+function cancelKeptNote() {
+    var left = cancelPaid - (Number($('#cancelRefund').val()) || 0) - (Number($('#cancelCredit').val()) || 0);
+    $('#cancelKeptNote').html(cancelPaid > 0 ? (left >= -0.5 ? 'HECO keeps ' + cancelMoney(Math.max(0, left)) + ' as its cancellation charge.' : '<span class="text-danger">More than the traveller has paid.</span>') : '');
+}
 $('#btnCancelTrip').on('click', function() {
-    confirmAction('Cancel this trip? Held rooms are released and an open lead is marked lost.', function() {
-        ajaxPost({ cancel_trip: 1, trip_id: tripId }, function() {
-            showAlert('Trip cancelled.', 'info');
-            location.reload();
-        });
+    $('#cancelTripError').addClass('d-none').text('');
+    $('#cancelReason').val('');
+    $('#cancelTypeCancelled').prop('checked', true);
+    $('#cancelRefund, #cancelCredit').val(0);
+    $('#cancelProviders').html('<p class="small text-muted mb-0">Loading...</p>');
+    $('#cancelTripModal').modal('show');
+    ajaxPost({ get_cancel_info: 1, trip_id: tripId }, function(resp) {
+        cancelPaid = Number(resp.traveller_paid || 0);
+        $('#cancelPaid').html(cancelMoney(cancelPaid));
+        var ps = resp.providers || [];
+        if (!ps.length) {
+            $('#cancelProviders').html('<p class="small text-muted mb-0">No provider is on this trip.</p>');
+        } else {
+            var html = '';
+            ps.forEach(function(p) {
+                html += '<div class="mb-1">';
+                html += '<div class="d-flex align-items-center gap-2">';
+                html += '<div class="small flex-grow-1">' + $('<div>').text(p.name).html()
+                    + (p.paid > 0 ? ' <span class="text-muted">(paid ' + cancelMoney(p.paid) + ')</span>' : '') + '</div>';
+                html += '<input type="number" class="form-control form-control-sm cancel-charge" style="max-width: 130px" min="0" step="0.01" data-id="' + p.id + '" data-paid="' + (p.paid || 0) + '" value="0">';
+                html += '</div>';
+                html += '<div class="small text-warning text-end cancel-owes-back" data-id="' + p.id + '"></div>';
+                html += '</div>';
+            });
+            $('#cancelProviders').html(html);
+            $('.cancel-charge').each(cancelOwesBack);
+        }
+        cancelKeptNote();
+    });
+});
+// Postponed: the traveller's money is kept as credit, unless the team says otherwise.
+$(document).on('change', 'input[name=cancelType]', function() {
+    if (this.value === 'postponed') {
+        $('#cancelRefund').val(0);
+        $('#cancelCredit').val(cancelPaid);
+    }
+    cancelKeptNote();
+});
+$(document).on('input', '#cancelRefund, #cancelCredit', cancelKeptNote);
+// A provider charged less than they were paid owes the rest back.
+function cancelOwesBack() {
+    var paid = Number($(this).data('paid')) || 0;
+    var back = Math.round((paid - (Number($(this).val()) || 0)) * 100) / 100;
+    $('.cancel-owes-back[data-id="' + $(this).data('id') + '"]').html(back > 0.5 ? 'Owes back ' + cancelMoney(back) : '');
+}
+$(document).on('input', '.cancel-charge', cancelOwesBack);
+$('#cancelTripSave').on('click', function() {
+    var $btn = $(this).prop('disabled', true);
+    var data = {
+        cancel_trip: 1,
+        trip_id: tripId,
+        cancel_type: $('input[name=cancelType]:checked').val(),
+        reason: $('#cancelReason').val(),
+        refund_amount: $('#cancelRefund').val() || 0,
+        credit_amount: $('#cancelCredit').val() || 0
+    };
+    $('.cancel-charge').each(function() { data['charges[' + $(this).data('id') + ']'] = $(this).val() || 0; });
+    ajaxPost(data, function() {
+        showAlert(data.cancel_type === 'postponed' ? 'Trip postponed with credit.' : 'Trip cancelled.', 'info');
+        location.reload();
+    }, function(xhr) {
+        var msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Could not cancel the trip.';
+        $('#cancelTripError').removeClass('d-none').text(msg);
+        $btn.prop('disabled', false);
     });
 });
 
@@ -644,7 +818,7 @@ function loadItinerary() {
                     day.services.forEach(function(s) {
                         html += '<div class="d-flex align-items-center p-1 small">';
                         html += '<i class="bi bi-' + getServiceIcon(s.service_type) + ' ' + (s.is_included ? 'text-success' : 'text-danger') + ' me-2"></i>';
-                        html += '<span class="flex-fill">' + (s.description || s.service_type) + '</span>';
+                        html += '<span class="flex-fill">' + (s.description || (s.service_type === 'other' ? 'Extra' : s.service_type)) + '</span>';
                         if (s.service_provider) html += '<small class="text-muted me-2">' + s.service_provider.name + '</small>';
                         if (s.cost > 0) html += '<small class="text-success">' + tmServicePriceHtml(s) + '</small>';
                         html += '</div>';
@@ -730,7 +904,7 @@ function loadDayServices(dayId) {
                 html += '<div class="service-row">';
                 html += '<i class="bi bi-' + getServiceIcon(s.service_type) + ' ' + (s.is_included ? 'text-success' : 'text-danger') + '"></i>';
                 html += '<div class="flex-fill">';
-                html += '<div class="small fw-bold">' + (s.description || s.service_type) + '</div>';
+                html += '<div class="small fw-bold">' + (s.description || (s.service_type === 'other' ? 'Extra' : s.service_type)) + '</div>';
                 if (s.service_provider) html += '<div class="small text-muted">' + s.service_provider.name + '</div>';
                 if (s.from_location || s.to_location) html += '<div class="small text-muted">' + (s.from_location || '') + (s.to_location ? ' &rarr; ' + s.to_location : '') + '</div>';
                 if (s.notes) html += '<div class="small text-muted fst-italic" title="Notes for team"><i class="bi bi-lock"></i> ' + $('<div>').text(s.notes).html() + '</div>';
@@ -917,14 +1091,20 @@ var SERVICE_PLACEHOLDERS = {
     activity:      ['Description for customer, e.g. River rafting (16 km)', 'From (optional)', 'To (optional)'],
     guide:         ['Description for customer, e.g. Local guide, half day', 'From (optional)', 'To (optional)'],
     meal:          ['Description for customer, e.g. Welcome dinner', 'From (optional)', 'To (optional)'],
-    other:         ['Description for customer, e.g. Camping and river permit', 'From (optional)', 'To (optional)']
+    other:         ['Description for customer, e.g. Inner Line Permit, flight, oxygen cylinder', 'From (optional)', 'To (optional)']
 };
 function setServicePlaceholders() {
     var $form = $('#addServiceForm');
-    var p = SERVICE_PLACEHOLDERS[$form.find('[name=service_type]').val()] || SERVICE_PLACEHOLDERS[''];
+    var type = $form.find('[name=service_type]').val();
+    var p = SERVICE_PLACEHOLDERS[type] || SERVICE_PLACEHOLDERS[''];
     $form.find('[name=description]').attr('placeholder', p[0]);
     $form.find('[name=from_location]').attr('placeholder', p[1]);
     $form.find('[name=to_location]').attr('placeholder', p[2]);
+    // An Extra needs no provider; every other kind does.
+    var extra = type === 'other';
+    var $sp = $form.find('[name=service_provider_id]').prop('required', !extra);
+    $sp.find('option[value=""]').text(extra ? 'No provider (optional)' : 'Choose a provider *');
+    if (window.buildCustomDropdown) buildCustomDropdown($sp[0]);
 }
 $(document).on('change', '#addServiceForm [name=service_type]', setServicePlaceholders);
 
@@ -960,6 +1140,56 @@ $(document).on('click', '.btn-actual-cost', function(e) {
                 ? 'Actual cost saved. The provider\'s bill is now Rs ' + Number(resp.bill_due).toLocaleString('en-IN') + '.'
                 : 'Actual cost saved.');
         });
+    });
+});
+
+// "Include team notes" decides which copy the PDF button downloads.
+$(document).on('change', '#pdfTeamNotes', function() {
+    var base = $('#tripPdfBtn').data('base');
+    $('#tripPdfBtn').attr('href', this.checked ? base + '?team_notes=1' : base);
+});
+
+// New provider from inside the trip: added, put in both provider lists, and
+// chosen on the line being written.
+$(document).on('click', '#quickProviderBtn', function() {
+    $('#quickProviderError').addClass('d-none').text('');
+    $('#qpName, #qpPhone, #qpEmail').val('');
+    $('#qpCategory').val('');
+    if (window.buildCustomDropdown) {
+        buildCustomDropdown($('#qpRegion')[0]);
+        buildCustomDropdown($('#qpCategory')[0]);
+    }
+    $('#quickProviderModal').modal('show');
+});
+
+$(document).on('click', '#qpSaveBtn', function() {
+    var $btn = $(this).prop('disabled', true);
+    ajaxPost({
+        quick_add_provider: 1,
+        trip_id: {{ $trip->id }},
+        name: $('#qpName').val(),
+        phone_1: $('#qpPhone').val(),
+        email: $('#qpEmail').val(),
+        region_id: $('#qpRegion').val(),
+        service_category: $('#qpCategory').val()
+    }, function(resp) {
+        var p = resp.provider;
+        var label = p.name + ' (' + p.provider_type + ')';
+        $('#addServiceForm [name=service_provider_id], #editServiceProvider').each(function() {
+            $(this).append($('<option>').val(p.id).text(label));
+        });
+        var $sel = $('#addServiceForm [name=service_provider_id]').val(String(p.id));
+        if (window.buildCustomDropdown) {
+            buildCustomDropdown($sel[0]);
+            buildCustomDropdown($('#editServiceProvider')[0]);
+        }
+        $btn.prop('disabled', false);
+        $('#quickProviderModal').modal('hide');
+        showAlert(p.name + ' added and chosen for this service.', 'success');
+    }, function(xhr) {
+        var msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Could not add the provider.';
+        $('#quickProviderError').removeClass('d-none').text(msg);
+        $btn.prop('disabled', false);
     });
 });
 
@@ -1089,15 +1319,15 @@ $('#editServiceForm').on('submit', function(e) {
         showAlert('Service updated!');
     }
 
-    // A line keeps a provider. Said before anything is saved: the server
-    // refuses the change, and the rest of the edit would already be in.
-    if (!newSp && origSp) {
-        showAlert('Choose the service provider. A service cannot be left without one.', 'warning');
+    // A line keeps a provider, unless it is an Extra. Said before anything is
+    // saved: the server refuses it, and the rest of the edit would already be in.
+    var serviceType = $('#editServiceType').val();
+    if (!newSp && serviceType !== 'other') {
+        showAlert('Choose the service provider. Only an Extra can be left without one.', 'warning');
         return;
     }
     var roomId = $('#editServiceRoom').val();
     var roomQty = $('#editServiceRoomQty').val();
-    var serviceType = $('#editServiceType').val();
     var payload = {
         edit_day_service: 1,
         service_id: serviceId,
@@ -1110,6 +1340,18 @@ $('#editServiceForm').on('submit', function(e) {
     if (serviceType === 'accommodation') {
         payload.sp_pricing_id = roomId || '';
         payload.room_quantity = roomId ? (roomQty || 1) : '';
+    }
+    // A line with no provider yet (an Extra) gets its provider first, so a
+    // new kind chosen in the same save is never left without one.
+    if (!origSp && newSp) {
+        ajaxPost({ change_day_service_provider: 1, service_id: serviceId, service_provider_id: newSp }, function() {
+            ajaxPost(payload, afterSave, function(xhr) {
+                showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Save failed') : 'Save failed', 'danger');
+            });
+        }, function(xhr) {
+            showAlert(xhr.responseJSON ? (xhr.responseJSON.error || 'Provider change failed') : 'Provider change failed', 'danger');
+        });
+        return;
     }
 
     ajaxPost(payload, function() {

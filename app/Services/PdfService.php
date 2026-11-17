@@ -8,7 +8,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class PdfService
 {
-    public function generateTripItinerary(Trip $trip): \Barryvdh\DomPDF\PDF
+    public function generateTripItinerary(Trip $trip, bool $teamNotes = false): \Barryvdh\DomPDF\PDF
     {
         $trip->load([
             'user', 'tripDays.experiences.experience', 'tripDays.services.serviceProvider', 'tripDays.services.spPricing',
@@ -27,6 +27,7 @@ class PdfService
             'trip' => $trip,
             'template' => $template,
             'peopleFactor' => $peopleFactor,
+            'teamNotes' => $teamNotes,
         ]);
 
         if ($template) {

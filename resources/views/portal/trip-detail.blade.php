@@ -275,14 +275,18 @@ jQuery(function() {
         // Trip Cost, GST and Final Price, as on the trip page and the PDF:
         // Trip Cost is the price before GST, margins included, so the three
         // add up (HECO's feedback, 2026-10-28).
-        html += '<div class="td-pr-row"><span>Trip Cost</span><span>' + fmtCurrency((Number(p.final_price) || 0) - (Number(p.gst_amount) || 0)) + '</span></div>';
+        var credit = Number(p.credit_used) || 0;
+        html += '<div class="td-pr-row"><span>Trip Cost</span><span>' + fmtCurrency((Number(p.final_price) || 0) + credit - (Number(p.gst_amount) || 0)) + '</span></div>';
         html += '<div class="td-pr-row"><span>GST</span><span>' + fmtCurrency(p.gst_amount) + '</span></div>';
+        if (credit > 0) html += '<div class="td-pr-row"><span>Credit used</span><span>- ' + fmtCurrency(credit) + '</span></div>';
         html += '<div class="td-pr-row total"><span>Final Price</span><span>' + fmtCurrency(p.final_price) + '</span></div>';
         if (p.total_paid > 0) {
             html += '<div class="td-pr-row paid"><span>Total Paid</span><span>' + fmtCurrency(p.total_paid) + '</span></div>';
         }
         if (p.balance_due > 0) {
             html += '<div class="td-pr-row balance"><span>Balance Due</span><span>' + fmtCurrency(p.balance_due) + '</span></div>';
+            // Each trip is paid on its own (answers, 2026-11-12, Q7).
+            html += '<a href="/home?trip_id={{ $trip->id }}#paymentCard" class="btn btn-success btn-sm w-100 mt-2"><i class="bi bi-shield-lock"></i> Pay Now</a>';
         }
         jQuery('#pricingContainer').html(html);
     }

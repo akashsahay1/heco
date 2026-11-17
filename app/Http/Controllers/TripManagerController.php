@@ -6,6 +6,7 @@ use App\Models\Trip;
 use App\Models\Region;
 use App\Models\RegenerativeProject;
 use App\Models\ServiceProvider;
+use App\Models\SystemList;
 use App\Services\CostCalculatorService;
 
 class TripManagerController extends Controller
@@ -57,8 +58,13 @@ class TripManagerController extends Controller
             (int) $trip->adults, (int) ($trip->children ?: 0), (int) ($trip->infants ?: 0),
         )['people_factor'];
 
+        // For "New provider" beside the provider list (answers, 2026-11-12, Q2).
+        $serviceCategories = SystemList::ofType('service_category')->where('is_active', true)->orderBy('sort_order')->pluck('name');
+        $tripRegionId = $trip->tripRegions()->value('region_id');
+
         return view("admin.trip-manager.layout",
-            compact("trip", "regions", "providers", "involved", "singleSupplement", "peopleFactor", "rpProjects"));
+            compact("trip", "regions", "providers", "involved", "singleSupplement", "peopleFactor", "rpProjects",
+                "serviceCategories", "tripRegionId"));
     }
 
     /**

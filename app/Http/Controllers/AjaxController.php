@@ -681,6 +681,7 @@ class AjaxController extends Controller
         'get_gst_report' => 'hct',
         'get_providers' => 'hct',
         'add_provider' => 'hct',
+        'quick_add_provider' => 'hct',
         'import_providers' => 'hct',
         'edit_provider' => 'hct',
         'get_provider_trips' => 'hct',
@@ -732,6 +733,8 @@ class AjaxController extends Controller
         'edit_day_service' => 'hct',
         'set_service_actual_cost' => 'hct',
         'cancel_trip' => 'hct',
+        'get_cancel_info' => 'hct',
+        'apply_trip_credit' => 'hct',
         'set_itinerary_visibility' => 'hct',
         'remove_day_service' => 'hct',
         'change_day_service_provider' => 'hct',
@@ -1599,6 +1602,9 @@ class AjaxController extends Controller
             if ($request->has('add_provider')) {
                 return $this->addProvider($request);
             }
+            if ($request->has('quick_add_provider')) {
+                return $this->quickAddProvider($request);
+            }
             if ($request->has('edit_provider')) {
                 return $this->editProvider($request);
             }
@@ -1744,6 +1750,12 @@ class AjaxController extends Controller
             }
             if ($request->has('cancel_trip')) {
                 return $this->cancelTrip($request);
+            }
+            if ($request->has('get_cancel_info')) {
+                return $this->getCancelInfo($request);
+            }
+            if ($request->has('apply_trip_credit')) {
+                return $this->applyTripCredit($request);
             }
             if ($request->has('set_service_actual_cost')) {
                 return $this->setServiceActualCost($request);
@@ -4207,6 +4219,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // used to travel in this answer and were merely not drawn.
         return array_intersect_key($pricing, array_flip([
             'final_price', 'gst_amount', 'gst_percent', 'total_paid', 'balance_due', 'currency',
+            // Their own credit, taken off the Final Price (answers, 2026-11-12, Q4).
+            'credit_used',
         ]));
     }
 
@@ -4492,18 +4506,31 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $user = Auth::user();
         // Only what the itineraries cards draw. The whole row went out before,
         // carrying the HRP and HCT shares, HCT's own notes and the AI's raw reply.
+        //
+        // Every trip of theirs as a card, grouped Upcoming and Past, each with
+        // what is still to pay on it (answers, 2026-11-12, Q7). A trip the team
+        // is still building out of sight is not shown at all.
+        $today = now()->startOfDay();
         $trips = Trip::where("user_id", $user->id)
             ->where("status", "!=", "cancelled")
             ->with("regions")
+            ->withSum(['travellerPayments as paid' => fn ($q) => $q->where('payment_status', 'paid')], 'amount')
             ->orderBy("updated_at", "desc")
             ->get()
-            // array_merge, not +: a later key must replace final_price, which + keeps.
-            ->map(fn (Trip $trip) => array_merge($trip->only([
-                "id", "trip_id", "trip_name", "status", "start_date", "end_date", "final_price",
-            ]), [
-                "regions" => $trip->regions->map->only(["id", "name"])->values(),
-                "hct_built" => $trip->isHctBuilt(),
-            ], $trip->hiddenFrom($user) ? ["final_price" => null, "hidden" => true] : []));
+            ->reject(fn (Trip $trip) => $trip->hiddenFrom($user))
+            ->map(function (Trip $trip) use ($today) {
+                $lastDay = ($trip->end_date ?? $trip->start_date)?->copy()->startOfDay();
+                $past = $trip->status === 'completed' || ($lastDay && $lastDay->lt($today));
+                $price = (float) $trip->final_price;
+                return $trip->only(["id", "trip_id", "trip_name", "status", "start_date", "end_date", "final_price"]) + [
+                    "regions" => $trip->regions->map->only(["id", "name"])->values(),
+                    "hct_built" => $trip->isHctBuilt(),
+                    "paid" => (float) $trip->paid,
+                    "balance_due" => $price > 0 ? max(0, round($price - (float) $trip->paid, 2)) : null,
+                    "when" => $past ? 'past' : 'upcoming',
+                ];
+            })
+            ->values();
         return response()->json(["trips" => $trips]);
     }
 
@@ -6999,7 +7026,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      */
     protected function getPendingPayments(Request $request): JsonResponse
     {
-        $days = max(0, (int) Setting::getValue('payment_reminder_days_before_trip', 7));
+        $days = max(0, (int) Setting::getValue('payment_reminder_days_before_trip', 10));
         $today = now()->startOfDay();
 
         // Completed too: a trip that has run with its balance unpaid is the
@@ -7055,7 +7082,49 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         }
         usort($items, fn ($a, $b) => strcmp($a['start_date'] ?? '9999', $b['start_date'] ?? '9999'));
 
-        return response()->json(['items' => $items, 'days_before' => $days]);
+        // The other way: what HECO still owes its providers, as its own list
+        // (answers, 2026-11-12, Q3), every open bill linked to its trip. A bill
+        // on a cancelled trip stays, marked, as it does on the Payments page:
+        // what is left on it is a cancellation charge somebody has to settle.
+        $toPay = SpPayment::with(['trip:id,trip_id,trip_name,start_date,status', 'serviceProvider:id,name'])
+            ->where('balance', '>', 0.5)
+            ->whereHas('trip')
+            ->get()
+            ->map(fn (SpPayment $bill) => [
+                'id' => $bill->id,
+                'trip_row_id' => $bill->trip->id,
+                'trip_id' => $bill->trip->trip_id,
+                'provider' => $bill->serviceProvider?->name ?: '-',
+                'service_type' => $bill->service_type,
+                'start_date' => $bill->trip->start_date?->toDateString(),
+                'trip_cancelled' => $bill->trip->status === 'cancelled',
+                'amount_due' => (float) $bill->amount_due,
+                'paid' => (float) $bill->amount_paid,
+                'balance' => (float) $bill->balance,
+            ])
+            ->sortBy(fn ($b) => $b['start_date'] ?? '9999')
+            ->values();
+
+        // And what providers owe HECO back: paid more than a cancellation left
+        // them charging (HECO, 2026-11-14). Gone once recorded as returned.
+        $toReceive = SpPayment::with(['trip:id,trip_id,trip_name,start_date,status', 'serviceProvider:id,name'])
+            ->whereRaw('amount_paid - amount_due > 0.5')
+            ->whereHas('trip')
+            ->get()
+            ->map(fn (SpPayment $bill) => [
+                'id' => $bill->id,
+                'trip_row_id' => $bill->trip->id,
+                'trip_id' => $bill->trip->trip_id,
+                'provider' => $bill->serviceProvider?->name ?: '-',
+                'service_type' => $bill->service_type,
+                'trip_cancelled' => $bill->trip->status === 'cancelled',
+                'charge' => (float) $bill->amount_due,
+                'paid' => (float) $bill->amount_paid,
+                'owes_back' => $bill->owesBack(),
+            ])
+            ->values();
+
+        return response()->json(['items' => $items, 'days_before' => $days, 'to_pay' => $toPay, 'to_receive' => $toReceive]);
     }
 
     protected function getLeadReminders(Request $request): JsonResponse
@@ -7565,14 +7634,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         } elseif ($newStatus === 'cancelled') {
             $room->releaseForTrip($trip->id);
 
-            // A cancelled trip is nobody's to ring about. The lead used to sit
-            // in follow-up afterwards, so HCT's call list kept a note telling
-            // them to chase a trip that had been called off.
-            //
-            // A lead already won is left alone: the trip happened and was
-            // cancelled later, which is a different thing from a sale that was
-            // never made, and quietly rewriting it would lose that.
-            if ($trip->lead && $trip->lead->stage === 'follow_up') {
+            // A cancelled trip is nobody's to ring about, and HECO agreed that
+            // cancelling marks the lead Lost (answers, 2026-11-12, Q4), a won
+            // one included.
+            if ($trip->lead && $trip->lead->stage !== 'lost') {
                 app(\App\Services\LeadService::class)->markLost($trip->lead);
             }
         }
@@ -7676,6 +7741,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $payments->getCollection()->transform(function ($p) {
             $p->trip_code = $p->trip?->trip_id;
             $p->trip_cancelled = $p->trip?->status === 'cancelled';
+            // Paid over the bill: the provider owes this back (HECO, 2026-11-14).
+            $p->owes_back = $p->owesBack();
             return $p;
         });
 
@@ -7807,12 +7874,26 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             "amount" => "required|numeric|min:0.01",
             "payment_date" => "required|date",
             "mode" => "required|string",
+            "direction" => "nullable|in:paid,returned",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
         }
 
         $spPayment = SpPayment::findOrFail($request->sp_payment_id);
+        $direction = $request->input('direction') ?: SpPaymentEntry::PAID;
+
+        // Money the provider gave back (HECO, 2026-11-14: providers do return
+        // some, by their cancellation policy). Never more than they owe back.
+        if ($direction === SpPaymentEntry::RETURNED) {
+            $owesBack = $spPayment->owesBack();
+            if ($owesBack <= 0) {
+                return response()->json(['error' => 'This provider does not owe anything back on this bill.'], 422);
+            }
+            if ((float) $request->amount - $owesBack > 0.01) {
+                return response()->json(['error' => 'They owe back only Rs ' . number_format($owesBack, 2) . ' on this one.'], 422);
+            }
+        }
 
         // Nothing stopped a partner being paid more than they were owed. A
         // payable settled in full took another instalment happily and the
@@ -7820,7 +7901,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // across a partner's trips, a negative one quietly cancelled out what
         // another trip genuinely owed them. A double-clicked Pay button did it
         // on its own.
-        $alreadyPaid = (float) $spPayment->entries()->sum('amount');
+        $alreadyPaid = $spPayment->netPaid();
         $due = (float) $spPayment->amount_due;
         $left = round($due - $alreadyPaid, 2);
 
@@ -7829,7 +7910,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // raises one for a partner who is not pinned on the trip, so there is
         // nothing to compute from, and then enters what was actually agreed.
         // Guarding it regardless locked HCT out of recording a real payment.
-        if ($due > 0) {
+        if ($direction === SpPaymentEntry::PAID && $due > 0) {
             if ($left <= 0) {
                 return response()->json([
                     'error' => 'This one is settled in full. There is nothing left to pay on it.',
@@ -7845,6 +7926,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         SpPaymentEntry::create([
             "sp_payment_id" => $spPayment->id,
             "amount" => $request->amount,
+            "direction" => $direction,
             "payment_date" => $request->payment_date,
             "mode" => $request->mode,
             "notes" => $request->notes,
@@ -7864,7 +7946,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      */
     private function restateSpPayable(SpPayment $spPayment): void
     {
-        $totalPaid = (float) $spPayment->entries()->sum('amount');
+        // Paid less what the provider gave back.
+        $totalPaid = $spPayment->netPaid();
         $spPayment->update([
             'amount_paid' => $totalPaid,
             'balance' => max(0, round((float) $spPayment->amount_due - $totalPaid, 2)),
@@ -7897,16 +7980,31 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         // What the others come to, so this one can be checked against what is
         // left without counting itself twice.
-        $others = (float) $spPayment->entries()->where('id', '!=', $entry->id)->sum('amount');
+        $others = $spPayment->netPaid($entry->id);
         $due = (float) $spPayment->amount_due;
-        $room = round($due - $others, 2);
-        // Only when the payable carries a figure. One standing at nothing has
-        // nothing to be measured against, the same as when an entry is added.
-        if ($due > 0 && (float) $data['amount'] - $room > 0.01) {
-            return response()->json([
-                'error' => 'That would pay more than is owed. At most Rs '
-                    . number_format($room, 2) . ' can go on this one.',
-            ], 422);
+        $amount = (float) $data['amount'];
+        if ($entry->direction === SpPaymentEntry::RETURNED) {
+            // A return can be no more than was paid over the bill.
+            $room = round($others - $due, 2);
+            if ($amount - $room > 0.01) {
+                return response()->json([
+                    'error' => 'That is more than they owe back. At most Rs '
+                        . number_format(max(0, $room), 2) . ' can be returned on this one.',
+                ], 422);
+            }
+        } else {
+            $room = round($due - $others, 2);
+            // Only when the payable carries a figure. One standing at nothing has
+            // nothing to be measured against, the same as when an entry is added.
+            // Nor when it is not raised: a bill cut by a cancellation charge
+            // is already paid over, and fixing the date of a payment on it
+            // must still be possible.
+            if ($due > 0 && $amount - $room > 0.01 && $amount > (float) $entry->amount + 0.01) {
+                return response()->json([
+                    'error' => 'That would pay more than is owed. At most Rs '
+                        . number_format(max(0, $room), 2) . ' can go on this one.',
+                ], 422);
+            }
         }
 
         $entry->update($request->only(["amount", "payment_date", "mode", "notes"]));
@@ -7926,11 +8024,22 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
     protected function getTravellerPaymentsOverview(Request $request): JsonResponse
     {
-        $trips = Trip::whereHas("travellerPayments")
+        // A traveller with credit (answers, 2026-11-12, Q4) has their open
+        // trips listed too, paid or not, so the credit can be used on one.
+        $withCredit = Trip::where('credit_kept', '>', 0)->distinct()->pluck('user_id')
+            ->filter(fn ($userId) => $userId && Trip::creditAvailableFor((int) $userId) > 0)->values();
+
+        $trips = Trip::where(function ($q) use ($withCredit) {
+                $q->whereHas("travellerPayments")
+                    ->orWhere('credit_used', '>', 0)
+                    ->orWhere(fn ($q) => $q->whereIn('user_id', $withCredit)
+                        ->whereNotIn('status', ['cancelled', 'completed'])->where('final_price', '>', 0));
+            })
             ->with(["user", "travellerPayments"])
             ->get()
             ->map(function ($trip) {
                 $totalPaid = $trip->travellerPayments->where('payment_status', 'paid')->sum("amount");
+                $open = ! in_array($trip->status, ['cancelled', 'completed'], true);
                 return [
                     "trip" => ["id" => $trip->id, "trip_id" => $trip->trip_id],
                     "user" => ["full_name" => $trip->user->full_name ?? '', "email" => $trip->user->email ?? ''],
@@ -7938,10 +8047,55 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
                     "total_paid" => $totalPaid,
                     "balance" => ($trip->final_price ?? 0) - $totalPaid,
                     "status" => $trip->status,
+                    "credit_used" => (float) $trip->credit_used,
+                    // What this trip could take: the traveller's credit not used elsewhere.
+                    "credit_available" => $open && $trip->user_id ? Trip::creditAvailableFor($trip->user_id, $trip->id) : 0,
                 ];
             });
 
         return response()->json(["payments" => $trips]);
+    }
+
+    /**
+     * Use the traveller's credit on this trip, or stop using it (answers,
+     * 2026-11-12, Q4: "a check box ... in the traveller's payment tab to use
+     * the credit and accordingly his final price will be adjusted").
+     *
+     * As much as they have, never more than the price still to be paid: the
+     * Final Price is not taken below what they have already paid.
+     */
+    protected function applyTripCredit(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'trip_id' => 'required|exists:trips,id',
+            'use' => 'required|boolean',
+        ]);
+        $trip = Trip::findOrFail($data['trip_id']);
+        if (in_array($trip->status, ['cancelled', 'completed'], true)) {
+            return response()->json(['error' => 'Credit can only be used on a trip that has not run or been cancelled.'], 422);
+        }
+
+        $credit = 0.0;
+        if ($data['use']) {
+            $available = Trip::creditAvailableFor((int) $trip->user_id, $trip->id);
+            if ($available <= 0) {
+                return response()->json(['error' => 'This traveller has no credit to use.'], 422);
+            }
+            $priceWithout = (float) $trip->final_price + (float) $trip->credit_used;
+            $paid = app(\App\Services\LeadService::class)->amountPaid($trip);
+            $credit = min($available, max(0, $priceWithout - $paid));
+        }
+
+        $trip->update(['credit_used' => $credit]);
+        $this->repriceTrip($trip);
+        $trip->refresh();
+        $this->logActivity($data['use'] ? 'trip_credit_used' : 'trip_credit_removed', 'Trip', $trip->id, ['credit_used' => (float) $trip->credit_used]);
+
+        return response()->json([
+            'success' => true,
+            'credit_used' => (float) $trip->credit_used,
+            'final_price' => (float) $trip->final_price,
+        ]);
     }
 
     protected function getGstReport(Request $request): JsonResponse
@@ -8013,6 +8167,57 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         ]);
 
         return response()->json(['success' => true] + $result);
+    }
+
+    /**
+     * Add a provider from inside the trip screen, so the team is not sent to
+     * the Providers page halfway through an itinerary (answers, 2026-11-12,
+     * Q2). Made the way an imported one is: an approved Other Service
+     * Provider with no login and nothing emailed. Email is optional, the
+     * phone is not. The full record can be filled in on the Providers page
+     * later.
+     */
+    protected function quickAddProvider(Request $request): JsonResponse
+    {
+        $categories = SystemList::ofType('service_category')->where('is_active', true)->pluck('name')->all();
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'phone_1' => ['required', 'string', 'max:20', 'regex:/^\+?[0-9][0-9 \-]{5,19}$/'],
+            'email' => 'nullable|email|max:255|unique:service_providers,email',
+            'region_id' => 'required|exists:regions,id',
+            'service_category' => ['required', Rule::in($categories)],
+        ], [
+            'name.required' => 'Give the provider a name.',
+            'phone_1.required' => 'A phone number is needed.',
+            'phone_1.regex' => 'That phone number does not look right (digits, spaces or dashes, 6 to 20).',
+            'email.unique' => 'Another provider already uses this email address.',
+            'region_id.required' => 'Pick the region this provider works in.',
+            'service_category.required' => 'Pick what they offer.',
+            'service_category.in' => 'That is not a service category.',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()->first()], 422);
+        }
+
+        $provider = ServiceProvider::create([
+            'provider_types' => ['osp'],
+            'name' => trim($request->name),
+            'email' => $request->filled('email') ? mb_strtolower(trim($request->email)) : null,
+            'phone_1' => trim($request->phone_1),
+            'region_id' => $request->region_id,
+            'service_categories' => [$request->service_category],
+            'status' => 'approved',
+            'approved_at' => now(),
+            'approved_by' => Auth::id(),
+            'last_updated_by' => Auth::id(),
+            'last_updated_by_role' => 'admin',
+        ]);
+        $this->logActivity('provider_quick_added', 'ServiceProvider', $provider->id, ['from_trip' => $request->input('trip_id')]);
+
+        return response()->json([
+            'success' => true,
+            'provider' => ['id' => $provider->id, 'name' => $provider->name, 'provider_type' => $provider->provider_type],
+        ]);
     }
 
     protected function addProvider(Request $request): JsonResponse
@@ -8105,11 +8310,14 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
      *
      * @return array{0: array<string, mixed>, 1: array<string, string>}
      */
-    protected function providerDetailRules(ServiceProvider $provider): array
+    protected function providerDetailRules(ServiceProvider $provider, bool $byHct = false): array
     {
         return [[
             'name' => 'sometimes|required|string|max:255',
-            'email' => ['sometimes', 'required', 'email', 'max:255',
+            // HECO may keep a provider with no email (answers, 2026-11-12, Q2:
+            // most imported ones have none, the phone is the hard contact). A
+            // partner editing their own profile signs in by email, so keeps one.
+            'email' => ['sometimes', $byHct ? 'nullable' : 'required', 'email', 'max:255',
                 Rule::unique('service_providers', 'email')->ignore($provider->id)],
             'phone_1' => 'sometimes|required|string|max:20',
             'phone_2' => 'nullable|string|max:20',
@@ -8150,7 +8358,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // Everything else was written as sent, so a blank name or phone, an
         // email another provider already holds, or a year that is not a year
         // reached the database and came back as a 500 instead of a sentence.
-        [$rules, $messages] = $this->providerDetailRules($provider);
+        [$rules, $messages] = $this->providerDetailRules($provider, true);
         $validator = Validator::make($request->all(), $rules + [
             'contact_person' => 'nullable|string|max:255',
             'postal_code' => 'nullable|string|max:20',
@@ -11132,13 +11340,60 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     }
 
     /**
-     * Cancel a trip. The one status a person still sets.
+     * The providers a cancellation may owe, and what the traveller has paid:
+     * what the Cancel dialog needs (answers, 2026-11-12, Q4).
      *
-     * Its own door, apart from the Trip Info save: that form is refused on a
-     * paid trip (LOCK_EDIT_KEYS), and a trip somebody has paid for is exactly
-     * the one that may still have to be called off. applyTripStatus does what
-     * cancelling means (rooms released, an open lead lost); what is owed back
-     * and to whom waits on HECO's rule for cancellations.
+     * A provider is on the list if they have a bill on the trip, a line on one
+     * of its days, or are booked for the whole trip.
+     */
+    private function cancellationParties(Trip $trip): array
+    {
+        $bills = SpPayment::where('trip_id', $trip->id)->get()->groupBy('service_provider_id');
+        $lineProviders = TripDayService::whereIn('trip_day_id', $trip->tripDays()->select('id'))
+            ->whereNotNull('service_provider_id')
+            ->where(fn ($q) => $q->where('cost', '>', 0)->orWhere('is_included', false))
+            ->pluck('service_provider_id');
+        $ids = $bills->keys()
+            ->merge($lineProviders)
+            ->merge([$trip->accommodation_provider_id, $trip->vehicle_provider_id, $trip->guide_provider_id])
+            ->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        $names = ServiceProvider::whereIn('id', $ids)->pluck('name', 'id');
+
+        $providers = $ids->map(fn ($id) => [
+            'id' => $id,
+            'name' => $names[$id] ?? 'Provider #' . $id,
+            'paid' => round((float) ($bills[$id] ?? collect())->sum('amount_paid'), 2),
+            'billed' => round((float) ($bills[$id] ?? collect())->sum('amount_due'), 2),
+        ])->sortBy('name')->values()->all();
+
+        return [
+            'providers' => $providers,
+            'traveller_paid' => round(app(\App\Services\LeadService::class)->amountPaid($trip), 2),
+        ];
+    }
+
+    protected function getCancelInfo(Request $request): JsonResponse
+    {
+        $trip = Trip::findOrFail($request->trip_id);
+
+        return response()->json($this->cancellationParties($trip) + [
+            'status' => $trip->status,
+            'can_cancel' => ! in_array($trip->status, ['cancelled', 'completed'], true),
+        ]);
+    }
+
+    /**
+     * Cancel a trip, by the team, with a short dialog (answers, 2026-11-12,
+     * Q4): the reason; a cancellation charge per provider (0 unless typed),
+     * which becomes that provider's Actual Cost and their payment; and what
+     * happens to the traveller's money, refunded or kept as credit for a later
+     * trip. "Postponed with credit" is the same, said as a postponement.
+     *
+     * The status is 'cancelled' either way (cancel_type tells them apart), so
+     * nothing that reads the five statuses has to learn a sixth. A completed
+     * trip cannot be cancelled. Rooms are released and the lead is lost
+     * (applyTripStatus). The refund itself is paid by bank, outside HECO; what
+     * is recorded here is how much.
      */
     protected function cancelTrip(Request $request): JsonResponse
     {
@@ -11150,13 +11405,134 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             return response()->json(["error" => "This trip has already run, so it cannot be cancelled."], 422);
         }
 
-        [$error] = $this->applyTripStatus($trip, 'cancelled');
+        $validator = Validator::make($request->all(), [
+            'cancel_type' => 'required|in:cancelled,postponed',
+            'reason' => 'required|string|max:2000',
+            'charges' => 'nullable|array',
+            'charges.*' => 'nullable|numeric|min:0|max:99999999',
+            'refund_amount' => 'nullable|numeric|min:0|max:99999999',
+            'credit_amount' => 'nullable|numeric|min:0|max:99999999',
+        ], [
+            'reason.required' => 'Give the reason for cancelling.',
+            'charges.*.min' => 'A cancellation charge cannot be below 0.',
+            'refund_amount.min' => 'The refund cannot be below 0.',
+            'credit_amount.min' => 'The credit cannot be below 0.',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(["error" => $validator->errors()->first()], 422);
+        }
+
+        $parties = $this->cancellationParties($trip);
+        $known = collect($parties['providers'])->keyBy('id');
+        $charges = [];
+        foreach ((array) $request->input('charges', []) as $providerId => $amount) {
+            $providerId = (int) $providerId;
+            if (! $known->has($providerId)) {
+                return response()->json(["error" => "That provider is not on this trip."], 422);
+            }
+            $charges[$providerId] = round((float) ($amount ?: 0), 2);
+        }
+        // A provider not given a charge is charged 0 (answers, 2026-11-12, Q4).
+        // One charged less than they were already paid owes the rest back,
+        // which providers do by their cancellation policy (HECO, 2026-11-14):
+        // it shows as owed back until the team records it returned.
+        foreach ($known as $id => $p) {
+            $charges[$id] = $charges[$id] ?? 0.0;
+        }
+
+        $refund = round((float) $request->input('refund_amount', 0), 2);
+        $credit = round((float) $request->input('credit_amount', 0), 2);
+        if ($refund + $credit > $parties['traveller_paid'] + 0.5) {
+            return response()->json(["error" => "The refund and the credit together cannot be more than the traveller has paid (Rs "
+                . number_format($parties['traveller_paid'], 2) . ")."], 422);
+        }
+
+        $error = DB::transaction(function () use ($trip, $request, $known, $charges, $refund, $credit) {
+            [$error] = $this->applyTripStatus($trip, 'cancelled');
+            if ($error) {
+                return $error;
+            }
+            $trip->update([
+                'cancel_type' => $request->cancel_type,
+                'cancel_reason' => trim($request->reason),
+                'cancelled_at' => now(),
+                'refund_amount' => $refund,
+                'credit_kept' => $credit,
+                // Credit this trip was using goes back to the traveller.
+                'credit_used' => 0,
+            ]);
+            foreach ($known as $id => $p) {
+                $this->applyCancellationCharge($trip, $id, $charges[$id] ?? 0.0);
+            }
+
+            return null;
+        });
         if ($error) {
             return response()->json(["error" => $error], 422);
         }
-        $this->logActivity('trip_cancelled', 'Trip', $trip->id, []);
+        $this->logActivity('trip_cancelled', 'Trip', $trip->id, [
+            'type' => $request->cancel_type, 'charges' => $charges, 'refund' => $refund, 'credit' => $credit,
+        ]);
 
         return response()->json(["success" => true, "status" => 'cancelled']);
+    }
+
+    /**
+     * One provider's cancellation charge becomes what they are owed on the
+     * trip: the Actual Cost of their lines (the charge on the first, nothing
+     * on the rest) and their bills. The charge is laid over the bills up to
+     * what each was paid, and anything over that goes on the first, so a bill
+     * is either still to pay or paid over (owes back), never one of each.
+     * With no bill yet and a charge to pay, a bill is raised for it.
+     */
+    private function applyCancellationCharge(Trip $trip, int $providerId, float $charge): void
+    {
+        $peopleFactor = $this->peopleFactorFor($trip);
+        $lines = TripDayService::whereIn('trip_day_id', $trip->tripDays()->select('id'))
+            ->where('service_provider_id', $providerId)
+            ->where(fn ($q) => $q->where('cost', '>', 0)->orWhere('is_included', false))
+            ->orderBy('id')->get();
+        foreach ($lines as $i => $line) {
+            $actual = 0.0;
+            if ($i === 0 && $charge > 0) {
+                $actual = $line->isPerPerson() && $peopleFactor > 0 ? round($charge / $peopleFactor, 2) : $charge;
+            }
+            $line->update(['actual_cost' => TripDayService::actualOrNull($actual, $line->cost)]);
+        }
+
+        $bills = SpPayment::where('trip_id', $trip->id)->where('service_provider_id', $providerId)->orderBy('id')->get();
+        $note = 'Cancellation charge (trip ' . ($trip->cancel_type ?? 'cancelled') . ').';
+        if ($bills->isEmpty()) {
+            if ($charge > 0) {
+                SpPayment::create([
+                    'trip_id' => $trip->id,
+                    'service_provider_id' => $providerId,
+                    'service_type' => $lines->first()?->service_type ?? 'other',
+                    'amount_due' => $charge,
+                    'amount_paid' => 0,
+                    'balance' => $charge,
+                    'notes' => $note,
+                ]);
+            }
+            return;
+        }
+
+        $left = $charge;
+        $dues = [];
+        foreach ($bills as $i => $bill) {
+            $dues[$i] = min(max(0, (float) $bill->amount_paid), $left);
+            $left = round($left - $dues[$i], 2);
+        }
+        $dues[0] = round($dues[0] + $left, 2);
+        foreach ($bills as $i => $bill) {
+            $due = $dues[$i];
+            $bill->update([
+                'amount_due' => $due,
+                // Never below 0: paid over is owed back (SpPayment::owesBack).
+                'balance' => max(0, round($due - (float) $bill->amount_paid, 2)),
+                'notes' => trim(($bill->notes ? $bill->notes . ' ' : '') . $note),
+            ]);
+        }
     }
 
     protected function updateTripInfo(Request $request): JsonResponse
@@ -11927,14 +12303,16 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             // Somebody has to be paid for every line (HECO's feedback,
             // 2026-10-28): it is what makes a trip's payables complete when it
             // is confirmed.
-            "service_provider_id" => "required|integer|exists:service_providers,id",
+            // Extra (stored as 'other': flights, permits, oxygen, laundry) has
+            // no provider to name (answers, 2026-11-12, Q2). Every other kind does.
+            "service_provider_id" => "required_unless:service_type,other|nullable|integer|exists:service_providers,id",
             "sp_pricing_id" => "nullable|integer|exists:sp_pricing,id",
             "room_quantity" => "nullable|integer|min:1|max:500",
             "cost" => "nullable|numeric|min:0",
             "actual_cost" => "nullable|numeric|min:0|max:99999999",
             "price_basis" => "nullable|in:flat,per_person",
         ], [
-            "service_provider_id.required" => "Choose the service provider. If they are not in the list, add or import them on the Providers page first.",
+            "service_provider_id.required_unless" => "Choose the service provider. If they are not in the list, add them with New provider.",
         ]);
         if ($validator->fails()) {
             return response()->json(["error" => $validator->errors()->first()], 422);
@@ -11959,19 +12337,9 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ], 422);
         }
 
-        // And the provider has to work where the trip is going. A rate card in
-        // another valley is not a service anybody can turn up for.
-        if ($request->service_provider_id) {
-            $day = TripDay::with('trip.tripRegions')->find($request->day_id);
-            $tripRegions = $day?->trip?->tripRegions->pluck('region_id')->filter()->all() ?? [];
-            $providerRegion = ServiceProvider::whereKey($request->service_provider_id)->value('region_id');
-
-            if ($tripRegions && $providerRegion && ! in_array($providerRegion, $tripRegions, true)) {
-                return response()->json([
-                    "error" => "That provider does not work in this trip's region.",
-                ], 422);
-            }
-        }
+        // No region check on the provider: trips often span regions, and HECO
+        // asked for any provider to be usable on any trip (answers,
+        // 2026-11-12, Q2).
 
         // And the rooms have to exist on the night they are wanted.
         //
@@ -12059,6 +12427,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
 
         $service = TripDayService::with('tripDay.trip')->findOrFail($data['service_id']);
         $trip = $service->tripDay?->trip;
+        // On a cancelled trip the actual costs are the cancellation charges the
+        // team set when cancelling; changed here, a provider's bill would go
+        // back to the old figure.
+        if ($trip && $trip->status === 'cancelled') {
+            return response()->json(['error' => 'This trip is cancelled. Its actual costs are the cancellation charges set when it was cancelled.'], 422);
+        }
         // An experience's own placeholder line: its host is paid for the
         // experience, so an actual cost here would pay them twice.
         if ((float) $service->cost <= 0 && $service->is_included) {
@@ -12173,8 +12547,7 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $validator = Validator::make($request->all(), [
             "service_id" => "required|integer|exists:trip_day_services,id",
             "service_type" => "nullable|in:accommodation,transport,guide,activity,meal,other",
-            // Present means a provider: a line is never left with none.
-            "service_provider_id" => "sometimes|required|integer|exists:service_providers,id",
+            "service_provider_id" => "sometimes|nullable|integer|exists:service_providers,id",
             "sp_pricing_id" => "nullable|integer|exists:sp_pricing,id",
             "room_quantity" => "nullable|integer|min:1|max:500",
             "cost" => "nullable|numeric|min:0",
@@ -12187,6 +12560,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         $service = TripDayService::findOrFail($request->service_id);
         $oldPricingId = $service->sp_pricing_id;
         $oldQty = $service->room_quantity;
+
+        // Only an Extra line may be without a provider.
+        $typeAfter = $request->service_type ?: $service->service_type;
+        $providerAfter = $request->has('service_provider_id') ? $request->service_provider_id : $service->service_provider_id;
+        if ($typeAfter !== 'other' && ! $providerAfter) {
+            return response()->json(["error" => "Choose the service provider. Only an Extra can be left without one."], 422);
+        }
 
         // Asked before anything is written, so a change the property cannot
         // honour leaves the row exactly as it was. What this row already holds
@@ -12307,9 +12687,10 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
     {
         $service = TripDayService::with('tripDay.trip')->findOrFail($request->service_id);
         $newSpId = $request->service_provider_id;
-        // A line keeps a provider: one can be swapped for another, never taken off.
-        if (! $newSpId) {
-            return response()->json(['error' => 'Choose the service provider. A service cannot be left without one.'], 422);
+        // A line keeps a provider: one can be swapped for another, never taken
+        // off. Except an Extra, which needs none (answers, 2026-11-12, Q2).
+        if (! $newSpId && $service->service_type !== 'other') {
+            return response()->json(['error' => 'Choose the service provider. Only an Extra can be left without one.'], 422);
         }
         $date = $service->tripDay->date;
         $trip = $service->tripDay->trip;

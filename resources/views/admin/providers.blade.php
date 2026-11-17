@@ -87,7 +87,7 @@
             <div class="modal-body">
                 <ol class="small mb-3">
                     <li><a href="{{ route('hct.providers.import-template') }}"><i class="bi bi-download"></i> Download the template</a> and open it in Excel or Google Sheets.</li>
-                    <li>One provider per row. Every column is required: <code>{{ implode(', ', \App\Services\ProviderImportService::COLUMNS) }}</code>.</li>
+                    <li>One provider per row, with these columns: <code>{{ implode(', ', \App\Services\ProviderImportService::COLUMNS) }}</code>. All are required except <strong>email</strong>, which can be left empty.</li>
                     <li><strong>region</strong> is one of: {{ \App\Models\Region::where('is_active', true)->orderBy('name')->pluck('name')->join(', ') }}.</li>
                     <li><strong>service_type</strong> is one of: {{ implode(', ', app(\App\Services\ProviderImportService::class)->serviceTypes()) }} (several may be separated by commas).</li>
                     <li>Save or download it as <strong>CSV</strong> and choose it below.</li>

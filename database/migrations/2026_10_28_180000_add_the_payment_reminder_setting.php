@@ -16,7 +16,7 @@ return new class extends Migration
         if (! DB::table('settings')->where('key', 'payment_reminder_days_before_trip')->exists()) {
             DB::table('settings')->insert([
                 'key' => 'payment_reminder_days_before_trip',
-                'value' => '7',
+                'value' => '10',
                 'group' => 'financial',
                 'created_at' => now(),
                 'updated_at' => now(),

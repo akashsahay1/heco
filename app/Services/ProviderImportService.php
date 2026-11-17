@@ -24,8 +24,15 @@ use Illuminate\Support\Facades\DB;
  */
 class ProviderImportService
 {
-    /** The columns. Every one is required (the feedback lists no optional ones yet). */
+    /** The columns, in the template's order. */
     public const COLUMNS = ['sp_id', 'name', 'phone', 'email', 'region', 'service_type'];
+
+    /**
+     * The columns a row must fill. Email may be left empty: most of HECO's
+     * providers have none, and the phone is the one contact every provider
+     * must have (answers, 2026-11-12, Q2).
+     */
+    public const REQUIRED = ['sp_id', 'name', 'phone', 'region', 'service_type'];
 
     /** How many rows one file may hold. */
     public const MAX_ROWS = 2000;
@@ -119,7 +126,7 @@ class ProviderImportService
                 continue;
             }
 
-            $email = mb_strtolower($row['email']);
+            $email = $row['email'] === '' ? null : mb_strtolower($row['email']);
             try {
                 DB::transaction(function () use ($row, $email, $regions, $categories, $by) {
                     ServiceProvider::create([
@@ -147,7 +154,9 @@ class ProviderImportService
                 continue;
             }
             $seenIds[mb_strtolower($row['sp_id'])] = true;
-            $seenEmails[$email] = true;
+            if ($email !== null) {
+                $seenEmails[$email] = true;
+            }
             $created++;
         }
         fclose($handle);
@@ -180,7 +189,7 @@ class ProviderImportService
     /** What is wrong with a row, in words a person can act on, or null. */
     private function problemWith(array $row, $regions, $categories, array $seenIds, array $seenEmails): ?string
     {
-        $empty = array_values(array_filter(self::COLUMNS, fn ($c) => ($row[$c] ?? '') === ''));
+        $empty = array_values(array_filter(self::REQUIRED, fn ($c) => ($row[$c] ?? '') === ''));
         if ($empty) {
             return 'Missing: ' . implode(', ', $empty) . '.';
         }
@@ -190,7 +199,7 @@ class ProviderImportService
         if (mb_strlen($row['name']) > 255) {
             return 'name is longer than 255 characters.';
         }
-        if (mb_strlen($row['email']) > 255 || ! filter_var($row['email'], FILTER_VALIDATE_EMAIL)) {
+        if ($row['email'] !== '' && (mb_strlen($row['email']) > 255 || ! filter_var($row['email'], FILTER_VALIDATE_EMAIL))) {
             return "\"{$row['email']}\" is not an email address.";
         }
         if (! preg_match('/^\+?[0-9][0-9 \-]{5,19}$/', $row['phone'])) {
@@ -209,13 +218,13 @@ class ProviderImportService
         if (isset($seenIds[$id])) {
             return "SP ID {$row['sp_id']} appears more than once in this file.";
         }
-        if (isset($seenEmails[$email])) {
+        if ($email !== '' && isset($seenEmails[$email])) {
             return "{$row['email']} appears more than once in this file.";
         }
         if (ServiceProvider::whereRaw('LOWER(sp_code) = ?', [$id])->exists()) {
             return "SP ID {$row['sp_id']} is already in HECO.";
         }
-        if (ServiceProvider::whereRaw('LOWER(email) = ?', [$email])->exists()) {
+        if ($email !== '' && ServiceProvider::whereRaw('LOWER(email) = ?', [$email])->exists()) {
             return "{$row['email']} is already a provider in HECO.";
         }
 

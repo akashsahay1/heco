@@ -434,6 +434,12 @@ class CostCalculatorService
         $gstAmount  = round($totalCost * $gstPercent / 100, 2);
         $finalPrice = $subtotal + $gstAmount;
 
+        // Credit the traveller chose to use on this trip comes off the Final
+        // Price (answers, 2026-11-12, Q4). Never more than the price: if the
+        // trip shrinks below it, the rest goes back to the traveller's credit.
+        $creditUsed = min(max(0, (float) $trip->credit_used), max(0, $finalPrice));
+        $finalPrice = round($finalPrice - $creditUsed, 2);
+
         $data = [
             'experience_cost'         => $experienceCost,
             'transport_cost'          => $transportCost,
@@ -452,6 +458,7 @@ class CostCalculatorService
             'subtotal'                => $subtotal,
             'gst_amount'              => $gstAmount,
             'final_price'             => $finalPrice,
+            'credit_used'             => $creditUsed,
         ];
 
         $trip->update($noRpProject ? array_diff_key($data, ['margin_rp_percent' => true]) : $data);

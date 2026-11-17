@@ -23,7 +23,12 @@ class PdfController extends Controller
             abort(403, 'HECO is still preparing this itinerary.');
         }
 
-        $pdf = app(PdfService::class)->generateTripItinerary($trip);
+        // Notes for Team go only into a copy HECO's own staff ask for, ticked
+        // off by default (answers, 2026-11-12, Q5). A traveller's copy never
+        // has them, whatever the address says.
+        $teamNotes = $user->isHct() && request()->boolean('team_notes');
+
+        $pdf = app(PdfService::class)->generateTripItinerary($trip, $teamNotes);
         return $pdf->download("trip-" . $trip->trip_id . ".pdf");
     }
 }

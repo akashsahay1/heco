@@ -81,7 +81,7 @@
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Email</label>
-                            <input type="email" name="email" class="form-control form-control-sm" value="{{ $provider->email }}" required>
+                            <input type="email" name="email" class="form-control form-control-sm" value="{{ $provider->email }}" placeholder="Optional">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label small text-muted">Phone 1</label>

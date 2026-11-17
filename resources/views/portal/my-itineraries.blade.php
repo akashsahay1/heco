@@ -52,6 +52,7 @@ $(function() {
         var map = {
             'not_confirmed': 'badge-open',
             'confirmed': 'badge-confirmed',
+            'running': 'badge-confirmed',
             'completed': 'badge-completed',
             'cancelled': 'badge-cancelled'
         };
@@ -62,6 +63,7 @@ $(function() {
         var map = {
             'not_confirmed': 'Open',
             'confirmed': 'Confirmed',
+            'running': 'Under way',
             'completed': 'Completed',
             'cancelled': 'Cancelled'
         };
@@ -70,7 +72,20 @@ $(function() {
 
     // fmt() and fmtCurrency() are global from layout.blade.php
 
+    // Upcoming first, then Past (answers, 2026-11-12, Q7). Upcoming runs
+    // soonest first, with undated plans at the end; Past runs latest first.
     function renderTrips(trips) {
+        var upcoming = trips.filter(function(t) { return t.when !== 'past'; });
+        var past = trips.filter(function(t) { return t.when === 'past'; });
+        upcoming.sort(function(a, b) { return (a.start_date || '9999').localeCompare(b.start_date || '9999'); });
+        past.sort(function(a, b) { return (b.start_date || '').localeCompare(a.start_date || ''); });
+        var html = '';
+        if (upcoming.length) html += '<h5 class="mb-3">Upcoming</h5>' + tripCards(upcoming);
+        if (past.length) html += '<h5 class="mb-3' + (upcoming.length ? ' mt-4' : '') + '">Past</h5>' + tripCards(past);
+        $('#tripsContainer').html(html);
+    }
+
+    function tripCards(trips) {
         var html = '<div class="row g-3">';
         trips.forEach(function(trip) {
             var tripName = trip.trip_name || 'Unnamed Trip';
@@ -107,6 +122,12 @@ $(function() {
             }
             if (trip.final_price > 0) {
                 html += '<p class="mb-0"><strong class="text-success">' + fmtCurrency(trip.final_price) + '</strong></p>';
+                // What is left to pay on this trip; each is paid on its own page.
+                if (trip.balance_due > 0) {
+                    html += '<p class="small mb-0 text-danger">Balance due ' + fmtCurrency(trip.balance_due) + '</p>';
+                } else if (trip.paid > 0) {
+                    html += '<p class="small mb-0 text-success"><i class="bi bi-check-circle"></i> Paid in full</p>';
+                }
             }
             html += '</div>';
             // Resume + Erase are draft-only. Once a trip is confirmed/running/completed/cancelled
@@ -114,6 +135,11 @@ $(function() {
             var isDraft = trip.status === 'not_confirmed';
             html += '<div class="card-footer bg-transparent d-flex gap-2">';
             html += '<a href="/trip/' + trip.id + '" class="btn btn-sm btn-outline-success' + (isDraft ? '' : ' flex-fill') + '"><i class="bi bi-eye"></i> View</a>';
+            // Each trip is paid on its own (answers, 2026-11-12, Q7). A draft
+            // pays from Resume, which opens the same page.
+            if (!isDraft && trip.balance_due > 0) {
+                html += '<a href="/home?trip_id=' + trip.id + '#paymentCard" class="btn btn-sm btn-success flex-fill"><i class="bi bi-shield-lock"></i> Pay Now</a>';
+            }
             if (isDraft) {
                 html += '<a href="/home?trip_id=' + trip.id + '" class="btn btn-sm btn-success flex-fill"><i class="bi bi-play-fill"></i> Resume</a>';
                 // A trip the HECO team planned is not the traveller's to erase.
@@ -124,7 +150,7 @@ $(function() {
             html += '</div></div></div>';
         });
         html += '</div>';
-        $('#tripsContainer').html(html);
+        return html;
     }
 
     // Erase trip

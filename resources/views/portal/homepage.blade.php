@@ -450,6 +450,7 @@ $pBudget = ($trip ? $trip->budget_sensitivity : null) ?: ($guestTripData['budget
                                          HECO's working (feedback, 2026-10-28). --}}
                                     <div class="pricing-row"><span><strong>Trip Cost</strong></span><span id="prTripCost"></span></div>
                                     <div class="pricing-row"><span>GST</span><span id="prGST"></span></div>
+                                    <div class="pricing-row d-none" id="prRowCredit"><span>Credit used</span><span id="prCredit"></span></div>
                                     <div class="pricing-row total"><span>Final Price</span><span id="prFinal"></span></div>
                                 </div>
                             </div>
@@ -2149,8 +2150,11 @@ jQuery(function() {
             var p = resp.pricing || resp;
 
             // Trip Cost is the price before GST, so the three rows add up.
-            jQuery('#prTripCost').text(fmtPriceRow((parseFloat(p.final_price) || 0) - (parseFloat(p.gst_amount) || 0)));
+            var credit = parseFloat(p.credit_used) || 0;
+            jQuery('#prTripCost').text(fmtPriceRow((parseFloat(p.final_price) || 0) + credit - (parseFloat(p.gst_amount) || 0)));
             jQuery('#prGST').text(fmtPriceRow(p.gst_amount));
+            jQuery('#prRowCredit').toggleClass('d-none', credit <= 0);
+            jQuery('#prCredit').text('- ' + fmtPriceRow(credit));
             jQuery('#prFinal').text(fmtPriceRow(p.final_price));
 
             // Balance due is computed server-side in getTripPricing; the frontend

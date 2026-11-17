@@ -100,7 +100,7 @@
                                 <option value="guide">Guide</option>
                                 <option value="activity">Activity</option>
                                 <option value="meal">Meal</option>
-                                <option value="other">Other</option>
+                                <option value="other">Extra</option>
                             </select>
                         </div>
                         <div class="mb-1">
@@ -136,13 +136,15 @@
                         <div class="row g-1 mb-1">
                             <div class="col-12">
                                 <select class="form-select form-select-sm custom-select" name="service_provider_id" required>
-                                    <option value="">Choose a provider *</option>
+                                    <option value="">Choose a provider</option>
                                     @if(isset($providers))
                                         @foreach($providers as $p)
                                             <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->provider_type }})</option>
                                         @endforeach
                                     @endif
                                 </select>
+                                {{-- Not in the list? Add them here, without leaving the trip. --}}
+                                <button type="button" class="btn btn-link btn-sm p-0 mt-1" id="quickProviderBtn"><i class="bi bi-plus-circle"></i> New provider</button>
                             </div>
                         </div>
                         <div class="mb-1">

@@ -67,12 +67,13 @@ class ProviderDashboardService
         $entries = SpPaymentEntry::query()
             ->whereIn('sp_payment_id', SpPayment::where('service_provider_id', $provider->id)->select('id'))
             ->where('payment_date', '>=', $earliest)
-            ->get(['amount', 'payment_date']);
+            ->get(['amount', 'direction', 'payment_date']);
 
         foreach ($entries as $entry) {
             $key = $entry->payment_date->format('Y-m');
             if (isset($buckets[$key])) {
-                $buckets[$key] += (float) $entry->amount;
+                // Money they gave back after a cancellation is not earned.
+                $buckets[$key] += $entry->signedAmount();
             }
         }
 

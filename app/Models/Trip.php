@@ -3,7 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Observers\TripObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 
+#[ObservedBy([TripObserver::class])]
 class Trip extends Model
 {
     protected $fillable = [
@@ -21,6 +24,8 @@ class Trip extends Model
         'commission_hct_percent', 'commission_hct_amount', 'regenerative_project_id',
         'subtotal', 'gst_amount', 'final_price',
         'ai_raw_response', 'general_notes',
+        // How it was cancelled, and the traveller's credit (answers, 2026-11-12, Q4).
+        'cancel_type', 'cancel_reason', 'cancelled_at', 'refund_amount', 'credit_kept', 'credit_used',
     ];
 
     protected function casts(): array
@@ -41,7 +46,26 @@ class Trip extends Model
             'subtotal' => 'decimal:2',
             'gst_amount' => 'decimal:2',
             'final_price' => 'decimal:2',
+            'cancelled_at' => 'datetime',
+            'refund_amount' => 'decimal:2',
+            'credit_kept' => 'decimal:2',
+            'credit_used' => 'decimal:2',
         ];
+    }
+
+    /**
+     * Credit this traveller has with HECO and has not yet used: what was kept
+     * from their cancelled or postponed trips, less what has gone off the
+     * price of others. A trip's own credit_used is left out when $except is
+     * given, so it can be worked out again for that trip.
+     */
+    public static function creditAvailableFor(int $userId, ?int $except = null): float
+    {
+        $trips = static::where('user_id', $userId);
+        $kept = (float) (clone $trips)->sum('credit_kept');
+        $used = (float) (clone $trips)->when($except, fn ($q) => $q->where('id', '!=', $except))->sum('credit_used');
+
+        return max(0, round($kept - $used, 2));
     }
 
     protected static function booted(): void
