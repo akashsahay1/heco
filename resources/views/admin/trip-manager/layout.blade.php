@@ -379,7 +379,7 @@ function tmIsoFromDate(d) {
 }
 
 // Air Datepickers for Start Date / End Date / Add-Payment date (no native type=date).
-function tmInitDatepicker(displayId, hiddenId) {
+function tmInitDatepicker(displayId, hiddenId, onPick) {
     var $disp = $('#' + displayId);
     if (!$disp.length) return;
     new AirDatepicker('#' + displayId, {
@@ -389,11 +389,26 @@ function tmInitDatepicker(displayId, hiddenId) {
         position: 'bottom left',
         onSelect: function(o) {
             $('#' + hiddenId).val(o.date ? tmIsoFromDate(o.date) : '');
+            if (onPick) onPick(o.date);
         }
     });
 }
+
+// The end date follows the first day. It only showed what was saved, so a new
+// start date sat beside the old end date until the save, and read as a trip
+// that ended before it began (HECO, 2026-11-21). Worked out the way
+// moveTripToDate() does: start + (last day - 1), and none with no days.
+function tmShowEndDate(start) {
+    var $end = $('#endDateDisplay');
+    var days = Number($end.data('days')) || 0;
+    if (!start || !days) { $end.val(''); return; }
+    var end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + days - 1);
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    $end.val(pad(end.getDate()) + '-' + pad(end.getMonth() + 1) + '-' + end.getFullYear());
+}
+
 $(function() {
-    tmInitDatepicker('startDateDisplay', 'startDateInput');
+    tmInitDatepicker('startDateDisplay', 'startDateInput', tmShowEndDate);
     tmInitDatepicker('addPaymentDateDisplay', 'addPaymentDateInput');
 });
 
@@ -541,7 +556,11 @@ $('#tripInfoForm').on('submit', function(e) {
         data[$(this).attr('name')] = $(this).val();
     });
     ajaxPost(data, function(resp) {
-        showAlert('Trip info updated!');
+        // The server prices the trip again on every save, but the Financial
+        // Snapshot is drawn by the page, so it went on showing the old margins
+        // and the old total until somebody refreshed by hand (HECO,
+        // 2026-11-21). Reloaded, after any warning has been read.
+        //
         // Moving the dates can leave a night unreserved or carry an experience
         // into a month it does not run in. Both used to be returned and thrown
         // away here, so the save looked clean either way.
@@ -554,11 +573,27 @@ $('#tripInfoForm').on('submit', function(e) {
                 title: 'Saved, with something to look at',
                 text: notes.join(' '),
                 confirmButtonColor: '#79a09f'
-            });
+            }).then(function() { location.reload(); });
         } else if (notes.length) {
-            showAlert(notes.join(' '), 'warning');
+            alert('Saved, with something to look at: ' + notes.join(' '));
+            location.reload();
+        } else {
+            location.reload();
         }
     });
+});
+
+// A margin is saved the moment it is changed, with the rest of the form so
+// nothing typed elsewhere is lost to the reload, and the price shown again.
+// Ritik changed one and saw no price move: it waited on Save Changes, at the
+// far end of the other column (HECO, 2026-11-21). The short wait lets the
+// arrows be clicked a few times before it saves.
+var tmMarginTimer = null;
+$('#tripInfoForm').on('input change', 'input.input-pct', function(e) {
+    clearTimeout(tmMarginTimer);
+    if (e.type === 'change') {
+        tmMarginTimer = setTimeout(function() { $('#tripInfoForm').trigger('submit'); }, 600);
+    }
 });
 
 $('#btnSaveNotes').on('click', function() {

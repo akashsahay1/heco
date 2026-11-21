@@ -3650,14 +3650,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             ]);
         }
 
-        // Derive end_date from the itinerary length so the trip always has a
-        // complete date range (calendar, listings, etc. depend on end_date).
-        if ($date) {
-            $maxDay = $trip->tripDays()->max('day_number') ?: 1;
-            $trip->update(['end_date' => \Carbon\Carbon::parse($date)->addDays($maxDay - 1)]);
-        } else {
-            $trip->update(['end_date' => null]);
-        }
+        // The end is the last day of the itinerary. With no days there is no
+        // last day, so no end: a day-one end date read as a one-day trip that
+        // nobody had planned (HECO, 2026-11-21).
+        $maxDay = $trip->tripDays()->max('day_number');
+        $trip->update(['end_date' => $date && $maxDay
+            ? \Carbon\Carbon::parse($date)->addDays($maxDay - 1)
+            : null]);
 
         // The days moved, so the rooms have to move with them. Nothing did this
         // before: a trip shifted from April to May still held its suite in
@@ -4162,7 +4161,8 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         // Update trip end_date
         if ($trip->start_date) {
             $maxDay = $trip->tripDays()->max('day_number') ?: 0;
-            $trip->update(['end_date' => $maxDay > 0 ? $trip->start_date->copy()->addDays($maxDay - 1) : $trip->start_date]);
+            // No days left, no last day: the end goes, as moveTripToDate() does.
+            $trip->update(['end_date' => $maxDay > 0 ? $trip->start_date->copy()->addDays($maxDay - 1) : null]);
         }
 
         return response()->json(["success" => true]);
@@ -12162,9 +12162,12 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
         foreach ($days as $d) {
             $d->update(['date' => $trip->start_date->copy()->addDays($d->day_number - 1)]);
         }
-        if ($days->isNotEmpty()) {
-            $trip->update(['end_date' => $trip->start_date->copy()->addDays($days->count() - 1)]);
-        }
+        // The last day gone took the end with it. Left alone, the old end
+        // stayed on a trip with no days, before its own start once the start
+        // moved, and billing counts nights from it (HECO, 2026-11-21).
+        $trip->update(['end_date' => $days->isNotEmpty()
+            ? $trip->start_date->copy()->addDays($days->count() - 1)
+            : null]);
     }
 
     /**
@@ -12274,13 +12277,13 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $this->rebookRoomsForTrip($trip->fresh());
             // A region is on a trip because something on the trip goes there.
             $this->syncTripRegions($trip);
-            // And the total has to stop counting the day that is gone. Guarded
-            // the same way everywhere else does: an empty trip would otherwise
-            // have its cost columns written to zero.
-            $trip->refresh();
-            if ($trip->tripDays()->exists() || $trip->selectedExperiences()->exists()) {
-                app(CostCalculatorService::class)->calculate($trip);
-            }
+            // And the total has to stop counting the day that is gone. Not
+            // guarded the way repriceTrip() is: that guard keeps a trip that
+            // never had days from being written to zero, but this one had a
+            // day a moment ago. Taking the last one off left its price on the
+            // bill, an Extra Day charged on a trip with no days (HECO,
+            // 2026-11-21). Zero is the right answer here.
+            app(CostCalculatorService::class)->calculate($trip->fresh());
         }
 
         return response()->json(["success" => true]);

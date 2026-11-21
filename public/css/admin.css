@@ -1606,3 +1606,9 @@ body.admin-login-page {
     outline: none;
 }
 .admin-password-field .password_toggle i { font-size: 1rem; line-height: 1; }
+
+/* A calendar opened from a popup sat behind it. Air Datepicker draws on the
+   page body at z-index 100, and a Bootstrap modal (1055) or SweetAlert (1060)
+   covers that, so the Lead Details From/To calendar could be seen through the
+   shade but not clicked (HECO, 2026-11-21). Raised above both. */
+.air-datepicker { --adp-z-index: 1070; }

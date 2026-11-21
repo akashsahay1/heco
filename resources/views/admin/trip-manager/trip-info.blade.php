@@ -90,11 +90,16 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold">End Date <span class="text-muted fw-normal">(from the days)</span></label>
-                                <input type="text" class="form-control form-control-sm" id="endDateDisplay" readonly disabled value="{{ $trip->end_date ? $trip->end_date->format('d-m-Y') : '' }}">
+                                <input type="text" class="form-control form-control-sm" id="endDateDisplay" data-days="{{ $trip->tripDays()->max('day_number') ?: 0 }}" readonly disabled value="{{ $trip->end_date ? $trip->end_date->format('d-m-Y') : '' }}">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label small fw-bold">Days</label>
                                 <input type="text" class="form-control form-control-sm" readonly disabled value="{{ $trip->tripDays()->count() }}">
+                            </div>
+                            {{-- Where the days come from was nowhere on this screen, so
+                                 the end date read as broken (HECO, 2026-11-21). --}}
+                            <div class="col-12 mt-1">
+                                <div class="small text-muted"><i class="bi bi-info-circle"></i> Days and the end date come from the Trip Itinerary tab: add a day there and the end date moves with it.</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small fw-bold">Start Location</label>
