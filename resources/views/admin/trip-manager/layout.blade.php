@@ -302,6 +302,9 @@ var tripData = @json($trip);
 // Heads a per-person service is multiplied by (children/infants at their
 // Settings percentage). Comes from the same calculator that prices the trip.
 var tripPeopleFactor = {{ json_encode((float) ($peopleFactor ?? 1)) }};
+// What an empty day is charged per person, read the way the calculator reads it.
+var tmRestDayRate = {{ json_encode((float) \App\Models\Setting::getValue('rest_day_cost_per_person', 2000)) }};
+var tmActivityDayRate = {{ json_encode((float) \App\Models\Setting::getValue('activity_day_cost_per_person', 5000)) }};
 
 // ── Regions chosen by hand (Trip Info > Who Is On This Trip)
 jQuery(document).on('click', '#tmRegionAdd', function() {
@@ -882,6 +885,23 @@ function loadItinerary() {
                     }
                 }
 
+                // An empty day is billed at the Settings rate, and nothing here
+                // said so: a trip HCT built showed an Extra Days charge nobody
+                // had set and no way to change it (HECO, 2026-11-21). The test
+                // is the calculator's own (CostCalculatorService, "An extra
+                // day"): no experience, no priced line, a type, not custom.
+                // A priced line on the day replaces the rate, so Set price adds one.
+                var tmPriced = (day.services || []).some(function(s) { return Number(s.cost) > 0; });
+                if (!isLocked && day.day_type && day.day_type !== 'custom'
+                    && !(day.experiences && day.experiences.length) && !tmPriced) {
+                    var tmRate = (day.day_type === 'activity' || day.day_type === 'free') ? tmActivityDayRate : tmRestDayRate;
+                    html += '<div class="d-flex align-items-center justify-content-center gap-2 mt-1 small">'
+                        + '<span class="text-muted">Extra day: &#8377;' + tmRate.toLocaleString('en-IN') + ' per person from Settings'
+                        + ' = &#8377;' + Math.round(tmRate * tripPeopleFactor).toLocaleString('en-IN') + '</span>'
+                        + '<button type="button" class="btn btn-sm btn-outline-success py-0 btn-set-day-price" data-id="' + day.id + '" title="Charge your own price for this day instead of the Settings rate">Set price</button>'
+                        + '</div>';
+                }
+
                 if (day.description) {
                     html += '<div class="small text-muted mt-1 pt-1"><i class="bi bi-chat-left-text me-1"></i>' + day.description + '</div>';
                 }
@@ -1088,6 +1108,34 @@ $(document).on('click', '.btn-move-day-up, .btn-move-day-down', function(e) {
         return;
     }
     ajaxPost({ reorder_trip_days: 1, trip_id: tripId, order: dayIds }, function() { loadItinerary(); });
+});
+
+// HCT's own price for an empty day. It goes on as an Extra line on that day,
+// which the calculator counts instead of the Settings rate. It can be changed
+// or removed afterwards like any other line, and removing it brings the rate
+// back. Above nothing: a line at 0 is not a price, and the rate would stay.
+$(document).on('click', '.btn-set-day-price', function(e) {
+    e.stopPropagation();
+    var dayId = $(this).data('id');
+    Swal.fire({
+        title: 'Price for this day',
+        html: '<div class="small text-muted">For the whole group, in &#8377;. It replaces the Settings rate for this day.</div>',
+        input: 'number',
+        inputAttributes: { min: '1', step: '0.01' },
+        showCancelButton: true,
+        confirmButtonText: 'Save',
+        confirmButtonColor: '#79a09f',
+        inputValidator: function(v) { return Number(v) > 0 ? null : 'Enter a price above 0.'; }
+    }).then(function(result) {
+        if (!result.isConfirmed) return;
+        ajaxPost({
+            add_day_service: 1, day_id: dayId, service_type: 'other',
+            description: 'Day price', cost: result.value, price_basis: 'flat', is_included: 1
+        }, function() {
+            loadItinerary();
+            showAlert('Day price saved.');
+        });
+    });
 });
 
 $(document).on('click', '.btn-first-day-date', function(e) {

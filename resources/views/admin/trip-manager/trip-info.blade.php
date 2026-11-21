@@ -371,7 +371,7 @@
                                 @if (($trip->extra_day_cost ?? 0) > 0)
                                     <tr>
                                         <td class="ps-3 small text-muted">Extra Days
-                                            <i class="bi bi-info-circle" title="Days with no experience on them, charged at the rest or activity day rate from Settings."></i>
+                                            <i class="bi bi-info-circle" title="Days with nothing priced on them, charged at the rest or activity day rate from Settings. Set price on a day in Trip Itinerary to charge your own."></i>
                                         </td>
                                         <td class="text-end pe-3 small">&#8377;{{ number_format($trip->extra_day_cost, 2) }}</td>
                                     </tr>
