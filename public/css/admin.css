@@ -465,6 +465,11 @@
     transition: all 0.15s ease;
 }
 
+/* Room for the dropdown arrow, so the chosen option never runs under it. */
+.hct-content .form-select {
+    padding-right: 2.25rem;
+}
+
 .hct-content .form-control:focus,
 .hct-content .form-select:focus {
     border-color: var(--admin-primary);

@@ -553,6 +553,9 @@ $('#cancelTripSave').on('click', function() {
 
 $('#tripInfoForm').on('submit', function(e) {
     e.preventDefault();
+    // Enter in a margin box fires its change and then this. Without clearing
+    // the timer the change had started, the form was saved twice.
+    clearTimeout(tmMarginTimer);
     var data = { update_trip_info: 1, trip_id: tripId };
     // The two payment boxes live inside this form; their fields are theirs.
     $(this).find('[name]').not('#addPaymentForm [name], #addSpPaymentForm [name]').each(function() {

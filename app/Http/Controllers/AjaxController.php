@@ -11617,10 +11617,11 @@ BEFORE A TRIP CAN BE PLANNED AT ALL, three things must be in place: at least one
             $outOfSeason = $this->seasonClashesFor($trip);
         }
 
-        // Only recalculate when there's an itinerary - otherwise CostCalculatorService
-        // would persist an all-zero breakdown and wipe the trip's cost columns
-        // (the same hazard repriceTrip() guards against).
-        if ($trip->tripDays()->exists() || $trip->selectedExperiences()->exists()) {
+        // A trip with nothing on it costs nothing, so it is priced like any
+        // other: skipped, it kept the price of days since removed, and no
+        // change of margin could move it (HECO, 2026-11-25). A cancelled trip
+        // with no itinerary keeps its price as the record of what it was.
+        if ($trip->status !== 'cancelled' || $trip->tripDays()->exists() || $trip->selectedExperiences()->exists()) {
             app(CostCalculatorService::class)->calculate($trip);
         }
 
